@@ -1,0 +1,8 @@
+streamlit
+pandas
+reportlab
+sqlalchemy
+openpyxl
+xlrd
+xlsxwriter
+lxml

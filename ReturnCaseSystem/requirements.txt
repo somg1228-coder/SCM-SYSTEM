@@ -1,0 +1,6 @@
+streamlit
+pandas
+pillow
+openpyxl
+streamlit-aggrid
+streamlit-drawable-canvas
