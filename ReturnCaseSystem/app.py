@@ -2771,7 +2771,7 @@ def render_return_case_system():
 
     .top5-meter {
         width:100%;
-        margin: clamp(5px, calc(var(--app-dashboard-card-h) * 0.02), 7px) 0 clamp(7px, calc(var(--app-dashboard-card-h) * 0.025), 9px) 0;
+        margin: 4px 0 6px 0;
     }
 
     .top5-track {
@@ -2796,12 +2796,16 @@ def render_return_case_system():
     }
 
     .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
-        gap:0.18rem !important;
+        gap:0.1rem !important;
     }
 
     .st-key-dashboard_card_top5 {
         display: flex !important;
         flex-direction: column !important;
+        min-height: 0 !important;
+        height: fit-content !important;
+        max-height: none !important;
+        padding: 13px 10px 10px 10px !important;
     }
 
     .st-key-dashboard_card_top5 > div,
@@ -2953,15 +2957,15 @@ def render_return_case_system():
     }
 
     div[data-testid="stHorizontalBlock"]:has(.st-key-dashboard_card_recent):has(.st-key-dashboard_card_top5) > div[data-testid="column"]:first-child {
-        flex: 0 0 calc(72% - 0.375rem) !important;
-        max-width: calc(72% - 0.375rem) !important;
+        flex: 0 0 calc(68% - 0.375rem) !important;
+        max-width: calc(68% - 0.375rem) !important;
         min-width: 0 !important;
     }
 
     div[data-testid="stHorizontalBlock"]:has(.st-key-dashboard_card_recent):has(.st-key-dashboard_card_top5) > div[data-testid="column"]:last-child {
-        flex: 0 0 calc(28% - 0.375rem) !important;
-        max-width: calc(28% - 0.375rem) !important;
-        min-width: 320px !important;
+        flex: 0 0 calc(32% - 0.375rem) !important;
+        max-width: calc(32% - 0.375rem) !important;
+        min-width: 360px !important;
     }
 
     div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child input,
@@ -3004,6 +3008,13 @@ def render_return_case_system():
         min-height: var(--app-grid-h) !important;
         height: var(--app-grid-h) !important;
         max-height: var(--app-grid-h) !important;
+    }
+
+    .st-key-dashboard_card_top5 {
+        min-height: 0 !important;
+        height: fit-content !important;
+        max-height: none !important;
+        padding: 13px 10px 10px 10px !important;
     }
 
     .st-key-detail_case_photo [data-testid="stImage"],
@@ -4480,7 +4491,7 @@ def render_return_case_system():
         # 하단영역
         # =====================
 
-        lower_left, lower_right = st.columns([2.6, 1], gap="small")
+        lower_left, lower_right = st.columns([2.1, 1], gap="small")
 
         # ---------------------
         # 최근 등록 사례
