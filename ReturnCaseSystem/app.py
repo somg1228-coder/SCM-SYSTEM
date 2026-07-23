@@ -2699,13 +2699,13 @@ def render_return_case_system():
     .st-key-top5_3 button,
     .st-key-top5_4 button,
     .st-key-top5_5 button {
-        height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.14), 46px) !important;
-        min-height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.14), 46px) !important;
+        height: clamp(31px, calc(var(--app-dashboard-card-h) * 0.105), 35px) !important;
+        min-height: clamp(31px, calc(var(--app-dashboard-card-h) * 0.105), 35px) !important;
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
         text-align: left !important;
-        padding: 0 10px !important;
+        padding: 0 9px !important;
         border: 1px solid rgba(255,255,255,0.10) !important;
         background: rgba(255,255,255,0.075) !important;
         box-shadow: none !important;
@@ -2721,14 +2721,14 @@ def render_return_case_system():
     }
 
     div[class*="st-key-top5_"] button {
-        height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.14), 46px) !important;
-        min-height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.14), 46px) !important;
+        height: clamp(31px, calc(var(--app-dashboard-card-h) * 0.105), 35px) !important;
+        min-height: clamp(31px, calc(var(--app-dashboard-card-h) * 0.105), 35px) !important;
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
         text-align: left !important;
-        padding: 0 10px !important;
-        border-radius: 9px !important;
+        padding: 0 9px !important;
+        border-radius: 8px !important;
     }
 
     div[class*="st-key-top5_"] button * {
@@ -2765,18 +2765,18 @@ def render_return_case_system():
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
-        font-size: clamp(13px, 0.74vw, 14px) !important;
+        font-size: clamp(12px, 0.72vw, 14px) !important;
         line-height: 1.2 !important;
     }
 
     .top5-meter {
         width:100%;
-        margin: clamp(6px, calc(var(--app-dashboard-card-h) * 0.024), 9px) 0 clamp(9px, calc(var(--app-dashboard-card-h) * 0.032), 12px) 0;
+        margin: clamp(5px, calc(var(--app-dashboard-card-h) * 0.02), 7px) 0 clamp(7px, calc(var(--app-dashboard-card-h) * 0.025), 9px) 0;
     }
 
     .top5-track {
         width:100%;
-        height: clamp(7px, calc(var(--app-dashboard-card-h) * 0.024), 9px);
+        height: clamp(6px, calc(var(--app-dashboard-card-h) * 0.02), 8px);
         background:rgba(255,255,255,0.08);
         border-radius:10px;
         overflow:hidden;
@@ -2789,14 +2789,14 @@ def render_return_case_system():
 
     .top5-count {
         display:block;
-        margin-top:2px;
+        margin-top:1px;
         font-size:clamp(12px, 0.66vw, 13px);
         line-height:1.2;
         color:rgba(255,255,255,0.78) !important;
     }
 
     .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
-        gap:0.28rem !important;
+        gap:0.18rem !important;
     }
 
     .st-key-dashboard_card_top5 {
@@ -2953,15 +2953,15 @@ def render_return_case_system():
     }
 
     div[data-testid="stHorizontalBlock"]:has(.st-key-dashboard_card_recent):has(.st-key-dashboard_card_top5) > div[data-testid="column"]:first-child {
-        flex: 0 0 calc(74% - 0.375rem) !important;
-        max-width: calc(74% - 0.375rem) !important;
+        flex: 0 0 calc(72% - 0.375rem) !important;
+        max-width: calc(72% - 0.375rem) !important;
         min-width: 0 !important;
     }
 
     div[data-testid="stHorizontalBlock"]:has(.st-key-dashboard_card_recent):has(.st-key-dashboard_card_top5) > div[data-testid="column"]:last-child {
-        flex: 0 0 calc(26% - 0.375rem) !important;
-        max-width: calc(26% - 0.375rem) !important;
-        min-width: 280px !important;
+        flex: 0 0 calc(28% - 0.375rem) !important;
+        max-width: calc(28% - 0.375rem) !important;
+        min-width: 320px !important;
     }
 
     div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child input,
@@ -3063,8 +3063,8 @@ def render_return_case_system():
         }
 
         div[class*="st-key-top5_"] button {
-            height: 38px !important;
-            min-height: 38px !important;
+            height: 31px !important;
+            min-height: 31px !important;
         }
     }
 
@@ -4480,7 +4480,7 @@ def render_return_case_system():
         # 하단영역
         # =====================
 
-        lower_left, lower_right = st.columns([3, 1], gap="small")
+        lower_left, lower_right = st.columns([2.6, 1], gap="small")
 
         # ---------------------
         # 최근 등록 사례
