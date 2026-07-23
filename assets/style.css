@@ -21,19 +21,19 @@
     --red: #ff4c4c;
     --page-pad-y: clamp(0.24rem, 0.72vh, 0.72rem);
     --page-pad-x: clamp(0.65rem, 1.25vw, 1.45rem);
-    --dashboard-gap: clamp(0.28rem, 0.65vh, 0.66rem);
-    --panel-pad-y: clamp(0.42rem, 0.8vh, 0.95rem);
-    --panel-pad-x: clamp(0.55rem, 0.75vw, 1rem);
+    --dashboard-gap: clamp(0.28rem, 0.55vh, 0.56rem);
+    --panel-pad-y: clamp(0.36rem, 0.62vh, 0.72rem);
+    --panel-pad-x: clamp(0.52rem, 0.72vw, 0.9rem);
     --topbar-height: clamp(28px, 3.8vh, 42px);
     --schedule-cell-h: clamp(48px, 7.1vh, 88px);
-    --kpi-height: clamp(50px, 6.2vh, 78px);
+    --kpi-height: clamp(44px, 5.2vh, 60px);
     --chart-card-h: clamp(124px, 17.2vh, 198px);
     --chart-h: clamp(92px, 13.3vh, 155px);
     --chart-plot-h: calc(var(--chart-h) - 20px);
-    --middle-card-h: clamp(168px, 21vh, 246px);
-    --bottom-card-h: clamp(190px, 25vh, 310px);
-    --donut-size: clamp(74px, 10.2vh, 118px);
-    --donut-core: clamp(40px, 5.3vh, 62px);
+    --middle-card-h: clamp(190px, 22.5vh, 260px);
+    --bottom-card-h: clamp(236px, 29vh, 340px);
+    --donut-size: clamp(70px, 9.4vh, 106px);
+    --donut-core: clamp(38px, 5vh, 56px);
 }
 
 html,
@@ -613,8 +613,10 @@ section.main,
 }
 
 .dashboard-shell {
+    align-content: start;
     display: grid;
     gap: var(--dashboard-gap);
+    grid-auto-rows: max-content;
     min-height: calc(100vh - var(--topbar-height) - var(--dashboard-gap) - (var(--page-pad-y) * 2));
     width: 100%;
 }
@@ -755,6 +757,7 @@ section.main,
     display: grid;
     gap: var(--dashboard-gap);
     grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-auto-rows: var(--kpi-height);
 }
 
 .kpi-tile {
@@ -766,8 +769,10 @@ section.main,
     display: grid;
     gap: clamp(0.28rem, 0.48vw, 0.72rem);
     grid-template-columns: clamp(32px, 2.8vw, 46px) 1fr;
-    min-height: var(--kpi-height);
-    padding: clamp(0.34rem, 0.62vh, 0.72rem) clamp(0.45rem, 0.62vw, 0.82rem);
+    height: var(--kpi-height);
+    min-height: 0;
+    overflow: hidden;
+    padding: clamp(0.24rem, 0.42vh, 0.46rem) clamp(0.42rem, 0.58vw, 0.72rem);
     text-decoration: none;
     transition: border-color 0.16s ease, transform 0.16s ease;
 }
@@ -785,14 +790,14 @@ section.main,
     border-radius: clamp(10px, 1.1vw, 16px);
     color: var(--cyan);
     display: flex;
-    height: clamp(30px, 3.6vh, 44px);
+    height: clamp(26px, 3vh, 36px);
     justify-content: center;
-    width: clamp(30px, 3.6vh, 44px);
+    width: clamp(26px, 3vh, 36px);
 }
 
 .kpi-icon svg {
-    height: clamp(18px, 2.1vh, 26px);
-    width: clamp(18px, 2.1vh, 26px);
+    height: clamp(16px, 1.8vh, 22px);
+    width: clamp(16px, 1.8vh, 22px);
 }
 
 .kpi-tile.blue .kpi-icon {
@@ -830,7 +835,7 @@ section.main,
 .kpi-tile strong {
     color: #fff;
     display: block;
-    font-size: clamp(0.88rem, 1.22vw, 1.34rem);
+    font-size: clamp(0.82rem, 1.05vw, 1.16rem);
     font-weight: 900;
     line-height: 1.1;
 }
@@ -839,7 +844,7 @@ section.main,
     color: #d3eee8;
     display: block;
     font-size: clamp(0.5rem, 0.58vw, 0.68rem);
-    margin-top: clamp(0.08rem, 0.35vh, 0.38rem);
+    margin-top: 0.04rem;
 }
 
 .kpi-tile.cyan small {
@@ -1029,7 +1034,7 @@ section.main,
 }
 
 .donut-layout {
-    align-items: center;
+    align-items: start;
     display: grid;
     gap: clamp(0.24rem, 0.42vw, 0.52rem);
     grid-template-columns: minmax(70px, var(--donut-size)) minmax(0, 1fr);
@@ -1101,9 +1106,14 @@ a.donut {
 }
 
 .legend {
+    align-self: start;
+    max-height: calc(var(--middle-card-h) - 34px);
     list-style: none;
     margin: 0;
+    min-height: 0;
+    overflow: auto;
     padding: 0;
+    scrollbar-width: thin;
 }
 
 .legend li {
@@ -1480,6 +1490,11 @@ a.donut {
     min-height: var(--bottom-card-h);
 }
 
+.core-task-panel,
+.order-panel {
+    overflow: hidden;
+}
+
 .table-panel table {
     border-collapse: collapse;
     color: #eafffb;
@@ -1674,8 +1689,9 @@ a.donut {
     list-style: none;
     margin: 0;
     min-height: 0;
-    overflow: hidden;
+    overflow: auto;
     padding: 0;
+    scrollbar-width: thin;
 }
 
 .core-task-list li {
@@ -1764,10 +1780,30 @@ a.donut {
 .order-panel table {
     border-collapse: collapse;
     color: #eafffb;
+    display: block;
+    flex: 1 1 auto;
     font-size: clamp(0.56rem, 0.62vw, 0.78rem);
     margin-top: clamp(0.18rem, 0.48vh, 0.65rem);
+    min-height: 0;
+    overflow: auto;
+    scrollbar-width: thin;
     table-layout: fixed;
     width: 100%;
+}
+
+.order-panel thead,
+.order-panel tbody {
+    display: table;
+    table-layout: fixed;
+    width: 100%;
+}
+
+.order-panel table tbody {
+    display: table-row-group;
+}
+
+.order-panel {
+    min-height: var(--bottom-card-h);
 }
 
 .order-panel th {
@@ -2335,15 +2371,15 @@ div[data-testid="element-container"]:has(.return-system-shell) {
     :root {
         --page-pad-y: 0.32rem;
         --page-pad-x: clamp(0.55rem, 1vw, 1rem);
-        --dashboard-gap: 0.38rem;
-        --panel-pad-y: 0.44rem;
+        --dashboard-gap: 0.34rem;
+        --panel-pad-y: 0.38rem;
         --panel-pad-x: 0.62rem;
         --schedule-cell-h: clamp(44px, 6.6vh, 62px);
-        --kpi-height: clamp(48px, 5.8vh, 58px);
+        --kpi-height: clamp(42px, 5vh, 50px);
         --chart-card-h: clamp(116px, 16.2vh, 146px);
         --chart-h: clamp(86px, 12.4vh, 112px);
-        --middle-card-h: clamp(158px, 19.8vh, 184px);
-        --bottom-card-h: clamp(186px, 25.8vh, 232px);
+        --middle-card-h: clamp(184px, 22.6vh, 214px);
+        --bottom-card-h: clamp(246px, 30vh, 286px);
         --donut-size: clamp(70px, 9.8vh, 96px);
         --donut-core: clamp(38px, 5.4vh, 54px);
     }
@@ -2364,16 +2400,16 @@ div[data-testid="element-container"]:has(.return-system-shell) {
 @media (max-height: 780px) {
     :root {
         --page-pad-y: 0.24rem;
-        --dashboard-gap: 0.3rem;
-        --panel-pad-y: 0.34rem;
+        --dashboard-gap: 0.28rem;
+        --panel-pad-y: 0.32rem;
         --panel-pad-x: 0.52rem;
         --topbar-height: 26px;
         --schedule-cell-h: 42px;
-        --kpi-height: 46px;
+        --kpi-height: 40px;
         --chart-card-h: 112px;
         --chart-h: 82px;
-        --middle-card-h: 154px;
-        --bottom-card-h: 208px;
+        --middle-card-h: 176px;
+        --bottom-card-h: 250px;
         --donut-size: 68px;
         --donut-core: 36px;
     }
@@ -2383,17 +2419,17 @@ div[data-testid="element-container"]:has(.return-system-shell) {
     }
 
     .kpi-tile {
-        grid-template-columns: 34px 1fr;
+        grid-template-columns: 28px 1fr;
     }
 
     .kpi-icon {
-        height: 34px;
-        width: 34px;
+        height: 28px;
+        width: 28px;
     }
 
     .kpi-icon svg {
-        height: 19px;
-        width: 19px;
+        height: 16px;
+        width: 16px;
     }
 }
 
