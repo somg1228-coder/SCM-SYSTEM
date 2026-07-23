@@ -2243,7 +2243,7 @@ def render_return_case_system():
     }
 
     .st-key-dashboard_card_top5 .dashboard-card-title {
-        margin-bottom:18px;
+        margin-bottom:26px;
     }
 
     div[data-testid="stMarkdownContainer"]:has(style) {
@@ -2699,8 +2699,8 @@ def render_return_case_system():
     .st-key-top5_3 button,
     .st-key-top5_4 button,
     .st-key-top5_5 button {
-        height: clamp(31px, calc(var(--app-dashboard-card-h) * 0.105), 35px) !important;
-        min-height: clamp(31px, calc(var(--app-dashboard-card-h) * 0.105), 35px) !important;
+        height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
+        min-height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
@@ -2721,8 +2721,8 @@ def render_return_case_system():
     }
 
     div[class*="st-key-top5_"] button {
-        height: clamp(31px, calc(var(--app-dashboard-card-h) * 0.105), 35px) !important;
-        min-height: clamp(31px, calc(var(--app-dashboard-card-h) * 0.105), 35px) !important;
+        height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
+        min-height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
@@ -2771,7 +2771,7 @@ def render_return_case_system():
 
     .top5-meter {
         width:100%;
-        margin: 4px 0 6px 0;
+        margin: 8px 0 18px 0;
     }
 
     .top5-track {
@@ -2796,7 +2796,7 @@ def render_return_case_system():
     }
 
     .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
-        gap:0.1rem !important;
+        gap:0.36rem !important;
     }
 
     .st-key-dashboard_card_top5 {
@@ -3070,8 +3070,8 @@ def render_return_case_system():
         }
 
         div[class*="st-key-top5_"] button {
-            height: 31px !important;
-            min-height: 31px !important;
+            height: 34px !important;
+            min-height: 34px !important;
         }
     }
 
