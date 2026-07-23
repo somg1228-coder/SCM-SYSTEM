@@ -2287,7 +2287,7 @@ def render_return_case_system():
         min-height: var(--app-list-card-h) !important;
         height: var(--app-list-card-h) !important;
         max-height: var(--app-list-card-h) !important;
-        padding: 8px 11px !important;
+        padding: 7px 10px !important;
     }
 
     div[class*="st-key-select_"] button {
@@ -2699,13 +2699,13 @@ def render_return_case_system():
     .st-key-top5_3 button,
     .st-key-top5_4 button,
     .st-key-top5_5 button {
-        height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
-        min-height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
+        height: clamp(32px, calc(var(--app-dashboard-card-h) * 0.14), 35px) !important;
+        min-height: clamp(32px, calc(var(--app-dashboard-card-h) * 0.14), 35px) !important;
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
         text-align: left !important;
-        padding: 0 10px !important;
+        padding: 0 9px !important;
         border: 1px solid rgba(255,255,255,0.10) !important;
         background: rgba(255,255,255,0.075) !important;
         box-shadow: none !important;
@@ -2721,14 +2721,14 @@ def render_return_case_system():
     }
 
     div[class*="st-key-top5_"] button {
-        height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
-        min-height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
+        height: clamp(32px, calc(var(--app-dashboard-card-h) * 0.14), 35px) !important;
+        min-height: clamp(32px, calc(var(--app-dashboard-card-h) * 0.14), 35px) !important;
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
         text-align: left !important;
-        padding: 0 10px !important;
-        border-radius: 10px !important;
+        padding: 0 9px !important;
+        border-radius: 8px !important;
     }
 
     div[class*="st-key-top5_"] button * {
@@ -2765,18 +2765,18 @@ def render_return_case_system():
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
-        font-size: clamp(13px, 0.78vw, 15px) !important;
+        font-size: clamp(12px, 0.72vw, 14px) !important;
         line-height: 1.2 !important;
     }
 
     .top5-meter {
         width:100%;
-        margin: 4px 0 8px 0;
+        margin: 3px 0 5px 0;
     }
 
     .top5-track {
         width:100%;
-        height: 7px;
+        height: 6px;
         background:rgba(255,255,255,0.08);
         border-radius:10px;
         overflow:hidden;
@@ -2789,14 +2789,14 @@ def render_return_case_system():
 
     .top5-count {
         display:block;
-        margin-top:2px;
-        font-size:clamp(12px, 0.68vw, 13px);
-        line-height:1.25;
+        margin-top:1px;
+        font-size:clamp(11px, 0.64vw, 12px);
+        line-height:1.15;
         color:rgba(255,255,255,0.78) !important;
     }
 
     .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
-        gap:0.22rem !important;
+        gap:0.12rem !important;
     }
 
     .st-key-dashboard_card_top5 {
@@ -2891,10 +2891,10 @@ def render_return_case_system():
         --app-page-y: clamp(2.55rem, 3.2vh, 3.1rem);
         --app-kpi-h: clamp(82px, 8.2vh, 96px);
         --app-chart-card-h: clamp(320px, 31vh, 350px);
-        --app-list-card-h: clamp(232px, 23vh, 252px);
+        --app-list-card-h: clamp(226px, 22.4vh, 244px);
         --app-dashboard-card-h: var(--app-list-card-h);
         --app-chart-h: calc(var(--app-chart-card-h) - 36px);
-        --app-grid-h: calc(var(--app-list-card-h) - 44px);
+        --app-grid-h: calc(var(--app-list-card-h) - 50px);
         --app-detail-photo-h: clamp(240px, 34vh, 312px);
         --app-search-h: clamp(236px, 28vh, 320px);
     }
@@ -3014,7 +3014,7 @@ def render_return_case_system():
             --app-page-y: 2.4rem;
             --app-kpi-h: 82px;
             --app-chart-card-h: 326px;
-            --app-list-card-h: 236px;
+            --app-list-card-h: 228px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-search-h: 240px;
         }
@@ -3025,7 +3025,7 @@ def render_return_case_system():
             --app-page-y: 2.1rem;
             --app-kpi-h: 78px;
             --app-chart-card-h: 310px;
-            --app-list-card-h: 224px;
+            --app-list-card-h: 218px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 250px;
             --app-search-h: 220px;
@@ -3046,8 +3046,8 @@ def render_return_case_system():
         }
 
         div[class*="st-key-top5_"] button {
-            height: 38px !important;
-            min-height: 38px !important;
+            height: 31px !important;
+            min-height: 31px !important;
         }
     }
 
@@ -3056,7 +3056,7 @@ def render_return_case_system():
             --app-page-x: 0.85rem;
             --app-kpi-h: 92px;
             --app-chart-card-h: 330px;
-            --app-list-card-h: 252px;
+            --app-list-card-h: 244px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 260px;
             --app-search-h: 240px;
@@ -4529,7 +4529,7 @@ def render_return_case_system():
                 grid_response = AgGrid(
                     recent_df,
                     gridOptions=grid_options,
-                    height=220,
+                    height=194,
                     theme="streamlit",
                     fit_columns_on_grid_load=True,
 
