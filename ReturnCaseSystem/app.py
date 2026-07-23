@@ -2229,21 +2229,21 @@ def render_return_case_system():
     }
 
     .dashboard-card-title {
-        font-size: 19px;
+        font-size: 18px;
         font-weight: 850;
         line-height: 1.25;
-        margin: 0 0 12px 0;
+        margin: 0 0 8px 0;
         color: white;
         text-align: left;
     }
 
     .st-key-dashboard_card_recent .dashboard-card-title,
     .st-key-dashboard_card_top5 .dashboard-card-title {
-        margin-bottom:9px;
+        margin-bottom:7px;
     }
 
     .st-key-dashboard_card_top5 .dashboard-card-title {
-        margin-bottom:18px;
+        margin-bottom:8px;
     }
 
     div[data-testid="stMarkdownContainer"]:has(style) {
@@ -2270,7 +2270,7 @@ def render_return_case_system():
         border: 1px solid rgba(255,255,255,0.13) !important;
         border-radius: 12px !important;
         box-shadow: 0 6px 16px rgba(0,0,0,0.14) !important;
-        padding: 14px !important;
+        padding: 10px 12px !important;
         overflow: hidden !important;
     }
 
@@ -2279,7 +2279,7 @@ def render_return_case_system():
         min-height: var(--app-chart-card-h) !important;
         height: var(--app-chart-card-h) !important;
         max-height: var(--app-chart-card-h) !important;
-        padding: 10px 12px 8px 12px !important;
+        padding: 8px 10px 6px 10px !important;
     }
 
     .st-key-dashboard_card_recent,
@@ -2287,7 +2287,7 @@ def render_return_case_system():
         min-height: var(--app-list-card-h) !important;
         height: var(--app-list-card-h) !important;
         max-height: var(--app-list-card-h) !important;
-        padding: 10px 13px !important;
+        padding: 8px 11px !important;
     }
 
     div[data-testid="stButton"] {
@@ -2786,12 +2786,12 @@ def render_return_case_system():
 
     .top5-meter {
         width:100%;
-        margin: clamp(6px, calc(var(--app-dashboard-card-h) * 0.018), 10px) 0 clamp(12px, calc(var(--app-dashboard-card-h) * 0.04), 18px) 0;
+        margin: 4px 0 8px 0;
     }
 
     .top5-track {
         width:100%;
-        height: clamp(8px, calc(var(--app-dashboard-card-h) * 0.024), 11px);
+        height: 7px;
         background:rgba(255,255,255,0.08);
         border-radius:10px;
         overflow:hidden;
@@ -2804,14 +2804,14 @@ def render_return_case_system():
 
     .top5-count {
         display:block;
-        margin-top:clamp(3px, calc(var(--app-dashboard-card-h) * 0.012), 5px);
-        font-size:clamp(12px, 0.72vw, 14px);
+        margin-top:2px;
+        font-size:clamp(12px, 0.68vw, 13px);
         line-height:1.25;
         color:rgba(255,255,255,0.78) !important;
     }
 
     .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
-        gap:clamp(0.3rem, calc(var(--app-dashboard-card-h) * 0.014), 0.55rem) !important;
+        gap:0.22rem !important;
     }
 
     .st-key-dashboard_card_top5 {
@@ -2903,15 +2903,15 @@ def render_return_case_system():
     :root {
         --app-max-width: none;
         --app-page-x: clamp(0.8rem, 1vw, 1.2rem);
-        --app-page-y: clamp(3.45rem, 4.5vh, 3.95rem);
-        --app-kpi-h: clamp(98px, 10.4vh, 118px);
-        --app-chart-card-h: clamp(390px, 40vh, 448px);
-        --app-list-card-h: clamp(296px, 31.8vh, 336px);
+        --app-page-y: clamp(2.55rem, 3.2vh, 3.1rem);
+        --app-kpi-h: clamp(82px, 8.2vh, 96px);
+        --app-chart-card-h: clamp(320px, 31vh, 350px);
+        --app-list-card-h: clamp(244px, 24.5vh, 268px);
         --app-dashboard-card-h: var(--app-list-card-h);
-        --app-chart-h: calc(var(--app-chart-card-h) - 46px);
-        --app-grid-h: calc(var(--app-list-card-h) - 66px);
+        --app-chart-h: calc(var(--app-chart-card-h) - 36px);
+        --app-grid-h: calc(var(--app-list-card-h) - 48px);
         --app-detail-photo-h: clamp(240px, 34vh, 312px);
-        --app-search-h: clamp(278px, 35.5vh, 402px);
+        --app-search-h: clamp(236px, 28vh, 320px);
     }
 
     .block-container {
@@ -2922,7 +2922,7 @@ def render_return_case_system():
         padding-top: var(--app-page-y) !important;
         padding-left: var(--app-page-x) !important;
         padding-right: var(--app-page-x) !important;
-        padding-bottom: 4rem !important;
+        padding-bottom: 2rem !important;
     }
 
     [data-testid="stAppViewBlockContainer"],
@@ -2932,7 +2932,7 @@ def render_return_case_system():
     }
 
     [data-testid="stMainBlockContainer"] {
-        padding: var(--app-page-y) var(--app-page-x) 4rem var(--app-page-x) !important;
+        padding: var(--app-page-y) var(--app-page-x) 2rem var(--app-page-x) !important;
     }
 
     [data-testid="stAppViewBlockContainer"] {
@@ -2948,7 +2948,7 @@ def render_return_case_system():
 
     div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) {
         align-items: stretch !important;
-        gap: 1rem !important;
+        gap: 0.75rem !important;
     }
 
     div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child {
@@ -3020,24 +3020,24 @@ def render_return_case_system():
 
     @media (max-height: 850px) {
         :root {
-            --app-page-y: 3.2rem;
-            --app-kpi-h: 94px;
-            --app-chart-card-h: 390px;
-            --app-list-card-h: 306px;
+            --app-page-y: 2.4rem;
+            --app-kpi-h: 82px;
+            --app-chart-card-h: 326px;
+            --app-list-card-h: 246px;
             --app-dashboard-card-h: var(--app-list-card-h);
-            --app-search-h: 278px;
+            --app-search-h: 240px;
         }
     }
 
     @media (max-height: 760px) {
         :root {
-            --app-page-y: 2.9rem;
-            --app-kpi-h: 88px;
-            --app-chart-card-h: 370px;
-            --app-list-card-h: 282px;
+            --app-page-y: 2.1rem;
+            --app-kpi-h: 78px;
+            --app-chart-card-h: 310px;
+            --app-list-card-h: 232px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 250px;
-            --app-search-h: 244px;
+            --app-search-h: 220px;
         }
 
         div[data-testid="stButton"] button {
@@ -3054,11 +3054,11 @@ def render_return_case_system():
         :root {
             --app-page-x: 0.85rem;
             --app-kpi-h: 92px;
-            --app-chart-card-h: 390px;
-            --app-list-card-h: 320px;
+            --app-chart-card-h: 330px;
+            --app-list-card-h: 270px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 260px;
-            --app-search-h: 260px;
+            --app-search-h: 240px;
         }
 
         .block-container {
@@ -3067,28 +3067,34 @@ def render_return_case_system():
         }
     }
 
+    .st-key-main_excel_prepare_btn,
+    div[class*="st-key-main_excel_prepare_btn"],
     .st-key-main_excel_download_btn,
     div[class*="st-key-main_excel_download_btn"] {
         position: static !important;
-        margin: 0.85rem 0 0 var(--app-page-x) !important;
+        margin: 0.35rem 0 0 var(--app-page-x) !important;
         width: auto !important;
         max-width: calc(100vw - (var(--app-page-x) * 2)) !important;
         z-index: auto !important;
     }
 
+    .st-key-main_excel_prepare_btn div[data-testid="stButton"],
+    div[class*="st-key-main_excel_prepare_btn"] div[data-testid="stButton"],
     .st-key-main_excel_download_btn div[data-testid="stDownloadButton"],
     div[class*="st-key-main_excel_download_btn"] div[data-testid="stDownloadButton"] {
         width: auto !important;
     }
 
+    .st-key-main_excel_prepare_btn button,
+    div[class*="st-key-main_excel_prepare_btn"] button,
     .st-key-main_excel_download_btn button,
     div[class*="st-key-main_excel_download_btn"] button {
         width: auto !important;
-        min-width: 112px !important;
-        min-height: 38px !important;
-        height: 38px !important;
-        padding: 0 16px !important;
-        border-radius: 12px !important;
+        min-width: 108px !important;
+        min-height: 34px !important;
+        height: 34px !important;
+        padding: 0 14px !important;
+        border-radius: 10px !important;
     }
 
     /* Responsive action buttons: prevent fixed-width buttons from overlapping in narrow layouts. */
@@ -4258,20 +4264,20 @@ def render_return_case_system():
                     )
 
                     fig.update_layout(
-                        height=380,
+                        height=315,
                         margin=dict(
-                            l=14,
-                            r=16,
-                            t=8,
-                            b=10
+                            l=10,
+                            r=10,
+                            t=4,
+                            b=6
                         ),
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
                         font_color="white",
                         legend=dict(
-                            font=dict(size=13),
+                            font=dict(size=12),
                             orientation="v",
-                            x=0.92,
+                            x=0.84,
                             y=0.5,
                             xanchor="left",
                             yanchor="middle"
@@ -4282,8 +4288,8 @@ def render_return_case_system():
                         textinfo="percent",
                         textfont_size=12,
                         domain=dict(
-                            x=[0.02, 0.80],
-                            y=[0.04, 0.96]
+                            x=[0.03, 0.78],
+                            y=[0.08, 0.92]
                         )
                     )
 
@@ -4408,12 +4414,12 @@ def render_return_case_system():
                         )
 
                     fig.update_layout(
-                        height=380,
+                        height=315,
                         margin=dict(
-                            l=14,
-                            r=14,
-                            t=26,
-                            b=12
+                            l=12,
+                            r=10,
+                            t=20,
+                            b=8
                         ),
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
@@ -4522,7 +4528,7 @@ def render_return_case_system():
                 grid_response = AgGrid(
                     recent_df,
                     gridOptions=grid_options,
-                    height=260,
+                    height=240,
                     theme="streamlit",
                     fit_columns_on_grid_load=True,
 
