@@ -1862,7 +1862,7 @@ a.donut {
 .meeting-shell {
     display: flex;
     flex-direction: column;
-    gap: clamp(0.48rem, 0.85vh, 0.86rem);
+    gap: clamp(0.42rem, 0.7vh, 0.72rem);
     padding-bottom: 2rem;
 }
 
@@ -1886,14 +1886,32 @@ a.donut {
     border: 1px solid rgba(87, 178, 165, 0.28) !important;
     border-radius: 8px !important;
     box-shadow: inset 0 1px 0 rgba(204, 255, 246, 0.05), 0 12px 30px rgba(0, 0, 0, 0.16) !important;
-    padding: clamp(0.72rem, 1.1vh, 1.1rem) clamp(0.86rem, 1.2vw, 1.35rem) !important;
+    padding: clamp(0.86rem, 1.25vh, 1.18rem) clamp(0.95rem, 1.25vw, 1.45rem) !important;
 }
 
-.st-key-meeting_control_card h2 {
+.meeting-control-header {
+    margin: 0 0 clamp(0.78rem, 1.15vh, 1.05rem);
+}
+
+.meeting-control-header .panel-eyebrow {
+    margin: 0 0 0.32rem;
+}
+
+.meeting-control-header h1 {
     color: #ffffff;
-    font-size: clamp(1rem, 1.2vw, 1.28rem);
-    line-height: 1.2;
-    margin: 0 0 0.65rem;
+    font-size: clamp(1.25rem, 1.75vw, 1.92rem);
+    line-height: 1.12;
+    margin: 0;
+}
+
+.st-key-meeting_control_card div[data-testid="stHorizontalBlock"] {
+    align-items: end;
+}
+
+.st-key-meeting_control_card div[data-testid="stButton"] button,
+.st-key-meeting_control_card div[data-testid="stDownloadButton"] button {
+    min-height: 40px;
+    height: 40px;
 }
 
 .meeting-section-title {

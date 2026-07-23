@@ -46,17 +46,6 @@ def render_meeting_page() -> None:
         st.session_state.meeting_date = default_date
 
     st.markdown('<main class="meeting-shell">', unsafe_allow_html=True)
-    st.markdown(
-        """
-        <section class="meeting-hero panel">
-            <div>
-                <p class="panel-eyebrow">WEEKLY REPORT</p>
-                <h1>물류</h1>
-            </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
-    )
 
     meta = render_control_card()
     report = get_or_create_report(meta["meeting_date"], meta["author"])
@@ -180,9 +169,17 @@ def render_control_card() -> dict:
         st.session_state.meeting_author = "송광선"
 
     with st.container(key="meeting_control_card"):
-        st.markdown("<h2>물류</h2>", unsafe_allow_html=True)
-        date_col, author_col, save_col, button_col, download_col, history_col = st.columns(
-            [1.05, 1.05, 0.68, 0.78, 0.95, 1.05],
+        st.markdown(
+            """
+            <div class="meeting-control-header">
+                <p class="panel-eyebrow">WEEKLY REPORT</p>
+                <h1>물류</h1>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        date_col, author_col, save_col, button_col, history_col = st.columns(
+            [1.12, 1.12, 0.68, 0.82, 1.18],
             gap="medium",
         )
         with date_col:
@@ -199,9 +196,6 @@ def render_control_card() -> dict:
             st.write("")
             if st.button("PDF 생성", key="meeting_pdf_button", type="primary", use_container_width=True):
                 st.session_state.meeting_pdf_requested = True
-        with download_col:
-            st.write("")
-            st.write("")
             pdf_download_slot = st.empty()
         with history_col:
             st.write("")

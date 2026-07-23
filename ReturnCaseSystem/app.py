@@ -2290,21 +2290,6 @@ def render_return_case_system():
         padding: 8px 11px !important;
     }
 
-    div[data-testid="stButton"] {
-        width: 100% !important;
-    }
-
-    div[data-testid="stButton"] button {
-
-        height: 70px !important;
-
-        min-height: 70px !important;
-
-        width: 100% !important;
-
-        border-radius: 14px !important;
-    }
-
     div[class*="st-key-select_"] button {
         height: 42px !important;
         min-height: 42px !important;
@@ -2906,10 +2891,10 @@ def render_return_case_system():
         --app-page-y: clamp(2.55rem, 3.2vh, 3.1rem);
         --app-kpi-h: clamp(82px, 8.2vh, 96px);
         --app-chart-card-h: clamp(320px, 31vh, 350px);
-        --app-list-card-h: clamp(244px, 24.5vh, 268px);
+        --app-list-card-h: clamp(232px, 23vh, 252px);
         --app-dashboard-card-h: var(--app-list-card-h);
         --app-chart-h: calc(var(--app-chart-card-h) - 36px);
-        --app-grid-h: calc(var(--app-list-card-h) - 48px);
+        --app-grid-h: calc(var(--app-list-card-h) - 44px);
         --app-detail-photo-h: clamp(240px, 34vh, 312px);
         --app-search-h: clamp(236px, 28vh, 320px);
     }
@@ -2998,6 +2983,12 @@ def render_return_case_system():
         max-height: var(--app-chart-h) !important;
     }
 
+    .st-key-dashboard_card_recent iframe {
+        min-height: var(--app-grid-h) !important;
+        height: var(--app-grid-h) !important;
+        max-height: var(--app-grid-h) !important;
+    }
+
     .st-key-detail_case_photo [data-testid="stImage"],
     .st-key-detail_repair_photo [data-testid="stImage"] {
         height: var(--app-detail-photo-h) !important;
@@ -3023,7 +3014,7 @@ def render_return_case_system():
             --app-page-y: 2.4rem;
             --app-kpi-h: 82px;
             --app-chart-card-h: 326px;
-            --app-list-card-h: 246px;
+            --app-list-card-h: 236px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-search-h: 240px;
         }
@@ -3034,14 +3025,24 @@ def render_return_case_system():
             --app-page-y: 2.1rem;
             --app-kpi-h: 78px;
             --app-chart-card-h: 310px;
-            --app-list-card-h: 232px;
+            --app-list-card-h: 224px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 250px;
             --app-search-h: 220px;
         }
 
-        div[data-testid="stButton"] button {
+        .st-key-kpi_all button,
+        .st-key-kpi_month button,
+        .st-key-kpi_broken button,
+        .st-key-kpi_defect button,
+        .st-key-kpi_wrong button,
+        .st-key-kpi_shortage button,
+        .st-key-kpi_missing button,
+        .st-key-kpi_etc button,
+        .st-key-kpi_horizontal button,
+        .st-key-kpi_welding button {
             height: 62px !important;
+            min-height: 62px !important;
         }
 
         div[class*="st-key-top5_"] button {
@@ -3055,7 +3056,7 @@ def render_return_case_system():
             --app-page-x: 0.85rem;
             --app-kpi-h: 92px;
             --app-chart-card-h: 330px;
-            --app-list-card-h: 270px;
+            --app-list-card-h: 252px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 260px;
             --app-search-h: 240px;
@@ -4528,7 +4529,7 @@ def render_return_case_system():
                 grid_response = AgGrid(
                     recent_df,
                     gridOptions=grid_options,
-                    height=240,
+                    height=220,
                     theme="streamlit",
                     fit_columns_on_grid_load=True,
 
