@@ -26,14 +26,14 @@
     --panel-pad-x: clamp(0.55rem, 0.75vw, 1rem);
     --topbar-height: clamp(28px, 3.8vh, 42px);
     --schedule-cell-h: clamp(48px, 7.1vh, 88px);
-    --kpi-height: clamp(58px, 7.6vh, 105px);
+    --kpi-height: clamp(50px, 6.2vh, 78px);
     --chart-card-h: clamp(124px, 17.2vh, 198px);
     --chart-h: clamp(92px, 13.3vh, 155px);
     --chart-plot-h: calc(var(--chart-h) - 20px);
-    --middle-card-h: clamp(140px, 19.4vh, 248px);
-    --bottom-card-h: clamp(128px, 17.2vh, 248px);
-    --donut-size: clamp(82px, 11.8vh, 136px);
-    --donut-core: clamp(44px, 6.2vh, 72px);
+    --middle-card-h: clamp(168px, 21vh, 246px);
+    --bottom-card-h: clamp(190px, 25vh, 310px);
+    --donut-size: clamp(74px, 10.2vh, 118px);
+    --donut-core: clamp(40px, 5.3vh, 62px);
 }
 
 html,
@@ -764,10 +764,10 @@ section.main,
     border-radius: 8px;
     color: inherit;
     display: grid;
-    gap: clamp(0.42rem, 0.7vw, 0.95rem);
-    grid-template-columns: clamp(42px, 3.8vw, 64px) 1fr;
+    gap: clamp(0.28rem, 0.48vw, 0.72rem);
+    grid-template-columns: clamp(32px, 2.8vw, 46px) 1fr;
     min-height: var(--kpi-height);
-    padding: clamp(0.44rem, 0.85vh, 1.05rem) clamp(0.55rem, 0.78vw, 1.12rem);
+    padding: clamp(0.34rem, 0.62vh, 0.72rem) clamp(0.45rem, 0.62vw, 0.82rem);
     text-decoration: none;
     transition: border-color 0.16s ease, transform 0.16s ease;
 }
@@ -782,17 +782,17 @@ section.main,
 .kpi-icon {
     align-items: center;
     background: rgba(22, 213, 198, 0.13);
-    border-radius: clamp(14px, 1.6vw, 22px);
+    border-radius: clamp(10px, 1.1vw, 16px);
     color: var(--cyan);
     display: flex;
-    height: clamp(38px, 4.6vh, 62px);
+    height: clamp(30px, 3.6vh, 44px);
     justify-content: center;
-    width: clamp(38px, 4.6vh, 62px);
+    width: clamp(30px, 3.6vh, 44px);
 }
 
 .kpi-icon svg {
-    height: clamp(22px, 2.8vh, 34px);
-    width: clamp(22px, 2.8vh, 34px);
+    height: clamp(18px, 2.1vh, 26px);
+    width: clamp(18px, 2.1vh, 26px);
 }
 
 .kpi-tile.blue .kpi-icon {
@@ -823,14 +823,14 @@ section.main,
 .kpi-tile span {
     color: #e4f7f3;
     display: block;
-    font-size: clamp(0.6rem, 0.68vw, 0.82rem);
+    font-size: clamp(0.56rem, 0.62vw, 0.74rem);
     margin-bottom: clamp(0.05rem, 0.2vh, 0.2rem);
 }
 
 .kpi-tile strong {
     color: #fff;
     display: block;
-    font-size: clamp(1.05rem, 1.6vw, 1.82rem);
+    font-size: clamp(0.88rem, 1.22vw, 1.34rem);
     font-weight: 900;
     line-height: 1.1;
 }
@@ -838,7 +838,7 @@ section.main,
 .kpi-tile small {
     color: #d3eee8;
     display: block;
-    font-size: clamp(0.58rem, 0.66vw, 0.8rem);
+    font-size: clamp(0.5rem, 0.58vw, 0.68rem);
     margin-top: clamp(0.08rem, 0.35vh, 0.38rem);
 }
 
@@ -1031,9 +1031,9 @@ section.main,
 .donut-layout {
     align-items: center;
     display: grid;
-    gap: clamp(0.35rem, 0.65vw, 0.8rem);
-    grid-template-columns: minmax(82px, var(--donut-size)) 1fr;
-    margin-top: clamp(0.25rem, 0.65vh, 0.75rem);
+    gap: clamp(0.24rem, 0.42vw, 0.52rem);
+    grid-template-columns: minmax(70px, var(--donut-size)) minmax(0, 1fr);
+    margin-top: clamp(0.16rem, 0.42vh, 0.46rem);
     min-height: 0;
 }
 
@@ -1109,9 +1109,9 @@ a.donut {
 .legend li {
     align-items: center;
     display: grid;
-    gap: clamp(0.22rem, 0.34vw, 0.42rem);
-    grid-template-columns: clamp(7px, 0.55vw, 10px) minmax(48px, 1fr) auto;
-    margin-bottom: clamp(0.1rem, 0.32vh, 0.34rem);
+    gap: clamp(0.16rem, 0.24vw, 0.32rem);
+    grid-template-columns: clamp(6px, 0.48vw, 9px) minmax(42px, 1fr) auto;
+    margin-bottom: clamp(0.06rem, 0.2vh, 0.2rem);
     min-width: 0;
 }
 
@@ -1153,7 +1153,7 @@ a.donut {
 .legend span,
 .legend b {
     color: #f1fffb;
-    font-size: clamp(0.52rem, 0.58vw, 0.72rem);
+    font-size: clamp(0.46rem, 0.52vw, 0.64rem);
     white-space: nowrap;
 }
 
@@ -1474,6 +1474,12 @@ a.donut {
     padding: var(--panel-pad-y) var(--panel-pad-x);
 }
 
+.bottom-grid > .core-task-panel,
+.bottom-grid > .order-panel {
+    height: var(--bottom-card-h);
+    min-height: var(--bottom-card-h);
+}
+
 .table-panel table {
     border-collapse: collapse;
     color: #eafffb;
@@ -1647,16 +1653,16 @@ a.donut {
     border: 1px solid rgba(87, 178, 165, 0.17);
     border-radius: 6px;
     color: #cfece6;
-    font-size: clamp(0.48rem, 0.55vw, 0.68rem);
+    font-size: clamp(0.58rem, 0.66vw, 0.78rem);
     line-height: 1.15;
-    padding: clamp(0.18rem, 0.36vh, 0.38rem) clamp(0.28rem, 0.45vw, 0.55rem);
+    padding: clamp(0.34rem, 0.7vh, 0.72rem) clamp(0.4rem, 0.62vw, 0.72rem);
     white-space: nowrap;
 }
 
 .core-task-summary strong {
     color: #ffffff;
     display: block;
-    font-size: clamp(0.62rem, 0.72vw, 0.9rem);
+    font-size: clamp(0.78rem, 0.95vw, 1.12rem);
     font-weight: 950;
     margin-top: 0.08rem;
 }
@@ -1679,8 +1685,8 @@ a.donut {
     display: grid;
     gap: clamp(0.24rem, 0.45vw, 0.58rem);
     grid-template-columns: clamp(18px, 1.5vw, 24px) minmax(0, 1fr) clamp(40px, 3.4vw, 54px);
-    min-height: clamp(20px, 2.6vh, 30px);
-    padding: clamp(0.12rem, 0.25vh, 0.28rem) 0;
+    min-height: clamp(28px, 3.6vh, 42px);
+    padding: clamp(0.18rem, 0.42vh, 0.42rem) 0;
 }
 
 .core-task-list li.empty {
@@ -1704,7 +1710,7 @@ a.donut {
 }
 
 .core-task-list span {
-    font-size: clamp(0.54rem, 0.62vw, 0.78rem);
+    font-size: clamp(0.62rem, 0.72vw, 0.9rem);
     font-weight: 850;
     min-width: 0;
     overflow: hidden;
@@ -1714,7 +1720,7 @@ a.donut {
 
 .core-task-list b {
     color: #d7f3ee;
-    font-size: clamp(0.5rem, 0.56vw, 0.72rem);
+    font-size: clamp(0.56rem, 0.64vw, 0.78rem);
     text-align: right;
 }
 
@@ -1758,7 +1764,7 @@ a.donut {
 .order-panel table {
     border-collapse: collapse;
     color: #eafffb;
-    font-size: clamp(0.48rem, 0.52vw, 0.68rem);
+    font-size: clamp(0.56rem, 0.62vw, 0.78rem);
     margin-top: clamp(0.18rem, 0.48vh, 0.65rem);
     table-layout: fixed;
     width: 100%;
@@ -1768,13 +1774,13 @@ a.donut {
     border-bottom: 1px solid rgba(105, 178, 169, 0.24);
     color: #c8e5df;
     font-weight: 800;
-    padding: clamp(0.14rem, 0.32vh, 0.36rem) clamp(0.12rem, 0.18vw, 0.24rem);
+    padding: clamp(0.2rem, 0.44vh, 0.48rem) clamp(0.14rem, 0.22vw, 0.28rem);
 }
 
 .order-panel td {
     border-bottom: 1px solid rgba(105, 178, 169, 0.13);
     overflow: hidden;
-    padding: clamp(0.14rem, 0.32vh, 0.38rem) clamp(0.12rem, 0.18vw, 0.24rem);
+    padding: clamp(0.22rem, 0.48vh, 0.54rem) clamp(0.14rem, 0.22vw, 0.28rem);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -2333,11 +2339,13 @@ div[data-testid="element-container"]:has(.return-system-shell) {
         --panel-pad-y: 0.44rem;
         --panel-pad-x: 0.62rem;
         --schedule-cell-h: clamp(44px, 6.6vh, 62px);
-        --kpi-height: clamp(52px, 7vh, 68px);
+        --kpi-height: clamp(48px, 5.8vh, 58px);
         --chart-card-h: clamp(116px, 16.2vh, 146px);
         --chart-h: clamp(86px, 12.4vh, 112px);
-        --middle-card-h: clamp(128px, 18.4vh, 166px);
-        --bottom-card-h: clamp(116px, 15.8vh, 142px);
+        --middle-card-h: clamp(158px, 19.8vh, 184px);
+        --bottom-card-h: clamp(186px, 25.8vh, 232px);
+        --donut-size: clamp(70px, 9.8vh, 96px);
+        --donut-core: clamp(38px, 5.4vh, 54px);
     }
 
     .panel {
@@ -2361,13 +2369,13 @@ div[data-testid="element-container"]:has(.return-system-shell) {
         --panel-pad-x: 0.52rem;
         --topbar-height: 26px;
         --schedule-cell-h: 42px;
-        --kpi-height: 50px;
+        --kpi-height: 46px;
         --chart-card-h: 112px;
         --chart-h: 82px;
-        --middle-card-h: 126px;
-        --bottom-card-h: 112px;
-        --donut-size: 76px;
-        --donut-core: 40px;
+        --middle-card-h: 154px;
+        --bottom-card-h: 208px;
+        --donut-size: 68px;
+        --donut-core: 36px;
     }
 
     .topbar {
