@@ -6,3 +6,6 @@ openpyxl
 xlrd
 xlsxwriter
 lxml
+pillow
+streamlit-aggrid
+streamlit-drawable-canvas

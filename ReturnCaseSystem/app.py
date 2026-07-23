@@ -5,7 +5,7 @@ import sqlite3
 import pandas as pd
 import hashlib
 import math
-import os
+from pathlib import Path
 from html import escape
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageOps, ImageFont
@@ -15,6 +15,9 @@ import tempfile
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.datavalidation import DataValidation
 from st_aggrid import AgGrid, GridOptionsBuilder
+
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "cases.db"
 
 try:
     import streamlit_drawable_canvas as drawable_canvas
@@ -184,11 +187,6 @@ def patch_streamlit_drawable_canvas_background_url():
 
 
 patch_streamlit_drawable_canvas_background_url()
-
-st.set_page_config(
-    page_title="LOGIN_반품/AS",
-    layout="wide"
-)
 
 DETAIL_PHOTO_PREVIEW_SIZE = (980, 310)
 MARK_CANVAS_MAX_WIDTH = 520
@@ -388,7 +386,6 @@ def read_case_excel_form(uploaded_file):
         "repair_method": normalize_excel_text(ws[CASE_EXCEL_FIELD_CELLS["repair_method"]].value),
         "prevention": normalize_excel_text(ws[CASE_EXCEL_FIELD_CELLS["prevention"]].value),
     }
-
     if form_data["category"] not in CASE_CATEGORIES:
         form_data["category"] = "기타"
 
@@ -532,15 +529,21 @@ def image_to_jpeg_bytes(img):
 
 def get_pdf_font(size, bold=False):
     font_candidates = [
-        r"C:\Windows\Fonts\malgunbd.ttf" if bold else r"C:\Windows\Fonts\malgun.ttf",
-        r"C:\Windows\Fonts\NanumGothicBold.ttf" if bold else r"C:\Windows\Fonts\NanumGothic.ttf",
-        r"C:\Windows\Fonts\gulim.ttc",
+        Path("C:/Windows/Fonts/malgunbd.ttf") if bold else Path("C:/Windows/Fonts/malgun.ttf"),
+        Path("C:/Windows/Fonts/NanumGothicBold.ttf") if bold else Path("C:/Windows/Fonts/NanumGothic.ttf"),
+        Path("C:/Windows/Fonts/gulim.ttc"),
+        Path("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf")
+        if bold
+        else Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+        if bold
+        else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     ]
 
     for font_path in font_candidates:
         try:
-            if os.path.exists(font_path):
-                return ImageFont.truetype(font_path, size)
+            if font_path.exists():
+                return ImageFont.truetype(str(font_path), size)
         except Exception:
             continue
 
@@ -890,7 +893,6 @@ def get_canvas_initial_drawing(background_img):
             "filters": [],
         },
     }
-
 
 def draw_part_circle(img, x_percent, y_percent, radius_percent, color, width):
     marked_img = img.copy()
@@ -1344,1846 +1346,1024 @@ def get_next_case_id(case_date, current_case_id=None):
 
 # ==========================
 # DB 연결
-# ==========================
 
-conn = sqlite3.connect("cases.db", check_same_thread=False)
-c = conn.cursor()
+def render_return_case_system():
+    global conn, c
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS cases(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    case_id TEXT,
-    category TEXT,
-    barcode TEXT,
-    product TEXT,
-    cause TEXT,
-    action TEXT,
-    repair_method TEXT,
-    prevention TEXT,
+    # ==========================
 
-    product_image BLOB,
-    case_image BLOB,
-    case_image_original BLOB,
-    repair_image BLOB,
-    repair_image_original BLOB
-)
-""")
+    if not DB_PATH.exists():
+        st.error(f"기존 반품/AS DB 파일을 찾을 수 없습니다: {DB_PATH}")
+        return
 
-conn.commit()
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    c = conn.cursor()
 
-c.execute("PRAGMA table_info(cases)")
-case_columns = {row[1] for row in c.fetchall()}
-
-if "case_image_original" not in case_columns:
-    c.execute("ALTER TABLE cases ADD COLUMN case_image_original BLOB")
     c.execute("""
-    UPDATE cases
-    SET case_image_original = case_image
-    WHERE case_image_original IS NULL
+    CREATE TABLE IF NOT EXISTS cases(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id TEXT,
+        category TEXT,
+        barcode TEXT,
+        product TEXT,
+        cause TEXT,
+        action TEXT,
+        repair_method TEXT,
+        prevention TEXT,
+
+        product_image BLOB,
+        case_image BLOB,
+        case_image_original BLOB,
+        repair_image BLOB,
+        repair_image_original BLOB
+    )
     """)
+
     conn.commit()
 
-if "repair_image_original" not in case_columns:
-    c.execute("ALTER TABLE cases ADD COLUMN repair_image_original BLOB")
-    c.execute("""
-    UPDATE cases
-    SET repair_image_original = repair_image
-    WHERE repair_image_original IS NULL
-    """)
+    c.execute("PRAGMA table_info(cases)")
+    case_columns = {row[1] for row in c.fetchall()}
+
+    if "case_image_original" not in case_columns:
+        c.execute("ALTER TABLE cases ADD COLUMN case_image_original BLOB")
+        c.execute("""
+        UPDATE cases
+        SET case_image_original = case_image
+        WHERE case_image_original IS NULL
+        """)
+        conn.commit()
+
+    if "repair_image_original" not in case_columns:
+        c.execute("ALTER TABLE cases ADD COLUMN repair_image_original BLOB")
+        c.execute("""
+        UPDATE cases
+        SET repair_image_original = repair_image
+        WHERE repair_image_original IS NULL
+        """)
+        conn.commit()
+
+    c.execute("UPDATE cases SET category='누락' WHERE category='변심'")
     conn.commit()
 
+    def get_case_image_original(case_id):
+        c.execute(
+            "SELECT case_image_original FROM cases WHERE case_id = ?",
+            (case_id,),
+        )
+        row = c.fetchone()
+        return row[0] if row and row[0] else None
 
-def get_case_image_original(case_id):
-    c.execute(
-        "SELECT case_image_original FROM cases WHERE case_id = ?",
-        (case_id,),
-    )
-    row = c.fetchone()
-    return row[0] if row and row[0] else None
 
+    def get_repair_image_original(case_id):
+        c.execute(
+            "SELECT repair_image_original FROM cases WHERE case_id = ?",
+            (case_id,),
+        )
+        row = c.fetchone()
+        return row[0] if row and row[0] else None
 
-def get_repair_image_original(case_id):
-    c.execute(
-        "SELECT repair_image_original FROM cases WHERE case_id = ?",
-        (case_id,),
-    )
-    row = c.fetchone()
-    return row[0] if row and row[0] else None
+    # ==========================
+    # 화면 스타일
+    # ==========================
 
-c.execute(
-    "UPDATE cases SET category='누락' WHERE category='변심'"
-)
+    st.markdown("""
+    <style>
 
-conn.commit()
+    .stApp{
+        background:
+        radial-gradient(circle at 18% 0%, rgba(31, 171, 150, 0.26), transparent 32%),
+        radial-gradient(circle at 84% 38%, rgba(18, 104, 94, 0.30), transparent 34%),
+        linear-gradient(135deg, #031b18 0%, #052421 45%, #073a34 100%);
+    }
+    html,
+    body,
+    [data-testid="stAppViewContainer"],
+    .stApp {
+        margin:0 !important;
+        padding:0 !important;
+        min-height:100vh !important;
+    }
 
-# ==========================
-# 화면 스타일
-# ==========================
+    #MainMenu,
+    footer,
+    header[data-testid="stHeader"],
+    div[data-testid="stToolbar"],
+    div[data-testid="stDecoration"],
+    div[data-testid="stStatusWidget"] {
+        display:none !important;
+        visibility:hidden !important;
+    }
 
-st.markdown("""
-<style>
+    /* 전체 글씨 */
+    html,body,
+    h1,h2,h3,h4,h5,h6,
+    p,label,span,div{
+        color:white !important;
+    }
+    [data-testid="column"]:first-child{
+        border-right:1px solid rgba(255,255,255,0.08);
+        padding-right:20px;
+    }
 
-.stApp{
-    background:
-    radial-gradient(circle at 18% 0%, rgba(31, 171, 150, 0.26), transparent 32%),
-    radial-gradient(circle at 84% 38%, rgba(18, 104, 94, 0.30), transparent 34%),
-    linear-gradient(135deg, #031b18 0%, #052421 45%, #073a34 100%);
-}            
+    /* 입력창 */
+    .stTextInput input{
+        background:#052421 !important;
+        color:white !important;
+        border:none !important;
+        border-radius:10px !important;
+    }
 
-html,
-body,
-[data-testid="stAppViewContainer"],
-.stApp {
-    margin:0 !important;
-    padding:0 !important;
-    min-height:100vh !important;
-}
+    div[class*="st-key-search_keyword"] div[data-baseweb="input"] {
+        background: rgba(5, 36, 33, 0.96) !important;
+        border: 1px solid rgba(40, 217, 197, 0.58) !important;
+        border-radius: 12px !important;
+        box-shadow:
+            inset 0 0 0 1px rgba(255,255,255,0.05),
+            0 0 0 1px rgba(12, 145, 132, 0.14),
+            0 8px 18px rgba(0,0,0,0.18) !important;
+    }
 
-#MainMenu,
-footer,
-header[data-testid="stHeader"],
-div[data-testid="stToolbar"],
-div[data-testid="stDecoration"],
-div[data-testid="stStatusWidget"] {
-    display:none !important;
-    visibility:hidden !important;
-}
+    div[class*="st-key-search_keyword"] div[data-baseweb="input"]:focus-within {
+        border-color: rgba(66, 245, 221, 0.92) !important;
+        box-shadow:
+            inset 0 0 0 1px rgba(255,255,255,0.08),
+            0 0 0 3px rgba(28, 203, 184, 0.18),
+            0 10px 22px rgba(0,0,0,0.22) !important;
+    }
 
-/* 전체 글씨 */
-html,body,
-h1,h2,h3,h4,h5,h6,
-p,label,span,div{
-    color:white !important;
-}
+    div[class*="st-key-search_keyword"] input {
+        height: 42px !important;
+        background: transparent !important;
+        border: none !important;
+        padding: 0 13px !important;
+        font-weight: 750 !important;
+    }
 
-[data-testid="column"]:first-child{
-    border-right:1px solid rgba(255,255,255,0.08);
-    padding-right:20px;
-}
+    /* 텍스트영역 */
+    .stTextArea textarea{
+        background:#052421 !important;
+        color:white !important;
+        border:none !important;
+        border-radius:10px !important;
+    }
 
-/* 입력창 */
-.stTextInput input{
-    background:#052421 !important;
-    color:white !important;
-    border:none !important;
-    border-radius:10px !important;
-}
+    /* 파일 업로더 */
+    div[data-testid="stFileUploader"] section,
+    div[data-testid="stFileUploaderDropzone"] {
+        background:#052421 !important;
+        border:1px dashed rgba(255,255,255,0.24) !important;
+        border-radius:10px !important;
+    }
 
-div[class*="st-key-search_keyword"] div[data-baseweb="input"] {
-    background: rgba(5, 36, 33, 0.96) !important;
-    border: 1px solid rgba(40, 217, 197, 0.58) !important;
-    border-radius: 12px !important;
-    box-shadow:
-        inset 0 0 0 1px rgba(255,255,255,0.05),
-        0 0 0 1px rgba(12, 145, 132, 0.14),
-        0 8px 18px rgba(0,0,0,0.18) !important;
-}
+    div[data-testid="stFileUploader"] section *,
+    div[data-testid="stFileUploaderDropzone"] *,
+    div[data-testid="stFileUploaderFile"] * {
+        color:white !important;
+    }
 
-div[class*="st-key-search_keyword"] div[data-baseweb="input"]:focus-within {
-    border-color: rgba(66, 245, 221, 0.92) !important;
-    box-shadow:
-        inset 0 0 0 1px rgba(255,255,255,0.08),
-        0 0 0 3px rgba(28, 203, 184, 0.18),
-        0 10px 22px rgba(0,0,0,0.22) !important;
-}
+    div[data-testid="stFileUploader"] section button,
+    div[data-testid="stFileUploaderDropzone"] button {
+        background:rgba(255,255,255,0.10) !important;
+        color:white !important;
+        border:1px solid rgba(255,255,255,0.18) !important;
+        border-radius:8px !important;
+    }
 
-div[class*="st-key-search_keyword"] input {
-    height: 42px !important;
-    background: transparent !important;
-    border: none !important;
-    padding: 0 13px !important;
-    font-weight: 750 !important;
-}
+    div[data-testid="stFileUploader"] section button:hover,
+    div[data-testid="stFileUploaderDropzone"] button:hover {
+        background:rgba(255,255,255,0.18) !important;
+        border-color:rgba(255,255,255,0.30) !important;
+    }
 
-/* 텍스트영역 */
-.stTextArea textarea{
-    background:#052421 !important;
-    color:white !important;
-    border:none !important;
-    border-radius:10px !important;
-}
+    div[data-testid="stFileUploaderFile"] {
+        background:#111827 !important;
+        border:1px solid rgba(255,255,255,0.14) !important;
+        border-radius:10px !important;
+    }
 
-/* 파일 업로더 */
-div[data-testid="stFileUploader"] section,
-div[data-testid="stFileUploaderDropzone"] {
-    background:#052421 !important;
-    border:1px dashed rgba(255,255,255,0.24) !important;
-    border-radius:10px !important;
-}
+    .st-key-edit_prevention {
+        margin-top:0.85rem !important;
+    }
 
-div[data-testid="stFileUploader"] section *,
-div[data-testid="stFileUploaderDropzone"] *,
-div[data-testid="stFileUploaderFile"] * {
-    color:white !important;
-}
+    .edit-prevention-top-gap {
+        height:0.45rem;
+        line-height:0;
+    }
 
-div[data-testid="stFileUploader"] section button,
-div[data-testid="stFileUploaderDropzone"] button {
-    background:rgba(255,255,255,0.10) !important;
-    color:white !important;
-    border:1px solid rgba(255,255,255,0.18) !important;
-    border-radius:8px !important;
-}
+    .edit-button-top-gap {
+        height:0.95rem;
+        line-height:0;
+    }
 
-div[data-testid="stFileUploader"] section button:hover,
-div[data-testid="stFileUploaderDropzone"] button:hover {
-    background:rgba(255,255,255,0.18) !important;
-    border-color:rgba(255,255,255,0.30) !important;
-}
+    .excel-download-gap {
+        height:0;
+        line-height:0;
+    }
 
-div[data-testid="stFileUploaderFile"] {
-    background:#111827 !important;
-    border:1px solid rgba(255,255,255,0.14) !important;
-    border-radius:10px !important;
-}
+    /* 셀렉트 */
+    .stSelectbox div[data-baseweb="select"],
+    .stSelectbox div[data-baseweb="select"] > div,
+    .stSelectbox div[role="combobox"],
+    div[data-baseweb="select"],
+    div[data-baseweb="select"] > div {
+        background:#052421 !important;
+        color:white !important;
+        border:none !important;
+        border-radius:10px !important;
+    }
 
-.st-key-edit_prevention {
-    margin-top:0.85rem !important;
-}
+    .stSelectbox div[data-baseweb="select"] *,
+    .stSelectbox div[role="combobox"] *,
+    div[data-baseweb="select"] *,
+    .stDateInput div[data-baseweb="input"] *,
+    .stDateInput input {
+        color:white !important;
+    }
 
-.edit-prevention-top-gap {
-    height:0.45rem;
-    line-height:0;
-}
+    .stSelectbox svg,
+    div[data-baseweb="select"] svg {
+        color:white !important;
+        fill:white !important;
+    }
 
-.edit-button-top-gap {
-    height:0.95rem;
-    line-height:0;
-}
+    /* 검색기준 라디오 */
+    div[data-testid="stRadio"] > label,
+    div[data-testid="stRadio"] > div > label {
+        background:transparent !important;
+        border:none !important;
+        padding:0 !important;
+        margin-bottom:4px !important;
+    }
 
-.excel-download-gap {
-    height:0;
-    line-height:0;
-}
-
-/* 셀렉트 */
-.stSelectbox div[data-baseweb="select"],
-.stSelectbox div[data-baseweb="select"] > div,
-.stSelectbox div[role="combobox"],
-div[data-baseweb="select"],
-div[data-baseweb="select"] > div {
-    background:#052421 !important;
-    color:white !important;
-    border:none !important;
-    border-radius:10px !important;
-}
-
-.stSelectbox div[data-baseweb="select"] *,
-.stSelectbox div[role="combobox"] *,
-div[data-baseweb="select"] *,
-.stDateInput div[data-baseweb="input"] *,
-.stDateInput input {
-    color:white !important;
-}
-
-.stSelectbox svg,
-div[data-baseweb="select"] svg {
-    color:white !important;
-    fill:white !important;
-}
-
-/* 검색기준 라디오 */
-div[data-testid="stRadio"] > label,
-div[data-testid="stRadio"] > div > label {
-    background:transparent !important;
-    border:none !important;
-    padding:0 !important;
-    margin-bottom:4px !important;
-}
-
-div[data-testid="stRadio"] div[role="radiogroup"] {
-    display:flex !important;
-    flex-wrap:wrap !important;
-    justify-content:flex-start !important;
-    gap:5px 8px !important;
-    overflow:hidden !important;
-    padding-bottom:0 !important;
-    max-width:100% !important;
-}
-
-div[data-testid="stRadio"] div[role="radiogroup"] label {
-    flex:0 1 auto !important;
-    min-width:auto !important;
-    min-height:21px !important;
-    margin:0 !important;
-    background:transparent !important;
-    border:none !important;
-    border-radius:0 !important;
-    padding:0 1px !important;
-    box-shadow:none !important;
-    white-space:nowrap !important;
-    display:flex !important;
-    align-items:center !important;
-    justify-content:flex-start !important;
-}
-
-div[data-testid="stRadio"] div[role="radiogroup"] label:hover {
-    background:transparent !important;
-    border-color:transparent !important;
-}
-
-div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
-    background:transparent !important;
-    border-color:transparent !important;
-}
-
-div[data-testid="stRadio"] div[role="radiogroup"] label *,
-div[data-testid="stRadio"] div[role="radiogroup"] * {
-    color:white !important;
-    font-size:13px !important;
-    font-weight:750 !important;
-    white-space:nowrap !important;
-    align-items:center !important;
-    justify-content:center !important;
-    text-align:center !important;
-}
-
-div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) * {
-    color:#5eead4 !important;
-}
-
-div[data-testid="stRadio"] input {
-    accent-color:#0d9488 !important;
-    width:11px !important;
-    height:11px !important;
-}
-
-@media (max-width: 1200px) {
     div[data-testid="stRadio"] div[role="radiogroup"] {
-        gap:4px 6px !important;
+        display:flex !important;
+        flex-wrap:wrap !important;
+        justify-content:flex-start !important;
+        gap:5px 8px !important;
+        overflow:hidden !important;
+        padding-bottom:0 !important;
+        max-width:100% !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] label {
+        flex:0 1 auto !important;
+        min-width:auto !important;
+        min-height:21px !important;
+        margin:0 !important;
+        background:transparent !important;
+        border:none !important;
+        border-radius:0 !important;
+        padding:0 1px !important;
+        box-shadow:none !important;
+        white-space:nowrap !important;
+        display:flex !important;
+        align-items:center !important;
+        justify-content:flex-start !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] label:hover {
+        background:transparent !important;
+        border-color:transparent !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
+        background:transparent !important;
+        border-color:transparent !important;
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] label *,
     div[data-testid="stRadio"] div[role="radiogroup"] * {
-        font-size:12px !important;
+        color:white !important;
+        font-size:13px !important;
+        font-weight:750 !important;
+        white-space:nowrap !important;
+        align-items:center !important;
+        justify-content:center !important;
+        text-align:center !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) * {
+        color:#5eead4 !important;
     }
 
     div[data-testid="stRadio"] input {
-        width:10px !important;
-        height:10px !important;
-    }
-}
-
-@media (max-width: 980px) {
-    div[data-testid="stRadio"] div[role="radiogroup"] {
-        gap:3px 5px !important;
+        accent-color:#0d9488 !important;
+        width:11px !important;
+        height:11px !important;
     }
 
-    div[data-testid="stRadio"] div[role="radiogroup"] label *,
-    div[data-testid="stRadio"] div[role="radiogroup"] * {
-        font-size:11px !important;
+    @media (max-width: 1200px) {
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            gap:4px 6px !important;
+        }
+
+        div[data-testid="stRadio"] div[role="radiogroup"] label *,
+        div[data-testid="stRadio"] div[role="radiogroup"] * {
+            font-size:12px !important;
+        }
+
+        div[data-testid="stRadio"] input {
+            width:10px !important;
+            height:10px !important;
+        }
     }
-}
 
-.stDateInput div[data-baseweb="input"],
-.stDateInput input {
-    background:#052421 !important;
-    border:none !important;
-    border-radius:10px !important;
-}
+    @media (max-width: 980px) {
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            gap:3px 5px !important;
+        }
 
-.stTextInput input::placeholder,
-.stTextArea textarea::placeholder,
-.stDateInput input::placeholder {
-    color:rgba(255,255,255,0.55) !important;
-}
+        div[data-testid="stRadio"] div[role="radiogroup"] label *,
+        div[data-testid="stRadio"] div[role="radiogroup"] * {
+            font-size:11px !important;
+        }
+    }
 
-div[data-baseweb="popover"],
-div[data-baseweb="popover"] > div,
-div[data-baseweb="menu"],
-div[data-baseweb="select-dropdown"],
-div[data-baseweb="select-dropdown"] *,
-ul[role="listbox"] {
-    background:#052421 !important;
-    color:white !important;
-    border:1px solid rgba(255,255,255,0.16) !important;
-    border-radius:10px !important;
-    box-shadow:0 12px 28px rgba(0,0,0,0.32) !important;
-}
+    .stDateInput div[data-baseweb="input"],
+    .stDateInput input {
+        background:#052421 !important;
+        border:none !important;
+        border-radius:10px !important;
+    }
 
-div[data-baseweb="popover"] *,
-div[data-baseweb="menu"] *,
-div[data-baseweb="select-dropdown"] *,
-ul[role="listbox"] *,
-li[role="option"],
-div[role="option"] {
-    color:white !important;
-}
+    .stTextInput input::placeholder,
+    .stTextArea textarea::placeholder,
+    .stDateInput input::placeholder {
+        color:rgba(255,255,255,0.55) !important;
+    }
 
-li[role="option"],
-div[role="option"] {
-    background:#052421 !important;
-}
+    div[data-baseweb="popover"],
+    div[data-baseweb="popover"] > div,
+    div[data-baseweb="menu"],
+    div[data-baseweb="select-dropdown"],
+    div[data-baseweb="select-dropdown"] *,
+    ul[role="listbox"] {
+        background:#052421 !important;
+        color:white !important;
+        border:1px solid rgba(255,255,255,0.16) !important;
+        border-radius:10px !important;
+        box-shadow:0 12px 28px rgba(0,0,0,0.32) !important;
+    }
 
-li[role="option"] *,
-div[role="option"] * {
-    background:transparent !important;
-    color:white !important;
-}
+    div[data-baseweb="popover"] *,
+    div[data-baseweb="menu"] *,
+    div[data-baseweb="select-dropdown"] *,
+    ul[role="listbox"] *,
+    li[role="option"],
+    div[role="option"] {
+        color:white !important;
+    }
 
-li[role="option"]:hover,
-div[role="option"]:hover {
-    background:#1f2937 !important;
-    color:white !important;
-}
+    li[role="option"],
+    div[role="option"] {
+        background:#052421 !important;
+    }
 
-li[aria-selected="true"],
-div[aria-selected="true"] {
-    background:#1f2937 !important;
-    box-shadow:
-        inset 4px 0 0 rgba(255,255,255,0.82),
-        inset 0 0 0 1px rgba(255,255,255,0.16) !important;
-    color:white !important;
-}
+    li[role="option"] *,
+    div[role="option"] * {
+        background:transparent !important;
+        color:white !important;
+    }
 
-ul[role="listbox"] li[role="option"]:hover,
-ul[role="listbox"] div[role="option"]:hover,
-ul[role="listbox"] li[role="option"][aria-selected="true"],
-ul[role="listbox"] div[role="option"][aria-selected="true"],
-ul[role="listbox"] li[role="option"][data-highlighted="true"],
-ul[role="listbox"] div[role="option"][data-highlighted="true"] {
-    background:#1f2937 !important;
-    color:white !important;
-}
+    li[role="option"]:hover,
+    div[role="option"]:hover {
+        background:#1f2937 !important;
+        color:white !important;
+    }
 
-li[aria-selected="true"] *,
-div[aria-selected="true"] * {
-    background:transparent !important;
-    color:white !important;
-}
+    li[aria-selected="true"],
+    div[aria-selected="true"] {
+        background:#1f2937 !important;
+        box-shadow:
+            inset 4px 0 0 rgba(255,255,255,0.82),
+            inset 0 0 0 1px rgba(255,255,255,0.16) !important;
+        color:white !important;
+    }
 
-div[data-baseweb="calendar"],
-div[data-baseweb="calendar"] *,
-div[data-baseweb="datepicker"],
-div[data-baseweb="datepicker"] * {
-    background:#111827 !important;
-    color:white !important;
-}
+    ul[role="listbox"] li[role="option"]:hover,
+    ul[role="listbox"] div[role="option"]:hover,
+    ul[role="listbox"] li[role="option"][aria-selected="true"],
+    ul[role="listbox"] div[role="option"][aria-selected="true"],
+    ul[role="listbox"] li[role="option"][data-highlighted="true"],
+    ul[role="listbox"] div[role="option"][data-highlighted="true"] {
+        background:#1f2937 !important;
+        color:white !important;
+    }
 
-div[data-baseweb="calendar"] button,
-div[data-baseweb="calendar"] [role="button"],
-div[data-baseweb="datepicker"] button,
-div[data-baseweb="datepicker"] [role="button"] {
-    background:transparent !important;
-    color:white !important;
-    border-radius:8px !important;
-}
+    li[aria-selected="true"] *,
+    div[aria-selected="true"] * {
+        background:transparent !important;
+        color:white !important;
+    }
 
-div[data-baseweb="calendar"] button:hover,
-div[data-baseweb="calendar"] [role="button"]:hover,
-div[data-baseweb="datepicker"] button:hover,
-div[data-baseweb="datepicker"] [role="button"]:hover {
-    background:rgba(255,255,255,0.16) !important;
-}
+    div[data-baseweb="calendar"],
+    div[data-baseweb="calendar"] *,
+    div[data-baseweb="datepicker"],
+    div[data-baseweb="datepicker"] * {
+        background:#111827 !important;
+        color:white !important;
+    }
 
-div[data-baseweb="calendar"] [aria-selected="true"],
-div[data-baseweb="datepicker"] [aria-selected="true"] {
-    background:#111827 !important;
-    color:white !important;
-}
+    div[data-baseweb="calendar"] button,
+    div[data-baseweb="calendar"] [role="button"],
+    div[data-baseweb="datepicker"] button,
+    div[data-baseweb="datepicker"] [role="button"] {
+        background:transparent !important;
+        color:white !important;
+        border-radius:8px !important;
+    }
 
-div[data-baseweb="calendar"] button[aria-selected="true"],
-div[data-baseweb="calendar"] [role="button"][aria-selected="true"],
-div[data-baseweb="datepicker"] button[aria-selected="true"],
-div[data-baseweb="datepicker"] [role="button"][aria-selected="true"] {
-    background:transparent !important;
-    color:white !important;
-    border:1px solid rgba(255,255,255,0.82) !important;
-    border-radius:999px !important;
-}
+    div[data-baseweb="calendar"] button:hover,
+    div[data-baseweb="calendar"] [role="button"]:hover,
+    div[data-baseweb="datepicker"] button:hover,
+    div[data-baseweb="datepicker"] [role="button"]:hover {
+        background:rgba(255,255,255,0.16) !important;
+    }
 
-div[data-baseweb="calendar"] [role="grid"],
-div[data-baseweb="calendar"] [role="row"],
-div[data-baseweb="calendar"] [role="gridcell"],
-div[data-baseweb="calendar"] table,
-div[data-baseweb="calendar"] thead,
-div[data-baseweb="calendar"] tbody,
-div[data-baseweb="calendar"] tr,
-div[data-baseweb="calendar"] td,
-div[data-baseweb="calendar"] th,
-div[data-baseweb="datepicker"] [role="grid"],
-div[data-baseweb="datepicker"] [role="row"],
-div[data-baseweb="datepicker"] [role="gridcell"],
-div[data-baseweb="datepicker"] table,
-div[data-baseweb="datepicker"] thead,
-div[data-baseweb="datepicker"] tbody,
-div[data-baseweb="datepicker"] tr,
-div[data-baseweb="datepicker"] td,
-div[data-baseweb="datepicker"] th {
-    background:#111827 !important;
-}
+    div[data-baseweb="calendar"] [aria-selected="true"],
+    div[data-baseweb="datepicker"] [aria-selected="true"] {
+        background:#111827 !important;
+        color:white !important;
+    }
 
-div[data-baseweb="calendar"] [role="gridcell"] *,
-div[data-baseweb="datepicker"] [role="gridcell"] * {
-    background:transparent !important;
-}
+    div[data-baseweb="calendar"] button[aria-selected="true"],
+    div[data-baseweb="calendar"] [role="button"][aria-selected="true"],
+    div[data-baseweb="datepicker"] button[aria-selected="true"],
+    div[data-baseweb="datepicker"] [role="button"][aria-selected="true"] {
+        background:transparent !important;
+        color:white !important;
+        border:1px solid rgba(255,255,255,0.82) !important;
+        border-radius:999px !important;
+    }
 
-div[data-baseweb="calendar"] [role="gridcell"]:empty,
-div[data-baseweb="calendar"] [role="gridcell"] > div:empty,
-div[data-baseweb="calendar"] [aria-disabled="true"],
-div[data-baseweb="calendar"] [disabled],
-div[data-baseweb="datepicker"] [role="gridcell"]:empty,
-div[data-baseweb="datepicker"] [role="gridcell"] > div:empty,
-div[data-baseweb="datepicker"] [aria-disabled="true"],
-div[data-baseweb="datepicker"] [disabled] {
-    background:#111827 !important;
-    color:rgba(255,255,255,0.32) !important;
-    border-radius:0 !important;
-}
+    div[data-baseweb="calendar"] [role="grid"],
+    div[data-baseweb="calendar"] [role="row"],
+    div[data-baseweb="calendar"] [role="gridcell"],
+    div[data-baseweb="calendar"] table,
+    div[data-baseweb="calendar"] thead,
+    div[data-baseweb="calendar"] tbody,
+    div[data-baseweb="calendar"] tr,
+    div[data-baseweb="calendar"] td,
+    div[data-baseweb="calendar"] th,
+    div[data-baseweb="datepicker"] [role="grid"],
+    div[data-baseweb="datepicker"] [role="row"],
+    div[data-baseweb="datepicker"] [role="gridcell"],
+    div[data-baseweb="datepicker"] table,
+    div[data-baseweb="datepicker"] thead,
+    div[data-baseweb="datepicker"] tbody,
+    div[data-baseweb="datepicker"] tr,
+    div[data-baseweb="datepicker"] td,
+    div[data-baseweb="datepicker"] th {
+        background:#111827 !important;
+    }
 
-div[data-baseweb="calendar"] [role="gridcell"] [aria-selected="true"],
-div[data-baseweb="datepicker"] [role="gridcell"] [aria-selected="true"],
-div[data-baseweb="calendar"] [role="gridcell"][aria-selected="true"],
-div[data-baseweb="datepicker"] [role="gridcell"][aria-selected="true"] {
-    background:#111827 !important;
-    color:white !important;
-    border-radius:0 !important;
-}
+    div[data-baseweb="calendar"] [role="gridcell"] *,
+    div[data-baseweb="datepicker"] [role="gridcell"] * {
+        background:transparent !important;
+    }
 
-div[data-baseweb="calendar"] [role="gridcell"] button[aria-selected="true"],
-div[data-baseweb="calendar"] [role="gridcell"] [role="button"][aria-selected="true"],
-div[data-baseweb="datepicker"] [role="gridcell"] button[aria-selected="true"],
-div[data-baseweb="datepicker"] [role="gridcell"] [role="button"][aria-selected="true"] {
-    background:transparent !important;
-    color:white !important;
-    border:1px solid rgba(255,255,255,0.82) !important;
-    border-radius:999px !important;
-}
+    div[data-baseweb="calendar"] [role="gridcell"]:empty,
+    div[data-baseweb="calendar"] [role="gridcell"] > div:empty,
+    div[data-baseweb="calendar"] [aria-disabled="true"],
+    div[data-baseweb="calendar"] [disabled],
+    div[data-baseweb="datepicker"] [role="gridcell"]:empty,
+    div[data-baseweb="datepicker"] [role="gridcell"] > div:empty,
+    div[data-baseweb="datepicker"] [aria-disabled="true"],
+    div[data-baseweb="datepicker"] [disabled] {
+        background:#111827 !important;
+        color:rgba(255,255,255,0.32) !important;
+        border-radius:0 !important;
+    }
 
-div[data-baseweb="calendar"] [role="gridcell"][data-selected="true"],
-div[data-baseweb="calendar"] [role="gridcell"][data-highlighted="true"],
-div[data-baseweb="calendar"] [role="gridcell"][data-in-range="true"],
-div[data-baseweb="datepicker"] [role="gridcell"][data-selected="true"],
-div[data-baseweb="datepicker"] [role="gridcell"][data-highlighted="true"],
-div[data-baseweb="datepicker"] [role="gridcell"][data-in-range="true"] {
-    background:#111827 !important;
-}
+    div[data-baseweb="calendar"] [role="gridcell"] [aria-selected="true"],
+    div[data-baseweb="datepicker"] [role="gridcell"] [aria-selected="true"],
+    div[data-baseweb="calendar"] [role="gridcell"][aria-selected="true"],
+    div[data-baseweb="datepicker"] [role="gridcell"][aria-selected="true"] {
+        background:#111827 !important;
+        color:white !important;
+        border-radius:0 !important;
+    }
 
-/* 버튼 */
-.stButton button,
-.stDownloadButton button{
+    div[data-baseweb="calendar"] [role="gridcell"] button[aria-selected="true"],
+    div[data-baseweb="calendar"] [role="gridcell"] [role="button"][aria-selected="true"],
+    div[data-baseweb="datepicker"] [role="gridcell"] button[aria-selected="true"],
+    div[data-baseweb="datepicker"] [role="gridcell"] [role="button"][aria-selected="true"] {
+        background:transparent !important;
+        color:white !important;
+        border:1px solid rgba(255,255,255,0.82) !important;
+        border-radius:999px !important;
+    }
 
-    width:100%;
+    div[data-baseweb="calendar"] [role="gridcell"][data-selected="true"],
+    div[data-baseweb="calendar"] [role="gridcell"][data-highlighted="true"],
+    div[data-baseweb="calendar"] [role="gridcell"][data-in-range="true"],
+    div[data-baseweb="datepicker"] [role="gridcell"][data-selected="true"],
+    div[data-baseweb="datepicker"] [role="gridcell"][data-highlighted="true"],
+    div[data-baseweb="datepicker"] [role="gridcell"][data-in-range="true"] {
+        background:#111827 !important;
+    }
 
-    border:none !important;
+    /* 버튼 */
+    .stButton button,
+    .stDownloadButton button{
 
-    border-radius:12px !important;
+        width:100%;
 
-    background:rgba(255,255,255,0.08) !important;
+        border:none !important;
 
-    color:white !important;
+        border-radius:12px !important;
 
-    transition:0.2s;
-}
+        background:rgba(255,255,255,0.08) !important;
 
-.stButton button:hover,
-.stDownloadButton button:hover{
+        color:white !important;
 
-    transform:translateY(-2px);
+        transition:0.2s;
+    }
 
-    background:rgba(255,255,255,0.15) !important;
-}
+    .stButton button:hover,
+    .stDownloadButton button:hover{
 
-/* expander */
+        transform:translateY(-2px);
 
-.streamlit-expander{
-    background:rgba(255,255,255,0.075) !important;
-    border:1px solid rgba(255,255,255,0.13) !important;
-    border-radius:16px !important;
-    box-shadow:0 10px 24px rgba(0,0,0,0.16) !important;
-    overflow:hidden !important;
-}
+        background:rgba(255,255,255,0.15) !important;
+    }
 
-.streamlit-expanderHeader{
-    background:rgba(255,255,255,0.075) !important;
-    border-radius:16px 16px 0 0 !important;
-    min-height:42px !important;
-    padding:0 14px !important;
-    font-weight:800 !important;
-}
+    /* expander */
 
-.streamlit-expanderContent{
-    background:rgba(255,255,255,0.025) !important;
-    border-top:1px solid rgba(255,255,255,0.10) !important;
-    padding:14px !important;
-}
+    .streamlit-expander{
+        background:rgba(255,255,255,0.075) !important;
+        border:1px solid rgba(255,255,255,0.13) !important;
+        border-radius:16px !important;
+        box-shadow:0 10px 24px rgba(0,0,0,0.16) !important;
+        overflow:hidden !important;
+    }
 
-div[data-testid="stExpander"] {
-    background:rgba(255,255,255,0.075) !important;
-    border:1px solid rgba(255,255,255,0.13) !important;
-    border-radius:16px !important;
-    box-shadow:0 10px 24px rgba(0,0,0,0.16) !important;
-    overflow:hidden !important;
-}
+    .streamlit-expanderHeader{
+        background:rgba(255,255,255,0.075) !important;
+        border-radius:16px 16px 0 0 !important;
+        min-height:42px !important;
+        padding:0 14px !important;
+        font-weight:800 !important;
+    }
 
-div[data-testid="stExpander"] details {
-    background:transparent !important;
-    border:none !important;
-}
+    .streamlit-expanderContent{
+        background:rgba(255,255,255,0.025) !important;
+        border-top:1px solid rgba(255,255,255,0.10) !important;
+        padding:14px !important;
+    }
 
-div[data-testid="stExpander"] summary {
-    background:rgba(255,255,255,0.075) !important;
-    border-radius:16px 16px 0 0 !important;
-    min-height:42px !important;
-    padding:0 14px !important;
-    font-weight:800 !important;
-}
+    div[data-testid="stExpander"] {
+        background:rgba(255,255,255,0.075) !important;
+        border:1px solid rgba(255,255,255,0.13) !important;
+        border-radius:16px !important;
+        box-shadow:0 10px 24px rgba(0,0,0,0.16) !important;
+        overflow:hidden !important;
+    }
 
-/* metric */
+    div[data-testid="stExpander"] details {
+        background:transparent !important;
+        border:none !important;
+    }
 
-[data-testid="metric-container"]{
+    div[data-testid="stExpander"] summary {
+        background:rgba(255,255,255,0.075) !important;
+        border-radius:16px 16px 0 0 !important;
+        min-height:42px !important;
+        padding:0 14px !important;
+        font-weight:800 !important;
+    }
 
-    background:rgba(255,255,255,0.06);
+    /* metric */
 
-    border:1px solid rgba(255,255,255,0.10);
+    [data-testid="metric-container"]{
 
-    border-radius:20px;
+        background:rgba(255,255,255,0.06);
 
-    padding:22px;
+        border:1px solid rgba(255,255,255,0.10);
 
-    box-shadow:
-    0 8px 24px rgba(0,0,0,0.15);
+        border-radius:20px;
 
-    backdrop-filter:blur(12px);
-}
+        padding:22px;
 
-/* dataframe */
+        box-shadow:
+        0 8px 24px rgba(0,0,0,0.15);
 
-[data-testid="stDataFrame"]{
+        backdrop-filter:blur(12px);
+    }
 
-    background:rgba(255,255,255,0.04) !important;
+    /* dataframe */
 
-    border-radius:18px;
+    [data-testid="stDataFrame"]{
 
-    overflow:hidden;
+        background:rgba(255,255,255,0.04) !important;
 
-    border:1px solid rgba(255,255,255,0.08);
+        border-radius:18px;
 
-    backdrop-filter:blur(12px);
-}
+        overflow:hidden;
+
+        border:1px solid rgba(255,255,255,0.08);
+
+        backdrop-filter:blur(12px);
+    }
             
 
 
-.glideDataEditor{
+    .glideDataEditor{
 
-    background:rgba(255,255,255,0.03) !important;
-}
+        background:rgba(255,255,255,0.03) !important;
+    }
 
-.glideDataEditor *{
+    .glideDataEditor *{
 
-    background:transparent !important;
+        background:transparent !important;
 
-    color:white !important;
-}
-.kpi-card{
+        color:white !important;
+    }
+    .kpi-card{
 
-    background:rgba(255,255,255,0.05);
+        background:rgba(255,255,255,0.05);
 
-    border:1px solid rgba(255,255,255,0.08);
+        border:1px solid rgba(255,255,255,0.08);
 
-    border-radius:18px;
+        border-radius:18px;
 
-    padding:20px;
+        padding:20px;
 
-    text-align:center;
+        text-align:center;
 
-    min-height:70px;
+        min-height:70px;
 
-    backdrop-filter:blur(10px);
-}
+        backdrop-filter:blur(10px);
+    }
 
-.kpi-title{
+    .kpi-title{
 
-    font-size:15px;
+        font-size:15px;
 
-    color:#cfd8dc;
+        color:#cfd8dc;
 
-    margin-bottom:10px;
-}
+        margin-bottom:10px;
+    }
 
-.kpi-value{
+    .kpi-value{
 
-    font-size:24px;
+        font-size:24px;
 
-    font-weight:700;
+        font-weight:700;
 
-    color:white;
-}
+        color:white;
+    }
             
-/* 구분선 */
+    /* 구분선 */
 
-hr{
-    border-color:rgba(255,255,255,0.08);
-    margin:0.55rem 0 0.75rem 0 !important;
-}
+    hr{
+        border-color:rgba(255,255,255,0.08);
+        margin:0.55rem 0 0.75rem 0 !important;
+    }
 
-/* 다운로드 버튼 */
+    /* 다운로드 버튼 */
 
-.stDownloadButton button{
+    .stDownloadButton button{
 
-    width:100%;
+        width:100%;
 
-    border:none !important;
+        border:none !important;
 
-    border-radius:12px !important;
+        border-radius:12px !important;
 
-    background:rgba(255,255,255,0.08) !important;
+        background:rgba(255,255,255,0.08) !important;
 
-    color:white !important;
+        color:white !important;
 
-    transition:0.2s;
-}
+        transition:0.2s;
+    }
 
-.stDownloadButton button:hover{
+    .stDownloadButton button:hover{
 
-    transform:translateY(-2px);
+        transform:translateY(-2px);
 
-    background:rgba(255,255,255,0.15) !important;
-}
+        background:rgba(255,255,255,0.15) !important;
+    }
 
-/* 데이터프레임 헤더 */
+    /* 데이터프레임 헤더 */
 
-.glideDataEditor [role="columnheader"]{
+    .glideDataEditor [role="columnheader"]{
 
-    background:rgba(255,255,255,0.08) !important;
+        background:rgba(255,255,255,0.08) !important;
 
-    color:white !important;
+        color:white !important;
 
-    font-weight:700 !important;
-}
+        font-weight:700 !important;
+    }
             
-/* ==========================
-   AGGRID
-   ========================== */
+    /* ==========================
+       AGGRID
+       ========================== */
 
-.ag-root-wrapper {
+    .ag-root-wrapper {
 
-    background: rgba(255,255,255,0.04) !important;
+        background: rgba(255,255,255,0.04) !important;
 
-    border: 1px solid rgba(255,255,255,0.08) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
 
-    border-radius: 18px !important;
+        border-radius: 18px !important;
 
-    overflow: hidden !important;
-}
-
-.ag-header {
-
-    background: rgba(255,255,255,0.08) !important;
-}
-
-.ag-header-cell-label {
-
-    color: white !important;
-
-    font-weight: 700 !important;
-}
-
-.ag-cell {
-
-    background: transparent !important;
-
-    color: white !important;
-}
-
-.ag-row {
-
-    background: transparent !important;
-}
-
-.ag-row:hover {
-
-    background: rgba(255,255,255,0.05) !important;
-}
-
-.ag-row-selected {
-
-    background: rgba(59,130,246,0.30) !important;
-}      
-
-.block-container{
-    padding-top:0.55rem !important;
-    padding-bottom:0.5rem !important;
-    max-width:100% !important;
-}          
-
-div[data-testid="stVerticalBlock"] {
-    gap:0.46rem !important;
-}
-
-div[data-testid="stHorizontalBlock"] {
-    gap:0.55rem !important;
-    align-items:flex-start !important;
-}
-
-div[data-testid="column"] {
-    align-self:flex-start !important;
-}
-
-.dashboard-box{
-
-    background:rgba(255,255,255,0.05);
-
-    border:1px solid rgba(255,255,255,0.10);
-
-    border-radius:22px;
-
-    padding:20px;
-
-    backdrop-filter:blur(10px);
-
-    height:100%;
-
-    box-shadow:
-    0 8px 20px rgba(0,0,0,0.15);
-}
-
-.dashboard-title{
-
-    font-size:22px;
-
-    font-weight:700;
-
-    margin-bottom:15px;
-
-    color:white;
-}
-
-.dashboard-page-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 22px;
-    font-weight: 800;
-    line-height: 1;
-    margin: 0;
-    color: white;
-}
-
-.app-header-row {
-    display: grid;
-    grid-template-columns: 1.3fr 3fr;
-    column-gap: 1rem;
-    align-items: end;
-    width: 100%;
-    margin: 0 0 1.15rem 0;
-}
-
-.app-detail-page-title {
-    margin: 0.05rem 0 0 0 !important;
-}
-
-.detail-header-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.85rem;
-}
-
-.app-subtitle {
-    font-size:clamp(22px, 1.55vw, 28px);
-    font-weight:700;
-    line-height:1.2;
-    margin:0.12rem 0 0 0;
-    color:white;
-}
-
-.app-main-subtitle {
-    margin: 0 0 clamp(0.65rem, 1vh, 1rem) 0 !important;
-}
-
-.search-result-title {
-    font-size: 24px;
-    font-weight: 800;
-    line-height: 1.25;
-    margin: 1.2rem 0 0.85rem 0;
-    color: white;
-}
-
-.st-key-search_results_scroll {
-    max-height: 360px !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    padding-right: 4px !important;
-}
-
-.st-key-search_results_scroll div[data-testid="stVerticalBlock"] {
-    gap: 0.44rem !important;
-}
-
-div[data-testid="stExpander"] [data-testid="stImage"] img {
-    max-width: 100% !important;
-    height: auto !important;
-    object-fit: contain !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-    display: block !important;
-}
-
-div[data-testid="stExpander"] [data-testid="stImage"] {
-    display: flex !important;
-    justify-content: center !important;
-}
-
-.dashboard-card-title {
-    font-size: 19px;
-    font-weight: 850;
-    line-height: 1.25;
-    margin: 0 0 12px 0;
-    color: white;
-    text-align: left;
-}
-
-.st-key-dashboard_card_recent .dashboard-card-title,
-.st-key-dashboard_card_top5 .dashboard-card-title {
-    margin-bottom:9px;
-}
-
-.st-key-dashboard_card_top5 .dashboard-card-title {
-    margin-bottom:18px;
-}
-
-div[data-testid="stMarkdownContainer"]:has(style) {
-    display: none !important;
-}
-
-div[data-testid="stMarkdownContainer"]:has(.detail-title),
-div[data-testid="stMarkdownContainer"]:has(.detail-subtitle),
-div[data-testid="stMarkdownContainer"]:has(.detail-page-title),
-div[data-testid="stMarkdownContainer"]:has(.detail-field-label) {
-    margin-bottom:0.15rem !important;
-}
-
-div[data-testid="stMarkdownContainer"] p {
-    line-height:1.35 !important;
-}
-
-.st-key-dashboard_card_category,
-.st-key-dashboard_card_month,
-.st-key-dashboard_card_recent,
-.st-key-dashboard_card_top5 {
-    width: 100% !important;
-    background: rgba(255,255,255,0.075) !important;
-    border: 1px solid rgba(255,255,255,0.13) !important;
-    border-radius: 12px !important;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.14) !important;
-    padding: 14px !important;
-    overflow: hidden !important;
-}
-
-.st-key-dashboard_card_category,
-.st-key-dashboard_card_month {
-    min-height: var(--app-chart-card-h) !important;
-    height: var(--app-chart-card-h) !important;
-    max-height: var(--app-chart-card-h) !important;
-}
-
-.st-key-dashboard_card_recent,
-.st-key-dashboard_card_top5 {
-    min-height: var(--app-list-card-h) !important;
-    height: var(--app-list-card-h) !important;
-    max-height: var(--app-list-card-h) !important;
-    padding: 10px 13px !important;
-}
-
-div[data-testid="stButton"] {
-    width: 100% !important;
-}
-
-div[data-testid="stButton"] button {
-
-    height: 70px !important;
-
-    min-height: 70px !important;
-
-    width: 100% !important;
-
-    border-radius: 14px !important;
-}
-
-div[class*="st-key-select_"] button {
-    height: 42px !important;
-    min-height: 42px !important;
-    display: flex !important;
-    padding: 0 12px !important;
-    justify-content: flex-start !important;
-    align-items: center !important;
-    text-align: left !important;
-    border-radius: 10px !important;
-    box-shadow: none !important;
-}
-
-div[class*="st-key-select_"] button * {
-    text-align: left !important;
-    justify-content: flex-start !important;
-}
-
-div[class*="st-key-select_"] button div[data-testid="stMarkdownContainer"] {
-    width: 100% !important;
-    text-align: left !important;
-}
-
-div[class*="st-key-select_"] button p {
-    width: 100% !important;
-    text-align: left !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    font-size: 14px !important;
-    line-height: 1.2 !important;
-}
-
-div[class*="st-key-del_"] button {
-    height: 42px !important;
-    min-height: 42px !important;
-    padding: 0 !important;
-    border-radius: 10px !important;
-    box-shadow: none !important;
-}
-
-div[class*="st-key-del_"] button p {
-    text-align: center !important;
-    font-size: 14px !important;
-    line-height: 1 !important;
-}
-
-.st-key-save_case_btn,
-.st-key-excel_form_download_btn,
-.st-key-register_date_edit_btn,
-.st-key-edit_date_edit_btn,
-.st-key-back_dashboard_btn,
-.st-key-edit_back_btn,
-.st-key-detail_pdf_download_btn,
-.st-key-detail_edit_btn,
-.st-key-detail_delete_btn,
-.st-key-edit_save_btn,
-.st-key-edit_cancel_btn {
-    width: fit-content !important;
-}
-
-.st-key-save_case_btn button,
-.st-key-excel_form_download_btn button,
-.st-key-register_date_edit_btn button,
-.st-key-edit_date_edit_btn button,
-.st-key-back_dashboard_btn button,
-.st-key-edit_back_btn button,
-.st-key-detail_pdf_download_btn button,
-.st-key-detail_edit_btn button,
-.st-key-detail_delete_btn button,
-.st-key-edit_save_btn button,
-.st-key-edit_cancel_btn button {
-    width: auto !important;
-    height: 32px !important;
-    min-height: 32px !important;
-    min-width: 86px !important;
-    padding: 0 12px !important;
-    border-radius: 8px !important;
-    box-shadow: none !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-}
-
-div[class*="st-key-save_case_btn"] div[data-testid="stButton"] button,
-div[class*="st-key-excel_form_download_btn"] div[data-testid="stDownloadButton"] button,
-div[class*="st-key-register_date_edit_btn"] div[data-testid="stButton"] button,
-div[class*="st-key-edit_date_edit_btn"] div[data-testid="stButton"] button,
-div[class*="st-key-back_dashboard_btn"] div[data-testid="stButton"] button,
-div[class*="st-key-edit_back_btn"] div[data-testid="stButton"] button,
-div[class*="st-key-detail_pdf_download_btn"] div[data-testid="stDownloadButton"] button,
-div[class*="st-key-detail_edit_btn"] div[data-testid="stButton"] button,
-div[class*="st-key-detail_delete_btn"] div[data-testid="stButton"] button,
-div[class*="st-key-edit_save_btn"] div[data-testid="stButton"] button,
-div[class*="st-key-edit_cancel_btn"] div[data-testid="stButton"] button,
-div[data-testid="stButton"][class*="st-key-save_case_btn"] button,
-div[data-testid="stDownloadButton"][class*="st-key-excel_form_download_btn"] button,
-div[data-testid="stButton"][class*="st-key-register_date_edit_btn"] button,
-div[data-testid="stButton"][class*="st-key-edit_date_edit_btn"] button,
-div[data-testid="stButton"][class*="st-key-back_dashboard_btn"] button,
-div[data-testid="stButton"][class*="st-key-edit_back_btn"] button,
-div[data-testid="stDownloadButton"][class*="st-key-detail_pdf_download_btn"] button,
-div[data-testid="stButton"][class*="st-key-detail_edit_btn"] button,
-div[data-testid="stButton"][class*="st-key-detail_delete_btn"] button,
-div[data-testid="stButton"][class*="st-key-edit_save_btn"] button,
-div[data-testid="stButton"][class*="st-key-edit_cancel_btn"] button {
-    height: 32px !important;
-    min-height: 32px !important;
-    width: auto !important;
-    min-width: 86px !important;
-    padding: 0 12px !important;
-    border-radius: 8px !important;
-}
-
-.st-key-save_case_btn button p,
-.st-key-excel_form_download_btn button p,
-.st-key-register_date_edit_btn button p,
-.st-key-edit_date_edit_btn button p,
-.st-key-back_dashboard_btn button p,
-.st-key-edit_back_btn button p,
-.st-key-detail_pdf_download_btn button p,
-.st-key-detail_edit_btn button p,
-.st-key-detail_delete_btn button p,
-.st-key-edit_save_btn button p,
-.st-key-edit_cancel_btn button p {
-    font-size: 15px !important;
-    line-height: 1 !important;
-    text-align: center !important;
-    white-space: nowrap !important;
-    margin: 0 !important;
-}
-
-.st-key-back_dashboard_btn {
-    margin: 0 0 0.04rem 0 !important;
-}
-
-.st-key-save_case_btn button,
-.st-key-excel_form_download_btn button {
-    width: 112px !important;
-    min-width: 112px !important;
-    padding: 0 8px !important;
-}
-
-.st-key-detail_pdf_download_btn button,
-.st-key-detail_edit_btn button,
-.st-key-detail_delete_btn button {
-    width: 126px !important;
-    min-width: 126px !important;
-    padding: 0 8px !important;
-}
-
-div[class*="_remove_saved_btn"],
-div[class*="_restore_btn"] {
-    width: fit-content !important;
-    margin: 0.15rem 0 0.25rem 0 !important;
-}
-
-div[class*="_remove_saved_btn"] button,
-div[class*="_restore_btn"] button {
-    width: auto !important;
-    min-width: 0 !important;
-    height: 28px !important;
-    min-height: 28px !important;
-    padding: 0 10px !important;
-    border-radius: 7px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    box-shadow: none !important;
-}
-
-div[class*="_remove_saved_btn"] button p,
-div[class*="_restore_btn"] button p {
-    font-size: 13px !important;
-    line-height: 1 !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-}
-
-.detail-title {
-    font-size: 22px;
-    font-weight: 800;
-    line-height: 1.25;
-    margin: 0.62rem 0 0.22rem 0;
-}
-
-.detail-subtitle {
-    font-size: 20px;
-    font-weight: 800;
-    line-height: 1.25;
-    margin: 0.45rem 0 0.28rem 0;
-}
-
-.detail-page-title {
-    font-size: 22px;
-    font-weight: 800;
-    line-height: 1.25;
-    margin: 0.18rem 0 0.28rem 0;
-    white-space: nowrap;
-}
-
-.st-key-detail_header {
-    margin: 0 0 0.08rem 0 !important;
-    width: 100% !important;
-}
-
-.st-key-detail_header .detail-page-title {
-    margin: 0 !important;
-}
-
-.st-key-detail_header [data-testid="stHorizontalBlock"] {
-    align-items: center !important;
-}
-
-.st-key-detail_header [data-testid="column"] {
-    display: flex !important;
-    align-items: center !important;
-}
-
-.st-key-detail_info_card {
-    width: 100% !important;
-    background: rgba(255,255,255,0.06) !important;
-    border: 1px solid rgba(255,255,255,0.12) !important;
-    border-radius: 12px !important;
-    padding: 14px 14px 24px 14px !important;
-    margin: 0.1rem 0 0.08rem 0 !important;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.10) !important;
-    overflow: hidden !important;
-}
-
-.st-key-detail_info_card [data-testid="stImage"] img {
-    border-radius: 10px !important;
-    max-height: 188px !important;
-    object-fit: contain !important;
-}
-
-.detail-meta-grid {
-    display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:12px;
-    height:100%;
-    align-content:start;
-}
-
-.detail-meta-cell {
-    min-height:56px;
-    border:1px solid rgba(255,255,255,0.10);
-    border-radius:10px;
-    padding:8px 10px;
-    background:rgba(255,255,255,0.045);
-}
-
-.detail-meta-cell-wide {
-    grid-column:1 / -1;
-}
-
-.detail-meta-label {
-    display:block;
-    font-size:11px;
-    font-weight:800;
-    line-height:1.2;
-    margin-bottom:5px;
-    color:rgba(255,255,255,0.66) !important;
-}
-
-.detail-meta-value {
-    display:block;
-    font-size:15px;
-    font-weight:800;
-    line-height:1.35;
-    color:white !important;
-    word-break:keep-all;
-    overflow-wrap:anywhere;
-}
-
-.detail-section-grid {
-    display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:10px;
-    margin:0 0 0.95rem 0;
-}
-
-.detail-section-card {
-    min-height:108px;
-    border:1px solid rgba(255,255,255,0.12);
-    border-left:4px solid #38bdf8;
-    border-radius:12px;
-    padding:12px 14px;
-    background:rgba(255,255,255,0.055);
-    box-shadow:0 6px 16px rgba(0,0,0,0.10);
-}
-
-.detail-section-card:nth-child(2) {
-    border-left-color:#22c55e;
-}
-
-.detail-section-card:nth-child(3) {
-    border-left-color:#f59e0b;
-}
-
-.detail-section-card:nth-child(4) {
-    border-left-color:#f472b6;
-}
-
-.detail-section-title {
-    display:flex;
-    align-items:center;
-    gap:8px;
-    font-size:16px;
-    font-weight:900;
-    line-height:1.2;
-    margin-bottom:7px;
-}
-
-.detail-section-title::before {
-    content:"";
-    width:7px;
-    height:7px;
-    border-radius:50%;
-    background:currentColor;
-    flex:0 0 auto;
-}
-
-.detail-section-body {
-    font-size:14px;
-    font-weight:600;
-    line-height:1.38;
-    color:rgba(255,255,255,0.88) !important;
-    white-space:normal;
-    word-break:keep-all;
-    overflow-wrap:anywhere;
-}
-
-.detail-photo-title {
-    font-size:15px;
-    font-weight:900;
-    line-height:1.18;
-    margin:0.2rem 0 0.62rem 0;
-}
-
-.st-key-detail_case_photo,
-.st-key-detail_repair_photo {
-    width: 100% !important;
-    margin-bottom: 0.45rem !important;
-}
-
-.st-key-detail_case_photo > div,
-.st-key-detail_repair_photo > div {
-    width: 100% !important;
-}
-
-.st-key-detail_case_photo [data-testid="stImage"],
-.st-key-detail_repair_photo [data-testid="stImage"] {
-    width: 100% !important;
-    height: 312px !important;
-    border: 1px solid rgba(255,255,255,0.12) !important;
-    border-radius: 10px !important;
-    background: rgba(255,255,255,0.045) !important;
-    padding: 6px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-}
-
-.st-key-detail_case_photo [data-testid="stImage"] img,
-.st-key-detail_repair_photo [data-testid="stImage"] img {
-    width: 100% !important;
-    height: 300px !important;
-    max-width: 100% !important;
-    object-fit: contain !important;
-    object-position: center center !important;
-    border-radius: 8px !important;
-}
-
-.st-key-detail_case_photo [data-testid="stImage"] div,
-.st-key-detail_repair_photo [data-testid="stImage"] div {
-    display: flex !important;
-    justify-content: center !important;
-}
-
-@media (max-width: 900px) {
-    .detail-meta-grid,
-    .detail-section-grid {
-        grid-template-columns:1fr;
+        overflow: hidden !important;
     }
-}
 
-.detail-field-label {
-    font-size: 19px;
-    font-weight: 800;
-    line-height: 1.2;
-    margin: 0.24rem 0 0.08rem 0;
-}
+    .ag-header {
 
-.detail-title + div[data-testid="stMarkdownContainer"] p,
-.detail-subtitle + div[data-testid="stMarkdownContainer"] p,
-.detail-field-label + div[data-testid="stMarkdownContainer"] p {
-    line-height: 1.32 !important;
-    margin-bottom: 0.28rem !important;
-}
-
-.detail-photo {
-    margin: 0.05rem 0 0.3rem 0;
-}
-
-.st-key-top5_1 button,
-.st-key-top5_2 button,
-.st-key-top5_3 button,
-.st-key-top5_4 button,
-.st-key-top5_5 button {
-    height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
-    min-height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
-    display: flex !important;
-    justify-content: flex-start !important;
-    align-items: center !important;
-    text-align: left !important;
-    padding: 0 10px !important;
-    border: 1px solid rgba(255,255,255,0.10) !important;
-    background: rgba(255,255,255,0.075) !important;
-    box-shadow: none !important;
-}
-
-.st-key-top5_1 button *,
-.st-key-top5_2 button *,
-.st-key-top5_3 button *,
-.st-key-top5_4 button *,
-.st-key-top5_5 button * {
-    text-align: left !important;
-    justify-content: flex-start !important;
-}
-
-div[class*="st-key-top5_"] button {
-    height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
-    min-height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
-    display: flex !important;
-    justify-content: flex-start !important;
-    align-items: center !important;
-    text-align: left !important;
-    padding: 0 10px !important;
-    border-radius: 10px !important;
-}
-
-div[class*="st-key-top5_"] button * {
-    text-align: left !important;
-    justify-content: flex-start !important;
-    min-height: 0 !important;
-}
-
-div[class*="st-key-top5_"] button div[data-testid="stMarkdownContainer"] {
-    width: 100% !important;
-    line-height: 1.2 !important;
-}
-
-div[class*="st-key-top5_"] button p {
-    margin: 0 !important;
-    line-height: 1.2 !important;
-}
-
-.st-key-top5_1 button div[data-testid="stMarkdownContainer"],
-.st-key-top5_2 button div[data-testid="stMarkdownContainer"],
-.st-key-top5_3 button div[data-testid="stMarkdownContainer"],
-.st-key-top5_4 button div[data-testid="stMarkdownContainer"],
-.st-key-top5_5 button div[data-testid="stMarkdownContainer"] {
-    width: 100% !important;
-    text-align: left !important;
-}
-
-.st-key-top5_1 button p,
-.st-key-top5_2 button p,
-.st-key-top5_3 button p,
-.st-key-top5_4 button p,
-.st-key-top5_5 button p {
-    text-align: left !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    font-size: clamp(13px, 0.78vw, 15px) !important;
-    line-height: 1.2 !important;
-}
-
-.top5-meter {
-    width:100%;
-    margin: clamp(6px, calc(var(--app-dashboard-card-h) * 0.018), 10px) 0 clamp(12px, calc(var(--app-dashboard-card-h) * 0.04), 18px) 0;
-}
-
-.top5-track {
-    width:100%;
-    height: clamp(8px, calc(var(--app-dashboard-card-h) * 0.024), 11px);
-    background:rgba(255,255,255,0.08);
-    border-radius:10px;
-    overflow:hidden;
-}
-
-.top5-fill {
-    height:100%;
-    border-radius:10px;
-}
-
-.top5-count {
-    display:block;
-    margin-top:clamp(3px, calc(var(--app-dashboard-card-h) * 0.012), 5px);
-    font-size:clamp(12px, 0.72vw, 14px);
-    line-height:1.25;
-    color:rgba(255,255,255,0.78) !important;
-}
-
-.st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
-    gap:clamp(0.3rem, calc(var(--app-dashboard-card-h) * 0.014), 0.55rem) !important;
-}
-
-.st-key-dashboard_card_top5 {
-    display: flex !important;
-    flex-direction: column !important;
-}
-
-.st-key-dashboard_card_top5 > div,
-.st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
-    min-height: 0 !important;
-}
-
-.st-key-kpi_all button,
-.st-key-kpi_month button,
-.st-key-kpi_broken button,
-.st-key-kpi_defect button,
-.st-key-kpi_wrong button,
-.st-key-kpi_shortage button,
-.st-key-kpi_missing button,
-.st-key-kpi_etc button,
-.st-key-kpi_horizontal button,
-.st-key-kpi_welding button {
-    width: 100% !important;
-    height: var(--app-kpi-h) !important;
-    min-height: var(--app-kpi-h) !important;
-    padding: 8px 11px !important;
-    border-radius: 12px !important;
-    border: 1px solid rgba(255,255,255,0.13) !important;
-    background: rgba(255,255,255,0.075) !important;
-    box-shadow: 0 10px 24px rgba(0,0,0,0.16);
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-}
-
-.st-key-kpi_all button div[data-testid="stMarkdownContainer"],
-.st-key-kpi_month button div[data-testid="stMarkdownContainer"],
-.st-key-kpi_broken button div[data-testid="stMarkdownContainer"],
-.st-key-kpi_defect button div[data-testid="stMarkdownContainer"],
-.st-key-kpi_wrong button div[data-testid="stMarkdownContainer"],
-.st-key-kpi_shortage button div[data-testid="stMarkdownContainer"],
-.st-key-kpi_missing button div[data-testid="stMarkdownContainer"],
-.st-key-kpi_etc button div[data-testid="stMarkdownContainer"],
-.st-key-kpi_horizontal button div[data-testid="stMarkdownContainer"],
-.st-key-kpi_welding button div[data-testid="stMarkdownContainer"] {
-    width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    text-align: center !important;
-}
-
-.st-key-kpi_all button p,
-.st-key-kpi_month button p,
-.st-key-kpi_broken button p,
-.st-key-kpi_defect button p,
-.st-key-kpi_wrong button p,
-.st-key-kpi_shortage button p,
-.st-key-kpi_missing button p,
-.st-key-kpi_etc button p,
-.st-key-kpi_horizontal button p,
-.st-key-kpi_welding button p {
-    width: 100% !important;
-    white-space: pre-line !important;
-    text-align: center !important;
-    font-size: 17px !important;
-    font-weight: 700 !important;
-    line-height: 1.28 !important;
-    word-break: keep-all !important;
-    overflow-wrap: normal !important;
-    margin: 0 !important;
-}
-
-.st-key-kpi_all button:hover,
-.st-key-kpi_month button:hover,
-.st-key-kpi_broken button:hover,
-.st-key-kpi_defect button:hover,
-.st-key-kpi_wrong button:hover,
-.st-key-kpi_shortage button:hover,
-.st-key-kpi_missing button:hover,
-.st-key-kpi_etc button:hover,
-.st-key-kpi_horizontal button:hover,
-.st-key-kpi_welding button:hover {
-    border-color: rgba(255,255,255,0.28) !important;
-    background: rgba(255,255,255,0.14) !important;
-}
-
-/* Viewport fit: keep the current desktop feel while adapting to screen size. */
-:root {
-    --app-max-width: none;
-    --app-page-x: clamp(0.8rem, 1vw, 1.2rem);
-    --app-page-y: clamp(3.45rem, 4.5vh, 3.95rem);
-    --app-kpi-h: clamp(98px, 10.4vh, 118px);
-    --app-chart-card-h: clamp(345px, 36.5vh, 402px);
-    --app-list-card-h: clamp(296px, 31.8vh, 336px);
-    --app-dashboard-card-h: var(--app-list-card-h);
-    --app-chart-h: calc(var(--app-chart-card-h) - 70px);
-    --app-grid-h: calc(var(--app-list-card-h) - 66px);
-    --app-detail-photo-h: clamp(240px, 34vh, 312px);
-    --app-search-h: clamp(278px, 35.5vh, 402px);
-}
-
-.block-container {
-    width: 100% !important;
-    max-width: none !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    padding-top: var(--app-page-y) !important;
-    padding-left: var(--app-page-x) !important;
-    padding-right: var(--app-page-x) !important;
-    padding-bottom: 4rem !important;
-}
-
-[data-testid="stAppViewBlockContainer"],
-[data-testid="stMainBlockContainer"] {
-    max-width:none !important;
-    width:100% !important;
-}
-
-[data-testid="stMainBlockContainer"] {
-    padding: var(--app-page-y) var(--app-page-x) 4rem var(--app-page-x) !important;
-}
-
-[data-testid="stAppViewBlockContainer"] {
-    padding:0 !important;
-    max-width:none !important;
-    width:100% !important;
-}
-
-.st-key-search_results_scroll {
-    min-height: var(--app-search-h) !important;
-    max-height: var(--app-search-h) !important;
-}
-
-div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) {
-    align-items: stretch !important;
-    gap: 1rem !important;
-}
-
-div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child {
-    flex: 0 0 clamp(390px, 28%, 470px) !important;
-    min-width: 390px !important;
-    max-width: 29% !important;
-}
-
-div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:last-child {
-    flex: 1 1 71% !important;
-    min-width: 0 !important;
-}
-
-div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child input,
-div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child textarea,
-div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child div[data-baseweb="input"] {
-    width: 100% !important;
-}
-
-.st-key-dashboard_card_category,
-.st-key-dashboard_card_month,
-.st-key-dashboard_card_recent,
-.st-key-dashboard_card_top5 {
-    min-height: var(--app-list-card-h) !important;
-    height: var(--app-list-card-h) !important;
-    max-height: var(--app-list-card-h) !important;
-}
-
-.st-key-dashboard_card_category,
-.st-key-dashboard_card_month {
-    min-height: var(--app-chart-card-h) !important;
-    height: var(--app-chart-card-h) !important;
-    max-height: var(--app-chart-card-h) !important;
-}
-
-.st-key-dashboard_card_category [data-testid="stPlotlyChart"],
-.st-key-dashboard_card_month [data-testid="stPlotlyChart"] {
-    max-height: var(--app-chart-h) !important;
-}
-
-.st-key-dashboard_card_category [data-testid="stPlotlyChart"] > div,
-.st-key-dashboard_card_month [data-testid="stPlotlyChart"] > div {
-    max-height: var(--app-chart-h) !important;
-}
-
-.st-key-detail_case_photo [data-testid="stImage"],
-.st-key-detail_repair_photo [data-testid="stImage"] {
-    height: var(--app-detail-photo-h) !important;
-}
-
-.st-key-detail_case_photo [data-testid="stImage"] img,
-.st-key-detail_repair_photo [data-testid="stImage"] img {
-    width: 100% !important;
-    height: calc(var(--app-detail-photo-h) - 12px) !important;
-    max-height: calc(var(--app-detail-photo-h) - 12px) !important;
-    object-fit: contain !important;
-    object-position: center center !important;
-}
-
-@media (min-width: 1600px) {
-    :root {
-        --app-max-width: none;
+        background: rgba(255,255,255,0.08) !important;
     }
-}
 
-@media (max-height: 850px) {
-    :root {
-        --app-page-y: 3.2rem;
-        --app-kpi-h: 94px;
-        --app-chart-card-h: 354px;
-        --app-list-card-h: 306px;
-        --app-dashboard-card-h: var(--app-list-card-h);
-        --app-search-h: 278px;
+    .ag-header-cell-label {
+
+        color: white !important;
+
+        font-weight: 700 !important;
     }
-}
 
-@media (max-height: 760px) {
-    :root {
-        --app-page-y: 2.9rem;
-        --app-kpi-h: 88px;
-        --app-chart-card-h: 338px;
-        --app-list-card-h: 282px;
-        --app-dashboard-card-h: var(--app-list-card-h);
-        --app-detail-photo-h: 250px;
-        --app-search-h: 244px;
+    .ag-cell {
+
+        background: transparent !important;
+
+        color: white !important;
+    }
+
+    .ag-row {
+
+        background: transparent !important;
+    }
+
+    .ag-row:hover {
+
+        background: rgba(255,255,255,0.05) !important;
+    }
+
+    .ag-row-selected {
+
+        background: rgba(59,130,246,0.30) !important;
+    }
+
+    .block-container{
+        padding-top:0.55rem !important;
+        padding-bottom:0.5rem !important;
+        max-width:100% !important;
+    }
+
+    div[data-testid="stVerticalBlock"] {
+        gap:0.46rem !important;
+    }
+
+    div[data-testid="stHorizontalBlock"] {
+        gap:0.55rem !important;
+        align-items:flex-start !important;
+    }
+
+    div[data-testid="column"] {
+        align-self:flex-start !important;
+    }
+
+    .dashboard-box{
+
+        background:rgba(255,255,255,0.05);
+
+        border:1px solid rgba(255,255,255,0.10);
+
+        border-radius:22px;
+
+        padding:20px;
+
+        backdrop-filter:blur(10px);
+
+        height:100%;
+
+        box-shadow:
+        0 8px 20px rgba(0,0,0,0.15);
+    }
+
+    .dashboard-title{
+
+        font-size:22px;
+
+        font-weight:700;
+
+        margin-bottom:15px;
+
+        color:white;
+    }
+
+    .dashboard-page-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 22px;
+        font-weight: 800;
+        line-height: 1;
+        margin: 0;
+        color: white;
+    }
+
+    .app-header-row {
+        display: grid;
+        grid-template-columns: 1.3fr 3fr;
+        column-gap: 1rem;
+        align-items: end;
+        width: 100%;
+        margin: 0 0 1.15rem 0;
+    }
+
+    .app-detail-page-title {
+        margin: 0.05rem 0 0 0 !important;
+    }
+
+    .detail-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+    }
+
+    .app-subtitle {
+        font-size:clamp(22px, 1.55vw, 28px);
+        font-weight:700;
+        line-height:1.2;
+        margin:0.12rem 0 0 0;
+        color:white;
+    }
+
+    .app-main-subtitle {
+        margin: 0 0 clamp(0.65rem, 1vh, 1rem) 0 !important;
+    }
+
+    .search-result-title {
+        font-size: 24px;
+        font-weight: 800;
+        line-height: 1.25;
+        margin: 1.2rem 0 0.85rem 0;
+        color: white;
+    }
+
+    .st-key-search_results_scroll {
+        max-height: 360px !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        padding-right: 4px !important;
+    }
+
+    .st-key-search_results_scroll div[data-testid="stVerticalBlock"] {
+        gap: 0.44rem !important;
+    }
+
+    div[data-testid="stExpander"] [data-testid="stImage"] img {
+        max-width: 100% !important;
+        height: auto !important;
+        object-fit: contain !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        display: block !important;
+    }
+
+    div[data-testid="stExpander"] [data-testid="stImage"] {
+        display: flex !important;
+        justify-content: center !important;
+    }
+
+    .dashboard-card-title {
+        font-size: 19px;
+        font-weight: 850;
+        line-height: 1.25;
+        margin: 0 0 12px 0;
+        color: white;
+        text-align: left;
+    }
+
+    .st-key-dashboard_card_recent .dashboard-card-title,
+    .st-key-dashboard_card_top5 .dashboard-card-title {
+        margin-bottom:9px;
+    }
+
+    .st-key-dashboard_card_top5 .dashboard-card-title {
+        margin-bottom:18px;
+    }
+
+    div[data-testid="stMarkdownContainer"]:has(style) {
+        display: none !important;
+    }
+
+    div[data-testid="stMarkdownContainer"]:has(.detail-title),
+    div[data-testid="stMarkdownContainer"]:has(.detail-subtitle),
+    div[data-testid="stMarkdownContainer"]:has(.detail-page-title),
+    div[data-testid="stMarkdownContainer"]:has(.detail-field-label) {
+        margin-bottom:0.15rem !important;
+    }
+
+    div[data-testid="stMarkdownContainer"] p {
+        line-height:1.35 !important;
+    }
+
+    .st-key-dashboard_card_category,
+    .st-key-dashboard_card_month,
+    .st-key-dashboard_card_recent,
+    .st-key-dashboard_card_top5 {
+        width: 100% !important;
+        background: rgba(255,255,255,0.075) !important;
+        border: 1px solid rgba(255,255,255,0.13) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.14) !important;
+        padding: 14px !important;
+        overflow: hidden !important;
+    }
+
+    .st-key-dashboard_card_category,
+    .st-key-dashboard_card_month {
+        min-height: var(--app-chart-card-h) !important;
+        height: var(--app-chart-card-h) !important;
+        max-height: var(--app-chart-card-h) !important;
+    }
+
+    .st-key-dashboard_card_recent,
+    .st-key-dashboard_card_top5 {
+        min-height: var(--app-list-card-h) !important;
+        height: var(--app-list-card-h) !important;
+        max-height: var(--app-list-card-h) !important;
+        padding: 10px 13px !important;
+    }
+
+    div[data-testid="stButton"] {
+        width: 100% !important;
     }
 
     div[data-testid="stButton"] button {
-        height: 62px !important;
-    }
 
-    div[class*="st-key-top5_"] button {
-        height: 38px !important;
-        min-height: 38px !important;
-    }
-}
+        height: 70px !important;
 
-@media (max-width: 900px) {
-    :root {
-        --app-page-x: 0.85rem;
-        --app-kpi-h: 92px;
-        --app-chart-card-h: 350px;
-        --app-list-card-h: 320px;
-        --app-dashboard-card-h: var(--app-list-card-h);
-        --app-detail-photo-h: 260px;
-        --app-search-h: 260px;
-    }
+        min-height: 70px !important;
 
-    .block-container {
         width: 100% !important;
-        max-width: 100% !important;
+
+        border-radius: 14px !important;
     }
-}
 
-.st-key-main_excel_download_btn,
-div[class*="st-key-main_excel_download_btn"] {
-    position: static !important;
-    margin: 0.85rem 0 0 var(--app-page-x) !important;
-    width: auto !important;
-    max-width: calc(100vw - (var(--app-page-x) * 2)) !important;
-    z-index: auto !important;
-}
+    div[class*="st-key-select_"] button {
+        height: 42px !important;
+        min-height: 42px !important;
+        display: flex !important;
+        padding: 0 12px !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+        text-align: left !important;
+        border-radius: 10px !important;
+        box-shadow: none !important;
+    }
 
-.st-key-main_excel_download_btn div[data-testid="stDownloadButton"],
-div[class*="st-key-main_excel_download_btn"] div[data-testid="stDownloadButton"] {
-    width: auto !important;
-}
+    div[class*="st-key-select_"] button * {
+        text-align: left !important;
+        justify-content: flex-start !important;
+    }
 
-.st-key-main_excel_download_btn button,
-div[class*="st-key-main_excel_download_btn"] button {
-    width: auto !important;
-    min-width: 112px !important;
-    min-height: 38px !important;
-    height: 38px !important;
-    padding: 0 16px !important;
-    border-radius: 12px !important;
-}
+    div[class*="st-key-select_"] button div[data-testid="stMarkdownContainer"] {
+        width: 100% !important;
+        text-align: left !important;
+    }
 
-/* Responsive action buttons: prevent fixed-width buttons from overlapping in narrow layouts. */
-.st-key-save_case_btn,
-.st-key-excel_form_download_btn,
-.st-key-register_date_edit_btn,
-.st-key-edit_date_edit_btn,
-.st-key-back_dashboard_btn,
-.st-key-edit_back_btn,
-.st-key-detail_pdf_download_btn,
-.st-key-detail_edit_btn,
-.st-key-detail_delete_btn,
-.st-key-edit_save_btn,
-.st-key-edit_cancel_btn {
-    width: 100% !important;
-    min-width: 0 !important;
-}
+    div[class*="st-key-select_"] button p {
+        width: 100% !important;
+        text-align: left !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        font-size: 14px !important;
+        line-height: 1.2 !important;
+    }
 
-.st-key-save_case_btn div[data-testid="stButton"],
-.st-key-excel_form_download_btn div[data-testid="stDownloadButton"],
-.st-key-register_date_edit_btn div[data-testid="stButton"],
-.st-key-edit_date_edit_btn div[data-testid="stButton"],
-.st-key-back_dashboard_btn div[data-testid="stButton"],
-.st-key-edit_back_btn div[data-testid="stButton"],
-.st-key-detail_pdf_download_btn div[data-testid="stDownloadButton"],
-.st-key-detail_edit_btn div[data-testid="stButton"],
-.st-key-detail_delete_btn div[data-testid="stButton"],
-.st-key-edit_save_btn div[data-testid="stButton"],
-.st-key-edit_cancel_btn div[data-testid="stButton"] {
-    width: 100% !important;
-    min-width: 0 !important;
-}
+    div[class*="st-key-del_"] button {
+        height: 42px !important;
+        min-height: 42px !important;
+        padding: 0 !important;
+        border-radius: 10px !important;
+        box-shadow: none !important;
+    }
 
-.st-key-save_case_btn button,
-.st-key-excel_form_download_btn button,
-.st-key-register_date_edit_btn button,
-.st-key-edit_date_edit_btn button,
-.st-key-back_dashboard_btn button,
-.st-key-edit_back_btn button,
-.st-key-detail_pdf_download_btn button,
-.st-key-detail_edit_btn button,
-.st-key-detail_delete_btn button,
-.st-key-edit_save_btn button,
-.st-key-edit_cancel_btn button {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    height: auto !important;
-    min-height: 36px !important;
-    padding: 7px 9px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    box-sizing: border-box !important;
-    overflow: hidden !important;
-}
+    div[class*="st-key-del_"] button p {
+        text-align: center !important;
+        font-size: 14px !important;
+        line-height: 1 !important;
+    }
 
-.st-key-save_case_btn button p,
-.st-key-excel_form_download_btn button p,
-.st-key-register_date_edit_btn button p,
-.st-key-edit_date_edit_btn button p,
-.st-key-back_dashboard_btn button p,
-.st-key-edit_back_btn button p,
-.st-key-detail_pdf_download_btn button p,
-.st-key-detail_edit_btn button p,
-.st-key-detail_delete_btn button p,
-.st-key-edit_save_btn button p,
-.st-key-edit_cancel_btn button p {
-    width: 100% !important;
-    margin: 0 !important;
-    font-size: clamp(11px, 1.05vw, 15px) !important;
-    line-height: 1.18 !important;
-    text-align: center !important;
-    white-space: normal !important;
-    overflow-wrap: keep-all !important;
-    word-break: keep-all !important;
-}
+    .st-key-save_case_btn,
+    .st-key-excel_form_download_btn,
+    .st-key-register_date_edit_btn,
+    .st-key-edit_date_edit_btn,
+    .st-key-back_dashboard_btn,
+    .st-key-edit_back_btn,
+    .st-key-detail_pdf_download_btn,
+    .st-key-detail_edit_btn,
+    .st-key-detail_delete_btn,
+    .st-key-edit_save_btn,
+    .st-key-edit_cancel_btn {
+        width: fit-content !important;
+    }
 
-.st-key-save_case_btn button p,
-.st-key-excel_form_download_btn button p,
-.st-key-register_date_edit_btn button p,
-.st-key-edit_date_edit_btn button p,
-.st-key-back_dashboard_btn button p,
-.st-key-edit_back_btn button p,
-.st-key-detail_pdf_download_btn button p,
-.st-key-detail_edit_btn button p,
-.st-key-detail_delete_btn button p,
-.st-key-edit_save_btn button p,
-.st-key-edit_cancel_btn button p {
-    white-space: nowrap !important;
-    overflow: visible !important;
-    text-overflow: unset !important;
-}
-
-.st-key-save_case_btn button,
-.st-key-excel_form_download_btn button,
-.st-key-back_dashboard_btn button,
-.st-key-edit_back_btn button {
-    min-height: 34px !important;
-    padding-left: 10px !important;
-    padding-right: 10px !important;
-}
-
-@media (max-width: 760px) {
     .st-key-save_case_btn button,
     .st-key-excel_form_download_btn button,
     .st-key-register_date_edit_btn button,
@@ -3195,222 +2375,1021 @@ div[class*="st-key-main_excel_download_btn"] button {
     .st-key-detail_delete_btn button,
     .st-key-edit_save_btn button,
     .st-key-edit_cancel_btn button {
-        min-height: 40px !important;
-        padding: 6px 7px !important;
+        width: auto !important;
+        height: 32px !important;
+        min-height: 32px !important;
+        min-width: 86px !important;
+        padding: 0 12px !important;
+        border-radius: 8px !important;
+        box-shadow: none !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
-}
 
-/* Action button rows */
-:root {
-    --app-action-gap: clamp(6px, 0.45vw, 10px);
-    --app-detail-action-gap: 48px;
-    --app-detail-action-row-width: 496px;
-    --app-detail-min-width: 560px;
-    --app-action-btn-h: 36px;
-}
+    div[class*="st-key-save_case_btn"] div[data-testid="stButton"] button,
+    div[class*="st-key-excel_form_download_btn"] div[data-testid="stDownloadButton"] button,
+    div[class*="st-key-register_date_edit_btn"] div[data-testid="stButton"] button,
+    div[class*="st-key-edit_date_edit_btn"] div[data-testid="stButton"] button,
+    div[class*="st-key-back_dashboard_btn"] div[data-testid="stButton"] button,
+    div[class*="st-key-edit_back_btn"] div[data-testid="stButton"] button,
+    div[class*="st-key-detail_pdf_download_btn"] div[data-testid="stDownloadButton"] button,
+    div[class*="st-key-detail_edit_btn"] div[data-testid="stButton"] button,
+    div[class*="st-key-detail_delete_btn"] div[data-testid="stButton"] button,
+    div[class*="st-key-edit_save_btn"] div[data-testid="stButton"] button,
+    div[class*="st-key-edit_cancel_btn"] div[data-testid="stButton"] button,
+    div[data-testid="stButton"][class*="st-key-save_case_btn"] button,
+    div[data-testid="stDownloadButton"][class*="st-key-excel_form_download_btn"] button,
+    div[data-testid="stButton"][class*="st-key-register_date_edit_btn"] button,
+    div[data-testid="stButton"][class*="st-key-edit_date_edit_btn"] button,
+    div[data-testid="stButton"][class*="st-key-back_dashboard_btn"] button,
+    div[data-testid="stButton"][class*="st-key-edit_back_btn"] button,
+    div[data-testid="stDownloadButton"][class*="st-key-detail_pdf_download_btn"] button,
+    div[data-testid="stButton"][class*="st-key-detail_edit_btn"] button,
+    div[data-testid="stButton"][class*="st-key-detail_delete_btn"] button,
+    div[data-testid="stButton"][class*="st-key-edit_save_btn"] button,
+    div[data-testid="stButton"][class*="st-key-edit_cancel_btn"] button {
+        height: 32px !important;
+        min-height: 32px !important;
+        width: auto !important;
+        min-width: 86px !important;
+        padding: 0 12px !important;
+        border-radius: 8px !important;
+    }
 
-html,
-body,
-[data-testid="stAppViewContainer"] {
-    overflow-x: auto !important;
-}
+    .st-key-save_case_btn button p,
+    .st-key-excel_form_download_btn button p,
+    .st-key-register_date_edit_btn button p,
+    .st-key-edit_date_edit_btn button p,
+    .st-key-back_dashboard_btn button p,
+    .st-key-edit_back_btn button p,
+    .st-key-detail_pdf_download_btn button p,
+    .st-key-detail_edit_btn button p,
+    .st-key-detail_delete_btn button p,
+    .st-key-edit_save_btn button p,
+    .st-key-edit_cancel_btn button p {
+        font-size: 15px !important;
+        line-height: 1 !important;
+        text-align: center !important;
+        white-space: nowrap !important;
+        margin: 0 !important;
+    }
 
-.block-container:has(.app-detail-page-title),
-.block-container:has(.st-key-detail_info_card),
-.block-container:has(div[class*="st-key-detail_info_card"]) {
-    min-width: var(--app-detail-min-width) !important;
-}
+    .st-key-back_dashboard_btn {
+        margin: 0 0 0.04rem 0 !important;
+    }
 
-.st-key-register_action_row div[data-testid="stHorizontalBlock"],
-.st-key-detail_action_row div[data-testid="stHorizontalBlock"] {
-    align-items: center !important;
-    gap: var(--app-action-gap) !important;
-}
+    .st-key-save_case_btn button,
+    .st-key-excel_form_download_btn button {
+        width: 112px !important;
+        min-width: 112px !important;
+        padding: 0 8px !important;
+    }
 
-.st-key-detail_action_row,
-div[class*="st-key-detail_action_row"] {
-    width: max-content !important;
-    min-width: var(--app-detail-action-row-width) !important;
-    overflow: visible !important;
-}
+    .st-key-detail_pdf_download_btn button,
+    .st-key-detail_edit_btn button,
+    .st-key-detail_delete_btn button {
+        width: 126px !important;
+        min-width: 126px !important;
+        padding: 0 8px !important;
+    }
 
-.st-key-detail_action_row div[data-testid="stHorizontalBlock"],
-div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] {
-    display: flex !important;
-    flex-wrap: nowrap !important;
-    gap: 0 !important;
-    width: max-content !important;
-    min-width: var(--app-detail-action-row-width) !important;
-    overflow: visible !important;
-}
+    div[class*="_remove_saved_btn"],
+    div[class*="_restore_btn"] {
+        width: fit-content !important;
+        margin: 0.15rem 0 0.25rem 0 !important;
+    }
 
-.st-key-detail_info_card,
-div[class*="st-key-detail_info_card"] {
-    min-width: var(--app-detail-min-width) !important;
-    overflow: visible !important;
-}
+    div[class*="_remove_saved_btn"] button,
+    div[class*="_restore_btn"] button {
+        width: auto !important;
+        min-width: 0 !important;
+        height: 28px !important;
+        min-height: 28px !important;
+        padding: 0 10px !important;
+        border-radius: 7px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: none !important;
+    }
 
-.detail-action-gap {
-    width: var(--app-detail-action-gap) !important;
-    min-width: var(--app-detail-action-gap) !important;
-    height: var(--app-action-btn-h) !important;
-}
+    div[class*="_remove_saved_btn"] button p,
+    div[class*="_restore_btn"] button p {
+        font-size: 13px !important;
+        line-height: 1 !important;
+        margin: 0 !important;
+        white-space: nowrap !important;
+    }
 
-.st-key-register_action_row div[data-testid="column"],
-.st-key-detail_action_row div[data-testid="column"] {
-    min-width: 0 !important;
-}
+    .detail-title {
+        font-size: 22px;
+        font-weight: 800;
+        line-height: 1.25;
+        margin: 0.62rem 0 0.22rem 0;
+    }
 
-.st-key-detail_action_row div[data-testid="stHorizontalBlock"] div[data-testid="column"],
-div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] div[data-testid="column"] {
-    flex: 0 0 auto !important;
-    margin: 0 !important;
-    min-width: 0 !important;
-    max-width: none !important;
-}
+    .detail-subtitle {
+        font-size: 20px;
+        font-weight: 800;
+        line-height: 1.25;
+        margin: 0.45rem 0 0.28rem 0;
+    }
 
-.st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1),
-div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) {
-    flex: 0 0 168px !important;
-    width: 168px !important;
-    min-width: 168px !important;
-    max-width: 168px !important;
-}
+    .detail-page-title {
+        font-size: 22px;
+        font-weight: 800;
+        line-height: 1.25;
+        margin: 0.18rem 0 0.28rem 0;
+        white-space: nowrap;
+    }
 
-.st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2),
-div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2),
-.st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(4),
-div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(4) {
-    flex: 0 0 var(--app-detail-action-gap) !important;
-    width: var(--app-detail-action-gap) !important;
-    min-width: var(--app-detail-action-gap) !important;
-    max-width: var(--app-detail-action-gap) !important;
-}
+    .st-key-detail_header {
+        margin: 0 0 0.08rem 0 !important;
+        width: 100% !important;
+    }
 
-.st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3),
-div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3),
-.st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(5),
-div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(5) {
-    flex: 0 0 116px !important;
-    width: 116px !important;
-    min-width: 116px !important;
-    max-width: 116px !important;
-}
+    .st-key-detail_header .detail-page-title {
+        margin: 0 !important;
+    }
 
-.st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(6),
-div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(6) {
-    display: none !important;
-    flex: 0 0 0 !important;
-    width: 0 !important;
-    min-width: 0 !important;
-    max-width: 0 !important;
-}
+    .st-key-detail_header [data-testid="stHorizontalBlock"] {
+        align-items: center !important;
+    }
 
-.st-key-register_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1),
-.st-key-register_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3) {
-    flex: 0 0 auto !important;
-    flex-basis: 102px !important;
-    width: 102px !important;
-    min-width: 102px !important;
-}
+    .st-key-detail_header [data-testid="column"] {
+        display: flex !important;
+        align-items: center !important;
+    }
 
-.st-key-register_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {
-    flex: 0 0 var(--app-action-gap) !important;
-    width: var(--app-action-gap) !important;
-    min-width: var(--app-action-gap) !important;
-}
+    .st-key-detail_info_card {
+        width: 100% !important;
+        background: rgba(255,255,255,0.06) !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        border-radius: 12px !important;
+        padding: 14px 14px 24px 14px !important;
+        margin: 0.1rem 0 0.08rem 0 !important;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.10) !important;
+        overflow: hidden !important;
+    }
 
-.st-key-register_action_row button,
-.st-key-detail_action_row button {
-    width: 100% !important;
-    min-width: 0 !important;
-    height: var(--app-action-btn-h) !important;
-    min-height: var(--app-action-btn-h) !important;
-    padding: 0 12px !important;
-    box-sizing: border-box !important;
-    white-space: nowrap !important;
-}
+    .st-key-detail_info_card [data-testid="stImage"] img {
+        border-radius: 10px !important;
+        max-height: 188px !important;
+        object-fit: contain !important;
+    }
 
-.st-key-register_action_row button p,
-.st-key-detail_action_row button p {
-    margin: 0 !important;
-    font-size: 15px !important;
-    line-height: 1 !important;
-    white-space: nowrap !important;
-    overflow: visible !important;
-}
+    .detail-meta-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:12px;
+        height:100%;
+        align-content:start;
+    }
 
-/* Fixed readable widths for action buttons. */
-.st-key-detail_pdf_download_btn,
-.st-key-detail_pdf_download_btn div[data-testid="stDownloadButton"],
-.st-key-detail_pdf_download_btn button {
-    width: 168px !important;
-    min-width: 168px !important;
-    max-width: 168px !important;
-}
+    .detail-meta-cell {
+        min-height:56px;
+        border:1px solid rgba(255,255,255,0.10);
+        border-radius:10px;
+        padding:8px 10px;
+        background:rgba(255,255,255,0.045);
+    }
 
-.st-key-detail_edit_btn,
-.st-key-detail_delete_btn,
-.st-key-detail_edit_btn div[data-testid="stButton"],
-.st-key-detail_delete_btn div[data-testid="stButton"],
-.st-key-detail_edit_btn button,
-.st-key-detail_delete_btn button {
-    width: 116px !important;
-    min-width: 116px !important;
-    max-width: 116px !important;
-}
+    .detail-meta-cell-wide {
+        grid-column:1 / -1;
+    }
 
-.st-key-save_case_btn,
-.st-key-excel_form_download_btn,
-.st-key-save_case_btn div[data-testid="stButton"],
-.st-key-excel_form_download_btn div[data-testid="stDownloadButton"],
-.st-key-save_case_btn button,
-.st-key-excel_form_download_btn button {
-    width: 112px !important;
-    min-width: 112px !important;
-    max-width: 112px !important;
-}
+    .detail-meta-label {
+        display:block;
+        font-size:11px;
+        font-weight:800;
+        line-height:1.2;
+        margin-bottom:5px;
+        color:rgba(255,255,255,0.66) !important;
+    }
 
-.st-key-detail_pdf_download_btn button p,
-.st-key-detail_edit_btn button p,
-.st-key-detail_delete_btn button p,
-.st-key-save_case_btn button p,
-.st-key-excel_form_download_btn button p {
-    width: 100% !important;
-    text-align: center !important;
-    overflow: visible !important;
-    text-overflow: unset !important;
-}
+    .detail-meta-value {
+        display:block;
+        font-size:15px;
+        font-weight:800;
+        line-height:1.35;
+        color:white !important;
+        word-break:keep-all;
+        overflow-wrap:anywhere;
+    }
 
-.st-key-detail_pdf_download_btn,
-.st-key-detail_edit_btn,
-.st-key-save_case_btn {
-    margin-right: clamp(6px, 0.45vw, 10px) !important;
-}
+    .detail-section-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:10px;
+        margin:0 0 0.95rem 0;
+    }
 
-.st-key-detail_action_row .st-key-detail_pdf_download_btn,
-.st-key-detail_action_row .st-key-detail_edit_btn,
-.st-key-detail_action_row .st-key-detail_delete_btn,
-div[class*="st-key-detail_action_row"] div[class*="st-key-detail_pdf_download_btn"],
-div[class*="st-key-detail_action_row"] div[class*="st-key-detail_edit_btn"],
-div[class*="st-key-detail_action_row"] div[class*="st-key-detail_delete_btn"] {
-    margin-right: 0 !important;
-}
+    .detail-section-card {
+        min-height:108px;
+        border:1px solid rgba(255,255,255,0.12);
+        border-left:4px solid #38bdf8;
+        border-radius:12px;
+        padding:12px 14px;
+        background:rgba(255,255,255,0.055);
+        box-shadow:0 6px 16px rgba(0,0,0,0.10);
+    }
 
-@media (max-width: 900px) {
-    .st-key-register_action_row div[data-testid="stHorizontalBlock"] {
-        gap: 12px !important;
+    .detail-section-card:nth-child(2) {
+        border-left-color:#22c55e;
+    }
+
+    .detail-section-card:nth-child(3) {
+        border-left-color:#f59e0b;
+    }
+
+    .detail-section-card:nth-child(4) {
+        border-left-color:#f472b6;
+    }
+
+    .detail-section-title {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        font-size:16px;
+        font-weight:900;
+        line-height:1.2;
+        margin-bottom:7px;
+    }
+
+    .detail-section-title::before {
+        content:"";
+        width:7px;
+        height:7px;
+        border-radius:50%;
+        background:currentColor;
+        flex:0 0 auto;
+    }
+
+    .detail-section-body {
+        font-size:14px;
+        font-weight:600;
+        line-height:1.38;
+        color:rgba(255,255,255,0.88) !important;
+        white-space:normal;
+        word-break:keep-all;
+        overflow-wrap:anywhere;
+    }
+
+    .detail-photo-title {
+        font-size:15px;
+        font-weight:900;
+        line-height:1.18;
+        margin:0.2rem 0 0.62rem 0;
+    }
+
+    .st-key-detail_case_photo,
+    .st-key-detail_repair_photo {
+        width: 100% !important;
+        margin-bottom: 0.45rem !important;
+    }
+
+    .st-key-detail_case_photo > div,
+    .st-key-detail_repair_photo > div {
+        width: 100% !important;
+    }
+
+    .st-key-detail_case_photo [data-testid="stImage"],
+    .st-key-detail_repair_photo [data-testid="stImage"] {
+        width: 100% !important;
+        height: 312px !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        border-radius: 10px !important;
+        background: rgba(255,255,255,0.045) !important;
+        padding: 6px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    .st-key-detail_case_photo [data-testid="stImage"] img,
+    .st-key-detail_repair_photo [data-testid="stImage"] img {
+        width: 100% !important;
+        height: 300px !important;
+        max-width: 100% !important;
+        object-fit: contain !important;
+        object-position: center center !important;
+        border-radius: 8px !important;
+    }
+
+    .st-key-detail_case_photo [data-testid="stImage"] div,
+    .st-key-detail_repair_photo [data-testid="stImage"] div {
+        display: flex !important;
+        justify-content: center !important;
+    }
+
+    @media (max-width: 900px) {
+        .detail-meta-grid,
+        .detail-section-grid {
+            grid-template-columns:1fr;
+        }
+    }
+
+    .detail-field-label {
+        font-size: 19px;
+        font-weight: 800;
+        line-height: 1.2;
+        margin: 0.24rem 0 0.08rem 0;
+    }
+
+    .detail-title + div[data-testid="stMarkdownContainer"] p,
+    .detail-subtitle + div[data-testid="stMarkdownContainer"] p,
+    .detail-field-label + div[data-testid="stMarkdownContainer"] p {
+        line-height: 1.32 !important;
+        margin-bottom: 0.28rem !important;
+    }
+
+    .detail-photo {
+        margin: 0.05rem 0 0.3rem 0;
+    }
+
+    .st-key-top5_1 button,
+    .st-key-top5_2 button,
+    .st-key-top5_3 button,
+    .st-key-top5_4 button,
+    .st-key-top5_5 button {
+        height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
+        min-height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
+        display: flex !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+        text-align: left !important;
+        padding: 0 10px !important;
+        border: 1px solid rgba(255,255,255,0.10) !important;
+        background: rgba(255,255,255,0.075) !important;
+        box-shadow: none !important;
+    }
+
+    .st-key-top5_1 button *,
+    .st-key-top5_2 button *,
+    .st-key-top5_3 button *,
+    .st-key-top5_4 button *,
+    .st-key-top5_5 button * {
+        text-align: left !important;
+        justify-content: flex-start !important;
+    }
+
+    div[class*="st-key-top5_"] button {
+        height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
+        min-height: clamp(38px, calc(var(--app-dashboard-card-h) * 0.12), 44px) !important;
+        display: flex !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+        text-align: left !important;
+        padding: 0 10px !important;
+        border-radius: 10px !important;
+    }
+
+    div[class*="st-key-top5_"] button * {
+        text-align: left !important;
+        justify-content: flex-start !important;
+        min-height: 0 !important;
+    }
+
+    div[class*="st-key-top5_"] button div[data-testid="stMarkdownContainer"] {
+        width: 100% !important;
+        line-height: 1.2 !important;
+    }
+
+    div[class*="st-key-top5_"] button p {
+        margin: 0 !important;
+        line-height: 1.2 !important;
+    }
+
+    .st-key-top5_1 button div[data-testid="stMarkdownContainer"],
+    .st-key-top5_2 button div[data-testid="stMarkdownContainer"],
+    .st-key-top5_3 button div[data-testid="stMarkdownContainer"],
+    .st-key-top5_4 button div[data-testid="stMarkdownContainer"],
+    .st-key-top5_5 button div[data-testid="stMarkdownContainer"] {
+        width: 100% !important;
+        text-align: left !important;
+    }
+
+    .st-key-top5_1 button p,
+    .st-key-top5_2 button p,
+    .st-key-top5_3 button p,
+    .st-key-top5_4 button p,
+    .st-key-top5_5 button p {
+        text-align: left !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        font-size: clamp(13px, 0.78vw, 15px) !important;
+        line-height: 1.2 !important;
+    }
+
+    .top5-meter {
+        width:100%;
+        margin: clamp(6px, calc(var(--app-dashboard-card-h) * 0.018), 10px) 0 clamp(12px, calc(var(--app-dashboard-card-h) * 0.04), 18px) 0;
+    }
+
+    .top5-track {
+        width:100%;
+        height: clamp(8px, calc(var(--app-dashboard-card-h) * 0.024), 11px);
+        background:rgba(255,255,255,0.08);
+        border-radius:10px;
+        overflow:hidden;
+    }
+
+    .top5-fill {
+        height:100%;
+        border-radius:10px;
+    }
+
+    .top5-count {
+        display:block;
+        margin-top:clamp(3px, calc(var(--app-dashboard-card-h) * 0.012), 5px);
+        font-size:clamp(12px, 0.72vw, 14px);
+        line-height:1.25;
+        color:rgba(255,255,255,0.78) !important;
+    }
+
+    .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
+        gap:clamp(0.3rem, calc(var(--app-dashboard-card-h) * 0.014), 0.55rem) !important;
+    }
+
+    .st-key-dashboard_card_top5 {
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    .st-key-dashboard_card_top5 > div,
+    .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
+        min-height: 0 !important;
+    }
+
+    .st-key-kpi_all button,
+    .st-key-kpi_month button,
+    .st-key-kpi_broken button,
+    .st-key-kpi_defect button,
+    .st-key-kpi_wrong button,
+    .st-key-kpi_shortage button,
+    .st-key-kpi_missing button,
+    .st-key-kpi_etc button,
+    .st-key-kpi_horizontal button,
+    .st-key-kpi_welding button {
+        width: 100% !important;
+        height: var(--app-kpi-h) !important;
+        min-height: var(--app-kpi-h) !important;
+        padding: 8px 11px !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(255,255,255,0.13) !important;
+        background: rgba(255,255,255,0.075) !important;
+        box-shadow: 0 10px 24px rgba(0,0,0,0.16);
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    .st-key-kpi_all button div[data-testid="stMarkdownContainer"],
+    .st-key-kpi_month button div[data-testid="stMarkdownContainer"],
+    .st-key-kpi_broken button div[data-testid="stMarkdownContainer"],
+    .st-key-kpi_defect button div[data-testid="stMarkdownContainer"],
+    .st-key-kpi_wrong button div[data-testid="stMarkdownContainer"],
+    .st-key-kpi_shortage button div[data-testid="stMarkdownContainer"],
+    .st-key-kpi_missing button div[data-testid="stMarkdownContainer"],
+    .st-key-kpi_etc button div[data-testid="stMarkdownContainer"],
+    .st-key-kpi_horizontal button div[data-testid="stMarkdownContainer"],
+    .st-key-kpi_welding button div[data-testid="stMarkdownContainer"] {
+        width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        text-align: center !important;
+    }
+
+    .st-key-kpi_all button p,
+    .st-key-kpi_month button p,
+    .st-key-kpi_broken button p,
+    .st-key-kpi_defect button p,
+    .st-key-kpi_wrong button p,
+    .st-key-kpi_shortage button p,
+    .st-key-kpi_missing button p,
+    .st-key-kpi_etc button p,
+    .st-key-kpi_horizontal button p,
+    .st-key-kpi_welding button p {
+        width: 100% !important;
+        white-space: pre-line !important;
+        text-align: center !important;
+        font-size: 17px !important;
+        font-weight: 700 !important;
+        line-height: 1.28 !important;
+        word-break: keep-all !important;
+        overflow-wrap: normal !important;
+        margin: 0 !important;
+    }
+
+    .st-key-kpi_all button:hover,
+    .st-key-kpi_month button:hover,
+    .st-key-kpi_broken button:hover,
+    .st-key-kpi_defect button:hover,
+    .st-key-kpi_wrong button:hover,
+    .st-key-kpi_shortage button:hover,
+    .st-key-kpi_missing button:hover,
+    .st-key-kpi_etc button:hover,
+    .st-key-kpi_horizontal button:hover,
+    .st-key-kpi_welding button:hover {
+        border-color: rgba(255,255,255,0.28) !important;
+        background: rgba(255,255,255,0.14) !important;
+    }
+
+    /* Viewport fit: keep the current desktop feel while adapting to screen size. */
+    :root {
+        --app-max-width: none;
+        --app-page-x: clamp(0.8rem, 1vw, 1.2rem);
+        --app-page-y: clamp(3.45rem, 4.5vh, 3.95rem);
+        --app-kpi-h: clamp(98px, 10.4vh, 118px);
+        --app-chart-card-h: clamp(345px, 36.5vh, 402px);
+        --app-list-card-h: clamp(296px, 31.8vh, 336px);
+        --app-dashboard-card-h: var(--app-list-card-h);
+        --app-chart-h: calc(var(--app-chart-card-h) - 70px);
+        --app-grid-h: calc(var(--app-list-card-h) - 66px);
+        --app-detail-photo-h: clamp(240px, 34vh, 312px);
+        --app-search-h: clamp(278px, 35.5vh, 402px);
+    }
+
+    .block-container {
+        width: 100% !important;
+        max-width: none !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        padding-top: var(--app-page-y) !important;
+        padding-left: var(--app-page-x) !important;
+        padding-right: var(--app-page-x) !important;
+        padding-bottom: 4rem !important;
+    }
+
+    [data-testid="stAppViewBlockContainer"],
+    [data-testid="stMainBlockContainer"] {
+        max-width:none !important;
+        width:100% !important;
+    }
+
+    [data-testid="stMainBlockContainer"] {
+        padding: var(--app-page-y) var(--app-page-x) 4rem var(--app-page-x) !important;
+    }
+
+    [data-testid="stAppViewBlockContainer"] {
+        padding:0 !important;
+        max-width:none !important;
+        width:100% !important;
+    }
+
+    .st-key-search_results_scroll {
+        min-height: var(--app-search-h) !important;
+        max-height: var(--app-search-h) !important;
+    }
+
+    div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) {
+        align-items: stretch !important;
+        gap: 1rem !important;
+    }
+
+    div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child {
+        flex: 0 0 clamp(390px, 28%, 470px) !important;
+        min-width: 390px !important;
+        max-width: 29% !important;
+    }
+
+    div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:last-child {
+        flex: 1 1 71% !important;
+        min-width: 0 !important;
+    }
+
+    div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child input,
+    div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child textarea,
+    div[data-testid="stHorizontalBlock"]:has(.st-key-search_results_scroll) > div[data-testid="column"]:first-child div[data-baseweb="input"] {
+        width: 100% !important;
+    }
+
+    .st-key-dashboard_card_category,
+    .st-key-dashboard_card_month,
+    .st-key-dashboard_card_recent,
+    .st-key-dashboard_card_top5 {
+        min-height: var(--app-list-card-h) !important;
+        height: var(--app-list-card-h) !important;
+        max-height: var(--app-list-card-h) !important;
+    }
+
+    .st-key-dashboard_card_category,
+    .st-key-dashboard_card_month {
+        min-height: var(--app-chart-card-h) !important;
+        height: var(--app-chart-card-h) !important;
+        max-height: var(--app-chart-card-h) !important;
+    }
+
+    .st-key-dashboard_card_category [data-testid="stPlotlyChart"],
+    .st-key-dashboard_card_month [data-testid="stPlotlyChart"] {
+        max-height: var(--app-chart-h) !important;
+    }
+
+    .st-key-dashboard_card_category [data-testid="stPlotlyChart"] > div,
+    .st-key-dashboard_card_month [data-testid="stPlotlyChart"] > div {
+        max-height: var(--app-chart-h) !important;
+    }
+
+    .st-key-detail_case_photo [data-testid="stImage"],
+    .st-key-detail_repair_photo [data-testid="stImage"] {
+        height: var(--app-detail-photo-h) !important;
+    }
+
+    .st-key-detail_case_photo [data-testid="stImage"] img,
+    .st-key-detail_repair_photo [data-testid="stImage"] img {
+        width: 100% !important;
+        height: calc(var(--app-detail-photo-h) - 12px) !important;
+        max-height: calc(var(--app-detail-photo-h) - 12px) !important;
+        object-fit: contain !important;
+        object-position: center center !important;
+    }
+
+    @media (min-width: 1600px) {
+        :root {
+            --app-max-width: none;
+        }
+    }
+
+    @media (max-height: 850px) {
+        :root {
+            --app-page-y: 3.2rem;
+            --app-kpi-h: 94px;
+            --app-chart-card-h: 354px;
+            --app-list-card-h: 306px;
+            --app-dashboard-card-h: var(--app-list-card-h);
+            --app-search-h: 278px;
+        }
+    }
+
+    @media (max-height: 760px) {
+        :root {
+            --app-page-y: 2.9rem;
+            --app-kpi-h: 88px;
+            --app-chart-card-h: 338px;
+            --app-list-card-h: 282px;
+            --app-dashboard-card-h: var(--app-list-card-h);
+            --app-detail-photo-h: 250px;
+            --app-search-h: 244px;
+        }
+
+        div[data-testid="stButton"] button {
+            height: 62px !important;
+        }
+
+        div[class*="st-key-top5_"] button {
+            height: 38px !important;
+            min-height: 38px !important;
+        }
+    }
+
+    @media (max-width: 900px) {
+        :root {
+            --app-page-x: 0.85rem;
+            --app-kpi-h: 92px;
+            --app-chart-card-h: 350px;
+            --app-list-card-h: 320px;
+            --app-dashboard-card-h: var(--app-list-card-h);
+            --app-detail-photo-h: 260px;
+            --app-search-h: 260px;
+        }
+
+        .block-container {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+    }
+
+    .st-key-main_excel_download_btn,
+    div[class*="st-key-main_excel_download_btn"] {
+        position: static !important;
+        margin: 0.85rem 0 0 var(--app-page-x) !important;
+        width: auto !important;
+        max-width: calc(100vw - (var(--app-page-x) * 2)) !important;
+        z-index: auto !important;
+    }
+
+    .st-key-main_excel_download_btn div[data-testid="stDownloadButton"],
+    div[class*="st-key-main_excel_download_btn"] div[data-testid="stDownloadButton"] {
+        width: auto !important;
+    }
+
+    .st-key-main_excel_download_btn button,
+    div[class*="st-key-main_excel_download_btn"] button {
+        width: auto !important;
+        min-width: 112px !important;
+        min-height: 38px !important;
+        height: 38px !important;
+        padding: 0 16px !important;
+        border-radius: 12px !important;
+    }
+
+    /* Responsive action buttons: prevent fixed-width buttons from overlapping in narrow layouts. */
+    .st-key-save_case_btn,
+    .st-key-excel_form_download_btn,
+    .st-key-register_date_edit_btn,
+    .st-key-edit_date_edit_btn,
+    .st-key-back_dashboard_btn,
+    .st-key-edit_back_btn,
+    .st-key-detail_pdf_download_btn,
+    .st-key-detail_edit_btn,
+    .st-key-detail_delete_btn,
+    .st-key-edit_save_btn,
+    .st-key-edit_cancel_btn {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .st-key-save_case_btn div[data-testid="stButton"],
+    .st-key-excel_form_download_btn div[data-testid="stDownloadButton"],
+    .st-key-register_date_edit_btn div[data-testid="stButton"],
+    .st-key-edit_date_edit_btn div[data-testid="stButton"],
+    .st-key-back_dashboard_btn div[data-testid="stButton"],
+    .st-key-edit_back_btn div[data-testid="stButton"],
+    .st-key-detail_pdf_download_btn div[data-testid="stDownloadButton"],
+    .st-key-detail_edit_btn div[data-testid="stButton"],
+    .st-key-detail_delete_btn div[data-testid="stButton"],
+    .st-key-edit_save_btn div[data-testid="stButton"],
+    .st-key-edit_cancel_btn div[data-testid="stButton"] {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .st-key-save_case_btn button,
+    .st-key-excel_form_download_btn button,
+    .st-key-register_date_edit_btn button,
+    .st-key-edit_date_edit_btn button,
+    .st-key-back_dashboard_btn button,
+    .st-key-edit_back_btn button,
+    .st-key-detail_pdf_download_btn button,
+    .st-key-detail_edit_btn button,
+    .st-key-detail_delete_btn button,
+    .st-key-edit_save_btn button,
+    .st-key-edit_cancel_btn button {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        height: auto !important;
+        min-height: 36px !important;
+        padding: 7px 9px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+    }
+
+    .st-key-save_case_btn button p,
+    .st-key-excel_form_download_btn button p,
+    .st-key-register_date_edit_btn button p,
+    .st-key-edit_date_edit_btn button p,
+    .st-key-back_dashboard_btn button p,
+    .st-key-edit_back_btn button p,
+    .st-key-detail_pdf_download_btn button p,
+    .st-key-detail_edit_btn button p,
+    .st-key-detail_delete_btn button p,
+    .st-key-edit_save_btn button p,
+    .st-key-edit_cancel_btn button p {
+        width: 100% !important;
+        margin: 0 !important;
+        font-size: clamp(11px, 1.05vw, 15px) !important;
+        line-height: 1.18 !important;
+        text-align: center !important;
+        white-space: normal !important;
+        overflow-wrap: keep-all !important;
+        word-break: keep-all !important;
+    }
+
+    .st-key-save_case_btn button p,
+    .st-key-excel_form_download_btn button p,
+    .st-key-register_date_edit_btn button p,
+    .st-key-edit_date_edit_btn button p,
+    .st-key-back_dashboard_btn button p,
+    .st-key-edit_back_btn button p,
+    .st-key-detail_pdf_download_btn button p,
+    .st-key-detail_edit_btn button p,
+    .st-key-detail_delete_btn button p,
+    .st-key-edit_save_btn button p,
+    .st-key-edit_cancel_btn button p {
+        white-space: nowrap !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+    }
+
+    .st-key-save_case_btn button,
+    .st-key-excel_form_download_btn button,
+    .st-key-back_dashboard_btn button,
+    .st-key-edit_back_btn button {
+        min-height: 34px !important;
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+
+    @media (max-width: 760px) {
+        .st-key-save_case_btn button,
+        .st-key-excel_form_download_btn button,
+        .st-key-register_date_edit_btn button,
+        .st-key-edit_date_edit_btn button,
+        .st-key-back_dashboard_btn button,
+        .st-key-edit_back_btn button,
+        .st-key-detail_pdf_download_btn button,
+        .st-key-detail_edit_btn button,
+        .st-key-detail_delete_btn button,
+        .st-key-edit_save_btn button,
+        .st-key-edit_cancel_btn button {
+            min-height: 40px !important;
+            padding: 6px 7px !important;
+        }
+    }
+
+    /* Action button rows */
+    :root {
+        --app-action-gap: clamp(6px, 0.45vw, 10px);
+        --app-detail-action-gap: 48px;
+        --app-detail-action-row-width: 496px;
+        --app-detail-min-width: 560px;
+        --app-action-btn-h: 36px;
+    }
+
+    html,
+    body,
+    [data-testid="stAppViewContainer"] {
+        overflow-x: auto !important;
+    }
+
+    .block-container:has(.app-detail-page-title),
+    .block-container:has(.st-key-detail_info_card),
+    .block-container:has(div[class*="st-key-detail_info_card"]) {
+        min-width: var(--app-detail-min-width) !important;
+    }
+
+    .st-key-register_action_row div[data-testid="stHorizontalBlock"],
+    .st-key-detail_action_row div[data-testid="stHorizontalBlock"] {
+        align-items: center !important;
+        gap: var(--app-action-gap) !important;
+    }
+
+    .st-key-detail_action_row,
+    div[class*="st-key-detail_action_row"] {
+        width: max-content !important;
+        min-width: var(--app-detail-action-row-width) !important;
+        overflow: visible !important;
     }
 
     .st-key-detail_action_row div[data-testid="stHorizontalBlock"],
     div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-wrap: nowrap !important;
         gap: 0 !important;
+        width: max-content !important;
+        min-width: var(--app-detail-action-row-width) !important;
+        overflow: visible !important;
+    }
+
+    .st-key-detail_info_card,
+    div[class*="st-key-detail_info_card"] {
+        min-width: var(--app-detail-min-width) !important;
+        overflow: visible !important;
+    }
+
+    .detail-action-gap {
+        width: var(--app-detail-action-gap) !important;
+        min-width: var(--app-detail-action-gap) !important;
+        height: var(--app-action-btn-h) !important;
+    }
+
+    .st-key-register_action_row div[data-testid="column"],
+    .st-key-detail_action_row div[data-testid="column"] {
+        min-width: 0 !important;
+    }
+
+    .st-key-detail_action_row div[data-testid="stHorizontalBlock"] div[data-testid="column"],
+    div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] div[data-testid="column"] {
+        flex: 0 0 auto !important;
+        margin: 0 !important;
+        min-width: 0 !important;
+        max-width: none !important;
+    }
+
+    .st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1),
+    div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) {
+        flex: 0 0 168px !important;
+        width: 168px !important;
+        min-width: 168px !important;
+        max-width: 168px !important;
+    }
+
+    .st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2),
+    div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2),
+    .st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(4),
+    div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(4) {
+        flex: 0 0 var(--app-detail-action-gap) !important;
+        width: var(--app-detail-action-gap) !important;
+        min-width: var(--app-detail-action-gap) !important;
+        max-width: var(--app-detail-action-gap) !important;
+    }
+
+    .st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3),
+    div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3),
+    .st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(5),
+    div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(5) {
+        flex: 0 0 116px !important;
+        width: 116px !important;
+        min-width: 116px !important;
+        max-width: 116px !important;
+    }
+
+    .st-key-detail_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(6),
+    div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(6) {
+        display: none !important;
+        flex: 0 0 0 !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+    }
+
+    .st-key-register_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1),
+    .st-key-register_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3) {
+        flex: 0 0 auto !important;
+        flex-basis: 102px !important;
+        width: 102px !important;
+        min-width: 102px !important;
+    }
+
+    .st-key-register_action_row div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {
+        flex: 0 0 var(--app-action-gap) !important;
+        width: var(--app-action-gap) !important;
+        min-width: var(--app-action-gap) !important;
+    }
+
+    .st-key-register_action_row button,
+    .st-key-detail_action_row button {
+        width: 100% !important;
+        min-width: 0 !important;
+        height: var(--app-action-btn-h) !important;
+        min-height: var(--app-action-btn-h) !important;
+        padding: 0 12px !important;
+        box-sizing: border-box !important;
+        white-space: nowrap !important;
+    }
+
+    .st-key-register_action_row button p,
+    .st-key-detail_action_row button p {
+        margin: 0 !important;
+        font-size: 15px !important;
+        line-height: 1 !important;
+        white-space: nowrap !important;
+        overflow: visible !important;
+    }
+
+    /* Fixed readable widths for action buttons. */
+    .st-key-detail_pdf_download_btn,
+    .st-key-detail_pdf_download_btn div[data-testid="stDownloadButton"],
+    .st-key-detail_pdf_download_btn button {
+        width: 168px !important;
+        min-width: 168px !important;
+        max-width: 168px !important;
+    }
+
+    .st-key-detail_edit_btn,
+    .st-key-detail_delete_btn,
+    .st-key-detail_edit_btn div[data-testid="stButton"],
+    .st-key-detail_delete_btn div[data-testid="stButton"],
+    .st-key-detail_edit_btn button,
+    .st-key-detail_delete_btn button {
+        width: 116px !important;
+        min-width: 116px !important;
+        max-width: 116px !important;
+    }
+
+    .st-key-save_case_btn,
+    .st-key-excel_form_download_btn,
+    .st-key-save_case_btn div[data-testid="stButton"],
+    .st-key-excel_form_download_btn div[data-testid="stDownloadButton"],
+    .st-key-save_case_btn button,
+    .st-key-excel_form_download_btn button {
+        width: 112px !important;
+        min-width: 112px !important;
+        max-width: 112px !important;
+    }
+
+    .st-key-detail_pdf_download_btn button p,
+    .st-key-detail_edit_btn button p,
+    .st-key-detail_delete_btn button p,
+    .st-key-save_case_btn button p,
+    .st-key-excel_form_download_btn button p {
+        width: 100% !important;
+        text-align: center !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
     }
 
     .st-key-detail_pdf_download_btn,
     .st-key-detail_edit_btn,
     .st-key-save_case_btn {
-        margin-right: 12px !important;
+        margin-right: clamp(6px, 0.45vw, 10px) !important;
     }
 
     .st-key-detail_action_row .st-key-detail_pdf_download_btn,
@@ -3421,334 +3400,564 @@ div[class*="st-key-detail_action_row"] div[class*="st-key-detail_delete_btn"] {
     div[class*="st-key-detail_action_row"] div[class*="st-key-detail_delete_btn"] {
         margin-right: 0 !important;
     }
-}
-            
-</style>
-""", unsafe_allow_html=True)
-# ==========================
-# 사례번호 자동생성
-# ==========================
 
-if "register_case_date" not in st.session_state:
-    st.session_state.register_case_date = datetime.now().date()
+    @media (max-width: 900px) {
+        .st-key-register_action_row div[data-testid="stHorizontalBlock"] {
+            gap: 12px !important;
+        }
 
-if "register_date_edit_open" not in st.session_state:
-    st.session_state.register_date_edit_open = False
+        .st-key-detail_action_row div[data-testid="stHorizontalBlock"],
+        div[class*="st-key-detail_action_row"] div[data-testid="stHorizontalBlock"] {
+            gap: 0 !important;
+        }
 
-if "register_expander_open" not in st.session_state:
-    st.session_state.register_expander_open = False
+        .st-key-detail_pdf_download_btn,
+        .st-key-detail_edit_btn,
+        .st-key-save_case_btn {
+            margin-right: 12px !important;
+        }
 
-case_id = get_next_case_id(st.session_state.register_case_date)
+        .st-key-detail_action_row .st-key-detail_pdf_download_btn,
+        .st-key-detail_action_row .st-key-detail_edit_btn,
+        .st-key-detail_action_row .st-key-detail_delete_btn,
+        div[class*="st-key-detail_action_row"] div[class*="st-key-detail_pdf_download_btn"],
+        div[class*="st-key-detail_action_row"] div[class*="st-key-detail_edit_btn"],
+        div[class*="st-key-detail_action_row"] div[class*="st-key-detail_delete_btn"] {
+            margin-right: 0 !important;
+        }
+    }
 
-if "selected_case" not in st.session_state:
-    st.session_state.selected_case = None
+    </style>
+    """, unsafe_allow_html=True)
+    # ==========================
+    # 사례번호 자동생성
+    # ==========================
 
-if "edit_case" not in st.session_state:
-    st.session_state.edit_case = None
+    if "register_case_date" not in st.session_state:
+        st.session_state.register_case_date = datetime.now().date()
 
-if "dashboard_filter" not in st.session_state:
-    st.session_state.dashboard_filter = None
+    if "register_date_edit_open" not in st.session_state:
+        st.session_state.register_date_edit_open = False
 
-if "dashboard_month" not in st.session_state:
-    st.session_state.dashboard_month = datetime.now().strftime("%Y%m")
+    if "register_expander_open" not in st.session_state:
+        st.session_state.register_expander_open = False
 
-query_return_case_filter = st.query_params.get("return_case_filter")
-query_return_case_month = st.query_params.get("return_case_month")
-query_return_case_id = st.query_params.get("return_case_id")
-if isinstance(query_return_case_filter, list):
-    query_return_case_filter = query_return_case_filter[0] if query_return_case_filter else ""
-if isinstance(query_return_case_month, list):
-    query_return_case_month = query_return_case_month[0] if query_return_case_month else ""
-if isinstance(query_return_case_id, list):
-    query_return_case_id = query_return_case_id[0] if query_return_case_id else ""
+    case_id = get_next_case_id(st.session_state.register_case_date)
 
-if query_return_case_id:
-    c.execute(
-        """
-        SELECT
-            case_id,
-            category,
-            barcode,
-            product,
-            cause,
-            action,
-            repair_method,
-            prevention,
-            product_image,
-            case_image,
-            repair_image
-        FROM cases
-        WHERE case_id = ?
-        """,
-        (str(query_return_case_id),),
-    )
-    selected_query_case = c.fetchone()
-    if selected_query_case:
-        st.session_state.selected_case = selected_query_case
+    if "selected_case" not in st.session_state:
+        st.session_state.selected_case = None
+
+    if "edit_case" not in st.session_state:
         st.session_state.edit_case = None
+
+    if "dashboard_filter" not in st.session_state:
         st.session_state.dashboard_filter = None
 
-if query_return_case_filter and not query_return_case_id:
-    st.session_state.dashboard_filter = query_return_case_filter
-    st.session_state.selected_case = None
-    st.session_state.edit_case = None
+    if "dashboard_month" not in st.session_state:
+        st.session_state.dashboard_month = datetime.now().strftime("%Y%m")
 
-if query_return_case_month and str(query_return_case_month).isdigit() and len(str(query_return_case_month)) == 6:
-    st.session_state.dashboard_month = str(query_return_case_month)
+    query_return_case_filter = st.query_params.get("return_case_filter")
+    query_return_case_month = st.query_params.get("return_case_month")
+    query_return_case_id = st.query_params.get("return_case_id")
+    if isinstance(query_return_case_filter, list):
+        query_return_case_filter = query_return_case_filter[0] if query_return_case_filter else ""
+    if isinstance(query_return_case_month, list):
+        query_return_case_month = query_return_case_month[0] if query_return_case_month else ""
+    if isinstance(query_return_case_id, list):
+        query_return_case_id = query_return_case_id[0] if query_return_case_id else ""
 
-if st.session_state.dashboard_filter == "변심":
-    st.session_state.dashboard_filter = "누락"
+    if query_return_case_id:
+        c.execute(
+            """
+            SELECT
+                case_id,
+                category,
+                barcode,
+                product,
+                cause,
+                action,
+                repair_method,
+                prevention,
+                product_image,
+                case_image,
+                repair_image
+            FROM cases
+            WHERE case_id = ?
+            """,
+            (str(query_return_case_id),),
+        )
+        selected_query_case = c.fetchone()
+        if selected_query_case:
+            st.session_state.selected_case = selected_query_case
+            st.session_state.edit_case = None
+            st.session_state.dashboard_filter = None
 
-if "register_form_version" not in st.session_state:
-    st.session_state.register_form_version = 0
+    if query_return_case_filter and not query_return_case_id:
+        st.session_state.dashboard_filter = query_return_case_filter
+        st.session_state.selected_case = None
+        st.session_state.edit_case = None
 
-page_title_html = ""
-is_detail_page = (
-    st.session_state.selected_case is not None
-    and st.session_state.edit_case is None
-)
+    if query_return_case_month and str(query_return_case_month).isdigit() and len(str(query_return_case_month)) == 6:
+        st.session_state.dashboard_month = str(query_return_case_month)
 
-if not st.session_state.edit_case and not st.session_state.selected_case:
+    if st.session_state.dashboard_filter == "변심":
+        st.session_state.dashboard_filter = "누락"
+
+    if "register_form_version" not in st.session_state:
+        st.session_state.register_form_version = 0
+
     page_title_html = ""
-
-main_column_ratio = [1.12, 2.88]
-main_header_grid = "1.12fr 2.88fr"
-
-if is_detail_page:
-    header_left, header_right = st.columns(main_column_ratio, gap="small")
-
-    with header_left:
-        st.markdown(
-            '<div class="app-subtitle">반품/AS 관리</div>',
-            unsafe_allow_html=True,
-        )
-
-    with header_right:
-        back_col, _back_spacer = st.columns([2.15, 7.85], gap="small")
-
-        with back_col:
-            if st.button(
-                "← 📊 대시보드",
-                key="back_dashboard_btn",
-                use_container_width=True
-            ):
-                st.session_state.selected_case = None
-                st.rerun()
-
-        st.markdown(
-            '<div class="detail-page-title app-detail-page-title">사례 상세보기</div>',
-            unsafe_allow_html=True,
-        )
-
-elif st.session_state.edit_case:
-    header_left, header_right = st.columns(main_column_ratio, gap="small")
-
-    with header_left:
-        st.markdown(
-            '<div class="app-subtitle">반품/AS 관리</div>',
-            unsafe_allow_html=True,
-        )
-
-    with header_right:
-        back_col, _back_spacer = st.columns([2.15, 7.85], gap="small")
-
-        with back_col:
-            if st.button(
-                "← 📄 상세보기",
-                key="edit_back_btn",
-                use_container_width=True
-            ):
-                edit_header_data = st.session_state.edit_case
-                clear_marker_session_state(f"edit_case_marker_{edit_header_data[0]}")
-                clear_marker_session_state(f"edit_repair_marker_{edit_header_data[0]}")
-
-                st.session_state.selected_case = edit_header_data
-                st.session_state.edit_case = None
-                st.session_state.edit_date_edit_open = False
-                st.session_state.edit_date_case_id = None
-
-                st.rerun()
-
-        st.markdown(
-            '<div class="detail-page-title app-detail-page-title">사례 수정</div>',
-            unsafe_allow_html=True,
-        )
-
-else:
-    st.markdown(
-        '<div class="app-subtitle app-main-subtitle">반품/AS 관리</div>',
-        unsafe_allow_html=True,
+    is_detail_page = (
+        st.session_state.selected_case is not None
+        and st.session_state.edit_case is None
     )
 
-# ==========================
-# 검색 화면
-# ==========================
+    if not st.session_state.edit_case and not st.session_state.selected_case:
+        page_title_html = ""
 
-left, right = st.columns(main_column_ratio, gap="small")
+    main_column_ratio = [1.12, 2.88]
+    main_header_grid = "1.12fr 2.88fr"
 
-# --------------------------
-# 왼쪽
-# --------------------------
-with left:
-    
-    with st.expander(
-        "사례 등록",
-        expanded=st.session_state.register_expander_open
-    ):
+    if is_detail_page:
+        header_left, header_right = st.columns(main_column_ratio, gap="small")
 
-        register_form_version = st.session_state.register_form_version
-
-        case_id_col, date_edit_col = st.columns([2.2, 1], gap="small")
-
-        with case_id_col:
-
-            st.text(f"사례번호 : {case_id}")
-
-        with date_edit_col:
-
-            if st.button(
-                "📅 일자 수정",
-                key="register_date_edit_btn"
-            ):
-
-                st.session_state.register_expander_open = True
-                st.session_state.register_date_edit_open = (
-                    not st.session_state.register_date_edit_open
-                )
-
-        if st.session_state.register_date_edit_open:
-
-            selected_register_date = st.date_input(
-                "발생일자",
-                value=st.session_state.register_case_date,
-                key=f"register_case_date_input_{register_form_version}"
+        with header_left:
+            st.markdown(
+                '<div class="app-subtitle">반품/AS 관리</div>',
+                unsafe_allow_html=True,
             )
 
-            if selected_register_date != st.session_state.register_case_date:
+        with header_right:
+            back_col, _back_spacer = st.columns([2.15, 7.85], gap="small")
 
-                st.session_state.register_case_date = selected_register_date
-
-                st.rerun()
-
-        category = st.selectbox(
-            "유형",
-            CASE_CATEGORIES,
-            key=f"register_category_{register_form_version}"
-        )
-
-        product = st.text_input(
-            "상품명",
-            key=f"register_product_{register_form_version}"
-        )
-
-        barcode = st.text_input(
-            "바코드",
-            key=f"register_barcode_{register_form_version}"
-        )
-
-        product_image = st.file_uploader(
-            "상품 대표사진",
-            type=["jpg", "jpeg", "png"],
-            key=f"register_product_image_{register_form_version}"
-        )
-
-        cause = st.text_area(
-            "원인",
-            height=120,
-            key=f"register_cause_{register_form_version}"
-        )
-
-        case_image = st.file_uploader(
-            "사례 첨부사진",
-            type=["jpg", "jpeg", "png"],
-            accept_multiple_files=True,
-            key=f"register_case_image_{register_form_version}"
-        )
-
-        case_image_original_data = get_first_upload_bytes(case_image)
-
-        case_image_data = part_marker_tool(
-            case_image_original_data,
-            f"register_case_marker_{register_form_version}",
-            "사례사진 부위 표시",
-            restore_image_data=case_image_original_data,
-        )
-
-        action = st.text_area(
-            "조치방법",
-            height=120,
-            key=f"register_action_{register_form_version}"
-        )
-
-        repair_method = st.text_area(
-            "수리방법",
-            height=120,
-            key=f"register_repair_method_{register_form_version}"
-        )
-
-        repair_image = st.file_uploader(
-            "수리방법 사진",
-            type=["jpg", "jpeg", "png"],
-            accept_multiple_files=True,
-            key=f"register_repair_image_{register_form_version}"
-        )
-
-        repair_image_original_data = get_first_upload_bytes(repair_image)
-
-        repair_image_data = blue_circle_marker_tool(
-            repair_image_original_data,
-            f"register_repair_marker_{register_form_version}",
-            show_photo_buttons=False,
-        )
-
-        prevention = st.text_area(
-            "방지대책",
-            height=120,
-            key=f"register_prevention_{register_form_version}"
-        )
-
-        excel_form_upload = st.file_uploader(
-            "엑셀 폼 업로드",
-            type=["xlsx"],
-            key=f"register_excel_form_{register_form_version}"
-        )
-
-        with st.container(key="register_action_row"):
-
-            save_col, register_btn_gap, form_col = st.columns(
-                [1, 0.18, 1],
-                gap="small",
-            )
-
-            with save_col:
-
+            with back_col:
                 if st.button(
-                    "💾 저장하기",
-                    key="save_case_btn",
+                    "← 📊 대시보드",
+                    key="back_dashboard_btn",
                     use_container_width=True
                 ):
+                    st.session_state.selected_case = None
+                    st.rerun()
 
-                    if excel_form_upload is not None:
-                        try:
-                            registered_case_id = insert_case_from_excel_form(excel_form_upload)
+            st.markdown(
+                '<div class="detail-page-title app-detail-page-title">사례 상세보기</div>',
+                unsafe_allow_html=True,
+            )
+
+    elif st.session_state.edit_case:
+        header_left, header_right = st.columns(main_column_ratio, gap="small")
+
+        with header_left:
+            st.markdown(
+                '<div class="app-subtitle">반품/AS 관리</div>',
+                unsafe_allow_html=True,
+            )
+
+        with header_right:
+            back_col, _back_spacer = st.columns([2.15, 7.85], gap="small")
+
+            with back_col:
+                if st.button(
+                    "← 📄 상세보기",
+                    key="edit_back_btn",
+                    use_container_width=True
+                ):
+                    edit_header_data = st.session_state.edit_case
+                    clear_marker_session_state(f"edit_case_marker_{edit_header_data[0]}")
+                    clear_marker_session_state(f"edit_repair_marker_{edit_header_data[0]}")
+
+                    st.session_state.selected_case = edit_header_data
+                    st.session_state.edit_case = None
+                    st.session_state.edit_date_edit_open = False
+                    st.session_state.edit_date_case_id = None
+
+                    st.rerun()
+
+            st.markdown(
+                '<div class="detail-page-title app-detail-page-title">사례 수정</div>',
+                unsafe_allow_html=True,
+            )
+
+    else:
+        st.markdown(
+            '<div class="app-subtitle app-main-subtitle">반품/AS 관리</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ==========================
+    # 검색 화면
+    # ==========================
+
+    left, right = st.columns(main_column_ratio, gap="small")
+
+    # --------------------------
+    # 왼쪽
+    # --------------------------
+    with left:
+
+        with st.expander(
+            "사례 등록",
+            expanded=st.session_state.register_expander_open
+        ):
+
+            register_form_version = st.session_state.register_form_version
+
+            case_id_col, date_edit_col = st.columns([2.2, 1], gap="small")
+
+            with case_id_col:
+
+                st.text(f"사례번호 : {case_id}")
+
+            with date_edit_col:
+
+                if st.button(
+                    "📅 일자 수정",
+                    key="register_date_edit_btn"
+                ):
+
+                    st.session_state.register_expander_open = True
+                    st.session_state.register_date_edit_open = (
+                        not st.session_state.register_date_edit_open
+                    )
+
+            if st.session_state.register_date_edit_open:
+
+                selected_register_date = st.date_input(
+                    "발생일자",
+                    value=st.session_state.register_case_date,
+                    key=f"register_case_date_input_{register_form_version}"
+                )
+
+                if selected_register_date != st.session_state.register_case_date:
+
+                    st.session_state.register_case_date = selected_register_date
+
+                    st.rerun()
+
+            category = st.selectbox(
+                "유형",
+                CASE_CATEGORIES,
+                key=f"register_category_{register_form_version}"
+            )
+
+            product = st.text_input(
+                "상품명",
+                key=f"register_product_{register_form_version}"
+            )
+
+            barcode = st.text_input(
+                "바코드",
+                key=f"register_barcode_{register_form_version}"
+            )
+
+            product_image = st.file_uploader(
+                "상품 대표사진",
+                type=["jpg", "jpeg", "png"],
+                key=f"register_product_image_{register_form_version}"
+            )
+
+            cause = st.text_area(
+                "원인",
+                height=120,
+                key=f"register_cause_{register_form_version}"
+            )
+
+            case_image = st.file_uploader(
+                "사례 첨부사진",
+                type=["jpg", "jpeg", "png"],
+                accept_multiple_files=True,
+                key=f"register_case_image_{register_form_version}"
+            )
+
+            case_image_original_data = get_first_upload_bytes(case_image)
+
+            case_image_data = part_marker_tool(
+                case_image_original_data,
+                f"register_case_marker_{register_form_version}",
+                "사례사진 부위 표시",
+                restore_image_data=case_image_original_data,
+            )
+
+            action = st.text_area(
+                "조치방법",
+                height=120,
+                key=f"register_action_{register_form_version}"
+            )
+
+            repair_method = st.text_area(
+                "수리방법",
+                height=120,
+                key=f"register_repair_method_{register_form_version}"
+            )
+
+            repair_image = st.file_uploader(
+                "수리방법 사진",
+                type=["jpg", "jpeg", "png"],
+                accept_multiple_files=True,
+                key=f"register_repair_image_{register_form_version}"
+            )
+
+            repair_image_original_data = get_first_upload_bytes(repair_image)
+
+            repair_image_data = blue_circle_marker_tool(
+                repair_image_original_data,
+                f"register_repair_marker_{register_form_version}",
+                show_photo_buttons=False,
+            )
+
+            prevention = st.text_area(
+                "방지대책",
+                height=120,
+                key=f"register_prevention_{register_form_version}"
+            )
+
+            excel_form_upload = st.file_uploader(
+                "엑셀 폼 업로드",
+                type=["xlsx"],
+                key=f"register_excel_form_{register_form_version}"
+            )
+
+            with st.container(key="register_action_row"):
+
+                save_col, register_btn_gap, form_col = st.columns(
+                    [1, 0.18, 1],
+                    gap="small",
+                )
+
+                with save_col:
+
+                    if st.button(
+                        "💾 저장하기",
+                        key="save_case_btn",
+                        use_container_width=True
+                    ):
+
+                        if excel_form_upload is not None:
+                            try:
+                                registered_case_id = insert_case_from_excel_form(excel_form_upload)
+                                st.session_state.register_form_version += 1
+                                st.session_state.register_case_date = datetime.now().date()
+                                st.session_state.register_date_edit_open = False
+                                st.session_state.register_expander_open = False
+                                st.success(f"엑셀 폼 저장 완료: {registered_case_id}")
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"엑셀 폼 저장 중 오류가 발생했습니다: {exc}")
+                        else:
+                            product_image_data = (
+                                product_image.getvalue()
+                                if product_image
+                                else None
+                            )
+
+                            c.execute("""
+                            INSERT INTO cases
+                            (
+                                case_id,
+                                category,
+                                barcode,
+                                product,
+                                cause,
+                                action,
+                                repair_method,
+                                prevention,
+                                product_image,
+                                case_image,
+                                case_image_original,
+                                repair_image,
+                                repair_image_original
+                            )
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            """,
+                            (
+                                case_id,
+                                category,
+                                barcode,
+                                product,
+                                cause,
+                                action,
+                                repair_method,
+                                prevention,
+                                product_image_data,
+                                case_image_data,
+                                case_image_original_data,
+                                repair_image_data,
+                                repair_image_original_data
+                            ))
+
+                            conn.commit()
+
                             st.session_state.register_form_version += 1
                             st.session_state.register_case_date = datetime.now().date()
                             st.session_state.register_date_edit_open = False
                             st.session_state.register_expander_open = False
-                            st.success(f"엑셀 폼 저장 완료: {registered_case_id}")
+
+                            st.success("저장 완료")
+
                             st.rerun()
-                        except Exception as exc:
-                            st.error(f"엑셀 폼 저장 중 오류가 발생했습니다: {exc}")
-                    else:
-                        product_image_data = (
-                            product_image.getvalue()
-                            if product_image
-                            else None
-                        )
+
+                with register_btn_gap:
+
+                    st.markdown(
+                        '<div class="action-button-gap"></div>',
+                        unsafe_allow_html=True,
+                    )
+
+                with form_col:
+
+                    st.download_button(
+                        label="📗 폼다운",
+                        data=create_case_excel_form(st.session_state.register_case_date),
+                        file_name="사례등록_엑셀폼.xlsx",
+                        mime=CASE_EXCEL_FORM_MIME,
+                        key="excel_form_download_btn",
+                        use_container_width=True
+                    )
+
+        if "top5_pending_keyword" in st.session_state:
+            st.session_state["search_type"] = "상품명"
+            st.session_state["search_keyword"] = st.session_state.pop("top5_pending_keyword")
+            st.session_state["top5_keyword"] = st.session_state["search_keyword"]
+            st.session_state.dashboard_filter = None
+            st.session_state.selected_case = None
+
+        search_type = st.radio(
+            "검색 기준",
+            ["상품명", "바코드", "사례번호", "유형", "원인", "수리방법"],
+            horizontal=True,
+            key="search_type"
+        )
+
+        keyword = st.text_input(
+            "검색어",
+            key="search_keyword"
+        )
+
+        st.markdown(
+            '<div class="search-result-title">검색 결과</div>',
+            unsafe_allow_html=True
+        )
+
+    results = []
+
+    dashboard_filter = st.session_state.get(
+        "dashboard_filter",
+        None
+    )
+
+    if dashboard_filter == "ALL":
+
+        c.execute("""
+        SELECT case_id, category, product
+        FROM cases
+        ORDER BY id DESC
+        """)
+
+        results = c.fetchall()
+
+    elif dashboard_filter == "MONTH":
+
+        current_month = st.session_state.get("dashboard_month") or datetime.now().strftime("%Y%m")
+
+        c.execute("""
+        SELECT case_id, category, product
+        FROM cases
+        WHERE substr(case_id,1,6)=?
+        ORDER BY id DESC
+        """, (current_month,))
+
+        results = c.fetchall()
+
+    elif dashboard_filter:
+
+        c.execute("""
+        SELECT case_id, category, product
+        FROM cases
+        WHERE category=?
+        ORDER BY id DESC
+        """, (dashboard_filter,))
+
+        results = c.fetchall()
+
+    elif keyword:
+
+        if search_type == "상품명":
+
+            c.execute("""
+            SELECT case_id, category, product
+            FROM cases
+            WHERE product LIKE ?
+            """, (f"%{keyword}%",))
+
+        elif search_type == "바코드":
+
+            c.execute("""
+            SELECT case_id, category, product
+            FROM cases
+            WHERE barcode LIKE ?
+            """, (f"%{keyword}%",))
+
+        elif search_type == "사례번호":
+
+            c.execute("""
+            SELECT case_id, category, product
+            FROM cases
+            WHERE case_id LIKE ?
+            """, (f"%{keyword}%",))
+
+        elif search_type == "유형":
+
+            c.execute("""
+            SELECT case_id, category, product
+            FROM cases
+            WHERE category LIKE ?
+            """, (f"%{keyword}%",))
+
+        elif search_type == "원인":
+
+            c.execute("""
+            SELECT case_id, category, product
+            FROM cases
+            WHERE cause LIKE ?
+            """, (f"%{keyword}%",))
+
+        elif search_type == "수리방법":
+
+            c.execute("""
+            SELECT case_id, category, product
+            FROM cases
+            WHERE repair_method LIKE ?
+            """, (f"%{keyword}%",))
+
+        results = c.fetchall()
+
+    if results:
+
+        with left.container(
+            height=320,
+            border=False,
+            key="search_results_scroll"
+        ):
+
+            for row in results:
+
+                product_name = row[2]
+
+                if len(product_name) > 45:
+                    product_name = product_name[:45] + "..."
+
+                row_col1, row_col2 = st.columns([18, 3], gap="small")
+
+                with row_col1:
+
+                    if st.button(
+                        f"{row[0]} | {row[1]} | {product_name}",
+                        key=f"select_{row[0]}",
+                        use_container_width=True
+                    ):
 
                         c.execute("""
-                        INSERT INTO cases
-                        (
+                        SELECT
                             case_id,
                             category,
                             barcode,
@@ -3759,198 +3968,635 @@ with left:
                             prevention,
                             product_image,
                             case_image,
-                            case_image_original,
-                            repair_image,
-                            repair_image_original
-                        )
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-                        """,
-                        (
-                            case_id,
-                            category,
-                            barcode,
-                            product,
-                            cause,
-                            action,
-                            repair_method,
-                            prevention,
-                            product_image_data,
-                            case_image_data,
-                            case_image_original_data,
-                            repair_image_data,
-                            repair_image_original_data
-                        ))
+                            repair_image
+                        FROM cases
+                        WHERE case_id = ?
+                        """, (row[0],))
 
-                        conn.commit()
-
-                        st.session_state.register_form_version += 1
-                        st.session_state.register_case_date = datetime.now().date()
-                        st.session_state.register_date_edit_open = False
-                        st.session_state.register_expander_open = False
-
-                        st.success("저장 완료")
+                        st.session_state.selected_case = c.fetchone()
 
                         st.rerun()
 
-            with register_btn_gap:
+                with row_col2:
+
+                    if st.button(
+                        "❌",
+                        key=f"del_{row[0]}",
+                        use_container_width=True
+                    ):
+
+                        c.execute(
+                            "DELETE FROM cases WHERE case_id = ?",
+                            (row[0],)
+                        )
+
+                        conn.commit()
+
+                        st.success("삭제 완료")
+
+                        st.rerun()
+
+    def show_dashboard():
+
+        # =====================
+        # 통계
+        # =====================
+
+        c.execute("SELECT COUNT(*) FROM cases")
+        total_count = c.fetchone()[0]
+
+        c.execute("SELECT COUNT(*) FROM cases WHERE category='파손'")
+        broken_count = c.fetchone()[0]
+
+        c.execute("SELECT COUNT(*) FROM cases WHERE category='불량'")
+        defect_count = c.fetchone()[0]
+
+        c.execute("SELECT COUNT(*) FROM cases WHERE category='오발송'")
+        wrong_count = c.fetchone()[0]
+
+        c.execute("SELECT COUNT(*) FROM cases WHERE category='쇼트'")
+        shortage_count = c.fetchone()[0]
+
+        this_month = st.session_state.get("dashboard_month") or datetime.now().strftime("%Y%m")
+
+        c.execute("""
+        SELECT COUNT(*)
+        FROM cases
+        WHERE substr(case_id,1,6)=?
+        """, (this_month,))
+        month_count = c.fetchone()[0]
+
+            # =====================
+        # KPI 통계
+        # =====================
+
+        c.execute("SELECT COUNT(*) FROM cases WHERE category='누락'")
+        missing_count = c.fetchone()[0]
+
+        c.execute("SELECT COUNT(*) FROM cases WHERE category='기타'")
+        etc_count = c.fetchone()[0]
+
+        c.execute("SELECT COUNT(*) FROM cases WHERE category='수평'")
+        horizontal_count = c.fetchone()[0]
+
+        c.execute("SELECT COUNT(*) FROM cases WHERE category='용접'")
+        welding_count = c.fetchone()[0]
+
+        active_kpi_key = {
+            "ALL": "kpi_all",
+            "MONTH": "kpi_month",
+            "파손": "kpi_broken",
+            "불량": "kpi_defect",
+            "오발송": "kpi_wrong",
+            "쇼트": "kpi_shortage",
+            "누락": "kpi_missing",
+            "기타": "kpi_etc",
+            "수평": "kpi_horizontal",
+            "용접": "kpi_welding",
+        }.get(st.session_state.get("dashboard_filter"))
+
+        # =====================
+        # KPI 버튼
+        # =====================
+
+        k1, k2, k3, k4, k5 = st.columns(5, gap="small")
+
+        with k1:
+
+            if st.button(
+                f"📄 전체 사례\u00a0\u00a0{total_count:,}건",
+                key="kpi_all",
+                use_container_width=True,
+                type="primary" if active_kpi_key == "kpi_all" else "secondary"
+            ):
+
+                st.session_state.selected_case = None
+                st.session_state.dashboard_filter = "ALL"
+
+                st.rerun()
+
+        with k2:
+
+            if st.button(
+                f"📅 이번 달\u00a0\u00a0{month_count:,}건",
+                key="kpi_month",
+                use_container_width=True,
+                type="primary" if active_kpi_key == "kpi_month" else "secondary"
+            ):
+
+                st.session_state.selected_case = None
+                st.session_state.dashboard_filter = "MONTH"
+                st.session_state.dashboard_month = datetime.now().strftime("%Y%m")
+
+                st.rerun()
+
+        with k3:
+
+            if st.button(
+                f"⚠️ 파손\u00a0\u00a0{broken_count:,}건",
+                key="kpi_broken",
+                use_container_width=True,
+                type="primary" if active_kpi_key == "kpi_broken" else "secondary"
+            ):
+
+                st.session_state.selected_case = None
+                st.session_state.dashboard_filter = "파손"
+
+                st.rerun()
+
+        with k4:
+
+            if st.button(
+                f"🛠️ 불량\u00a0\u00a0{defect_count:,}건",
+                key="kpi_defect",
+                use_container_width=True,
+                type="primary" if active_kpi_key == "kpi_defect" else "secondary"
+            ):
+
+                st.session_state.selected_case = None
+                st.session_state.dashboard_filter = "불량"
+
+                st.rerun()
+
+        with k5:
+
+            if st.button(
+                f"🚚 오발송\u00a0\u00a0{wrong_count:,}건",
+                key="kpi_wrong",
+                use_container_width=True,
+                type="primary" if active_kpi_key == "kpi_wrong" else "secondary"
+            ):
+
+                st.session_state.selected_case = None
+                st.session_state.dashboard_filter = "오발송"
+
+                st.rerun()
+
+        k6, k7, k8, k9, k10 = st.columns(5, gap="small")
+
+        with k6:
+
+            if st.button(
+                f"📦 쇼트\u00a0\u00a0{shortage_count:,}건",
+                key="kpi_shortage",
+                use_container_width=True,
+                type="primary" if active_kpi_key == "kpi_shortage" else "secondary"
+            ):
+
+                st.session_state.selected_case = None
+                st.session_state.dashboard_filter = "쇼트"
+
+                st.rerun()
+
+        with k7:
+
+            if st.button(
+                f"🧩 누락\u00a0\u00a0{missing_count:,}건",
+                key="kpi_missing",
+                use_container_width=True,
+                type="primary" if active_kpi_key == "kpi_missing" else "secondary"
+            ):
+
+                st.session_state.selected_case = None
+                st.session_state.dashboard_filter = "누락"
+
+                st.rerun()
+
+        with k8:
+
+            if st.button(
+                f"📁 기타\u00a0\u00a0{etc_count:,}건",
+                key="kpi_etc",
+                use_container_width=True,
+                type="primary" if active_kpi_key == "kpi_etc" else "secondary"
+            ):
+
+                st.session_state.selected_case = None
+                st.session_state.dashboard_filter = "기타"
+
+                st.rerun()
+
+        with k9:
+
+            if st.button(
+                f"📏 수평\u00a0\u00a0{horizontal_count:,}건",
+                key="kpi_horizontal",
+                use_container_width=True,
+                type="primary" if active_kpi_key == "kpi_horizontal" else "secondary"
+            ):
+
+                st.session_state.selected_case = None
+                st.session_state.dashboard_filter = "수평"
+
+                st.rerun()
+
+        with k10:
+
+            if st.button(
+                f"🔥 용접\u00a0\u00a0{welding_count:,}건",
+                key="kpi_welding",
+                use_container_width=True,
+                type="primary" if active_kpi_key == "kpi_welding" else "secondary"
+            ):
+
+                st.session_state.selected_case = None
+                st.session_state.dashboard_filter = "용접"
+
+                st.rerun()
+
+        # =====================
+        # 차트
+        # =====================
+
+        chart1, chart2 = st.columns([1, 1], gap="small")
+
+        # ---------------------
+        # 유형별 발생 현황
+        # ---------------------
+
+        with chart1:
+
+            with st.container(key="dashboard_card_category"):
 
                 st.markdown(
-                    '<div class="action-button-gap"></div>',
-                    unsafe_allow_html=True,
+                    '<div class="dashboard-card-title">📉 유형별 발생 현황</div>',
+                    unsafe_allow_html=True
                 )
 
-            with form_col:
+                c.execute("""
+                SELECT category, COUNT(*)
+                FROM cases
+                GROUP BY category
+                """)
 
-                st.download_button(
-                    label="📗 폼다운",
-                    data=create_case_excel_form(st.session_state.register_case_date),
-                    file_name="사례등록_엑셀폼.xlsx",
-                    mime=CASE_EXCEL_FORM_MIME,
-                    key="excel_form_download_btn",
-                    use_container_width=True
+                pie_df = pd.DataFrame(
+                    c.fetchall(),
+                    columns=["유형", "건수"]
                 )
 
-    if "top5_pending_keyword" in st.session_state:
-        st.session_state["search_type"] = "상품명"
-        st.session_state["search_keyword"] = st.session_state.pop("top5_pending_keyword")
-        st.session_state["top5_keyword"] = st.session_state["search_keyword"]
-        st.session_state.dashboard_filter = None
-        st.session_state.selected_case = None
+                if not pie_df.empty:
 
-    search_type = st.radio(
-        "검색 기준",
-        ["상품명", "바코드", "사례번호", "유형", "원인", "수리방법"],
-        horizontal=True,
-        key="search_type"
-    )
+                    import plotly.express as px
 
-    keyword = st.text_input(
-        "검색어",
-        key="search_keyword"
-    )
+                    fig = px.pie(
+                        pie_df,
+                        names="유형",
+                        values="건수",
+                        hole=0.60,
+                        color_discrete_sequence=[
+                            "#ef4444",
+                            "#f97316",
+                            "#eab308",
+                            "#22c55e",
+                            "#3b82f6"
+                        ]
+                    )
 
-    st.markdown(
-        '<div class="search-result-title">검색 결과</div>',
-        unsafe_allow_html=True
-    )
+                    fig.update_layout(
+                        height=320,
+                        margin=dict(
+                            l=14,
+                            r=16,
+                            t=8,
+                            b=18
+                        ),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="white",
+                        legend=dict(
+                            font=dict(size=13),
+                            orientation="v",
+                            x=0.92,
+                            y=0.5,
+                            xanchor="left",
+                            yanchor="middle"
+                        )
+                    )
 
-results = []
+                    fig.update_traces(
+                        textinfo="percent",
+                        textfont_size=12,
+                        domain=dict(
+                            x=[0.02, 0.78],
+                            y=[0.08, 0.92]
+                        )
+                    )
 
-dashboard_filter = st.session_state.get(
-    "dashboard_filter",
-    None
-)
+                    st.plotly_chart(
+                        fig,
+                        use_container_width=True
+                    )
 
-if dashboard_filter == "ALL":
+        # ---------------------
+        # 발생 추이
+        # ---------------------
 
-    c.execute("""
-    SELECT case_id, category, product
-    FROM cases
-    ORDER BY id DESC
-    """)
+        with chart2:
 
-    results = c.fetchall()
+            with st.container(key="dashboard_card_month"):
 
-elif dashboard_filter == "MONTH":
+                trend_year = str(date.today().year)
 
-    current_month = st.session_state.get("dashboard_month") or datetime.now().strftime("%Y%m")
+                st.markdown(
+                    f'<div class="dashboard-card-title">📈 {trend_year}년 발생추이</div>',
+                    unsafe_allow_html=True
+                )
 
-    c.execute("""
-    SELECT case_id, category, product
-    FROM cases
-    WHERE substr(case_id,1,6)=?
-    ORDER BY id DESC
-    """, (current_month,))
+                c.execute("""
+                SELECT
+                    substr(case_id,1,6) AS month,
+                    COUNT(*) AS cnt
+                FROM cases
+                WHERE substr(case_id,1,4) = ?
+                GROUP BY month
+                ORDER BY month
+                """, (trend_year,))
 
-    results = c.fetchall()
+                trend_counts = dict(c.fetchall())
+                trend_df = pd.DataFrame(
+                    {
+                        "월": [f"{month}월" for month in range(1, 13)],
+                        "건수": [
+                            trend_counts.get(f"{trend_year}{month:02d}", 0)
+                            for month in range(1, 13)
+                        ],
+                    }
+                )
 
-elif dashboard_filter:
+                if not trend_df.empty:
 
-    c.execute("""
-    SELECT case_id, category, product
-    FROM cases
-    WHERE category=?
-    ORDER BY id DESC
-    """, (dashboard_filter,))
+                    import plotly.graph_objects as go
 
-    results = c.fetchall()
+                    fig = go.Figure()
 
-elif keyword:
+                    dates = trend_df["월"].tolist()
+                    counts = trend_df["건수"].tolist()
+                    max_count = max(counts)
+                    y_dtick = max(1, math.ceil(max_count / 4))
+                    y_axis_top = max(
+                        y_dtick,
+                        math.ceil((max_count + y_dtick) / y_dtick) * y_dtick
+                    )
+                    count_labels = [count if count > 0 else "" for count in counts]
 
-    if search_type == "상품명":
+                    if len(trend_df) == 1:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=dates,
+                                y=counts,
+                                mode="markers+text",
+                                text=count_labels,
+                                textposition="top center",
+                                textfont=dict(size=13),
+                                marker=dict(
+                                    color="#60a5fa",
+                                    size=9
+                                ),
+                                cliponaxis=False,
+                                hovertemplate="%{x}<br>%{y}건<extra></extra>"
+                            )
+                        )
+                    else:
+                        for i in range(1, len(trend_df)):
+                            before = counts[i - 1]
+                            after = counts[i]
 
-        c.execute("""
-        SELECT case_id, category, product
-        FROM cases
-        WHERE product LIKE ?
-        """, (f"%{keyword}%",))
+                            if after > before:
+                                line_color = "#ef4444"
+                            elif after < before:
+                                line_color = "#60a5fa"
+                            else:
+                                line_color = "#94a3b8"
 
-    elif search_type == "바코드":
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=[dates[i - 1], dates[i]],
+                                    y=[before, after],
+                                    mode="lines",
+                                    line=dict(
+                                        color=line_color,
+                                        width=3
+                                    ),
+                                    hovertemplate="%{x}<br>%{y}건<extra></extra>"
+                                )
+                            )
 
-        c.execute("""
-        SELECT case_id, category, product
-        FROM cases
-        WHERE barcode LIKE ?
-        """, (f"%{keyword}%",))
+                        fig.add_trace(
+                            go.Scatter(
+                                x=dates,
+                                y=counts,
+                                mode="markers+text",
+                                text=count_labels,
+                                textposition="top center",
+                                textfont=dict(size=13),
+                                marker=dict(
+                                    color="white",
+                                    size=9,
+                                    line=dict(
+                                        color="#0f766e",
+                                        width=2
+                                    )
+                                ),
+                                cliponaxis=False,
+                                hovertemplate="%{x}<br>%{y}건<extra></extra>"
+                            )
+                        )
 
-    elif search_type == "사례번호":
+                    fig.update_layout(
+                        height=320,
+                        margin=dict(
+                            l=14,
+                            r=14,
+                            t=34,
+                            b=18
+                        ),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="white",
+                        font=dict(size=13),
+                        hovermode="x unified",
+                        showlegend=False,
+                        xaxis_title="",
+                        yaxis_title="",
+                        xaxis=dict(
+                            type="category",
+                            tickangle=0,
+                            tickfont=dict(size=12)
+                        ),
+                        yaxis=dict(
+                            tickmode="linear",
+                            dtick=y_dtick,
+                            tickformat="d",
+                            tickfont=dict(size=12),
+                            range=[
+                                0,
+                                y_axis_top
+                            ]
+                        )
+                    )
 
-        c.execute("""
-        SELECT case_id, category, product
-        FROM cases
-        WHERE case_id LIKE ?
-        """, (f"%{keyword}%",))
+                    st.plotly_chart(
+                        fig,
+                        use_container_width=True
+                    )
 
-    elif search_type == "유형":
+        # =====================
+        # 하단영역
+        # =====================
 
-        c.execute("""
-        SELECT case_id, category, product
-        FROM cases
-        WHERE category LIKE ?
-        """, (f"%{keyword}%",))
+        lower_left, lower_right = st.columns([7, 3], gap="small")
 
-    elif search_type == "원인":
+        # ---------------------
+        # 최근 등록 사례
+        # ---------------------
 
-        c.execute("""
-        SELECT case_id, category, product
-        FROM cases
-        WHERE cause LIKE ?
-        """, (f"%{keyword}%",))
+        with lower_left:
 
-    elif search_type == "수리방법":
+            with st.container(key="dashboard_card_recent"):
 
-        c.execute("""
-        SELECT case_id, category, product
-        FROM cases
-        WHERE repair_method LIKE ?
-        """, (f"%{keyword}%",))
+                st.markdown(
+                    '<div class="dashboard-card-title">📜 최근 등록 사례</div>',
+                    unsafe_allow_html=True
+                )
 
-    results = c.fetchall()
+                c.execute("""
+                SELECT
+                    case_id,
+                    category,
+                    product
+                FROM cases
+                ORDER BY case_id DESC
+                """)
 
-if results:
+                recent_df = pd.DataFrame(
+                    c.fetchall(),
+                    columns=["사례번호", "유형", "상품명"]
+                )
 
-    with left.container(
-        height=320,
-        border=False,
-        key="search_results_scroll"
-    ):
+                gb = GridOptionsBuilder.from_dataframe(recent_df)
 
-        for row in results:
+                gb.configure_default_column(
+                    cellStyle={
+                        "color": "white",
+                        "backgroundColor": "#073b36",
+                        "textAlign": "center"
+                    }
+                )
 
-            product_name = row[2]
+                gb.configure_grid_options(
+                    rowStyle={
+                        "backgroundColor": "#073b36",
+                        "color": "white"
+                    },
+                    rowHeight=28,
+                    headerHeight=34,
+                    suppressHorizontalScroll=True
+                )
+                gb.configure_column(
+                    "사례번호",
+                    width=110,
+                    minWidth=110
+                )
 
-            if len(product_name) > 45:
-                product_name = product_name[:45] + "..."
+                gb.configure_column(
+                    "유형",
+                    width=80
+                )
 
-            row_col1, row_col2 = st.columns([18, 3], gap="small")
+                gb.configure_column(
+                    "상품명",
+                    flex=1
+                )
+                gb.configure_selection(
+                    selection_mode="single",
+                    use_checkbox=False
+                )
 
-            with row_col1:
+                grid_options = gb.build()
 
-                if st.button(
-                    f"{row[0]} | {row[1]} | {product_name}",
-                    key=f"select_{row[0]}",
-                    use_container_width=True
-                ):
+                grid_response = AgGrid(
+                    recent_df,
+                    gridOptions=grid_options,
+                    height=260,
+                    theme="streamlit",
+                    fit_columns_on_grid_load=True,
+
+                    custom_css={
+                        ".ag-root-wrapper": {
+                            "background-color": "#052c28 !important"
+                        },
+
+                        ".ag-header": {
+                            "background-color": "rgba(255,255,255,0.10) !important"
+                        },
+
+                        ".ag-header-cell-label": {
+                            "color": "white !important",
+                            "font-weight": "700 !important",
+                            "justify-content": "center !important"
+                        },
+
+                        ".ag-cell": {
+                            "background-color": "#073b36 !important",
+                            "color": "white !important",
+                            "font-size": "13px !important",
+                            "line-height": "28px !important"
+                        },
+                        ".ag-row-even .ag-cell": {
+                            "background-color": "#073b36 !important"
+                        },
+                        ".ag-row-odd .ag-cell": {
+                            "background-color": "#06433d !important"
+                        },
+                        ".ag-center-cols-container": {
+                            "background-color": "#052c28 !important"
+                        },
+
+                        ".ag-center-cols-viewport": {
+                            "background-color": "#052c28 !important"
+                        },
+
+                        ".ag-body-viewport": {
+                            "background-color": "#052c28 !important"
+                        },
+
+                        ".ag-body-horizontal-scroll": {
+                            "display": "none !important",
+                            "height": "0 !important",
+                            "min-height": "0 !important"
+                        },
+
+                        ".ag-body-horizontal-scroll-viewport": {
+                            "display": "none !important",
+                            "height": "0 !important",
+                            "min-height": "0 !important"
+                        },
+
+                        ".ag-row": {
+                            "background-color": "#073b36 !important",
+                            "color": "white !important"
+                        },
+
+                        ".ag-row-hover": {
+                            "background-color": "#0d6b63 !important"
+                        },
+                        ".ag-row-hover .ag-cell": {
+                            "background-color": "#0d6b63 !important"
+                        }
+                    }
+                )
+
+                selected_rows = grid_response.get("selected_rows", [])
+
+                if selected_rows is not None and len(selected_rows) > 0:
+
+                    if isinstance(selected_rows, pd.DataFrame):
+
+                        case_id = selected_rows.iloc[0]["사례번호"]
+
+                    else:
+
+                        case_id = selected_rows[0]["사례번호"]
 
                     c.execute("""
                     SELECT
@@ -3967,632 +4613,641 @@ if results:
                         repair_image
                     FROM cases
                     WHERE case_id = ?
-                    """, (row[0],))
+                    """, (case_id,))
 
                     st.session_state.selected_case = c.fetchone()
 
                     st.rerun()
+        # ---------------------
+        # TOP5
+        # ---------------------
 
-            with row_col2:
+        with lower_right:
 
-                if st.button(
-                    "❌",
-                    key=f"del_{row[0]}",
-                    use_container_width=True
-                ):
+            with st.container(key="dashboard_card_top5"):
 
-                    c.execute(
-                        "DELETE FROM cases WHERE case_id = ?",
-                        (row[0],)
-                    )
+                st.markdown(
+                    '<div class="dashboard-card-title">💥 자주 발생하는 상품 TOP3</div>',
+                    unsafe_allow_html=True
+                )
 
-                    conn.commit()
+                c.execute("""
+                SELECT
+                    product,
+                    COUNT(*) cnt
+                FROM cases
+                GROUP BY product
+                ORDER BY cnt DESC
+                LIMIT 3
+                """)
 
-                    st.success("삭제 완료")
+                top_products = c.fetchall()
 
-                    st.rerun()
+                if top_products:
 
-def show_dashboard():
+                    max_count = top_products[0][1]
 
-    # =====================
-    # 통계
-    # =====================
-
-    c.execute("SELECT COUNT(*) FROM cases")
-    total_count = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM cases WHERE category='파손'")
-    broken_count = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM cases WHERE category='불량'")
-    defect_count = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM cases WHERE category='오발송'")
-    wrong_count = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM cases WHERE category='쇼트'")
-    shortage_count = c.fetchone()[0]
-
-    this_month = st.session_state.get("dashboard_month") or datetime.now().strftime("%Y%m")
-
-    c.execute("""
-    SELECT COUNT(*)
-    FROM cases
-    WHERE substr(case_id,1,6)=?
-    """, (this_month,))
-    month_count = c.fetchone()[0]
-
-        # =====================
-    # KPI 통계
-    # =====================
-
-    c.execute("SELECT COUNT(*) FROM cases WHERE category='누락'")
-    missing_count = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM cases WHERE category='기타'")
-    etc_count = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM cases WHERE category='수평'")
-    horizontal_count = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM cases WHERE category='용접'")
-    welding_count = c.fetchone()[0]
-
-    active_kpi_key = {
-        "ALL": "kpi_all",
-        "MONTH": "kpi_month",
-        "파손": "kpi_broken",
-        "불량": "kpi_defect",
-        "오발송": "kpi_wrong",
-        "쇼트": "kpi_shortage",
-        "누락": "kpi_missing",
-        "기타": "kpi_etc",
-        "수평": "kpi_horizontal",
-        "용접": "kpi_welding",
-    }.get(st.session_state.get("dashboard_filter"))
-
-    # =====================
-    # KPI 버튼
-    # =====================
-
-    k1, k2, k3, k4, k5 = st.columns(5, gap="small")
-
-    with k1:
-
-        if st.button(
-            f"📄 전체 사례\u00a0\u00a0{total_count:,}건",
-            key="kpi_all",
-            use_container_width=True,
-            type="primary" if active_kpi_key == "kpi_all" else "secondary"
-        ):
-
-            st.session_state.selected_case = None
-            st.session_state.dashboard_filter = "ALL"
-
-            st.rerun()
-
-    with k2:
-
-        if st.button(
-            f"📅 이번 달\u00a0\u00a0{month_count:,}건",
-            key="kpi_month",
-            use_container_width=True,
-            type="primary" if active_kpi_key == "kpi_month" else "secondary"
-        ):
-
-            st.session_state.selected_case = None
-            st.session_state.dashboard_filter = "MONTH"
-            st.session_state.dashboard_month = datetime.now().strftime("%Y%m")
-
-            st.rerun()
-
-    with k3:
-
-        if st.button(
-            f"⚠️ 파손\u00a0\u00a0{broken_count:,}건",
-            key="kpi_broken",
-            use_container_width=True,
-            type="primary" if active_kpi_key == "kpi_broken" else "secondary"
-        ):
-
-            st.session_state.selected_case = None
-            st.session_state.dashboard_filter = "파손"
-
-            st.rerun()
-
-    with k4:
-
-        if st.button(
-            f"🛠️ 불량\u00a0\u00a0{defect_count:,}건",
-            key="kpi_defect",
-            use_container_width=True,
-            type="primary" if active_kpi_key == "kpi_defect" else "secondary"
-        ):
-
-            st.session_state.selected_case = None
-            st.session_state.dashboard_filter = "불량"
-
-            st.rerun()
-
-    with k5:
-
-        if st.button(
-            f"🚚 오발송\u00a0\u00a0{wrong_count:,}건",
-            key="kpi_wrong",
-            use_container_width=True,
-            type="primary" if active_kpi_key == "kpi_wrong" else "secondary"
-        ):
-
-            st.session_state.selected_case = None
-            st.session_state.dashboard_filter = "오발송"
-
-            st.rerun()
-
-    k6, k7, k8, k9, k10 = st.columns(5, gap="small")
-
-    with k6:
-
-        if st.button(
-            f"📦 쇼트\u00a0\u00a0{shortage_count:,}건",
-            key="kpi_shortage",
-            use_container_width=True,
-            type="primary" if active_kpi_key == "kpi_shortage" else "secondary"
-        ):
-
-            st.session_state.selected_case = None
-            st.session_state.dashboard_filter = "쇼트"
-
-            st.rerun()
-
-    with k7:
-
-        if st.button(
-            f"🧩 누락\u00a0\u00a0{missing_count:,}건",
-            key="kpi_missing",
-            use_container_width=True,
-            type="primary" if active_kpi_key == "kpi_missing" else "secondary"
-        ):
-
-            st.session_state.selected_case = None
-            st.session_state.dashboard_filter = "누락"
-
-            st.rerun()
-
-    with k8:
-
-        if st.button(
-            f"📁 기타\u00a0\u00a0{etc_count:,}건",
-            key="kpi_etc",
-            use_container_width=True,
-            type="primary" if active_kpi_key == "kpi_etc" else "secondary"
-        ):
-
-            st.session_state.selected_case = None
-            st.session_state.dashboard_filter = "기타"
-
-            st.rerun()
-
-    with k9:
-
-        if st.button(
-            f"📏 수평\u00a0\u00a0{horizontal_count:,}건",
-            key="kpi_horizontal",
-            use_container_width=True,
-            type="primary" if active_kpi_key == "kpi_horizontal" else "secondary"
-        ):
-
-            st.session_state.selected_case = None
-            st.session_state.dashboard_filter = "수평"
-
-            st.rerun()
-
-    with k10:
-
-        if st.button(
-            f"🔥 용접\u00a0\u00a0{welding_count:,}건",
-            key="kpi_welding",
-            use_container_width=True,
-            type="primary" if active_kpi_key == "kpi_welding" else "secondary"
-        ):
-
-            st.session_state.selected_case = None
-            st.session_state.dashboard_filter = "용접"
-
-            st.rerun()
-
-    # =====================
-    # 차트
-    # =====================
-
-    chart1, chart2 = st.columns([1, 1], gap="small")
-
-    # ---------------------
-    # 유형별 발생 현황
-    # ---------------------
-
-    with chart1:
-
-        with st.container(key="dashboard_card_category"):
-
-            st.markdown(
-                '<div class="dashboard-card-title">📉 유형별 발생 현황</div>',
-                unsafe_allow_html=True
-            )
-
-            c.execute("""
-            SELECT category, COUNT(*)
-            FROM cases
-            GROUP BY category
-            """)
-
-            pie_df = pd.DataFrame(
-                c.fetchall(),
-                columns=["유형", "건수"]
-            )
-
-            if not pie_df.empty:
-
-                import plotly.express as px
-
-                fig = px.pie(
-                    pie_df,
-                    names="유형",
-                    values="건수",
-                    hole=0.60,
-                    color_discrete_sequence=[
+                    colors = [
                         "#ef4444",
                         "#f97316",
                         "#eab308",
                         "#22c55e",
                         "#3b82f6"
                     ]
-                )
 
-                fig.update_layout(
-                    height=320,
-                    margin=dict(
-                        l=14,
-                        r=16,
-                        t=8,
-                        b=18
-                    ),
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    font_color="white",
-                    legend=dict(
-                        font=dict(size=13),
-                        orientation="v",
-                        x=0.92,
-                        y=0.5,
-                        xanchor="left",
-                        yanchor="middle"
+                    for idx, row in enumerate(top_products, start=1):
+
+                        product = row[0]
+                        count = row[1]
+
+                        percent = (count / max_count) * 100
+
+                        if st.button(
+                            f"{idx}. {product}",
+                            key=f"top5_{idx}",
+                            use_container_width=True
+                        ):
+
+                            st.session_state["top5_pending_keyword"] = product
+                            st.session_state.dashboard_filter = None
+                            st.session_state.selected_case = None
+
+                            st.rerun()
+
+                        st.markdown(
+                            f"""
+                            <div class="top5-meter">
+                                <div class="top5-track">
+                                    <div
+                                        class="top5-fill"
+                                        style="width:{percent}%; background:{colors[idx-1]};"
+                                    ></div>
+                                </div>
+                                <span class="top5-count">{count}건</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+    # --------------------------
+    # 상세보기
+    # --------------------------
+
+    def show_detail():
+
+        data = st.session_state.selected_case
+
+        with st.container(key="detail_info_card"):
+
+            col1, col2 = st.columns([0.85, 3.15], gap="small")
+
+            with col1:
+
+                if data[8]:
+
+                    img = Image.open(BytesIO(data[8]))
+
+                    img = ImageOps.exif_transpose(img)
+
+                    st.image(
+                        fit_detail_photo(img),
+                        use_container_width=True
                     )
+
+            with col2:
+
+                st.markdown(
+                    f"""
+                    <div class="detail-meta-grid">
+                        <div class="detail-meta-cell">
+                            <span class="detail-meta-label">사례번호</span>
+                            <span class="detail-meta-value">{detail_html(data[0])}</span>
+                        </div>
+                        <div class="detail-meta-cell">
+                            <span class="detail-meta-label">유형</span>
+                            <span class="detail-meta-value">{detail_html(data[1])}</span>
+                        </div>
+                        <div class="detail-meta-cell detail-meta-cell-wide">
+                            <span class="detail-meta-label">상품명</span>
+                            <span class="detail-meta-value">{detail_html(data[3])}</span>
+                        </div>
+                        <div class="detail-meta-cell detail-meta-cell-wide">
+                            <span class="detail-meta-label">바코드</span>
+                            <span class="detail-meta-value">{detail_html(data[2])}</span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
                 )
 
-                fig.update_traces(
-                    textinfo="percent",
-                    textfont_size=12,
-                    domain=dict(
-                        x=[0.02, 0.78],
-                        y=[0.08, 0.92]
+        st.markdown(
+            f"""
+            <div class="detail-section-grid">
+                <div class="detail-section-card">
+                    <div class="detail-section-title">원인</div>
+                    <div class="detail-section-body">{detail_html(data[4])}</div>
+                </div>
+                <div class="detail-section-card">
+                    <div class="detail-section-title">조치방법</div>
+                    <div class="detail-section-body">{detail_html(data[5])}</div>
+                </div>
+                <div class="detail-section-card">
+                    <div class="detail-section-title">수리방법</div>
+                    <div class="detail-section-body">{detail_html(data[6])}</div>
+                </div>
+                <div class="detail-section-card">
+                    <div class="detail-section-title">방지대책</div>
+                    <div class="detail-section-body">{detail_html(data[7])}</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        if data[9] and data[10]:
+
+            photo_col1, photo_col2 = st.columns(2, gap="small")
+
+            with photo_col1:
+
+                if data[9]:
+
+                    with st.container(key="detail_case_photo"):
+
+                        st.markdown(
+                            '<div class="detail-photo-title">사례 사진</div>',
+                            unsafe_allow_html=True
+                        )
+
+                        img = fit_detail_photo(Image.open(BytesIO(data[9])))
+
+                        st.image(
+                            img,
+                            use_container_width=True
+                        )
+
+            with photo_col2:
+
+                if data[10]:
+
+                    with st.container(key="detail_repair_photo"):
+
+                        st.markdown(
+                            '<div class="detail-photo-title">수리 사진</div>',
+                            unsafe_allow_html=True
+                        )
+
+                        img = fit_detail_photo(Image.open(BytesIO(data[10])))
+
+                        st.image(
+                            img,
+                            use_container_width=True
+                        )
+
+        elif data[9]:
+
+            photo_col1, _photo_spacer = st.columns(2, gap="small")
+
+            with photo_col1:
+
+                with st.container(key="detail_case_photo"):
+
+                    st.markdown(
+                        '<div class="detail-photo-title">사례 사진</div>',
+                        unsafe_allow_html=True
                     )
-                )
 
-                st.plotly_chart(
-                    fig,
+                    img = fit_detail_photo(Image.open(BytesIO(data[9])))
+
+                    st.image(
+                        img,
+                        use_container_width=True
+                    )
+
+        elif data[10]:
+
+            _photo_spacer, photo_col2 = st.columns(2, gap="small")
+
+            with photo_col2:
+
+                with st.container(key="detail_repair_photo"):
+
+                    st.markdown(
+                        '<div class="detail-photo-title">수리 사진</div>',
+                        unsafe_allow_html=True
+                    )
+
+                    img = fit_detail_photo(Image.open(BytesIO(data[10])))
+
+                    st.image(
+                        img,
+                        use_container_width=True
+                    )
+
+        with st.container(key="detail_action_row"):
+
+            pdf_btn, _detail_gap1, btn1, _detail_gap2, btn2, _detail_button_spacer = st.columns(
+                [168, 48, 116, 48, 116, 1],
+                gap="small",
+            )
+
+            with pdf_btn:
+
+                st.download_button(
+                    label="📄 PDF 다운로드",
+                    data=create_detail_pdf(data),
+                    file_name=f"{data[0]}_사례상세보기.pdf",
+                    mime="application/pdf",
+                    key="detail_pdf_download_btn",
                     use_container_width=True
                 )
 
-    # ---------------------
-    # 발생 추이
-    # ---------------------
+            with _detail_gap1:
 
-    with chart2:
-
-        with st.container(key="dashboard_card_month"):
-
-            trend_year = str(date.today().year)
-
-            st.markdown(
-                f'<div class="dashboard-card-title">📈 {trend_year}년 발생추이</div>',
-                unsafe_allow_html=True
-            )
-
-            c.execute("""
-            SELECT
-                substr(case_id,1,6) AS month,
-                COUNT(*) AS cnt
-            FROM cases
-            WHERE substr(case_id,1,4) = ?
-            GROUP BY month
-            ORDER BY month
-            """, (trend_year,))
-
-            trend_counts = dict(c.fetchall())
-            trend_df = pd.DataFrame(
-                {
-                    "월": [f"{month}월" for month in range(1, 13)],
-                    "건수": [
-                        trend_counts.get(f"{trend_year}{month:02d}", 0)
-                        for month in range(1, 13)
-                    ],
-                }
-            )
-
-            if not trend_df.empty:
-
-                import plotly.graph_objects as go
-
-                fig = go.Figure()
-
-                dates = trend_df["월"].tolist()
-                counts = trend_df["건수"].tolist()
-                max_count = max(counts)
-                y_dtick = max(1, math.ceil(max_count / 4))
-                y_axis_top = max(
-                    y_dtick,
-                    math.ceil((max_count + y_dtick) / y_dtick) * y_dtick
-                )
-                count_labels = [count if count > 0 else "" for count in counts]
-
-                if len(trend_df) == 1:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=dates,
-                            y=counts,
-                            mode="markers+text",
-                            text=count_labels,
-                            textposition="top center",
-                            textfont=dict(size=13),
-                            marker=dict(
-                                color="#60a5fa",
-                                size=9
-                            ),
-                            cliponaxis=False,
-                            hovertemplate="%{x}<br>%{y}건<extra></extra>"
-                        )
-                    )
-                else:
-                    for i in range(1, len(trend_df)):
-                        before = counts[i - 1]
-                        after = counts[i]
-
-                        if after > before:
-                            line_color = "#ef4444"
-                        elif after < before:
-                            line_color = "#60a5fa"
-                        else:
-                            line_color = "#94a3b8"
-
-                        fig.add_trace(
-                            go.Scatter(
-                                x=[dates[i - 1], dates[i]],
-                                y=[before, after],
-                                mode="lines",
-                                line=dict(
-                                    color=line_color,
-                                    width=3
-                                ),
-                                hovertemplate="%{x}<br>%{y}건<extra></extra>"
-                            )
-                        )
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=dates,
-                            y=counts,
-                            mode="markers+text",
-                            text=count_labels,
-                            textposition="top center",
-                            textfont=dict(size=13),
-                            marker=dict(
-                                color="white",
-                                size=9,
-                                line=dict(
-                                    color="#0f766e",
-                                    width=2
-                                )
-                            ),
-                            cliponaxis=False,
-                            hovertemplate="%{x}<br>%{y}건<extra></extra>"
-                        )
-                    )
-
-                fig.update_layout(
-                    height=320,
-                    margin=dict(
-                        l=14,
-                        r=14,
-                        t=34,
-                        b=18
-                    ),
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    font_color="white",
-                    font=dict(size=13),
-                    hovermode="x unified",
-                    showlegend=False,
-                    xaxis_title="",
-                    yaxis_title="",
-                    xaxis=dict(
-                        type="category",
-                        tickangle=0,
-                        tickfont=dict(size=12)
-                    ),
-                    yaxis=dict(
-                        tickmode="linear",
-                        dtick=y_dtick,
-                        tickformat="d",
-                        tickfont=dict(size=12),
-                        range=[
-                            0,
-                            y_axis_top
-                        ]
-                    )
+                st.markdown(
+                    '<div class="detail-action-gap"></div>',
+                    unsafe_allow_html=True,
                 )
 
-                st.plotly_chart(
-                    fig,
+            with btn1:
+
+                if st.button(
+                    "✏️ 수정하기",
+                    key="detail_edit_btn",
                     use_container_width=True
+                ):
+
+                    clear_marker_session_state(
+                        f"edit_case_marker_{data[0]}",
+                        include_canvas_state=True,
+                    )
+                    clear_marker_session_state(
+                        f"edit_repair_marker_{data[0]}",
+                        include_canvas_state=True,
+                    )
+
+                    st.session_state.marker_canvas_session_version = (
+                        st.session_state.get("marker_canvas_session_version", 0) + 1
+                    )
+
+                    st.session_state.edit_case = data
+
+                    st.session_state.selected_case = None
+
+                    st.rerun()
+
+            with _detail_gap2:
+
+                st.markdown(
+                    '<div class="detail-action-gap"></div>',
+                    unsafe_allow_html=True,
                 )
 
-    # =====================
-    # 하단영역
-    # =====================
+            with btn2:
 
-    lower_left, lower_right = st.columns([7, 3], gap="small")
+                if st.button(
+                    "🗑️ 삭제하기",
+                    key="detail_delete_btn",
+                    use_container_width=True
+                ):
 
-    # ---------------------
-    # 최근 등록 사례
-    # ---------------------
+                    c.execute(
+                        "DELETE FROM cases WHERE case_id = ?",
+                        (data[0],)
+                    )
 
-    with lower_left:
+                    conn.commit()
 
-        with st.container(key="dashboard_card_recent"):
+                    st.success("삭제 완료")
 
-            st.markdown(
-                '<div class="dashboard-card-title">📜 최근 등록 사례</div>',
-                unsafe_allow_html=True
+                    st.session_state.selected_case = None
+
+                    st.rerun()
+
+    # --------------------------
+    # 수정화면
+    # --------------------------
+
+    def show_edit():
+
+        data = st.session_state.edit_case
+
+        if st.session_state.get("edit_date_case_id") != data[0]:
+            try:
+                st.session_state.edit_case_date = datetime.strptime(
+                    data[0][:8],
+                    "%Y%m%d"
+                ).date()
+            except ValueError:
+                st.session_state.edit_case_date = datetime.now().date()
+
+            st.session_state.edit_date_case_id = data[0]
+            st.session_state.edit_date_edit_open = False
+
+        edit_case_id_col, edit_date_col = st.columns([2.2, 1], gap="small")
+
+        with edit_case_id_col:
+
+            edit_preview_case_id = get_next_case_id(
+                st.session_state.edit_case_date,
+                current_case_id=data[0]
             )
 
-            c.execute("""
-            SELECT
-                case_id,
-                category,
-                product
-            FROM cases
-            ORDER BY case_id DESC
-            """)
+            st.text(f"사례번호 : {edit_preview_case_id}")
 
-            recent_df = pd.DataFrame(
-                c.fetchall(),
-                columns=["사례번호", "유형", "상품명"]
+        with edit_date_col:
+
+            if st.button(
+                "📅 일자 수정",
+                key="edit_date_edit_btn"
+            ):
+
+                st.session_state.edit_date_edit_open = (
+                    not st.session_state.edit_date_edit_open
+                )
+
+        if st.session_state.edit_date_edit_open:
+
+            selected_edit_date = st.date_input(
+                "발생일자",
+                value=st.session_state.edit_case_date,
+                key=f"edit_case_date_input_{data[0]}"
             )
 
-            gb = GridOptionsBuilder.from_dataframe(recent_df)
+            if selected_edit_date != st.session_state.edit_case_date:
 
-            gb.configure_default_column(
-                cellStyle={
-                    "color": "white",
-                    "backgroundColor": "#073b36",
-                    "textAlign": "center"
-                }
+                st.session_state.edit_case_date = selected_edit_date
+
+                st.rerun()
+
+        st.divider()
+
+        category_list = [
+            "파손",
+            "오발송",
+            "쇼트",
+            "불량",
+            "누락",
+            "기타",
+            "수평",
+            "용접"
+        ]
+
+        edit_category_value = "누락" if data[1] == "변심" else data[1]
+
+        category = st.selectbox(
+            "유형",
+            category_list,
+            index=category_list.index(edit_category_value),
+            key="edit_category"
+        )
+
+        product = st.text_input(
+            "상품명",
+            value=data[3],
+            key="edit_product"
+        )
+
+        barcode = st.text_input(
+            "바코드",
+            value=data[2],
+            key="edit_barcode"
+        )
+
+        st.divider()
+
+        st.markdown("### 상품 대표사진")
+
+        if data[8]:
+
+            img = Image.open(BytesIO(data[8]))
+
+            img = ImageOps.exif_transpose(img)
+
+            st.image(
+                img,
+                width=250
             )
 
-            gb.configure_grid_options(
-                rowStyle={
-                    "backgroundColor": "#073b36",
-                    "color": "white"
-                },
-                rowHeight=28,
-                headerHeight=34,
-                suppressHorizontalScroll=True
-            )
-            gb.configure_column(
-                "사례번호",
-                width=110,
-                minWidth=110
-            )
+        product_image = st.file_uploader(
+            "대표사진 변경",
+            type=["jpg", "jpeg", "png"],
+            key="edit_product_image"
+        )
 
-            gb.configure_column(
-                "유형",
-                width=80
-            )
+        st.divider()
 
-            gb.configure_column(
-                "상품명",
-                flex=1
-            )
-            gb.configure_selection(
-                selection_mode="single",
-                use_checkbox=False
-            )
+        cause = st.text_area(
+            "원인",
+            value=data[4],
+            height=120,
+            key="edit_cause"
+        )
 
-            grid_options = gb.build()
+        st.markdown("### 사례 사진")
 
-            grid_response = AgGrid(
-                recent_df,
-                gridOptions=grid_options,
-                height=260,
-                theme="streamlit",
-                fit_columns_on_grid_load=True,
+        case_image = st.file_uploader(
+            "사례사진 변경",
+            type=["jpg", "jpeg", "png"],
+            key="edit_case_image"
+        )
 
-                custom_css={
-                    ".ag-root-wrapper": {
-                        "background-color": "#052c28 !important"
-                    },
+        case_image_upload_data = case_image.getvalue() if case_image else None
+        case_image_original_saved_data = get_case_image_original(data[0])
+        case_image_saved_data = first_readable_image_data(
+            data[9],
+            case_image_original_saved_data,
+        )
+        case_image_current_data = first_readable_image_data(
+            case_image_upload_data,
+            case_image_saved_data,
+        )
+        case_image_original_data = first_readable_image_data(
+            case_image_upload_data,
+            case_image_original_saved_data,
+            case_image_saved_data,
+        )
 
-                    ".ag-header": {
-                        "background-color": "rgba(255,255,255,0.10) !important"
-                    },
+        if case_image_current_data:
 
-                    ".ag-header-cell-label": {
-                        "color": "white !important",
-                        "font-weight": "700 !important",
-                        "justify-content": "center !important"
-                    },
+            img = image_bytes_to_rgb(case_image_current_data)
 
-                    ".ag-cell": {
-                        "background-color": "#073b36 !important",
-                        "color": "white !important",
-                        "font-size": "13px !important",
-                        "line-height": "28px !important"
-                    },
-                    ".ag-row-even .ag-cell": {
-                        "background-color": "#073b36 !important"
-                    },
-                    ".ag-row-odd .ag-cell": {
-                        "background-color": "#06433d !important"
-                    },
-                    ".ag-center-cols-container": {
-                        "background-color": "#052c28 !important"
-                    },
-
-                    ".ag-center-cols-viewport": {
-                        "background-color": "#052c28 !important"
-                    },
-
-                    ".ag-body-viewport": {
-                        "background-color": "#052c28 !important"
-                    },
-
-                    ".ag-body-horizontal-scroll": {
-                        "display": "none !important",
-                        "height": "0 !important",
-                        "min-height": "0 !important"
-                    },
-
-                    ".ag-body-horizontal-scroll-viewport": {
-                        "display": "none !important",
-                        "height": "0 !important",
-                        "min-height": "0 !important"
-                    },
-
-                    ".ag-row": {
-                        "background-color": "#073b36 !important",
-                        "color": "white !important"
-                    },
-
-                    ".ag-row-hover": {
-                        "background-color": "#0d6b63 !important"
-                    },
-                    ".ag-row-hover .ag-cell": {
-                        "background-color": "#0d6b63 !important"
-                    }
-                }
+            st.image(
+                img,
+                width=150
             )
 
-            selected_rows = grid_response.get("selected_rows", [])
+        st.session_state[f"edit_case_marker_{data[0]}_red_restore_image"] = (
+            case_image_original_data
+        )
 
-            if selected_rows is not None and len(selected_rows) > 0:
+        case_image_data = edit_red_circle_marker_tool(
+            case_image_current_data,
+            f"edit_case_marker_{data[0]}",
+            "사례사진 부위 표시",
+            restore_image_data=case_image_original_data,
+        )
 
-                if isinstance(selected_rows, pd.DataFrame):
+        st.divider()
 
-                    case_id = selected_rows.iloc[0]["사례번호"]
+        action = st.text_area(
+            "조치방법",
+            value=data[5],
+            height=120,
+            key="edit_action"
+        )
 
-                else:
+        repair_method = st.text_area(
+            "수리방법",
+            value=data[6],
+            height=120,
+            key="edit_repair_method"
+        )
 
-                    case_id = selected_rows[0]["사례번호"]
+        st.markdown("### 수리 사진")
+
+        repair_image = st.file_uploader(
+            "수리사진 변경",
+            type=["jpg", "jpeg", "png"],
+            key="edit_repair_image"
+        )
+
+        repair_image_upload_data = repair_image.getvalue() if repair_image else None
+        repair_image_original_saved_data = get_repair_image_original(data[0])
+        repair_image_saved_data = first_readable_image_data(
+            data[10],
+            repair_image_original_saved_data,
+        )
+        repair_image_current_data = first_readable_image_data(
+            repair_image_upload_data,
+            repair_image_saved_data,
+        )
+        repair_image_original_data = first_readable_image_data(
+            repair_image_upload_data,
+            repair_image_original_saved_data,
+            repair_image_saved_data,
+        )
+
+        repair_marker_prefix = f"edit_repair_marker_{data[0]}"
+        repair_current_fingerprint = (
+            image_data_fingerprint(repair_image_current_data)
+            if repair_image_current_data
+            else None
+        )
+        repair_last_fingerprint_key = f"{repair_marker_prefix}_current_fingerprint"
+
+        if (
+            repair_current_fingerprint
+            and st.session_state.get(repair_last_fingerprint_key) != repair_current_fingerprint
+        ):
+            clear_marker_session_state(repair_marker_prefix, include_canvas_state=True)
+            restore_marker_canvas(repair_marker_prefix, "blue")
+            st.session_state[repair_last_fingerprint_key] = repair_current_fingerprint
+
+        st.session_state[f"{repair_marker_prefix}_blue_restore_image"] = (
+            repair_image_original_data
+        )
+
+        repair_image_display_data = first_readable_image_data(
+            repair_image_current_data,
+            repair_image_original_data,
+        )
+
+        if repair_image_display_data:
+
+            img = image_bytes_to_rgb(repair_image_display_data)
+
+            st.image(
+                img,
+                width=150
+            )
+
+        repair_image_data = blue_circle_marker_tool(
+            repair_image_display_data,
+            repair_marker_prefix,
+            restore_image_data=repair_image_original_data,
+        )
+
+        st.divider()
+
+        st.markdown(
+            '<div class="edit-prevention-top-gap"></div>',
+            unsafe_allow_html=True
+        )
+
+        prevention = st.text_area(
+            "방지대책",
+            value=data[7],
+            height=120,
+            key="edit_prevention"
+        )
+
+        st.divider()
+
+        st.markdown(
+            '<div class="edit-button-top-gap"></div>',
+            unsafe_allow_html=True
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            if st.button(
+                "💾 수정 저장",
+                key="edit_save_btn",
+                use_container_width=True
+            ):
+
+                product_image_data = (
+                    product_image.getvalue()
+                    if product_image
+                    else data[8]
+                )
+
+                new_case_id = get_next_case_id(
+                    st.session_state.edit_case_date,
+                    current_case_id=data[0]
+                )
+
+                c.execute("""
+                UPDATE cases
+                SET
+                    case_id = ?,
+                    category = ?,
+                    barcode = ?,
+                    product = ?,
+                    cause = ?,
+                    action = ?,
+                    repair_method = ?,
+                    prevention = ?,
+                    product_image = ?,
+                    case_image = ?,
+                    case_image_original = ?,
+                    repair_image = ?,
+                    repair_image_original = ?
+                WHERE case_id = ?
+                """,
+                (
+                    new_case_id,
+                    category,
+                    barcode,
+                    product,
+                    cause,
+                    action,
+                    repair_method,
+                    prevention,
+                    product_image_data,
+                    case_image_data,
+                    case_image_original_data,
+                    repair_image_data,
+                    repair_image_original_data,
+                    data[0]
+                ))
+
+                conn.commit()
+
+                clear_marker_session_state(f"edit_case_marker_{data[0]}")
+                clear_marker_session_state(f"edit_repair_marker_{data[0]}")
 
                 c.execute("""
                 SELECT
@@ -4609,836 +5264,210 @@ def show_dashboard():
                     repair_image
                 FROM cases
                 WHERE case_id = ?
-                """, (case_id,))
+                """, (new_case_id,))
 
                 st.session_state.selected_case = c.fetchone()
 
+                st.session_state.edit_case = None
+                st.session_state.edit_date_edit_open = False
+                st.session_state.edit_date_case_id = None
+
+                st.success("수정 완료")
+
                 st.rerun()
-    # ---------------------
-    # TOP5
-    # ---------------------
-
-    with lower_right:
-
-        with st.container(key="dashboard_card_top5"):
-
-            st.markdown(
-                '<div class="dashboard-card-title">💥 자주 발생하는 상품 TOP3</div>',
-                unsafe_allow_html=True
-            )
-
-            c.execute("""
-            SELECT
-                product,
-                COUNT(*) cnt
-            FROM cases
-            GROUP BY product
-            ORDER BY cnt DESC
-            LIMIT 3
-            """)
-
-            top_products = c.fetchall()
-
-            if top_products:
-
-                max_count = top_products[0][1]
-
-                colors = [
-                    "#ef4444",
-                    "#f97316",
-                    "#eab308",
-                    "#22c55e",
-                    "#3b82f6"
-                ]
-
-                for idx, row in enumerate(top_products, start=1):
-
-                    product = row[0]
-                    count = row[1]
-
-                    percent = (count / max_count) * 100
-
-                    if st.button(
-                        f"{idx}. {product}",
-                        key=f"top5_{idx}",
-                        use_container_width=True
-                    ):
-
-                        st.session_state["top5_pending_keyword"] = product
-                        st.session_state.dashboard_filter = None
-                        st.session_state.selected_case = None
-
-                        st.rerun()
-
-                    st.markdown(
-                        f"""
-                        <div class="top5-meter">
-                            <div class="top5-track">
-                                <div
-                                    class="top5-fill"
-                                    style="width:{percent}%; background:{colors[idx-1]};"
-                                ></div>
-                            </div>
-                            <span class="top5-count">{count}건</span>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-# --------------------------
-# 상세보기
-# --------------------------
-
-def show_detail():
-
-    data = st.session_state.selected_case
-
-    with st.container(key="detail_info_card"):
-
-        col1, col2 = st.columns([0.85, 3.15], gap="small")
-
-        with col1:
-
-            if data[8]:
-
-                img = Image.open(BytesIO(data[8]))
-
-                img = ImageOps.exif_transpose(img)
-
-                st.image(
-                    fit_detail_photo(img),
-                    use_container_width=True
-                )
 
         with col2:
 
-            st.markdown(
-                f"""
-                <div class="detail-meta-grid">
-                    <div class="detail-meta-cell">
-                        <span class="detail-meta-label">사례번호</span>
-                        <span class="detail-meta-value">{detail_html(data[0])}</span>
-                    </div>
-                    <div class="detail-meta-cell">
-                        <span class="detail-meta-label">유형</span>
-                        <span class="detail-meta-value">{detail_html(data[1])}</span>
-                    </div>
-                    <div class="detail-meta-cell detail-meta-cell-wide">
-                        <span class="detail-meta-label">상품명</span>
-                        <span class="detail-meta-value">{detail_html(data[3])}</span>
-                    </div>
-                    <div class="detail-meta-cell detail-meta-cell-wide">
-                        <span class="detail-meta-label">바코드</span>
-                        <span class="detail-meta-value">{detail_html(data[2])}</span>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-    st.markdown(
-        f"""
-        <div class="detail-section-grid">
-            <div class="detail-section-card">
-                <div class="detail-section-title">원인</div>
-                <div class="detail-section-body">{detail_html(data[4])}</div>
-            </div>
-            <div class="detail-section-card">
-                <div class="detail-section-title">조치방법</div>
-                <div class="detail-section-body">{detail_html(data[5])}</div>
-            </div>
-            <div class="detail-section-card">
-                <div class="detail-section-title">수리방법</div>
-                <div class="detail-section-body">{detail_html(data[6])}</div>
-            </div>
-            <div class="detail-section-card">
-                <div class="detail-section-title">방지대책</div>
-                <div class="detail-section-body">{detail_html(data[7])}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if data[9] and data[10]:
-
-        photo_col1, photo_col2 = st.columns(2, gap="small")
-
-        with photo_col1:
-
-            if data[9]:
-
-                with st.container(key="detail_case_photo"):
-
-                    st.markdown(
-                        '<div class="detail-photo-title">사례 사진</div>',
-                        unsafe_allow_html=True
-                    )
-
-                    img = fit_detail_photo(Image.open(BytesIO(data[9])))
-
-                    st.image(
-                        img,
-                        use_container_width=True
-                    )
-
-        with photo_col2:
-
-            if data[10]:
-
-                with st.container(key="detail_repair_photo"):
-
-                    st.markdown(
-                        '<div class="detail-photo-title">수리 사진</div>',
-                        unsafe_allow_html=True
-                    )
-
-                    img = fit_detail_photo(Image.open(BytesIO(data[10])))
-
-                    st.image(
-                        img,
-                        use_container_width=True
-                    )
-
-    elif data[9]:
-
-        photo_col1, _photo_spacer = st.columns(2, gap="small")
-
-        with photo_col1:
-
-            with st.container(key="detail_case_photo"):
-
-                st.markdown(
-                    '<div class="detail-photo-title">사례 사진</div>',
-                    unsafe_allow_html=True
-                )
-
-                img = fit_detail_photo(Image.open(BytesIO(data[9])))
-
-                st.image(
-                    img,
-                    use_container_width=True
-                )
-
-    elif data[10]:
-
-        _photo_spacer, photo_col2 = st.columns(2, gap="small")
-
-        with photo_col2:
-
-            with st.container(key="detail_repair_photo"):
-
-                st.markdown(
-                    '<div class="detail-photo-title">수리 사진</div>',
-                    unsafe_allow_html=True
-                )
-
-                img = fit_detail_photo(Image.open(BytesIO(data[10])))
-
-                st.image(
-                    img,
-                    use_container_width=True
-                )
-
-    with st.container(key="detail_action_row"):
-
-        pdf_btn, _detail_gap1, btn1, _detail_gap2, btn2, _detail_button_spacer = st.columns(
-            [168, 48, 116, 48, 116, 1],
-            gap="small",
-        )
-
-        with pdf_btn:
-
-            st.download_button(
-                label="📄 PDF 다운로드",
-                data=create_detail_pdf(data),
-                file_name=f"{data[0]}_사례상세보기.pdf",
-                mime="application/pdf",
-                key="detail_pdf_download_btn",
-                use_container_width=True
-            )
-
-        with _detail_gap1:
-
-            st.markdown(
-                '<div class="detail-action-gap"></div>',
-                unsafe_allow_html=True,
-            )
-
-        with btn1:
-
             if st.button(
-                "✏️ 수정하기",
-                key="detail_edit_btn",
+                "↩️ 취소",
+                key="edit_cancel_btn",
                 use_container_width=True
             ):
 
-                clear_marker_session_state(
-                    f"edit_case_marker_{data[0]}",
-                    include_canvas_state=True,
-                )
-                clear_marker_session_state(
-                    f"edit_repair_marker_{data[0]}",
-                    include_canvas_state=True,
-                )
+                clear_marker_session_state(f"edit_case_marker_{data[0]}")
+                clear_marker_session_state(f"edit_repair_marker_{data[0]}")
 
-                st.session_state.marker_canvas_session_version = (
-                    st.session_state.get("marker_canvas_session_version", 0) + 1
-                )
+                st.session_state.selected_case = data
 
-                st.session_state.edit_case = data
-
-                st.session_state.selected_case = None
+                st.session_state.edit_case = None
+                st.session_state.edit_date_edit_open = False
+                st.session_state.edit_date_case_id = None
 
                 st.rerun()
 
-        with _detail_gap2:
+    # --------------------------
+    # 오른쪽 화면
+    # --------------------------
 
-            st.markdown(
-                '<div class="detail-action-gap"></div>',
-                unsafe_allow_html=True,
-            )
+    with right:
 
-        with btn2:
+        if st.session_state.edit_case:
 
-            if st.button(
-                "🗑️ 삭제하기",
-                key="detail_delete_btn",
-                use_container_width=True
-            ):
+            show_edit()
 
-                c.execute(
-                    "DELETE FROM cases WHERE case_id = ?",
-                    (data[0],)
-                )
+        elif st.session_state.selected_case:
 
-                conn.commit()
+            show_detail()
 
-                st.success("삭제 완료")
+        else:
 
-                st.session_state.selected_case = None
+            show_dashboard()
+    # ==========================
+    # 엑셀 내보내기
+    # ==========================
 
-                st.rerun()
+    def create_excel():
 
-# --------------------------
-# 수정화면
-# --------------------------
+        c.execute("""
+        SELECT
+            case_id,
+            category,
+            barcode,
+            product,
+            cause,
+            action,
+            repair_method,
+            prevention,
+            product_image,
+            case_image,
+            repair_image
+        FROM cases
+        ORDER BY id DESC
+        """)
 
-def show_edit():
+        rows = c.fetchall()
 
-    data = st.session_state.edit_case
+        wb = Workbook()
 
-    if st.session_state.get("edit_date_case_id") != data[0]:
-        try:
-            st.session_state.edit_case_date = datetime.strptime(
-                data[0][:8],
-                "%Y%m%d"
-            ).date()
-        except ValueError:
-            st.session_state.edit_case_date = datetime.now().date()
+        # =====================
+        # 시트1 : 사례목록
+        # =====================
 
-        st.session_state.edit_date_case_id = data[0]
-        st.session_state.edit_date_edit_open = False
-
-    edit_case_id_col, edit_date_col = st.columns([2.2, 1], gap="small")
-
-    with edit_case_id_col:
-
-        edit_preview_case_id = get_next_case_id(
-            st.session_state.edit_case_date,
-            current_case_id=data[0]
-        )
-
-        st.text(f"사례번호 : {edit_preview_case_id}")
-
-    with edit_date_col:
-
-        if st.button(
-            "📅 일자 수정",
-            key="edit_date_edit_btn"
-        ):
-
-            st.session_state.edit_date_edit_open = (
-                not st.session_state.edit_date_edit_open
-            )
-
-    if st.session_state.edit_date_edit_open:
-
-        selected_edit_date = st.date_input(
-            "발생일자",
-            value=st.session_state.edit_case_date,
-            key=f"edit_case_date_input_{data[0]}"
-        )
-
-        if selected_edit_date != st.session_state.edit_case_date:
-
-            st.session_state.edit_case_date = selected_edit_date
-
-            st.rerun()
-
-    st.divider()
-
-    category_list = [
-        "파손",
-        "오발송",
-        "쇼트",
-        "불량",
-        "누락",
-        "기타",
-        "수평",
-        "용접"
-    ]
-
-    edit_category_value = "누락" if data[1] == "변심" else data[1]
-
-    category = st.selectbox(
-        "유형",
-        category_list,
-        index=category_list.index(edit_category_value),
-        key="edit_category"
-    )
-
-    product = st.text_input(
-        "상품명",
-        value=data[3],
-        key="edit_product"
-    )
-
-    barcode = st.text_input(
-        "바코드",
-        value=data[2],
-        key="edit_barcode"
-    )
-
-    st.divider()
-
-    st.markdown("### 상품 대표사진")
-
-    if data[8]:
-
-        img = Image.open(BytesIO(data[8]))
-
-        img = ImageOps.exif_transpose(img)
-
-        st.image(
-            img,
-            width=250
-        )
-
-    product_image = st.file_uploader(
-        "대표사진 변경",
-        type=["jpg", "jpeg", "png"],
-        key="edit_product_image"
-    )
-
-    st.divider()
-
-    cause = st.text_area(
-        "원인",
-        value=data[4],
-        height=120,
-        key="edit_cause"
-    )
-
-    st.markdown("### 사례 사진")
-
-    case_image = st.file_uploader(
-        "사례사진 변경",
-        type=["jpg", "jpeg", "png"],
-        key="edit_case_image"
-    )
-
-    case_image_upload_data = case_image.getvalue() if case_image else None
-    case_image_original_saved_data = get_case_image_original(data[0])
-    case_image_saved_data = first_readable_image_data(
-        data[9],
-        case_image_original_saved_data,
-    )
-    case_image_current_data = first_readable_image_data(
-        case_image_upload_data,
-        case_image_saved_data,
-    )
-    case_image_original_data = first_readable_image_data(
-        case_image_upload_data,
-        case_image_original_saved_data,
-        case_image_saved_data,
-    )
-
-    if case_image_current_data:
-
-        img = image_bytes_to_rgb(case_image_current_data)
-
-        st.image(
-            img,
-            width=150
-        )
-
-    st.session_state[f"edit_case_marker_{data[0]}_red_restore_image"] = (
-        case_image_original_data
-    )
-
-    case_image_data = edit_red_circle_marker_tool(
-        case_image_current_data,
-        f"edit_case_marker_{data[0]}",
-        "사례사진 부위 표시",
-        restore_image_data=case_image_original_data,
-    )
-
-    st.divider()
-
-    action = st.text_area(
-        "조치방법",
-        value=data[5],
-        height=120,
-        key="edit_action"
-    )
-
-    repair_method = st.text_area(
-        "수리방법",
-        value=data[6],
-        height=120,
-        key="edit_repair_method"
-    )
-
-    st.markdown("### 수리 사진")
-
-    repair_image = st.file_uploader(
-        "수리사진 변경",
-        type=["jpg", "jpeg", "png"],
-        key="edit_repair_image"
-    )
-
-    repair_image_upload_data = repair_image.getvalue() if repair_image else None
-    repair_image_original_saved_data = get_repair_image_original(data[0])
-    repair_image_saved_data = first_readable_image_data(
-        data[10],
-        repair_image_original_saved_data,
-    )
-    repair_image_current_data = first_readable_image_data(
-        repair_image_upload_data,
-        repair_image_saved_data,
-    )
-    repair_image_original_data = first_readable_image_data(
-        repair_image_upload_data,
-        repair_image_original_saved_data,
-        repair_image_saved_data,
-    )
-
-    repair_marker_prefix = f"edit_repair_marker_{data[0]}"
-    repair_current_fingerprint = (
-        image_data_fingerprint(repair_image_current_data)
-        if repair_image_current_data
-        else None
-    )
-    repair_last_fingerprint_key = f"{repair_marker_prefix}_current_fingerprint"
-
-    if (
-        repair_current_fingerprint
-        and st.session_state.get(repair_last_fingerprint_key) != repair_current_fingerprint
-    ):
-        clear_marker_session_state(repair_marker_prefix, include_canvas_state=True)
-        restore_marker_canvas(repair_marker_prefix, "blue")
-        st.session_state[repair_last_fingerprint_key] = repair_current_fingerprint
-
-    st.session_state[f"{repair_marker_prefix}_blue_restore_image"] = (
-        repair_image_original_data
-    )
-
-    repair_image_display_data = first_readable_image_data(
-        repair_image_current_data,
-        repair_image_original_data,
-    )
-
-    if repair_image_display_data:
-
-        img = image_bytes_to_rgb(repair_image_display_data)
-
-        st.image(
-            img,
-            width=150
-        )
-
-    repair_image_data = blue_circle_marker_tool(
-        repair_image_display_data,
-        repair_marker_prefix,
-        restore_image_data=repair_image_original_data,
-    )
-
-    st.divider()
-
-    st.markdown(
-        '<div class="edit-prevention-top-gap"></div>',
-        unsafe_allow_html=True
-    )
-
-    prevention = st.text_area(
-        "방지대책",
-        value=data[7],
-        height=120,
-        key="edit_prevention"
-    )
-
-    st.divider()
-
-    st.markdown(
-        '<div class="edit-button-top-gap"></div>',
-        unsafe_allow_html=True
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        if st.button(
-            "💾 수정 저장",
-            key="edit_save_btn",
-            use_container_width=True
-        ):
-
-            product_image_data = (
-                product_image.getvalue()
-                if product_image
-                else data[8]
-            )
-
-            new_case_id = get_next_case_id(
-                st.session_state.edit_case_date,
-                current_case_id=data[0]
-            )
-
-            c.execute("""
-            UPDATE cases
-            SET
-                case_id = ?,
-                category = ?,
-                barcode = ?,
-                product = ?,
-                cause = ?,
-                action = ?,
-                repair_method = ?,
-                prevention = ?,
-                product_image = ?,
-                case_image = ?,
-                case_image_original = ?,
-                repair_image = ?,
-                repair_image_original = ?
-            WHERE case_id = ?
-            """,
-            (
-                new_case_id,
-                category,
-                barcode,
-                product,
-                cause,
-                action,
-                repair_method,
-                prevention,
-                product_image_data,
-                case_image_data,
-                case_image_original_data,
-                repair_image_data,
-                repair_image_original_data,
-                data[0]
-            ))
-
-            conn.commit()
-
-            clear_marker_session_state(f"edit_case_marker_{data[0]}")
-            clear_marker_session_state(f"edit_repair_marker_{data[0]}")
-
-            c.execute("""
-            SELECT
-                case_id,
-                category,
-                barcode,
-                product,
-                cause,
-                action,
-                repair_method,
-                prevention,
-                product_image,
-                case_image,
-                repair_image
-            FROM cases
-            WHERE case_id = ?
-            """, (new_case_id,))
-
-            st.session_state.selected_case = c.fetchone()
-
-            st.session_state.edit_case = None
-            st.session_state.edit_date_edit_open = False
-            st.session_state.edit_date_case_id = None
-
-            st.success("수정 완료")
-
-            st.rerun()
-
-    with col2:
-
-        if st.button(
-            "↩️ 취소",
-            key="edit_cancel_btn",
-            use_container_width=True
-        ):
-
-            clear_marker_session_state(f"edit_case_marker_{data[0]}")
-            clear_marker_session_state(f"edit_repair_marker_{data[0]}")
-
-            st.session_state.selected_case = data
-
-            st.session_state.edit_case = None
-            st.session_state.edit_date_edit_open = False
-            st.session_state.edit_date_case_id = None
-
-            st.rerun()
-
-# --------------------------
-# 오른쪽 화면
-# --------------------------
-
-with right:
-
-    if st.session_state.edit_case:
-
-        show_edit()
-
-    elif st.session_state.selected_case:
-
-        show_detail()
-
-    else:
-
-        show_dashboard()
-# ==========================
-# 엑셀 내보내기
-# ==========================
-
-def create_excel():
-
-    c.execute("""
-    SELECT
-        case_id,
-        category,
-        barcode,
-        product,
-        cause,
-        action,
-        repair_method,
-        prevention,
-        product_image,
-        case_image,
-        repair_image
-    FROM cases
-    ORDER BY id DESC
-    """)
-
-    rows = c.fetchall()
-
-    wb = Workbook()
-
-    # =====================
-    # 시트1 : 사례목록
-    # =====================
-
-    ws1 = wb.active
-    ws1.title = "사례목록"
-
-    ws1.append([
-        "사례번호",
-        "유형",
-        "바코드",
-        "상품명",
-        "원인",
-        "조치방법",
-        "수리방법",
-        "방지대책"
-    ])
-
-    for row in rows:
+        ws1 = wb.active
+        ws1.title = "사례목록"
 
         ws1.append([
-            row[0],
-            row[1],
-            row[2],
-            row[3],
-            row[4],
-            row[5],
-            row[6],
-            row[7]
+            "사례번호",
+            "유형",
+            "바코드",
+            "상품명",
+            "원인",
+            "조치방법",
+            "수리방법",
+            "방지대책"
         ])
 
-    # =====================
-    # 시트2 : 사진목록
-    # =====================
+        for row in rows:
 
-    ws2 = wb.create_sheet("사진목록")
+            ws1.append([
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+                row[4],
+                row[5],
+                row[6],
+                row[7]
+            ])
 
-    ws2.append([
-        "사례번호",
-        "대표사진",
-        "사례사진",
-        "수리사진"
-    ])
+        # =====================
+        # 시트2 : 사진목록
+        # =====================
 
-    ws2.column_dimensions["A"].width = 18
-    ws2.column_dimensions["B"].width = 12
-    ws2.column_dimensions["C"].width = 12
-    ws2.column_dimensions["D"].width = 12
+        ws2 = wb.create_sheet("사진목록")
 
-    photo_row = 2
+        ws2.append([
+            "사례번호",
+            "대표사진",
+            "사례사진",
+            "수리사진"
+        ])
 
-    for row in rows:
+        ws2.column_dimensions["A"].width = 18
+        ws2.column_dimensions["B"].width = 12
+        ws2.column_dimensions["C"].width = 12
+        ws2.column_dimensions["D"].width = 12
 
-        ws2.cell(
-            row=photo_row,
-            column=1,
-            value=row[0]
+        photo_row = 2
+        temp_image_paths = []
+
+        for row in rows:
+
+            ws2.cell(
+                row=photo_row,
+                column=1,
+                value=row[0]
+            )
+
+            image_data_list = [
+                (row[8], "B"),
+                (row[9], "C"),
+                (row[10], "D")
+            ]
+
+            for img_data, col_letter in image_data_list:
+
+                if img_data:
+
+                    tmp = tempfile.NamedTemporaryFile(
+                        delete=False,
+                        suffix=".png"
+                    )
+
+                    tmp.write(img_data)
+                    tmp.close()
+                    temp_image_paths.append(Path(tmp.name))
+
+                    img = XLImage(tmp.name)
+
+                    # 썸네일 크기
+                    img.width = 80
+                    img.height = 80
+
+                    ws2.add_image(
+                        img,
+                        f"{col_letter}{photo_row}"
+                    )
+
+            ws2.row_dimensions[photo_row].height = 65
+
+            photo_row += 1
+
+        excel_buffer = BytesIO()
+
+        try:
+            wb.save(excel_buffer)
+        finally:
+            for temp_image_path in temp_image_paths:
+                try:
+                    temp_image_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+        excel_buffer.seek(0)
+
+        return excel_buffer
+
+    excel_export_key = "return_case_excel_export_bytes"
+
+    if st.button("📥 엑셀 파일 생성", key="main_excel_prepare_btn"):
+        with st.spinner("엑셀 파일을 생성하는 중입니다..."):
+            st.session_state[excel_export_key] = create_excel().getvalue()
+        st.success("엑셀 파일이 준비되었습니다.")
+
+    if excel_export_key in st.session_state:
+        st.download_button(
+            label="📥 준비된 엑셀 다운로드",
+            data=st.session_state[excel_export_key],
+            file_name="반품사례DB.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="main_excel_download_btn"
         )
 
-        image_data_list = [
-            (row[8], "B"),
-            (row[9], "C"),
-            (row[10], "D")
-        ]
 
-        for img_data, col_letter in image_data_list:
-
-            if img_data:
-
-                tmp = tempfile.NamedTemporaryFile(
-                    delete=False,
-                    suffix=".png"
-                )
-
-                tmp.write(img_data)
-                tmp.close()
-
-                img = XLImage(tmp.name)
-
-                # 썸네일 크기
-                img.width = 80
-                img.height = 80
-
-                ws2.add_image(
-                    img,
-                    f"{col_letter}{photo_row}"
-                )
-
-        ws2.row_dimensions[photo_row].height = 65
-
-        photo_row += 1
-
-    excel_buffer = BytesIO()
-
-    wb.save(excel_buffer)
-
-    excel_buffer.seek(0)
-
-    return excel_buffer
-
-st.download_button(
-    label="📥 엑셀 다운로드",
-    data=create_excel(),
-    file_name="반품사례DB.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    key="main_excel_download_btn"
-)
+if __name__ == "__main__":
+    st.set_page_config(
+        page_title="LOGIN_반품/AS",
+        layout="wide",
+    )
+    render_return_case_system()
