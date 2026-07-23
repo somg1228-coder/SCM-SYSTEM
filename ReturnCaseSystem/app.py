@@ -2279,6 +2279,7 @@ def render_return_case_system():
         min-height: var(--app-chart-card-h) !important;
         height: var(--app-chart-card-h) !important;
         max-height: var(--app-chart-card-h) !important;
+        padding: 10px 12px 8px 12px !important;
     }
 
     .st-key-dashboard_card_recent,
@@ -2904,10 +2905,10 @@ def render_return_case_system():
         --app-page-x: clamp(0.8rem, 1vw, 1.2rem);
         --app-page-y: clamp(3.45rem, 4.5vh, 3.95rem);
         --app-kpi-h: clamp(98px, 10.4vh, 118px);
-        --app-chart-card-h: clamp(345px, 36.5vh, 402px);
+        --app-chart-card-h: clamp(390px, 40vh, 448px);
         --app-list-card-h: clamp(296px, 31.8vh, 336px);
         --app-dashboard-card-h: var(--app-list-card-h);
-        --app-chart-h: calc(var(--app-chart-card-h) - 70px);
+        --app-chart-h: calc(var(--app-chart-card-h) - 46px);
         --app-grid-h: calc(var(--app-list-card-h) - 66px);
         --app-detail-photo-h: clamp(240px, 34vh, 312px);
         --app-search-h: clamp(278px, 35.5vh, 402px);
@@ -2985,11 +2986,15 @@ def render_return_case_system():
 
     .st-key-dashboard_card_category [data-testid="stPlotlyChart"],
     .st-key-dashboard_card_month [data-testid="stPlotlyChart"] {
+        min-height: var(--app-chart-h) !important;
+        height: var(--app-chart-h) !important;
         max-height: var(--app-chart-h) !important;
     }
 
     .st-key-dashboard_card_category [data-testid="stPlotlyChart"] > div,
     .st-key-dashboard_card_month [data-testid="stPlotlyChart"] > div {
+        min-height: var(--app-chart-h) !important;
+        height: var(--app-chart-h) !important;
         max-height: var(--app-chart-h) !important;
     }
 
@@ -3017,7 +3022,7 @@ def render_return_case_system():
         :root {
             --app-page-y: 3.2rem;
             --app-kpi-h: 94px;
-            --app-chart-card-h: 354px;
+            --app-chart-card-h: 390px;
             --app-list-card-h: 306px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-search-h: 278px;
@@ -3028,7 +3033,7 @@ def render_return_case_system():
         :root {
             --app-page-y: 2.9rem;
             --app-kpi-h: 88px;
-            --app-chart-card-h: 338px;
+            --app-chart-card-h: 370px;
             --app-list-card-h: 282px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 250px;
@@ -3049,7 +3054,7 @@ def render_return_case_system():
         :root {
             --app-page-x: 0.85rem;
             --app-kpi-h: 92px;
-            --app-chart-card-h: 350px;
+            --app-chart-card-h: 390px;
             --app-list-card-h: 320px;
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 260px;
@@ -4253,12 +4258,12 @@ def render_return_case_system():
                     )
 
                     fig.update_layout(
-                        height=320,
+                        height=380,
                         margin=dict(
                             l=14,
                             r=16,
                             t=8,
-                            b=18
+                            b=10
                         ),
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
@@ -4277,8 +4282,8 @@ def render_return_case_system():
                         textinfo="percent",
                         textfont_size=12,
                         domain=dict(
-                            x=[0.02, 0.78],
-                            y=[0.08, 0.92]
+                            x=[0.02, 0.80],
+                            y=[0.04, 0.96]
                         )
                     )
 
@@ -4403,12 +4408,12 @@ def render_return_case_system():
                         )
 
                     fig.update_layout(
-                        height=320,
+                        height=380,
                         margin=dict(
                             l=14,
                             r=14,
-                            t=34,
-                            b=18
+                            t=26,
+                            b=12
                         ),
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
