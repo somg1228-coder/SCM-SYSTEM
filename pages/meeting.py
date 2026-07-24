@@ -20,7 +20,7 @@ RETURN_CASE_DB_PATH = BASE_DIR / "ReturnCaseSystem" / "cases.db"
 PRODUCTION_COLUMNS = ["바코드", "상품명", "현재수량", "요청수량", "납기일", "상태", "비고"]
 EVENT_COLUMNS = ["행사명", "행사기간", "행사품목", "요청수량", "상세내용"]
 EVENT_SUMMARY_COLUMNS = ["행사명", "행사기간", "행사품목", "요청수량"]
-ACTION_COLUMNS = ["담당부서", "진행내용", "수량", "완료예정일", "납기일", "진행상태"]
+ACTION_COLUMNS = ["담당부서/담당자", "진행내용", "수량", "완료예정일", "납기일", "진행상태"]
 EDIT_DELETE_COLUMN = "삭제"
 EVENT_PRODUCT_OPTIONS = ["SKUA", "SKUB", "SKUC", "SKUD", "SKUE"]
 ISSUE_KEYS = {
@@ -99,6 +99,7 @@ def render_meeting_page() -> None:
         clear_editor_state(f"meeting_action_editor_v7_{report['id']}")
         clear_editor_state(f"meeting_action_editor_v8_{report['id']}")
         clear_editor_state(f"meeting_action_editor_v9_{report['id']}")
+        clear_editor_state(f"meeting_action_editor_v10_{report['id']}")
         clear_editor_state(f"meeting_action_edit_buffer_{report['id']}")
         clear_editor_state(action_draft_state_key(report["id"]))
         st.rerun()
@@ -133,6 +134,7 @@ def render_meeting_page() -> None:
         clear_editor_state(f"meeting_action_editor_v7_{report['id']}")
         clear_editor_state(f"meeting_action_editor_v8_{report['id']}")
         clear_editor_state(f"meeting_action_editor_v9_{report['id']}")
+        clear_editor_state(f"meeting_action_editor_v10_{report['id']}")
         clear_editor_state(f"meeting_action_edit_buffer_{report['id']}")
         clear_editor_state(action_draft_state_key(report["id"]))
         st.rerun()
@@ -810,7 +812,7 @@ def inject_order_numbering_script(label: str, placeholder: str) -> None:
 
 
 def render_action_section(report_id: int) -> pd.DataFrame:
-    st.markdown(section_title("04", "주요 진행사항 공유", anchor_id="meeting-actions-section"), unsafe_allow_html=True)
+    st.markdown(section_title("04", "진행사항", anchor_id="meeting-actions-section"), unsafe_allow_html=True)
     saved_df = filter_filled_rows(load_table_df("meeting_action_items", report_id, ACTION_COLUMNS), ACTION_COLUMNS)
     draft_key = action_draft_state_key(report_id)
     edit_buffer_key = f"meeting_action_edit_buffer_{report_id}"
@@ -824,11 +826,11 @@ def render_action_section(report_id: int) -> pd.DataFrame:
     preview_df = filter_filled_rows(strip_delete_marker_column(current_draft), ACTION_COLUMNS)
     st.markdown(render_table_html(ACTION_COLUMNS, preview_df, "actions"), unsafe_allow_html=True)
 
-    with st.expander("주요 진행사항 편집", expanded=False):
+    with st.expander("진행사항 편집", expanded=False):
         st.caption("입력한 내용은 진행사항 저장 또는 수정 저장을 눌렀을 때만 반영됩니다. 행 삭제는 삭제 칸을 체크한 뒤 선택 삭제를 누르세요.")
         editor_df = add_delete_marker_column(prepare_action_editor_df(edit_buffer), marker_source=edit_buffer)
         editor_columns = [EDIT_DELETE_COLUMN, *ACTION_COLUMNS]
-        editor_key = f"meeting_action_editor_v9_{report_id}"
+        editor_key = f"meeting_action_editor_v10_{report_id}"
         with st.form(key=f"meeting_action_editor_form_{report_id}", clear_on_submit=False):
             edited = st.data_editor(
                 editor_df,
@@ -839,7 +841,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
                 column_order=editor_columns,
                 column_config={
                     EDIT_DELETE_COLUMN: st.column_config.CheckboxColumn("삭제", default=False),
-                    "담당부서": st.column_config.TextColumn("담당부서", default=""),
+                    "담당부서/담당자": st.column_config.TextColumn("담당부서/담당자", default=""),
                     "진행내용": st.column_config.TextColumn("진행내용", default=""),
                     "수량": st.column_config.NumberColumn("수량", min_value=0, step=1, format="%d"),
                     "완료예정일": st.column_config.DateColumn("완료예정일", format="YYYY-MM-DD"),
@@ -922,7 +924,7 @@ def prepare_action_editor_df(df: pd.DataFrame) -> pd.DataFrame:
     editor_df = normalize_df(strip_delete_marker_column(df), ACTION_COLUMNS)
     if editor_df.empty:
         editor_df = pd.DataFrame(columns=ACTION_COLUMNS)
-    for column in ["담당부서", "진행내용", "진행상태"]:
+    for column in ["담당부서/담당자", "진행내용", "진행상태"]:
         editor_df[column] = editor_df[column].apply(normalize_cell_value)
     editor_df["수량"] = pd.to_numeric(editor_df["수량"], errors="coerce").fillna(0).astype(int)
     editor_df["완료예정일"] = editor_df["완료예정일"].apply(normalize_editor_date_value)
@@ -1098,7 +1100,7 @@ def load_table_df(table_name: str, report_id: int, columns: list[str]) -> pd.Dat
             ORDER BY sort_order, id
         """,
         "meeting_action_items": """
-            SELECT owner AS 담당부서, content AS 진행내용,
+            SELECT owner AS "담당부서/담당자", content AS 진행내용,
                    quantity AS 수량, due_date AS 완료예정일,
                    delivery_date AS 납기일, status AS 진행상태
             FROM meeting_action_items
@@ -1242,7 +1244,7 @@ def load_meeting_history_frames() -> dict[str, pd.DataFrame]:
         actions = pd.read_sql_query(
             f"""
             SELECT report.meeting_date AS 회의일, report.author AS 작성자,
-                   item.owner AS 담당부서, item.content AS 진행내용,
+                   item.owner AS "담당부서/담당자", item.content AS 진행내용,
                    item.quantity AS 수량, item.due_date AS 완료예정일,
                    item.delivery_date AS 납기일,
                    item.status AS 진행상태
@@ -1631,7 +1633,7 @@ def replace_rows(conn: sqlite3.Connection, table_name: str, report_id: int, df: 
             (
                 report_id,
                 index,
-                row["담당부서"],
+                row["담당부서/담당자"],
                 row["진행내용"],
                 parse_int(row["수량"]),
                 normalize_date_value(row["완료예정일"]),
@@ -1717,7 +1719,7 @@ def build_kpis(
             "tone": "orange",
         },
         {
-            "label": "진행사항 공유",
+            "label": "진행사항",
             "value": f"{action_count}건",
             "detail": action_detail,
             "delta": format_delta(action_count - previous_action_count),
@@ -1766,7 +1768,7 @@ def summarize_action_items(action_df: pd.DataFrame) -> str:
     normalized = filter_filled_rows(action_df, ACTION_COLUMNS)
     values = []
     for _, row in normalized.iterrows():
-        owner = normalize_cell_value(row.get("담당부서", ""))
+        owner = normalize_cell_value(row.get("담당부서/담당자", ""))
         content = normalize_cell_value(row.get("진행내용", ""))
         values.append(f"{owner}: {content}" if owner and content else content or owner)
     return summarize_values(values, empty_text="진행사항 없음")
@@ -1849,7 +1851,7 @@ def count_action_rows(df: pd.DataFrame) -> int:
     normalized = normalize_df(df, ACTION_COLUMNS)
     if normalized.empty:
         return 0
-    return count_meaningful_rows(normalized, ["담당부서", "진행내용", "완료예정일", "납기일", "진행상태"])
+    return count_meaningful_rows(normalized, ["담당부서/담당자", "진행내용", "완료예정일", "납기일", "진행상태"])
 
 
 def summarize_event_month(events_df: pd.DataFrame, event_month: date) -> str:
@@ -1883,7 +1885,7 @@ def count_previous_week_action_rows(meeting_date: date) -> int:
     df = pd.DataFrame(
         [
             {
-                "담당부서": row["owner"],
+                "담당부서/담당자": row["owner"],
                 "진행내용": row["content"],
                 "수량": row["quantity"],
                 "완료예정일": row["due_date"],
@@ -2407,7 +2409,7 @@ def create_meeting_pdf(
 
     has_actions = count_action_rows(action_df) > 0
     if has_actions:
-        story += pdf_section("04", "주요 진행사항 공유", styles)
+        story += pdf_section("04", "진행사항", styles)
         story.append(
             pdf_table(
                 action_df,
