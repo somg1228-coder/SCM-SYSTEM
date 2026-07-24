@@ -34,6 +34,8 @@
     --bottom-card-h: clamp(236px, 29vh, 340px);
     --donut-size: clamp(70px, 9.4vh, 106px);
     --donut-core: clamp(38px, 5vh, 56px);
+    --meeting-issue-card-h: clamp(226px, 23.5vh, 252px);
+    --meeting-issue-textarea-h: 118px;
 }
 
 html,
@@ -2241,17 +2243,39 @@ div[class*="st-key-meeting_actions_selected_delete_btn"] button {
     color: #ff9898;
 }
 
-div[class*="st-key-meeting_issue_"] {
+div[class*="st-key-meeting_issue_"]:not([class*="st-key-meeting_issue_text_"]),
+div[class*="st-key-meeting_issue_text_"] {
     background: rgba(7, 58, 52, 0.68) !important;
     border: 1px solid rgba(87, 178, 165, 0.24) !important;
     border-radius: 8px !important;
     padding: 0.78rem !important;
 }
 
-div[class*="st-key-meeting_issue_"] h3 {
+div[class*="st-key-meeting_issue_"]:not([class*="st-key-meeting_issue_text_"]) {
+    height: var(--meeting-issue-card-h) !important;
+    max-height: var(--meeting-issue-card-h) !important;
+    min-height: var(--meeting-issue-card-h) !important;
+    overflow: hidden !important;
+}
+
+div[class*="st-key-meeting_issue_"]:not([class*="st-key-meeting_issue_text_"]) h3 {
     color: #ffffff;
     font-size: 0.96rem;
     margin: 0 0 0.48rem;
+}
+
+div[class*="st-key-meeting_issue_text_"] {
+    height: calc(var(--meeting-issue-textarea-h) + 1.56rem + 2px) !important;
+    max-height: calc(var(--meeting-issue-textarea-h) + 1.56rem + 2px) !important;
+    min-height: calc(var(--meeting-issue-textarea-h) + 1.56rem + 2px) !important;
+    overflow: hidden !important;
+}
+
+div[class*="st-key-meeting_issue_text_"] [data-testid="stTextArea"],
+div[class*="st-key-meeting_issue_text_"] textarea {
+    height: var(--meeting-issue-textarea-h) !important;
+    max-height: var(--meeting-issue-textarea-h) !important;
+    min-height: var(--meeting-issue-textarea-h) !important;
 }
 
 .meeting-kpi-grid {
