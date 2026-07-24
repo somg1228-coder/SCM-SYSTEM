@@ -3470,6 +3470,220 @@ def render_return_case_system():
         }
     }
 
+    /* UI-Redesign: light enterprise SCM theme override. */
+    :root {
+        color-scheme: light;
+        --app-bg: #f8fafc;
+        --app-card: #ffffff;
+        --app-border: #e5e7eb;
+        --app-primary: #2563eb;
+        --app-success: #22c55e;
+        --app-warning: #f59e0b;
+        --app-danger: #ef4444;
+        --app-text: #111827;
+        --app-muted: #6b7280;
+        --app-radius: 16px;
+        --app-control-radius: 10px;
+        --app-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 28px rgba(15, 23, 42, 0.06);
+    }
+
+    .stApp {
+        background: var(--app-bg) !important;
+        color: var(--app-text) !important;
+    }
+
+    html, body,
+    h1, h2, h3, h4, h5, h6,
+    p, label, span, div {
+        color: var(--app-text) !important;
+    }
+
+    small,
+    [data-testid="stCaptionContainer"],
+    [data-testid="stWidgetLabel"] p {
+        color: var(--app-muted) !important;
+    }
+
+    [data-testid="column"]:first-child {
+        border-right-color: var(--app-border) !important;
+    }
+
+    .st-key-dashboard_card_category,
+    .st-key-dashboard_card_month,
+    .st-key-dashboard_card_recent,
+    .st-key-dashboard_card_top5,
+    .st-key-detail_info_card,
+    div[class*="st-key-detail_info_card"],
+    .detail-section-card,
+    div[data-testid="stVerticalBlockBorderWrapper"],
+    div[data-testid="stExpander"],
+    div[data-testid="stForm"] {
+        background: var(--app-card) !important;
+        border: 1px solid var(--app-border) !important;
+        border-radius: var(--app-radius) !important;
+        box-shadow: var(--app-shadow) !important;
+        color: var(--app-text) !important;
+    }
+
+    .dashboard-card-title,
+    .detail-section-card strong,
+    .detail-section-card b {
+        color: var(--app-text) !important;
+    }
+
+    .stTextInput input,
+    .stTextArea textarea,
+    .stNumberInput input,
+    .stDateInput input,
+    div[data-baseweb="input"],
+    div[data-baseweb="select"],
+    div[data-baseweb="select"] > div,
+    div[role="combobox"],
+    div[data-testid="stFileUploader"] section,
+    div[data-testid="stFileUploaderDropzone"] {
+        background: #ffffff !important;
+        border: 1px solid #d1d5db !important;
+        border-radius: var(--app-control-radius) !important;
+        box-shadow: none !important;
+        color: var(--app-text) !important;
+    }
+
+    .stTextInput input:focus,
+    .stTextArea textarea:focus,
+    .stNumberInput input:focus,
+    .stDateInput input:focus,
+    div[data-baseweb="input"]:focus-within,
+    div[data-baseweb="select"]:focus-within {
+        border-color: var(--app-primary) !important;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14) !important;
+    }
+
+    .stTextInput input::placeholder,
+    .stTextArea textarea::placeholder {
+        color: #9ca3af !important;
+    }
+
+    .stButton button,
+    .stDownloadButton button,
+    .stFormSubmitButton button,
+    div[data-testid="stFileUploader"] section button,
+    div[data-testid="stFileUploaderDropzone"] button {
+        background: #ffffff !important;
+        border: 1px solid #d1d5db !important;
+        border-radius: 10px !important;
+        color: #374151 !important;
+        font-weight: 850 !important;
+        transition: background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s ease !important;
+    }
+
+    .stButton button:hover,
+    .stDownloadButton button:hover,
+    .stFormSubmitButton button:hover,
+    div[data-testid="stFileUploader"] section button:hover,
+    div[data-testid="stFileUploaderDropzone"] button:hover {
+        background: #f9fafb !important;
+        border-color: #9ca3af !important;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+        color: #111827 !important;
+        transform: translateY(-1px);
+    }
+
+    button[kind="primary"],
+    .st-key-save_case_btn button,
+    .st-key-detail_pdf_download_btn button,
+    .st-key-main_excel_download_btn button,
+    .st-key-main_excel_prepare_btn button {
+        background: var(--app-primary) !important;
+        border-color: var(--app-primary) !important;
+        color: #ffffff !important;
+    }
+
+    button[kind="primary"] *,
+    .st-key-save_case_btn button *,
+    .st-key-detail_pdf_download_btn button *,
+    .st-key-main_excel_download_btn button *,
+    .st-key-main_excel_prepare_btn button * {
+        color: #ffffff !important;
+    }
+
+    .st-key-detail_delete_btn button {
+        border-color: #fecaca !important;
+        color: #b91c1c !important;
+    }
+
+    .st-key-detail_delete_btn button * {
+        color: #b91c1c !important;
+    }
+
+    div[data-testid="stDataFrame"],
+    div[data-testid="stDataEditor"],
+    table {
+        border-color: var(--app-border) !important;
+        color: var(--app-text) !important;
+    }
+
+    th,
+    thead tr,
+    div[data-testid="stDataFrame"] [role="columnheader"],
+    div[data-testid="stDataEditor"] [role="columnheader"] {
+        background: #f8fafc !important;
+        border-color: var(--app-border) !important;
+        color: #374151 !important;
+        font-weight: 900 !important;
+    }
+
+    td,
+    tbody tr,
+    div[data-testid="stDataFrame"] [role="gridcell"],
+    div[data-testid="stDataEditor"] [role="gridcell"] {
+        background: #ffffff !important;
+        border-color: #eef2f7 !important;
+        color: var(--app-text) !important;
+    }
+
+    tbody tr:nth-child(even) td {
+        background: #f9fafb !important;
+    }
+
+    tbody tr:hover td,
+    div[data-testid="stDataFrame"] [role="row"]:hover [role="gridcell"],
+    div[data-testid="stDataEditor"] [role="row"]:hover [role="gridcell"] {
+        background: #eff6ff !important;
+    }
+
+    .kpi-card,
+    .st-key-kpi_all button,
+    .st-key-kpi_month button,
+    .st-key-kpi_broken button,
+    .st-key-kpi_defect button,
+    .st-key-kpi_wrong button,
+    .st-key-kpi_shortage button,
+    .st-key-kpi_missing button,
+    .st-key-kpi_etc button,
+    .st-key-kpi_horizontal button,
+    .st-key-kpi_welding button {
+        background: #ffffff !important;
+        border: 1px solid var(--app-border) !important;
+        border-radius: var(--app-radius) !important;
+        box-shadow: var(--app-shadow) !important;
+        color: var(--app-text) !important;
+    }
+
+    .st-key-kpi_all button:hover,
+    .st-key-kpi_month button:hover,
+    .st-key-kpi_broken button:hover,
+    .st-key-kpi_defect button:hover,
+    .st-key-kpi_wrong button:hover,
+    .st-key-kpi_shortage button:hover,
+    .st-key-kpi_missing button:hover,
+    .st-key-kpi_etc button:hover,
+    .st-key-kpi_horizontal button:hover,
+    .st-key-kpi_welding button:hover {
+        background: #ffffff !important;
+        border-color: #c7d2fe !important;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 18px 36px rgba(37, 99, 235, 0.12) !important;
+    }
+
     </style>
     """, unsafe_allow_html=True)
     # ==========================
@@ -4305,7 +4519,7 @@ def render_return_case_system():
                         ),
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
-                        font_color="white",
+                        font_color="#111827",
                         legend=dict(
                             font=dict(size=12),
                             orientation="v",
@@ -4433,7 +4647,7 @@ def render_return_case_system():
                                 textposition="top center",
                                 textfont=dict(size=13),
                                 marker=dict(
-                                    color="white",
+                                    color="#ffffff",
                                     size=9,
                                     line=dict(
                                         color="#0f766e",
@@ -4455,7 +4669,7 @@ def render_return_case_system():
                         ),
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
-                        font_color="white",
+                        font_color="#111827",
                         font=dict(size=13),
                         hovermode="x unified",
                         showlegend=False,
@@ -4520,16 +4734,16 @@ def render_return_case_system():
 
                 gb.configure_default_column(
                     cellStyle={
-                        "color": "white",
-                        "backgroundColor": "#073b36",
+                        "color": "#111827",
+                        "backgroundColor": "#ffffff",
                         "textAlign": "center"
                     }
                 )
 
                 gb.configure_grid_options(
                     rowStyle={
-                        "backgroundColor": "#073b36",
-                        "color": "white"
+                        "backgroundColor": "#ffffff",
+                        "color": "#111827"
                     },
                     rowHeight=28,
                     headerHeight=34,
@@ -4566,41 +4780,44 @@ def render_return_case_system():
 
                     custom_css={
                         ".ag-root-wrapper": {
-                            "background-color": "#052c28 !important"
+                            "background-color": "#ffffff !important",
+                            "border": "1px solid #e5e7eb !important",
+                            "border-radius": "14px !important"
                         },
 
                         ".ag-header": {
-                            "background-color": "rgba(255,255,255,0.10) !important"
+                            "background-color": "#f8fafc !important",
+                            "border-bottom": "1px solid #e5e7eb !important"
                         },
 
                         ".ag-header-cell-label": {
-                            "color": "white !important",
+                            "color": "#374151 !important",
                             "font-weight": "700 !important",
                             "justify-content": "center !important"
                         },
 
                         ".ag-cell": {
-                            "background-color": "#073b36 !important",
-                            "color": "white !important",
+                            "background-color": "#ffffff !important",
+                            "color": "#111827 !important",
                             "font-size": "13px !important",
                             "line-height": "28px !important"
                         },
                         ".ag-row-even .ag-cell": {
-                            "background-color": "#073b36 !important"
+                            "background-color": "#ffffff !important"
                         },
                         ".ag-row-odd .ag-cell": {
-                            "background-color": "#06433d !important"
+                            "background-color": "#f9fafb !important"
                         },
                         ".ag-center-cols-container": {
-                            "background-color": "#052c28 !important"
+                            "background-color": "#ffffff !important"
                         },
 
                         ".ag-center-cols-viewport": {
-                            "background-color": "#052c28 !important"
+                            "background-color": "#ffffff !important"
                         },
 
                         ".ag-body-viewport": {
-                            "background-color": "#052c28 !important"
+                            "background-color": "#ffffff !important"
                         },
 
                         ".ag-body-horizontal-scroll": {
@@ -4616,15 +4833,16 @@ def render_return_case_system():
                         },
 
                         ".ag-row": {
-                            "background-color": "#073b36 !important",
-                            "color": "white !important"
+                            "background-color": "#ffffff !important",
+                            "color": "#111827 !important",
+                            "border-bottom": "1px solid #eef2f7 !important"
                         },
 
                         ".ag-row-hover": {
-                            "background-color": "#0d6b63 !important"
+                            "background-color": "#eff6ff !important"
                         },
                         ".ag-row-hover .ag-cell": {
-                            "background-color": "#0d6b63 !important"
+                            "background-color": "#eff6ff !important"
                         }
                     }
                 )
