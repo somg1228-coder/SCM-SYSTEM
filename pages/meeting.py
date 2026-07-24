@@ -2292,7 +2292,7 @@ def create_meeting_pdf(
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle
         from reportlab.lib.units import mm
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        from reportlab.platypus import CondPageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     except ImportError:
         st.error("PDF 생성을 위해 reportlab 패키지가 필요합니다. `pip install reportlab` 후 다시 실행해주세요.")
         return None
@@ -2413,6 +2413,7 @@ def create_meeting_pdf(
 
     has_actions = count_action_rows(action_df) > 0
     if has_actions:
+        story.append(CondPageBreak(42 * mm))
         story += pdf_section("04", "진행사항", styles)
         story.append(
             pdf_table(
