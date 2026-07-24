@@ -2501,3 +2501,99 @@ div[data-testid="element-container"]:has(.return-system-shell) {
         grid-template-columns: 1fr;
     }
 }
+
+@media (max-width: 760px) {
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stSidebarCollapseButton"] {
+        display: flex !important;
+        left: 0.7rem !important;
+        position: fixed !important;
+        top: 0.7rem !important;
+        z-index: 1000000 !important;
+    }
+
+    [data-testid="collapsedControl"] button,
+    [data-testid="stSidebarCollapsedControl"] button,
+    [data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebar"] button[kind="header"],
+    [data-testid="stSidebar"] button[title*="Expand"],
+    [data-testid="stSidebar"] button[title*="expand"],
+    [data-testid="stSidebar"] button[aria-label*="Expand"],
+    [data-testid="stSidebar"] button[aria-label*="expand"],
+    [data-testid="stSidebar"] button[title*="Open"],
+    [data-testid="stSidebar"] button[title*="open"],
+    [data-testid="stSidebar"] button[aria-label*="Open"],
+    [data-testid="stSidebar"] button[aria-label*="open"],
+    [data-testid="stSidebar"] button[title*="Collapse"],
+    [data-testid="stSidebar"] button[title*="collapse"],
+    [data-testid="stSidebar"] button[aria-label*="Collapse"],
+    [data-testid="stSidebar"] button[aria-label*="collapse"],
+    [data-testid="stSidebar"] button[aria-label*="sidebar"],
+    [data-testid="stSidebar"] button[aria-label*="Sidebar"],
+    [data-testid="stSidebar"] button[aria-label*="?ъ씠?쒕컮"] {
+        align-items: center !important;
+        background: rgba(5, 38, 34, 0.92) !important;
+        border: 1px solid rgba(126, 197, 185, 0.38) !important;
+        border-radius: 7px !important;
+        color: #f2fffb !important;
+        display: inline-flex !important;
+        height: 34px !important;
+        justify-content: center !important;
+        min-height: 34px !important;
+        min-width: 34px !important;
+        padding: 0 !important;
+        width: 34px !important;
+    }
+
+    [data-testid="stSidebar"] {
+        flex: 0 0 min(82vw, 260px) !important;
+        height: 100dvh !important;
+        left: 0 !important;
+        max-height: 100dvh !important;
+        max-width: min(82vw, 260px) !important;
+        min-width: 0 !important;
+        position: fixed !important;
+        top: 0 !important;
+        width: min(82vw, 260px) !important;
+        z-index: 999999 !important;
+    }
+
+    [data-testid="stSidebar"] > div {
+        max-width: min(82vw, 260px) !important;
+        min-width: 0 !important;
+        width: min(82vw, 260px) !important;
+    }
+
+    [data-testid="stSidebar"][aria-expanded="false"],
+    [data-testid="stSidebar"][aria-hidden="true"] {
+        border-right: 0 !important;
+        flex: 0 0 0 !important;
+        max-width: 0 !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+        transform: translateX(-100%) !important;
+        width: 0 !important;
+    }
+
+    [data-testid="stSidebar"][aria-expanded="false"] > div,
+    [data-testid="stSidebar"][aria-hidden="true"] > div {
+        max-width: 0 !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+        width: 0 !important;
+    }
+
+    [data-testid="stSidebar"] .block-container {
+        height: 100dvh;
+        padding-top: 2.9rem;
+    }
+
+    .block-container,
+    .main .block-container,
+    [data-testid="stAppViewBlockContainer"],
+    [data-testid="stMainBlockContainer"] {
+        height: 100dvh;
+        padding: 3.15rem 0.72rem 0.85rem;
+    }
+}

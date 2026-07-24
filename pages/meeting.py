@@ -20,7 +20,7 @@ RETURN_CASE_DB_PATH = BASE_DIR / "ReturnCaseSystem" / "cases.db"
 PRODUCTION_COLUMNS = ["바코드", "상품명", "현재수량", "요청수량", "납기일", "상태", "비고"]
 EVENT_COLUMNS = ["행사명", "행사기간", "행사품목", "요청수량", "상세내용"]
 EVENT_SUMMARY_COLUMNS = ["행사명", "행사기간", "행사품목", "요청수량"]
-ACTION_COLUMNS = ["담당부서", "진행내용", "완료예정일", "납기일", "진행상태"]
+ACTION_COLUMNS = ["담당부서", "진행내용", "수량", "완료예정일", "납기일", "진행상태"]
 EDIT_DELETE_COLUMN = "삭제"
 EVENT_PRODUCT_OPTIONS = ["SKUA", "SKUB", "SKUC", "SKUD", "SKUE"]
 ISSUE_KEYS = {
@@ -98,6 +98,7 @@ def render_meeting_page() -> None:
         clear_editor_state(f"meeting_action_editor_v6_{report['id']}")
         clear_editor_state(f"meeting_action_editor_v7_{report['id']}")
         clear_editor_state(f"meeting_action_editor_v8_{report['id']}")
+        clear_editor_state(f"meeting_action_editor_v9_{report['id']}")
         clear_editor_state(f"meeting_action_edit_buffer_{report['id']}")
         clear_editor_state(action_draft_state_key(report["id"]))
         st.rerun()
@@ -131,6 +132,7 @@ def render_meeting_page() -> None:
         clear_editor_state(f"meeting_action_editor_v6_{report['id']}")
         clear_editor_state(f"meeting_action_editor_v7_{report['id']}")
         clear_editor_state(f"meeting_action_editor_v8_{report['id']}")
+        clear_editor_state(f"meeting_action_editor_v9_{report['id']}")
         clear_editor_state(f"meeting_action_edit_buffer_{report['id']}")
         clear_editor_state(action_draft_state_key(report["id"]))
         st.rerun()
@@ -826,7 +828,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
         st.caption("입력한 내용은 진행사항 저장 또는 수정 저장을 눌렀을 때만 반영됩니다. 행 삭제는 삭제 칸을 체크한 뒤 선택 삭제를 누르세요.")
         editor_df = add_delete_marker_column(prepare_action_editor_df(edit_buffer), marker_source=edit_buffer)
         editor_columns = [EDIT_DELETE_COLUMN, *ACTION_COLUMNS]
-        editor_key = f"meeting_action_editor_v8_{report_id}"
+        editor_key = f"meeting_action_editor_v9_{report_id}"
         with st.form(key=f"meeting_action_editor_form_{report_id}", clear_on_submit=False):
             edited = st.data_editor(
                 editor_df,
@@ -839,6 +841,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
                     EDIT_DELETE_COLUMN: st.column_config.CheckboxColumn("삭제", default=False),
                     "담당부서": st.column_config.TextColumn("담당부서", default=""),
                     "진행내용": st.column_config.TextColumn("진행내용", default=""),
+                    "수량": st.column_config.NumberColumn("수량", min_value=0, step=1, format="%d"),
                     "완료예정일": st.column_config.DateColumn("완료예정일", format="YYYY-MM-DD"),
                     "납기일": st.column_config.DateColumn("납기일", format="YYYY-MM-DD"),
                     "진행상태": st.column_config.SelectboxColumn("진행상태", options=["", *ACTION_STATUS], default=""),
@@ -921,6 +924,7 @@ def prepare_action_editor_df(df: pd.DataFrame) -> pd.DataFrame:
         editor_df = pd.DataFrame(columns=ACTION_COLUMNS)
     for column in ["담당부서", "진행내용", "진행상태"]:
         editor_df[column] = editor_df[column].apply(normalize_cell_value)
+    editor_df["수량"] = pd.to_numeric(editor_df["수량"], errors="coerce").fillna(0).astype(int)
     editor_df["완료예정일"] = editor_df["완료예정일"].apply(normalize_editor_date_value)
     editor_df["납기일"] = editor_df["납기일"].apply(normalize_editor_date_value)
     return editor_df[ACTION_COLUMNS]
@@ -1023,6 +1027,7 @@ def ensure_schema() -> None:
                 sort_order INTEGER NOT NULL,
                 owner TEXT NOT NULL,
                 content TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 0,
                 due_date TEXT NOT NULL,
                 delivery_date TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL,
@@ -1034,6 +1039,7 @@ def ensure_schema() -> None:
         ensure_column(conn, "meeting_production_requests", "current_qty", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(conn, "meeting_events", "request_qty", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(conn, "meeting_events", "event_month", "TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "meeting_action_items", "quantity", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(conn, "meeting_action_items", "delivery_date", "TEXT NOT NULL DEFAULT ''")
         conn.execute(
             """
@@ -1093,7 +1099,8 @@ def load_table_df(table_name: str, report_id: int, columns: list[str]) -> pd.Dat
         """,
         "meeting_action_items": """
             SELECT owner AS 담당부서, content AS 진행내용,
-                   due_date AS 완료예정일, delivery_date AS 납기일, status AS 진행상태
+                   quantity AS 수량, due_date AS 완료예정일,
+                   delivery_date AS 납기일, status AS 진행상태
             FROM meeting_action_items
             WHERE report_id = ?
             ORDER BY sort_order, id
@@ -1157,7 +1164,7 @@ def meeting_history_excel_bytes() -> tuple[bytes, int]:
             for idx, column in enumerate(df.columns):
                 worksheet.write(1, idx, column, header_format)
                 width = meeting_history_column_width(df[column] if column in df else pd.Series(dtype=str), column)
-                fmt = number_format if column in {"현재수량", "요청수량", "생산요청 건수", "행사 건수", "진행사항 건수"} else cell_format
+                fmt = number_format if column in {"현재수량", "요청수량", "수량", "생산요청 건수", "행사 건수", "진행사항 건수"} else cell_format
                 worksheet.set_column(idx, idx, width, fmt)
             worksheet.freeze_panes(2, 0)
             if len(df.columns):
@@ -1236,7 +1243,8 @@ def load_meeting_history_frames() -> dict[str, pd.DataFrame]:
             f"""
             SELECT report.meeting_date AS 회의일, report.author AS 작성자,
                    item.owner AS 담당부서, item.content AS 진행내용,
-                   item.due_date AS 완료예정일, item.delivery_date AS 납기일,
+                   item.quantity AS 수량, item.due_date AS 완료예정일,
+                   item.delivery_date AS 납기일,
                    item.status AS 진행상태
             FROM meeting_action_items item
             JOIN meeting_reports report ON report.id = item.report_id
@@ -1299,7 +1307,7 @@ def normalize_df(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
             normalized[column] = ""
     normalized = normalized[columns].fillna("")
     for column in normalized.columns:
-        if column not in {"현재수량", "요청수량"}:
+        if column not in {"현재수량", "요청수량", "수량"}:
             normalized[column] = normalized[column].astype(str)
     return normalized
 
@@ -1308,9 +1316,10 @@ def filter_filled_rows(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     normalized = normalize_df(df, columns)
     if normalized.empty:
         return normalized
+    meaningful_columns = [column for column in columns if column != "수량"] or columns
     keep_rows = []
     for _, row in normalized.iterrows():
-        has_value = any(normalize_cell_value(row[column]).strip() for column in columns)
+        has_value = any(normalize_cell_value(row[column]).strip() for column in meaningful_columns)
         keep_rows.append(has_value)
     return normalized.loc[keep_rows].reset_index(drop=True)
 
@@ -1624,6 +1633,7 @@ def replace_rows(conn: sqlite3.Connection, table_name: str, report_id: int, df: 
                 index,
                 row["담당부서"],
                 row["진행내용"],
+                parse_int(row["수량"]),
                 normalize_date_value(row["완료예정일"]),
                 normalize_date_value(row["납기일"]),
                 row["진행상태"],
@@ -1634,8 +1644,8 @@ def replace_rows(conn: sqlite3.Connection, table_name: str, report_id: int, df: 
         conn.executemany(
             """
             INSERT INTO meeting_action_items
-                (report_id, sort_order, owner, content, due_date, delivery_date, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (report_id, sort_order, owner, content, quantity, due_date, delivery_date, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -1863,7 +1873,7 @@ def count_previous_week_action_rows(meeting_date: date) -> int:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
-            SELECT item.owner, item.content, item.due_date, item.delivery_date, item.status
+            SELECT item.owner, item.content, item.quantity, item.due_date, item.delivery_date, item.status
             FROM meeting_action_items item
             JOIN meeting_reports report ON report.id = item.report_id
             WHERE report.meeting_date BETWEEN ? AND ?
@@ -1875,6 +1885,7 @@ def count_previous_week_action_rows(meeting_date: date) -> int:
             {
                 "담당부서": row["owner"],
                 "진행내용": row["content"],
+                "수량": row["quantity"],
                 "완료예정일": row["due_date"],
                 "납기일": row["delivery_date"],
                 "진행상태": row["status"],
@@ -2403,7 +2414,7 @@ def create_meeting_pdf(
                 ACTION_COLUMNS,
                 styles,
                 status_column="진행상태",
-                col_widths=[25 * mm, 76 * mm, 30 * mm, 30 * mm, 25 * mm],
+                col_widths=[23 * mm, 62 * mm, 16 * mm, 28 * mm, 28 * mm, 29 * mm],
             )
         )
         story.append(Spacer(1, 4.5 * mm))
@@ -2483,7 +2494,7 @@ def pdf_table(
 
 
 def pdf_cell_style(column: str, styles: dict):
-    if column in {"바코드", "88바코드/규격", "SKU", "행사기간", "납기일", "완료예정일"}:
+    if column in {"바코드", "88바코드/규격", "SKU", "행사기간", "납기일", "완료예정일", "수량"}:
         return styles.get("cell_nowrap", styles["cell"])
     if column in {"상품명", "진행내용", "행사품목", "비고", "상세내용"}:
         return styles["cell_left"]

@@ -162,7 +162,7 @@ def main() -> None:
     st.set_page_config(
         page_title="SCM 물류운영포털",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
     )
     load_css()
     sync_query_params_to_state()
