@@ -2297,7 +2297,11 @@ def create_meeting_pdf(
         st.error("PDF 생성을 위해 reportlab 패키지가 필요합니다. `pip install reportlab` 후 다시 실행해주세요.")
         return None
 
-    font_name, bold_font_name = register_korean_pdf_fonts()
+    font_pair = register_korean_pdf_fonts()
+    if font_pair is None:
+        st.error("PDF 한글 폰트를 찾지 못했습니다. Windows 한글 글꼴(맑은 고딕 등)을 설치한 뒤 다시 생성해주세요.")
+        return None
+    font_name, bold_font_name = font_pair
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -2432,23 +2436,51 @@ def create_meeting_pdf(
     return buffer.getvalue()
 
 
-def register_korean_pdf_fonts() -> tuple[str, str]:
+def register_korean_pdf_fonts() -> tuple[str, str] | None:
     from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     from reportlab.pdfbase.ttfonts import TTFont
 
-    candidates = [
-        ("MalgunGothic", "MalgunGothicBold", r"C:\Windows\Fonts\malgun.ttf", r"C:\Windows\Fonts\malgunbd.ttf"),
-        ("NanumGothic", "NanumGothicBold", r"C:\Windows\Fonts\NanumGothic.ttf", r"C:\Windows\Fonts\NanumGothicBold.ttf"),
+    font_dirs = [
+        Path(r"C:\Windows\Fonts"),
+        Path.home() / "AppData" / "Local" / "Microsoft" / "Windows" / "Fonts",
+        BASE_DIR / "assets" / "fonts",
     ]
-    for regular_name, bold_name, regular_path, bold_path in candidates:
-        if Path(regular_path).exists():
+    candidates = [
+        ("MalgunGothic", "MalgunGothicBold", "malgun.ttf", "malgunbd.ttf"),
+        ("NanumGothic", "NanumGothicBold", "NanumGothic.ttf", "NanumGothicBold.ttf"),
+        ("NanumGothic", "NanumGothicBold", "NanumGothic-Regular.ttf", "NanumGothic-Bold.ttf"),
+        ("NotoSansKR", "NotoSansKRBold", "NotoSansKR-Regular.ttf", "NotoSansKR-Bold.ttf"),
+        ("NotoSansCJKkr", "NotoSansCJKkrBold", "NotoSansCJKkr-Regular.otf", "NotoSansCJKkr-Bold.otf"),
+    ]
+    for regular_name, bold_name, regular_file, bold_file in candidates:
+        for font_dir in font_dirs:
+            regular_path = font_dir / regular_file
+            bold_path = font_dir / bold_file
+            if not regular_path.exists():
+                continue
             try:
-                pdfmetrics.registerFont(TTFont(regular_name, regular_path))
-                pdfmetrics.registerFont(TTFont(bold_name, bold_path if Path(bold_path).exists() else regular_path))
+                if regular_name not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont(regular_name, str(regular_path)))
+                if bold_name not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont(bold_name, str(bold_path if bold_path.exists() else regular_path)))
                 return regular_name, bold_name
             except Exception:
                 continue
-    return "Helvetica", "Helvetica-Bold"
+
+    for regular_name, bold_name in [
+        ("HYGothic-Medium", "HYGothic-Medium"),
+        ("HYSMyeongJo-Medium", "HYGothic-Medium"),
+    ]:
+        try:
+            if regular_name not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(UnicodeCIDFont(regular_name))
+            if bold_name not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(UnicodeCIDFont(bold_name))
+            return regular_name, bold_name
+        except Exception:
+            continue
+    return None
 
 
 def pdf_section(number: str, title: str, styles: dict) -> list:
