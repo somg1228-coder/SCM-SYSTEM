@@ -9886,3 +9886,458 @@ select:focus,
         grid-template-columns: 1fr !important;
     }
 }
+
+/* Sidebar readability repair: keep menu headings visible on the light theme. */
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    background: #fbfaf8 !important;
+    border-right: 1px solid #e2e8f0 !important;
+    color: #334155 !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+    color: #334155 !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 {
+    color: #1f2937 !important;
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    line-height: 1.25 !important;
+    margin: 0 0 12px !important;
+    padding: 0 !important;
+    white-space: nowrap !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h6 {
+    color: #64748b !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0 !important;
+    line-height: 1.2 !important;
+    margin: 16px 0 7px !important;
+    padding: 0 !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+    color: #64748b !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    margin: 0 0 8px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] a {
+    align-items: center !important;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    border-radius: 9px !important;
+    color: #334155 !important;
+    display: flex !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    min-height: 40px !important;
+    padding: 0 12px !important;
+    text-decoration: none !important;
+    transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] a:hover {
+    background: #f1f5f9 !important;
+    border-color: #e2e8f0 !important;
+    color: #1f2937 !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] a strong {
+    color: #36556f !important;
+    font-weight: 800 !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] a:has(strong) {
+    background: #eaf0f5 !important;
+    border-color: #dbe3ec !important;
+    box-shadow: inset 2px 0 0 #58799a !important;
+    color: #36556f !important;
+}
+
+/* Dashboard proportion repair: stronger schedule, balanced bottom cards, clearer sidebar hierarchy. */
+:root {
+    --dashboard-readable-gap: 14px;
+    --schedule-final-h: clamp(208px, 21vh, 238px);
+    --kpi-final-h: 88px;
+    --middle-final-h: clamp(226px, 25vh, 278px);
+    --bottom-final-h: clamp(300px, 31vh, 340px);
+}
+
+[data-testid="stSidebar"] {
+    min-width: 252px !important;
+    width: 252px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    padding: 18px 14px 16px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 {
+    align-items: center !important;
+    color: #26384a !important;
+    display: flex !important;
+    font-size: 17px !important;
+    font-weight: 850 !important;
+    gap: 9px !important;
+    letter-spacing: 0 !important;
+    margin: 0 0 14px !important;
+    min-height: 34px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3::before {
+    background: #eef3f7 !important;
+    border: 1px solid #d5e0e9 !important;
+    border-radius: 8px !important;
+    box-shadow: inset 0 0 0 3px #f8fafc !important;
+    content: "" !important;
+    flex: 0 0 26px !important;
+    height: 26px !important;
+    width: 26px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h6 {
+    align-items: center !important;
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 7px !important;
+    color: #58708a !important;
+    display: flex !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+    letter-spacing: 0 !important;
+    margin: 18px 0 7px !important;
+    min-height: 25px !important;
+    padding: 0 9px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] a {
+    font-size: 14px !important;
+    font-weight: 720 !important;
+    margin: 2px 0 !important;
+    min-height: 39px !important;
+}
+
+.dashboard-shell {
+    gap: var(--dashboard-readable-gap) !important;
+    grid-template-rows:
+        minmax(0, var(--schedule-final-h))
+        minmax(0, var(--kpi-final-h))
+        minmax(0, var(--middle-final-h))
+        minmax(0, var(--bottom-final-h)) !important;
+}
+
+.dashboard-shell > .panel,
+.dashboard-middle-grid > .panel,
+.dashboard-bottom-grid > .panel,
+.dashboard-middle-grid > *,
+.dashboard-bottom-grid > * {
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+}
+
+.schedule-panel {
+    height: var(--schedule-final-h) !important;
+    padding: 18px 20px !important;
+}
+
+.schedule-panel .panel-title-row {
+    margin-bottom: 14px !important;
+    min-height: 32px !important;
+}
+
+.schedule-panel h2,
+.schedule-panel .panel-title-row h2 {
+    color: #172033 !important;
+    font-size: 19px !important;
+    font-weight: 850 !important;
+}
+
+.week-range {
+    align-items: center !important;
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 999px !important;
+    color: #334155 !important;
+    display: inline-flex !important;
+    font-size: 13px !important;
+    font-weight: 760 !important;
+    gap: 12px !important;
+    min-height: 32px !important;
+    padding: 0 12px !important;
+}
+
+.week-range strong {
+    color: #26384a !important;
+    font-size: 13px !important;
+    font-weight: 820 !important;
+}
+
+.week-board {
+    height: calc(var(--schedule-final-h) - 68px) !important;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+}
+
+.week-cell {
+    min-height: 0 !important;
+    padding: 12px 12px 10px !important;
+}
+
+.week-date {
+    color: #26384a !important;
+    font-size: 13px !important;
+    font-weight: 820 !important;
+    line-height: 1.15 !important;
+    margin-bottom: 9px !important;
+}
+
+.week-cell.active .week-date {
+    background: #eef3f7 !important;
+    border-radius: 999px !important;
+    color: #36556f !important;
+    padding: 4px 8px !important;
+}
+
+.week-cell ul {
+    gap: 4px !important;
+}
+
+.week-cell li {
+    color: #334155 !important;
+    font-size: 12.5px !important;
+    font-weight: 650 !important;
+    line-height: 1.35 !important;
+}
+
+.dashboard-bottom-grid {
+    gap: var(--dashboard-readable-gap) !important;
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.3fr) !important;
+    height: var(--bottom-final-h) !important;
+}
+
+.dashboard-bottom-grid > .warehouse-panel,
+.dashboard-bottom-grid > .purchase-progress-panel,
+.dashboard-bottom-grid > .core-task-panel {
+    height: var(--bottom-final-h) !important;
+    overflow: visible !important;
+    padding: 14px 16px !important;
+}
+
+.warehouse-panel,
+.purchase-progress-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 7px !important;
+}
+
+.warehouse-panel h2,
+.purchase-progress-panel h2,
+.core-task-panel h2 {
+    color: #172033 !important;
+    font-size: 17px !important;
+    font-weight: 850 !important;
+}
+
+.warehouse-head {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 9px !important;
+    display: grid !important;
+    grid-template-columns: 84px minmax(120px, 1fr) 128px !important;
+    min-height: 30px !important;
+    padding: 0 12px !important;
+}
+
+.warehouse-head span {
+    align-items: center !important;
+    color: #475569 !important;
+    display: flex !important;
+    font-size: 12px !important;
+    font-weight: 760 !important;
+}
+
+.warehouse-row {
+    align-items: center !important;
+    display: grid !important;
+    grid-template-columns: 84px minmax(120px, 1fr) 48px 80px !important;
+    min-height: 38px !important;
+    padding: 0 12px !important;
+}
+
+.warehouse-row span,
+.warehouse-row b,
+.warehouse-row strong {
+    color: #1f2937 !important;
+    font-size: 13px !important;
+    font-weight: 780 !important;
+}
+
+.warehouse-row strong {
+    text-align: right !important;
+    white-space: nowrap !important;
+}
+
+.warehouse-row .bar {
+    min-width: 120px !important;
+}
+
+.purchase-progress-head,
+.purchase-progress-row {
+    grid-template-columns: minmax(112px, 1.1fr) 72px minmax(92px, 0.95fr) !important;
+}
+
+.purchase-progress-head {
+    min-height: 30px !important;
+    padding: 0 12px !important;
+}
+
+.purchase-progress-row {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 9px !important;
+    min-height: 31px !important;
+    padding: 0 12px !important;
+}
+
+.purchase-progress-row strong,
+.purchase-progress-row em,
+.purchase-progress-row span,
+.purchase-progress-head span {
+    color: #1f2937 !important;
+    font-size: 12.5px !important;
+    font-weight: 760 !important;
+    opacity: 1 !important;
+}
+
+.purchase-progress-row em,
+.purchase-progress-row span {
+    text-align: right !important;
+    white-space: nowrap !important;
+}
+
+.warehouse-panel .ghost-link,
+.purchase-progress-panel .ghost-link {
+    margin-top: auto !important;
+}
+
+.core-task-panel {
+    display: grid !important;
+    gap: 10px 14px !important;
+    grid-template-columns: minmax(210px, 0.78fr) minmax(0, 1.22fr) !important;
+    grid-template-rows: auto minmax(0, 1fr) auto !important;
+}
+
+.core-task-panel .panel-title-row {
+    grid-column: 1 / -1 !important;
+    margin-bottom: 0 !important;
+}
+
+.core-task-summary {
+    align-content: start !important;
+    display: grid !important;
+    gap: 8px !important;
+    grid-column: 1 !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-row: 2 !important;
+}
+
+.core-task-summary span {
+    align-content: center !important;
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 10px !important;
+    color: #64748b !important;
+    display: grid !important;
+    font-size: 12px !important;
+    font-weight: 760 !important;
+    gap: 3px !important;
+    height: 54px !important;
+    justify-items: center !important;
+    padding: 6px !important;
+}
+
+.core-task-summary strong {
+    color: #172033 !important;
+    font-size: 21px !important;
+    font-weight: 850 !important;
+    line-height: 1 !important;
+}
+
+.core-task-list {
+    align-self: stretch !important;
+    display: grid !important;
+    gap: 7px !important;
+    grid-column: 2 !important;
+    grid-row: 2 / 4 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+}
+
+.core-task-list li {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 9px !important;
+    min-height: 32px !important;
+    padding: 0 10px !important;
+}
+
+.core-task-list span,
+.core-task-list b {
+    color: #1f2937 !important;
+    font-size: 12.5px !important;
+    font-weight: 760 !important;
+}
+
+.core-task-panel .ghost-link {
+    align-self: end !important;
+    grid-column: 1 !important;
+    grid-row: 3 !important;
+    justify-self: center !important;
+    margin-top: 0 !important;
+}
+
+@media (max-width: 1399px) {
+    .dashboard-bottom-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+        height: auto !important;
+    }
+
+    .dashboard-bottom-grid > .core-task-panel {
+        grid-column: 1 / -1 !important;
+    }
+}
+
+@media (max-width: 900px) {
+    .dashboard-shell {
+        grid-template-rows: auto !important;
+    }
+
+    .dashboard-bottom-grid,
+    .dashboard-middle-grid {
+        grid-template-columns: 1fr !important;
+        height: auto !important;
+    }
+
+    .dashboard-bottom-grid > .warehouse-panel,
+    .dashboard-bottom-grid > .purchase-progress-panel,
+    .dashboard-bottom-grid > .core-task-panel {
+        height: auto !important;
+    }
+
+    .core-task-panel {
+        grid-template-columns: 1fr !important;
+    }
+
+    .core-task-summary,
+    .core-task-list,
+    .core-task-panel .ghost-link {
+        grid-column: 1 !important;
+        grid-row: auto !important;
+    }
+}

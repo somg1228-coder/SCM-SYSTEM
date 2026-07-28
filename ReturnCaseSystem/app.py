@@ -3684,6 +3684,266 @@ def render_return_case_system():
         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 18px 36px rgba(37, 99, 235, 0.12) !important;
     }
 
+    /* Final Return/AS readability repair: keep legacy dark rules from hiding text. */
+    :root {
+        --return-bg: #f7f5f2;
+        --return-card: #ffffff;
+        --return-card-soft: #f8fafc;
+        --return-border: #cbd5e1;
+        --return-border-soft: #e2e8f0;
+        --return-title: #1f2937;
+        --return-text: #334155;
+        --return-muted: #64748b;
+        --return-faint: #94a3b8;
+        --return-primary: #58799a;
+        --return-primary-soft: #eef3f7;
+        --return-danger: #9f6262;
+        --return-danger-soft: #f4e8e8;
+    }
+
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"],
+    .block-container {
+        background: var(--return-bg) !important;
+        color: var(--return-text) !important;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    p,
+    label,
+    span,
+    div,
+    [data-testid="stMarkdownContainer"],
+    [data-testid="stWidgetLabel"],
+    [data-testid="stWidgetLabel"] *,
+    [data-testid="stCaptionContainer"],
+    [data-testid="stRadio"],
+    [data-testid="stRadio"] * {
+        color: var(--return-text) !important;
+    }
+
+    .app-subtitle,
+    .app-main-subtitle {
+        color: var(--return-title) !important;
+        font-size: clamp(24px, 2vw, 30px) !important;
+        font-weight: 820 !important;
+        line-height: 1.18 !important;
+        margin: 0 0 12px !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        white-space: nowrap !important;
+    }
+
+    .search-result-title,
+    .dashboard-card-title {
+        color: var(--return-title) !important;
+        font-weight: 800 !important;
+    }
+
+    .stTextInput input,
+    .stTextArea textarea,
+    .stNumberInput input,
+    .stDateInput input,
+    div[data-baseweb="input"],
+    div[data-baseweb="input"] input,
+    div[data-baseweb="select"],
+    div[data-baseweb="select"] > div,
+    div[role="combobox"] {
+        background: var(--return-card-soft) !important;
+        border-color: var(--return-border) !important;
+        color: var(--return-text) !important;
+        box-shadow: none !important;
+    }
+
+    .stTextInput input::placeholder,
+    .stTextArea textarea::placeholder,
+    .stDateInput input::placeholder,
+    div[data-baseweb="input"] input::placeholder {
+        color: var(--return-faint) !important;
+        opacity: 1 !important;
+    }
+
+    div[class*="st-key-search_keyword"] div[data-baseweb="input"],
+    div[class*="st-key-search_keyword"] input {
+        background: var(--return-card-soft) !important;
+        border-color: var(--return-border) !important;
+        color: var(--return-text) !important;
+        box-shadow: none !important;
+    }
+
+    div[class*="st-key-search_keyword"] div[data-baseweb="input"]:focus-within,
+    .stTextInput input:focus,
+    .stTextArea textarea:focus,
+    .stDateInput input:focus {
+        border-color: var(--return-primary) !important;
+        box-shadow: 0 0 0 3px rgba(88, 121, 154, 0.14) !important;
+        outline: none !important;
+    }
+
+    div[data-testid="stRadio"] > label,
+    div[data-testid="stRadio"] > div > label {
+        color: var(--return-muted) !important;
+        font-size: 13px !important;
+        font-weight: 760 !important;
+        margin-bottom: 6px !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] {
+        gap: 6px 10px !important;
+        overflow: visible !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] label {
+        background: transparent !important;
+        border: 1px solid transparent !important;
+        border-radius: 999px !important;
+        min-height: 26px !important;
+        padding: 2px 8px !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] label *,
+    div[data-testid="stRadio"] div[role="radiogroup"] * {
+        color: var(--return-text) !important;
+        font-size: 13px !important;
+        font-weight: 700 !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
+        background: var(--return-primary-soft) !important;
+        border-color: var(--return-border-soft) !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) * {
+        color: var(--return-title) !important;
+    }
+
+    div[data-testid="stRadio"] input {
+        accent-color: var(--return-primary) !important;
+    }
+
+    div[data-baseweb="popover"],
+    div[data-baseweb="popover"] > div,
+    div[data-baseweb="menu"],
+    div[data-baseweb="select-dropdown"],
+    ul[role="listbox"],
+    li[role="option"],
+    div[role="option"] {
+        background: #ffffff !important;
+        border-color: var(--return-border-soft) !important;
+        color: var(--return-text) !important;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08) !important;
+    }
+
+    div[data-baseweb="popover"] *,
+    div[data-baseweb="menu"] *,
+    div[data-baseweb="select-dropdown"] *,
+    ul[role="listbox"] *,
+    li[role="option"] *,
+    div[role="option"] * {
+        color: var(--return-text) !important;
+    }
+
+    li[role="option"]:hover,
+    div[role="option"]:hover,
+    li[aria-selected="true"],
+    div[aria-selected="true"] {
+        background: var(--return-primary-soft) !important;
+        color: var(--return-title) !important;
+    }
+
+    .st-key-dashboard_card_category,
+    .st-key-dashboard_card_month,
+    .st-key-dashboard_card_recent,
+    .st-key-dashboard_card_top5,
+    .detail-section-card,
+    .st-key-search_results_scroll,
+    div[data-testid="stExpander"],
+    div[data-testid="stForm"] {
+        background: var(--return-card) !important;
+        border-color: var(--return-border-soft) !important;
+        color: var(--return-text) !important;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04) !important;
+    }
+
+    .st-key-search_results_scroll * {
+        color: var(--return-text) !important;
+    }
+
+    .stButton button,
+    .stDownloadButton button,
+    .stFormSubmitButton button {
+        background: #ffffff !important;
+        border-color: var(--return-border) !important;
+        color: var(--return-text) !important;
+        box-shadow: none !important;
+    }
+
+    .stButton button:hover,
+    .stDownloadButton button:hover,
+    .stFormSubmitButton button:hover {
+        background: #f8fafc !important;
+        border-color: var(--return-primary) !important;
+        color: var(--return-title) !important;
+        transform: none !important;
+    }
+
+    button[kind="primary"],
+    .st-key-save_case_btn button,
+    .st-key-main_excel_download_btn button,
+    .st-key-main_excel_prepare_btn button {
+        background: var(--return-primary) !important;
+        border-color: var(--return-primary) !important;
+        color: #ffffff !important;
+    }
+
+    button[kind="primary"] *,
+    .st-key-save_case_btn button *,
+    .st-key-main_excel_download_btn button *,
+    .st-key-main_excel_prepare_btn button * {
+        color: #ffffff !important;
+    }
+
+    .st-key-detail_delete_btn button,
+    div[class*="st-key-del_"] button {
+        background: var(--return-danger-soft) !important;
+        border-color: #e8cccc !important;
+        color: #7b4a4a !important;
+    }
+
+    .st-key-detail_delete_btn button *,
+    div[class*="st-key-del_"] button * {
+        color: #7b4a4a !important;
+    }
+
+    th,
+    thead tr,
+    div[data-testid="stDataFrame"] *,
+    div[data-testid="stDataEditor"] * {
+        color: var(--return-text) !important;
+    }
+
+    th,
+    thead tr,
+    div[data-testid="stDataFrame"] [role="columnheader"],
+    div[data-testid="stDataEditor"] [role="columnheader"] {
+        background: #f1f5f9 !important;
+        color: var(--return-text) !important;
+    }
+
+    td,
+    tbody tr,
+    div[data-testid="stDataFrame"] [role="gridcell"],
+    div[data-testid="stDataEditor"] [role="gridcell"] {
+        background: #ffffff !important;
+        color: var(--return-title) !important;
+    }
+
     </style>
     """, unsafe_allow_html=True)
     # ==========================
