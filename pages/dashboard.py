@@ -14,13 +14,14 @@ from sqlalchemy import select
 try:
     from backend.database import SessionLocal, init_db
     from backend import services
-    from backend.models import CategoryBomItem, InventoryDaily, PurchaseOrder, PurchaseRequest, RfqQuote
+    from backend.models import CategoryBomItem, InventoryDaily, ProductionPlan, PurchaseOrder, PurchaseRequest, RfqQuote
 except (ModuleNotFoundError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
     services = None
     CategoryBomItem = None
     InventoryDaily = None
+    ProductionPlan = None
     PurchaseOrder = None
     PurchaseRequest = None
     RfqQuote = None
@@ -760,7 +761,7 @@ def weekly_schedule_html() -> str:
         f"""
         <div class="week-cell {state}">
             <div class="week-date">{date}</div>
-            <ul>{''.join(f'<li>{item}</li>' for item in items)}</ul>
+            <ul>{''.join(f'<li>{escape(str(item))}</li>' for item in items)}</ul>
         </div>
         """
         for date, items, state in days
@@ -814,8 +815,7 @@ def get_dashboard_week_schedule() -> tuple[pd.Timestamp, list[tuple[str, list[st
         except sqlite3.Error:
             schedule_by_day = {index: [] for index in range(7)}
 
-    if not any(schedule_by_day.values()):
-        schedule_by_day = fallback_dashboard_schedule()
+    merge_week_schedule_items(schedule_by_day, get_week_production_schedule_items(week_start.date()))
 
     weekdays = ["월", "화", "수", "목", "금", "토", "일"]
     days = []
@@ -826,7 +826,7 @@ def get_dashboard_week_schedule() -> tuple[pd.Timestamp, list[tuple[str, list[st
             state = f"{state} blue".strip()
         if index == 6:
             state = f"{state} red".strip()
-        items = schedule_by_day.get(index) or ["-"]
+        items = schedule_by_day.get(index) or []
         days.append((f"{day:%m.%d} ({weekday})", items, state))
     return week_start, days
 
@@ -841,6 +841,7 @@ def get_dashboard_core_tasks(limit: int = 8) -> dict:
         "source": "current",
     }
     if not SCHEDULE_DB_PATH.exists():
+        add_dashboard_production_tasks(summary, limit)
         return summary
 
     try:
@@ -865,6 +866,7 @@ def get_dashboard_core_tasks(limit: int = 8) -> dict:
                 ).fetchone()
                 summary["source"] = "latest"
             if week_row is None:
+                add_dashboard_production_tasks(summary, limit)
                 return summary
 
             rows = conn.execute(
@@ -919,7 +921,9 @@ def get_dashboard_core_tasks(limit: int = 8) -> dict:
                 }
             )
     except sqlite3.Error:
+        add_dashboard_production_tasks(summary, limit)
         return summary
+    add_dashboard_production_tasks(summary, limit)
     return summary
 
 
@@ -961,16 +965,77 @@ def compact_schedule_items(items: list[str], limit: int = 3) -> list[str]:
     return cleaned
 
 
-def fallback_dashboard_schedule() -> dict[int, list[str]]:
-    return {
-        0: ["일정관리에서 주간 일정을 저장하세요"],
-        1: ["-"],
-        2: ["-"],
-        3: ["-"],
-        4: ["-"],
-        5: ["-"],
-        6: ["-"],
-    }
+def merge_week_schedule_items(base: dict[int, list[str]], extra: dict[int, list[str]]) -> None:
+    for index, items in extra.items():
+        base[index] = compact_schedule_items([*(base.get(index) or []), *items])
+
+
+def get_week_production_schedule_items(week_start: date) -> dict[int, list[str]]:
+    items_by_day = {index: [] for index in range(7)}
+    if not dashboard_available() or ProductionPlan is None:
+        return items_by_day
+    week_end = week_start + timedelta(days=6)
+    rows = with_db(lambda db: list_week_production_plans(db, week_start, week_end)) or []
+    for row in rows:
+        due_date = row.due_date
+        if not due_date:
+            continue
+        day_index = (due_date - week_start).days
+        if 0 <= day_index <= 6:
+            items_by_day[day_index].append(production_schedule_label(row))
+    return {index: compact_schedule_items(items) for index, items in items_by_day.items()}
+
+
+def list_week_production_plans(db, week_start: date, week_end: date) -> list:
+    if ProductionPlan is None:
+        return []
+    return list(
+        db.execute(
+            select(ProductionPlan)
+            .where(
+                ProductionPlan.due_date >= week_start,
+                ProductionPlan.due_date <= week_end,
+                ProductionPlan.status != "취소",
+                ProductionPlan.plan_qty > 0,
+            )
+            .order_by(ProductionPlan.due_date, ProductionPlan.id)
+        ).scalars()
+    )
+
+
+def production_schedule_label(row) -> str:
+    qty = format_metric(row.plan_qty or 0)
+    status = str(row.status or "").strip()
+    status_text = f" / {status}" if status else ""
+    return f"생산 {row.product_name} {qty}EA{status_text}"
+
+
+def add_dashboard_production_tasks(summary: dict, limit: int) -> None:
+    if not dashboard_available() or ProductionPlan is None:
+        return
+    rows = summary.setdefault("rows", [])
+    remaining = max(limit - len(rows), 0)
+    if remaining <= 0:
+        return
+    week_start = summary.get("week_start")
+    week_end = summary.get("week_end")
+    if not hasattr(week_start, "date") or not hasattr(week_end, "date"):
+        return
+    production_rows = with_db(lambda db: list_week_production_plans(db, week_start.date(), week_end.date())) or []
+    for row in production_rows[:remaining]:
+        rows.append(
+            {
+                "title": production_core_task_label(row),
+                "checked": str(row.status or "").strip() == "완료",
+            }
+        )
+
+
+def production_core_task_label(row) -> str:
+    due = row.due_date.strftime("%m.%d") if hasattr(row.due_date, "strftime") else "-"
+    qty = format_metric(row.plan_qty or 0)
+    status = str(row.status or "").strip() or "계획"
+    return f"생산 {row.product_name} {qty}EA / {due} / {status}"
 
 
 def format_metric(value) -> str:
