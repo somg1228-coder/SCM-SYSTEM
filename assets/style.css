@@ -4885,3 +4885,303 @@ body,
         grid-template-columns: 1fr !important;
     }
 }
+
+/* Screenshot correction pass: rebalance real rendered density. */
+:root {
+    --dashboard-gap: clamp(0.5rem, 0.58vw, 0.72rem);
+    --panel-pad-y: clamp(0.62rem, 0.72vh, 0.82rem);
+    --panel-pad-x: clamp(0.78rem, 0.82vw, 1rem);
+    --schedule-cell-h: clamp(78px, 8.1vh, 96px);
+    --kpi-height: clamp(70px, 7.3vh, 86px);
+    --chart-card-h: clamp(202px, 20.6vh, 232px);
+    --chart-h: clamp(162px, 16.4vh, 188px);
+    --chart-plot-h: calc(var(--chart-h) - 24px);
+    --middle-card-h: clamp(236px, 24vh, 264px);
+    --bottom-card-h: clamp(214px, 22.2vh, 246px);
+    --donut-size: clamp(166px, 17vh, 198px);
+    --donut-core: clamp(80px, 8.2vh, 96px);
+}
+
+.dashboard-shell {
+    gap: var(--dashboard-gap) !important;
+}
+
+.panel {
+    overflow: hidden;
+}
+
+.panel h2,
+.panel-title-row h2 {
+    font-size: clamp(1rem, 0.96vw, 1.18rem) !important;
+    line-height: 1.18;
+}
+
+.panel-title-row {
+    min-height: clamp(28px, 2.8vh, 34px);
+}
+
+.schedule-panel {
+    padding: clamp(0.62rem, 0.7vh, 0.82rem) var(--panel-pad-x);
+}
+
+.week-board {
+    margin-top: clamp(0.42rem, 0.52vh, 0.62rem);
+}
+
+.week-cell {
+    min-height: var(--schedule-cell-h) !important;
+    padding: clamp(0.5rem, 0.58vh, 0.68rem) clamp(0.58rem, 0.6vw, 0.78rem) !important;
+}
+
+.week-cell li {
+    font-size: clamp(0.76rem, 0.7vw, 0.88rem) !important;
+    line-height: 1.36;
+}
+
+.kpi-row {
+    grid-template-rows: var(--kpi-height) !important;
+}
+
+.kpi-tile {
+    grid-template-columns: clamp(46px, 3vw, 58px) minmax(0, 1fr) !important;
+    height: var(--kpi-height) !important;
+    min-height: var(--kpi-height) !important;
+    padding: clamp(0.86rem, 0.95vh, 1.08rem) clamp(0.92rem, 0.98vw, 1.16rem) !important;
+}
+
+.kpi-icon {
+    height: clamp(42px, 2.8vw, 54px) !important;
+    width: clamp(42px, 2.8vw, 54px) !important;
+}
+
+.kpi-icon svg {
+    height: clamp(22px, 1.5vw, 28px) !important;
+    width: clamp(22px, 1.5vw, 28px) !important;
+}
+
+.kpi-tile strong {
+    font-size: clamp(1.38rem, 1.42vw, 1.86rem) !important;
+}
+
+.kpi-tile span {
+    font-size: clamp(0.78rem, 0.76vw, 0.94rem) !important;
+}
+
+.kpi-tile small {
+    font-size: clamp(0.68rem, 0.66vw, 0.82rem) !important;
+}
+
+.chart-card {
+    height: var(--chart-card-h) !important;
+    padding: clamp(0.72rem, 0.78vh, 0.92rem) clamp(0.9rem, 0.95vw, 1.1rem) clamp(0.58rem, 0.62vh, 0.74rem) !important;
+}
+
+.chart-card .panel-title-row {
+    margin-bottom: clamp(0.18rem, 0.28vh, 0.34rem);
+}
+
+.svg-chart {
+    margin-left: 0 !important;
+    overflow: visible;
+}
+
+.svg-chart svg {
+    height: var(--chart-plot-h) !important;
+    left: clamp(3.15rem, 3.1vw, 3.9rem) !important;
+    top: 0 !important;
+    width: calc(100% - clamp(3.65rem, 3.65vw, 4.55rem)) !important;
+}
+
+.chart-grid-lines {
+    height: var(--chart-plot-h) !important;
+    left: clamp(3.2rem, 3.15vw, 3.95rem) !important;
+    right: 0.35rem !important;
+}
+
+.chart-y-labels {
+    font-size: clamp(0.68rem, 0.62vw, 0.78rem) !important;
+    height: var(--chart-plot-h) !important;
+    left: 0 !important;
+    top: -2px !important;
+    width: clamp(2.7rem, 2.8vw, 3.4rem) !important;
+}
+
+.axis-labels {
+    left: clamp(3.1rem, 3.15vw, 3.95rem) !important;
+    right: 0.35rem !important;
+}
+
+.chart-inline-summary {
+    font-size: clamp(0.66rem, 0.62vw, 0.78rem) !important;
+    margin-bottom: 0 !important;
+}
+
+.chart-tooltip {
+    right: clamp(1.8rem, 2vw, 2.8rem) !important;
+    top: clamp(1.4rem, 1.7vh, 2rem) !important;
+}
+
+.middle-grid {
+    grid-template-columns: minmax(0, 1.34fr) minmax(0, 1.06fr) minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+.donut-card,
+.mini-line-card,
+.warehouse-panel,
+.purchase-progress-panel {
+    height: var(--middle-card-h) !important;
+    min-height: var(--middle-card-h) !important;
+}
+
+.donut-card {
+    padding-right: clamp(0.62rem, 0.72vw, 0.88rem) !important;
+}
+
+.donut-layout {
+    align-items: center !important;
+    gap: clamp(0.62rem, 0.72vw, 0.9rem) !important;
+    grid-template-columns: minmax(166px, 0.95fr) minmax(150px, 1.05fr) !important;
+    overflow: hidden;
+}
+
+.donut {
+    height: var(--donut-size) !important;
+    width: var(--donut-size) !important;
+}
+
+.donut::after {
+    height: var(--donut-core) !important;
+    width: var(--donut-core) !important;
+}
+
+.donut strong {
+    font-size: clamp(1.22rem, 1.22vw, 1.5rem) !important;
+}
+
+.donut span {
+    font-size: clamp(0.68rem, 0.64vw, 0.78rem) !important;
+}
+
+.donut-segment-label {
+    font-size: clamp(0.56rem, 0.54vw, 0.66rem) !important;
+}
+
+.legend {
+    align-content: center;
+    gap: clamp(0.1rem, 0.16vh, 0.2rem) !important;
+    overflow-y: auto;
+}
+
+.legend li {
+    grid-template-columns: 9px minmax(3.6rem, 1fr) max-content !important;
+    min-height: clamp(19px, 2vh, 24px) !important;
+}
+
+.legend a,
+.legend b {
+    font-size: clamp(0.58rem, 0.54vw, 0.68rem) !important;
+    line-height: 1.15;
+}
+
+.legend a {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+}
+
+.mini-line-card .mini-chart {
+    margin-top: clamp(0.2rem, 0.28vh, 0.34rem) !important;
+}
+
+.month-labels {
+    font-size: clamp(0.56rem, 0.52vw, 0.66rem) !important;
+}
+
+.warehouse-row,
+.purchase-progress-row {
+    min-height: clamp(28px, 2.9vh, 34px) !important;
+    padding: clamp(0.14rem, 0.22vh, 0.26rem) 0 !important;
+}
+
+.purchase-progress-head,
+.purchase-progress-row {
+    grid-template-columns: minmax(5.2rem, 1fr) max-content minmax(4.3rem, max-content) !important;
+}
+
+.purchase-progress-row strong,
+.purchase-progress-row em,
+.purchase-progress-row span,
+.warehouse-row span,
+.warehouse-row b,
+.warehouse-row strong {
+    font-size: clamp(0.62rem, 0.58vw, 0.72rem) !important;
+}
+
+.bottom-grid {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.6fr) !important;
+}
+
+.core-task-panel,
+.order-panel {
+    height: var(--bottom-card-h) !important;
+    min-height: var(--bottom-card-h) !important;
+}
+
+.core-task-summary span {
+    padding: clamp(0.34rem, 0.46vh, 0.54rem) clamp(0.45rem, 0.52vw, 0.62rem) !important;
+}
+
+.core-task-summary strong {
+    font-size: clamp(0.92rem, 0.9vw, 1.12rem) !important;
+}
+
+.core-task-list li {
+    min-height: clamp(28px, 2.9vh, 36px) !important;
+    padding: clamp(0.12rem, 0.2vh, 0.26rem) 0 !important;
+}
+
+.core-task-list i {
+    height: clamp(20px, 1.4vw, 24px) !important;
+    width: clamp(20px, 1.4vw, 24px) !important;
+}
+
+.core-task-list span,
+.core-task-list b {
+    font-size: clamp(0.66rem, 0.62vw, 0.76rem) !important;
+}
+
+.order-panel table {
+    min-width: min(100%, 1120px) !important;
+}
+
+.order-panel thead,
+.order-panel tbody {
+    min-width: 1120px !important;
+}
+
+.order-panel th,
+.order-panel td {
+    font-size: clamp(0.62rem, 0.58vw, 0.72rem) !important;
+    padding: clamp(0.28rem, 0.36vh, 0.42rem) clamp(0.28rem, 0.32vw, 0.4rem) !important;
+}
+
+.order-panel .ghost-link,
+.core-task-panel .ghost-link,
+.warehouse-panel .ghost-link,
+.purchase-progress-panel .ghost-link {
+    height: clamp(24px, 2.6vh, 30px) !important;
+    margin-top: clamp(0.32rem, 0.42vh, 0.52rem) !important;
+}
+
+@media (max-height: 900px) and (min-width: 1181px) {
+    :root {
+        --schedule-cell-h: clamp(70px, 7.55vh, 86px);
+        --kpi-height: clamp(64px, 6.8vh, 78px);
+        --chart-card-h: clamp(186px, 19.8vh, 210px);
+        --chart-h: clamp(146px, 15.5vh, 168px);
+        --middle-card-h: clamp(218px, 23.2vh, 244px);
+        --bottom-card-h: clamp(194px, 20.8vh, 222px);
+        --donut-size: clamp(146px, 15.6vh, 172px);
+        --donut-core: clamp(72px, 7.7vh, 86px);
+    }
+}
