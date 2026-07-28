@@ -124,29 +124,26 @@ def sidebar_markup(active_page: str) -> str:
     for group_label, items in MENU_GROUPS:
         rows = "".join(menu_link(icon, label, active_page) for icon, label in items)
         groups.append(
-            f"""
-            <section class="sidebar-menu-group">
-                <div class="sidebar-group-title">{escape(group_label)}</div>
-                <nav class="sidebar-menu-list">{rows}</nav>
-            </section>
-            """
+            f'<section class="sidebar-menu-group">'
+            f'<div class="sidebar-group-title">{escape(group_label)}</div>'
+            f'<nav class="sidebar-menu-list">{rows}</nav>'
+            f'</section>'
         )
     settings_icon, settings_label = SETTINGS_ITEM
-    return f"""
-    <aside class="portal-sidebar-shell">
-        <div class="portal-brand">
-            <div class="portal-logo-mark">{icon_svg("boxes")}</div>
-            <div class="portal-name">SCM 물류운영포털</div>
-        </div>
-        <div class="sidebar-menu-main">{''.join(groups)}</div>
-        <div class="sidebar-bottom">
-            <div class="sidebar-meta">SCM Portal · v1.0</div>
-            <nav class="sidebar-menu-list">
-                {menu_link(settings_icon, settings_label, active_page)}
-            </nav>
-        </div>
-    </aside>
-    """
+    return (
+        '<aside class="portal-sidebar-shell">'
+        '<div class="portal-brand">'
+        f'<div class="portal-logo-mark">{icon_svg("boxes")}</div>'
+        '<div class="portal-name">SCM 물류운영포털</div>'
+        '</div>'
+        f'<div class="sidebar-menu-main">{"".join(groups)}</div>'
+        '<div class="sidebar-bottom">'
+        '<div class="sidebar-group-title">설정</div>'
+        '<div class="sidebar-meta">SCM Portal · v1.0</div>'
+        f'<nav class="sidebar-menu-list">{menu_link(settings_icon, settings_label, active_page)}</nav>'
+        '</div>'
+        '</aside>'
+    )
 
 
 def render_sidebar() -> str:
