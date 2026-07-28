@@ -4546,3 +4546,342 @@ body,
         grid-template-columns: 1fr;
     }
 }
+
+/* SCM dashboard information-density pass: row ratios and card internals. */
+:root {
+    --dashboard-gap: clamp(0.72rem, 0.78vw, 0.95rem);
+    --panel-pad-y: clamp(0.72rem, 0.82vh, 0.92rem);
+    --panel-pad-x: clamp(0.92rem, 0.96vw, 1.16rem);
+    --schedule-cell-h: clamp(60px, 6.2vh, 76px);
+    --kpi-height: clamp(92px, 9.3vh, 112px);
+    --chart-card-h: clamp(196px, 20vh, 226px);
+    --chart-h: clamp(154px, 15.8vh, 182px);
+    --chart-plot-h: calc(var(--chart-h) - 22px);
+    --middle-card-h: clamp(238px, 24.5vh, 272px);
+    --bottom-card-h: clamp(286px, 29vh, 322px);
+    --donut-size: clamp(152px, 15.8vh, 184px);
+    --donut-core: clamp(76px, 7.8vh, 92px);
+}
+
+.dashboard-shell {
+    gap: var(--dashboard-gap);
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.panel-title-row {
+    align-items: center;
+    display: flex;
+    gap: clamp(0.5rem, 0.65vw, 0.85rem);
+    min-height: clamp(26px, 2.8vh, 34px);
+}
+
+.panel-title-row h2,
+.panel > h2 {
+    flex: 1 1 auto;
+    line-height: 1.2;
+    min-width: 0;
+    overflow: visible;
+    white-space: normal;
+}
+
+.panel-title-row button,
+.mini-badge,
+.ghost-link,
+.chart-filter-links a,
+.mini-filter-link {
+    flex: 0 0 auto;
+    line-height: 1;
+    max-width: 100%;
+    min-width: max-content;
+    white-space: nowrap;
+}
+
+.schedule-panel {
+    height: auto;
+    padding: var(--panel-pad-y) var(--panel-pad-x);
+}
+
+.week-board {
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+}
+
+.week-cell {
+    min-height: var(--schedule-cell-h);
+}
+
+.week-cell ul {
+    align-content: start;
+}
+
+.week-cell li {
+    overflow-wrap: anywhere;
+}
+
+.kpi-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    grid-template-rows: var(--kpi-height);
+}
+
+.kpi-tile {
+    height: var(--kpi-height);
+    min-height: var(--kpi-height);
+}
+
+.chart-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+.chart-card {
+    height: var(--chart-card-h);
+    padding: var(--panel-pad-y) var(--panel-pad-x) clamp(0.52rem, 0.58vh, 0.68rem);
+}
+
+.chart-card .panel-title-row {
+    margin-bottom: clamp(0.14rem, 0.28vh, 0.3rem);
+}
+
+.svg-chart {
+    flex: 1 1 auto;
+    margin-left: clamp(0.42rem, 0.55vw, 0.72rem);
+    min-height: 0;
+}
+
+.svg-chart svg {
+    height: var(--chart-plot-h) !important;
+    left: clamp(1.05rem, 1.16vw, 1.42rem);
+    top: 0;
+    width: calc(100% - clamp(1.48rem, 1.65vw, 1.95rem));
+}
+
+.chart-grid-lines,
+.chart-y-labels {
+    height: var(--chart-plot-h) !important;
+}
+
+.chart-tooltip {
+    max-width: min(210px, 42%);
+    right: clamp(1rem, 1.4vw, 2rem);
+}
+
+.axis-labels {
+    bottom: 0;
+}
+
+.middle-grid {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+.donut-card,
+.mini-line-card,
+.warehouse-panel,
+.purchase-progress-panel {
+    height: var(--middle-card-h);
+    min-height: var(--middle-card-h);
+    padding: var(--panel-pad-y) var(--panel-pad-x);
+}
+
+.donut-layout {
+    align-items: center;
+    flex: 1 1 auto;
+    gap: clamp(0.8rem, 0.9vw, 1.15rem);
+    grid-template-columns: minmax(var(--donut-size), 0.92fr) minmax(8.5rem, 1fr);
+    min-height: 0;
+}
+
+.donut {
+    height: var(--donut-size);
+    width: var(--donut-size);
+}
+
+.donut strong {
+    font-size: clamp(1.12rem, 1.08vw, 1.36rem);
+}
+
+.legend {
+    align-self: stretch;
+    display: grid;
+    gap: clamp(0.2rem, 0.28vh, 0.34rem);
+    max-height: none;
+    overflow: auto;
+    padding-right: 0.1rem;
+}
+
+.legend li {
+    align-items: center;
+    grid-template-columns: 10px minmax(0, 1fr) max-content;
+    margin: 0;
+    min-height: clamp(22px, 2.35vh, 28px);
+}
+
+.legend a,
+.legend b {
+    font-size: clamp(0.62rem, 0.58vw, 0.76rem);
+}
+
+.mini-line-card .mini-chart {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.mini-chart svg {
+    height: calc(100% - clamp(22px, 2.2vh, 30px)) !important;
+}
+
+.month-labels {
+    gap: 0.28rem;
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+.warehouse-panel,
+.purchase-progress-panel {
+    gap: clamp(0.34rem, 0.42vh, 0.5rem);
+}
+
+.warehouse-head,
+.warehouse-row {
+    grid-template-columns: minmax(3.8rem, 0.8fr) minmax(3.8rem, 1fr) max-content max-content;
+}
+
+.warehouse-row {
+    min-height: clamp(34px, 3.4vh, 40px);
+}
+
+.purchase-progress-head,
+.purchase-progress-row {
+    grid-template-columns: minmax(5.8rem, 1fr) max-content minmax(4.8rem, auto);
+}
+
+.purchase-progress-row {
+    min-height: clamp(34px, 3.4vh, 42px);
+}
+
+.purchase-progress-row strong,
+.purchase-progress-row span {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.purchase-progress-row em {
+    white-space: nowrap;
+}
+
+.bottom-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) !important;
+}
+
+.core-task-panel,
+.order-panel {
+    height: var(--bottom-card-h);
+    min-height: var(--bottom-card-h);
+}
+
+.core-task-summary {
+    margin-top: clamp(0.22rem, 0.32vh, 0.38rem);
+}
+
+.core-task-list {
+    gap: clamp(0.18rem, 0.24vh, 0.3rem);
+    min-height: 0;
+}
+
+.core-task-list li {
+    min-height: clamp(36px, 3.55vh, 44px);
+}
+
+.core-task-list span {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.order-panel {
+    min-width: 0;
+}
+
+.order-panel table {
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: min(100%, 1080px);
+    overflow: auto !important;
+    table-layout: auto;
+    width: 100%;
+}
+
+.order-panel thead,
+.order-panel tbody {
+    min-width: 1080px;
+    table-layout: auto;
+}
+
+.order-panel th,
+.order-panel td {
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+}
+
+.order-panel th:nth-child(1),
+.order-panel td:nth-child(1) { min-width: 126px; width: auto; }
+.order-panel th:nth-child(2),
+.order-panel td:nth-child(2) { min-width: 116px; width: auto; }
+.order-panel th:nth-child(3),
+.order-panel td:nth-child(3) { min-width: 180px; width: auto; }
+.order-panel th:nth-child(4),
+.order-panel td:nth-child(4),
+.order-panel th:nth-child(5),
+.order-panel td:nth-child(5) { min-width: 90px; width: auto; }
+.order-panel th:nth-child(6),
+.order-panel td:nth-child(6),
+.order-panel th:nth-child(7),
+.order-panel td:nth-child(7) { min-width: 118px; width: auto; }
+.order-panel th:nth-child(8),
+.order-panel td:nth-child(8) { min-width: 112px; width: auto; }
+
+.order-panel .ghost-link,
+.core-task-panel .ghost-link,
+.warehouse-panel .ghost-link,
+.purchase-progress-panel .ghost-link {
+    margin-top: auto;
+}
+
+.empty-cell {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    min-height: clamp(42px, 5vh, 68px);
+    padding: clamp(0.5rem, 0.65vh, 0.75rem);
+    text-align: center;
+}
+
+@media (max-height: 900px) and (min-width: 1181px) {
+    :root {
+        --schedule-cell-h: clamp(52px, 5.5vh, 64px);
+        --kpi-height: clamp(78px, 8.4vh, 94px);
+        --chart-card-h: clamp(168px, 18.5vh, 196px);
+        --chart-h: clamp(128px, 14.2vh, 154px);
+        --middle-card-h: clamp(214px, 23.6vh, 242px);
+        --bottom-card-h: clamp(254px, 28.2vh, 286px);
+        --donut-size: clamp(130px, 14.2vh, 156px);
+        --donut-core: clamp(66px, 7.2vh, 78px);
+    }
+}
+
+@media (max-width: 1180px) {
+    .middle-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    }
+
+    .bottom-grid,
+    .chart-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
