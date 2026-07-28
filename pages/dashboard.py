@@ -54,16 +54,18 @@ def render_dashboard() -> None:
         <main class="dashboard-shell">
             {weekly_schedule_html()}
             {kpi_cards_html(inventory_summary, purchase_summary)}
-            <section class="dashboard-ops-grid">
+            <section class="dashboard-middle-grid">
                 {issue_donut_html(return_case_summary.get("category_rows", []), return_case_summary.get("total_count", 0), return_case_summary.get("monthly_rows", []), return_case_summary.get("year", date.today().year))}
                 <section class="chart-grid dashboard-chart-stack">
                     {shipping_chart_html(inventory_charts.get("outbound", []), inventory_summary.get("outbound_qty", 0))}
                     {inventory_chart_html(inventory_charts.get("stock", []))}
                 </section>
+                {recent_orders_html(purchase_summary.get("recent_po_inbound", []))}
+            </section>
+            <section class="dashboard-bottom-grid">
                 {warehouse_status_html(inventory_summary.get("source_status", []))}
                 {purchase_progress_html(purchase_summary.get("progress_rows", []))}
                 {schedule_core_tasks_html(core_tasks_summary)}
-                {recent_orders_html(purchase_summary.get("recent_po_inbound", []))}
             </section>
         </main>
         """

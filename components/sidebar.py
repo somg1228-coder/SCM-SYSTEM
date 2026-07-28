@@ -39,27 +39,26 @@ def normalize_page() -> str:
     return page
 
 
-def render_menu_link(item_key: str, label: str, active_page: str) -> None:
-    display_label = f"• {label}" if active_page == label else label
-    href = "?" + urlencode({"page": label})
-    st.markdown(f"[{display_label}]({href})")
+def sidebar_markdown(active_page: str) -> str:
+    lines = ["### SCM 물류운영포털", "---"]
+    for group_label, items in MENU_GROUPS:
+        lines.append(f"###### {group_label}")
+        for _, label in items:
+            display_label = f"**{label}**" if active_page == label else label
+            href = "?" + urlencode({"page": label})
+            lines.append(f"[{display_label}]({href})")
+        lines.append("")
+    settings_label = SETTINGS_ITEM[1]
+    settings_display = f"**{settings_label}**" if active_page == settings_label else settings_label
+    settings_href = "?" + urlencode({"page": settings_label})
+    lines.extend(["---", "###### 설정", "SCM Portal · v1.0", f"[{settings_display}]({settings_href})"])
+    return "\n\n".join(lines)
 
 
 def render_sidebar() -> str:
     active_page = normalize_page()
 
     with st.sidebar:
-        st.markdown("**SCM 물류운영포털**")
-        st.markdown("---")
-
-        for group_label, items in MENU_GROUPS:
-            st.markdown(f"###### {group_label}")
-            for item_key, label in items:
-                render_menu_link(item_key, label, active_page)
-
-        st.markdown("---")
-        st.markdown("###### 설정")
-        st.markdown("SCM Portal · v1.0")
-        render_menu_link(SETTINGS_ITEM[0], SETTINGS_ITEM[1], active_page)
+        st.markdown(sidebar_markdown(active_page))
 
     return st.session_state["page"]
