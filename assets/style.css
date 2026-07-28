@@ -5185,3 +5185,215 @@ body,
         --donut-core: clamp(72px, 7.7vh, 86px);
     }
 }
+
+/* KPI summary replaces outbound/stock trend charts. */
+:root {
+    --kpi-height: clamp(118px, 12.2vh, 148px);
+}
+
+.kpi-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    grid-template-rows: var(--kpi-height) !important;
+}
+
+.kpi-tile {
+    gap: clamp(0.85rem, 0.92vw, 1.2rem) !important;
+    grid-template-columns: clamp(58px, 3.8vw, 74px) minmax(0, 1fr) !important;
+    height: var(--kpi-height) !important;
+    min-height: var(--kpi-height) !important;
+    padding: clamp(1.05rem, 1.32vh, 1.45rem) clamp(1.05rem, 1.15vw, 1.35rem) !important;
+}
+
+.kpi-icon {
+    height: clamp(56px, 3.6vw, 72px) !important;
+    width: clamp(56px, 3.6vw, 72px) !important;
+}
+
+.kpi-icon svg {
+    height: clamp(28px, 1.9vw, 36px) !important;
+    width: clamp(28px, 1.9vw, 36px) !important;
+}
+
+.kpi-tile > div:last-child {
+    gap: clamp(0.22rem, 0.28vh, 0.38rem) !important;
+}
+
+.kpi-tile span {
+    font-size: clamp(0.88rem, 0.84vw, 1.05rem) !important;
+}
+
+.kpi-tile strong {
+    font-size: clamp(1.9rem, 2vw, 2.55rem) !important;
+}
+
+.kpi-tile small {
+    font-size: clamp(0.74rem, 0.72vw, 0.9rem) !important;
+}
+
+@media (max-height: 900px) and (min-width: 1181px) {
+    :root {
+        --kpi-height: clamp(96px, 10.6vh, 120px);
+    }
+}
+
+/* Middle row readability fix: larger donut, smaller legend, no clipped purchase text. */
+:root {
+    --middle-card-h: clamp(252px, 26vh, 292px);
+    --donut-size: clamp(188px, 19.2vh, 224px);
+    --donut-core: clamp(88px, 9vh, 108px);
+}
+
+.middle-grid {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1.42fr) minmax(0, 0.98fr) minmax(0, 0.95fr) minmax(0, 1.05fr) !important;
+}
+
+.donut-card,
+.mini-line-card,
+.warehouse-panel,
+.purchase-progress-panel {
+    height: var(--middle-card-h) !important;
+    min-height: var(--middle-card-h) !important;
+    padding: clamp(0.5rem, 0.58vh, 0.68rem) clamp(0.7rem, 0.72vw, 0.9rem) !important;
+}
+
+.donut-card > h2,
+.warehouse-panel > h2 {
+    margin-bottom: clamp(0.18rem, 0.24vh, 0.3rem) !important;
+}
+
+.donut-layout {
+    align-items: center !important;
+    gap: clamp(0.48rem, 0.55vw, 0.72rem) !important;
+    grid-template-columns: minmax(var(--donut-size), 1.18fr) minmax(128px, 0.82fr) !important;
+    margin-top: 0 !important;
+    overflow: visible !important;
+}
+
+.donut {
+    height: var(--donut-size) !important;
+    width: var(--donut-size) !important;
+}
+
+.donut::after {
+    height: var(--donut-core) !important;
+    width: var(--donut-core) !important;
+}
+
+.donut strong {
+    font-size: clamp(1.28rem, 1.3vw, 1.6rem) !important;
+}
+
+.donut span {
+    font-size: clamp(0.64rem, 0.6vw, 0.76rem) !important;
+}
+
+.donut-segment-label {
+    font-size: clamp(0.5rem, 0.48vw, 0.6rem) !important;
+    padding: 0.08rem 0.18rem !important;
+}
+
+.legend {
+    align-content: center !important;
+    gap: clamp(0.06rem, 0.1vh, 0.14rem) !important;
+    max-height: calc(var(--middle-card-h) - 42px) !important;
+    overflow-y: auto !important;
+    padding-right: 0 !important;
+}
+
+.legend li {
+    grid-template-columns: 8px minmax(3.1rem, 1fr) max-content !important;
+    min-height: clamp(17px, 1.75vh, 21px) !important;
+}
+
+.legend i {
+    height: 8px !important;
+    width: 8px !important;
+}
+
+.legend a,
+.legend b {
+    font-size: clamp(0.52rem, 0.49vw, 0.62rem) !important;
+    line-height: 1.08 !important;
+}
+
+.legend a {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.legend b {
+    white-space: nowrap !important;
+}
+
+.purchase-progress-panel {
+    gap: clamp(0.14rem, 0.18vh, 0.24rem) !important;
+    overflow: hidden !important;
+}
+
+.purchase-progress-panel .panel-title-row {
+    min-height: clamp(24px, 2.45vh, 30px) !important;
+    margin-bottom: 0 !important;
+}
+
+.purchase-progress-head {
+    margin-top: 0 !important;
+    padding: clamp(0.14rem, 0.2vh, 0.24rem) 0 clamp(0.04rem, 0.08vh, 0.12rem) !important;
+}
+
+.purchase-progress-head,
+.purchase-progress-row {
+    grid-template-columns: minmax(5.4rem, 1.05fr) minmax(2.6rem, max-content) minmax(4.9rem, 0.95fr) !important;
+}
+
+.purchase-progress-row {
+    min-height: clamp(25px, 2.55vh, 31px) !important;
+    padding: clamp(0.08rem, 0.12vh, 0.16rem) 0 !important;
+}
+
+.purchase-progress-row strong,
+.purchase-progress-row em,
+.purchase-progress-row span,
+.purchase-progress-head span {
+    font-size: clamp(0.56rem, 0.53vw, 0.66rem) !important;
+    line-height: 1.12 !important;
+}
+
+.purchase-progress-row strong,
+.purchase-progress-row span {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+}
+
+.purchase-progress-row em {
+    white-space: nowrap !important;
+}
+
+.purchase-progress-panel .ghost-link {
+    height: clamp(22px, 2.2vh, 27px) !important;
+    margin-top: auto !important;
+    max-width: calc(100% - 1rem) !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    padding: 0 clamp(0.44rem, 0.5vw, 0.62rem) !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+@media (max-height: 900px) and (min-width: 1181px) {
+    :root {
+        --middle-card-h: clamp(232px, 24.7vh, 260px);
+        --donut-size: clamp(164px, 17.7vh, 194px);
+        --donut-core: clamp(78px, 8.3vh, 94px);
+    }
+
+    .purchase-progress-row {
+        min-height: clamp(22px, 2.35vh, 28px) !important;
+    }
+
+    .legend li {
+        min-height: clamp(15px, 1.6vh, 19px) !important;
+    }
+}

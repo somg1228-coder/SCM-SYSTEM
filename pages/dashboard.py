@@ -47,17 +47,12 @@ def render_dashboard() -> None:
     work_date = inventory_summary.get("work_date") or date.today()
     purchase_summary = get_home_purchase_summary(work_date)
     core_tasks_summary = get_dashboard_core_tasks()
-    inventory_charts = inventory_summary.get("charts", {})
     return_case_summary = get_return_case_summary(work_date)
     render_html(
         f"""
         <main class="dashboard-shell">
             {weekly_schedule_html()}
             {kpi_cards_html(inventory_summary, purchase_summary)}
-            <section class="chart-grid">
-                {shipping_chart_html(inventory_charts.get("outbound_trend", []), inventory_summary.get("outbound_qty", 0))}
-                {inventory_chart_html(inventory_charts.get("stock_trend", []))}
-            </section>
             <section class="middle-grid">
                 {issue_donut_html(return_case_summary.get("category_rows", []), return_case_summary.get("total_count", 0))}
                 {monthly_chart_html(return_case_summary.get("monthly_rows", []), return_case_summary.get("year", date.today().year))}
@@ -1076,14 +1071,12 @@ def purchase_po_link(po_number: str) -> str:
 
 def kpi_cards_html(summary: dict, purchase_summary: dict) -> str:
     stock = format_metric(summary.get("current_stock", 0))
-    shortage = format_metric(summary.get("need_inbound_count", 0))
-    soldout = format_metric(summary.get("soldout_count", 0))
+    outbound_qty = format_metric(summary.get("outbound_qty", 0))
+    inbound_qty = format_metric(summary.get("inbound_qty", 0))
     pending_pr = format_metric(purchase_summary.get("pending_pr_count", 0))
     pending_amount = format_won(purchase_summary.get("pending_pr_amount", 0))
     po_progress = format_metric(purchase_summary.get("po_progress_count", 0))
     uninbound_amount = format_won(purchase_summary.get("uninbound_amount", 0))
-    delayed_count = format_metric(purchase_summary.get("delayed_count", 0))
-    max_delay = int(purchase_summary.get("max_delay_days", 0) or 0)
     month_amount = format_won(purchase_summary.get("month_amount", 0))
     month_change = format_percent(purchase_summary.get("month_change_rate", 0))
     work_date = summary.get("work_date")
@@ -1098,10 +1091,10 @@ def kpi_cards_html(summary: dict, purchase_summary: dict) -> str:
 
     cards = [
         ("cube", "총 현재고", f"{stock}개", caption_date, "cyan", inventory_link("all")),
-        ("alert", "재고부족 SKU", f"{shortage}건", f"품절 {soldout}건", "orange", inventory_link("need_inbound")),
-        ("case", "구매요청 대기", f"{pending_pr}건", f"대기 {pending_amount}", "purple", purchase_link("구매요청(PR)", "pr_pending")),
+        ("truck", "출고수량", f"{outbound_qty}개", caption_date, "blue", inventory_link("outbound")),
+        ("case", "구매요청", f"{pending_pr}건", f"대기 {pending_amount}", "purple", purchase_link("구매요청(PR)", "pr_pending")),
         ("truck", "발주 진행", f"{po_progress}건", f"미입고 {uninbound_amount}", "blue", purchase_link("발주관리(PO)", "po_progress")),
-        ("alert", "입고 지연", f"{delayed_count}건", f"최대 {max_delay}일 지연", "red" if max_delay else "cyan", purchase_link("발주관리(PO)", "po_delay")),
+        ("box", "입고수량", f"{inbound_qty}개", caption_date, "green", inventory_link("all")),
         ("box", "이번 달 구매금액", month_amount, f"전월 대비 {month_change}", "green", purchase_link("구매 KPI")),
     ]
     return '<section class="kpi-row">' + "".join(
