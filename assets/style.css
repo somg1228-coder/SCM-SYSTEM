@@ -8601,3 +8601,69 @@ button:disabled {
         place-items: center;
     }
 }
+
+/* Rendering recovery: keep Streamlit's main content visible before any further redesign work. */
+html,
+body {
+    background: #F7F5F2 !important;
+    color: #1F2937 !important;
+    margin: 0 !important;
+    min-height: 100% !important;
+    overflow: auto !important;
+    transition: none !important;
+}
+
+.stApp,
+[data-testid="stMain"],
+section.main,
+.main {
+    background: #F7F5F2 !important;
+    color: #1F2937 !important;
+    display: block !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    position: relative !important;
+    visibility: visible !important;
+    z-index: auto !important;
+    transition: none !important;
+}
+
+[data-testid="stAppViewContainer"] {
+    background: #F7F5F2 !important;
+    color: #1F2937 !important;
+    display: flex !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    position: relative !important;
+    visibility: visible !important;
+    width: 100% !important;
+    z-index: auto !important;
+    transition: none !important;
+}
+
+.block-container,
+.main .block-container,
+[data-testid="stAppViewBlockContainer"],
+[data-testid="stMainBlockContainer"] {
+    display: block !important;
+    height: auto !important;
+    min-height: calc(100vh - 48px) !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    position: relative !important;
+    visibility: visible !important;
+    z-index: auto !important;
+    transition: none !important;
+}
+
+[data-testid="stVerticalBlock"] {
+    height: auto !important;
+    min-height: 0 !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    visibility: visible !important;
+}

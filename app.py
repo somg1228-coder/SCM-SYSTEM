@@ -170,12 +170,9 @@ def main() -> None:
     page = importlib.reload(sidebar_component).render_sidebar()
     st.session_state["page"] = page
 
-    main_container = st.empty()
-    with main_container.container():
-        if page != "반품/AS 관리":
-            render_header(page)
-        render_page(page)
-        load_css()
+    if page != "반품/AS 관리":
+        render_header(page)
+    render_page(page)
 
 
 if __name__ == "__main__":
