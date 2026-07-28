@@ -7551,3 +7551,840 @@ button[kind="primary"] {
     border-color: #d7e4f8 !important;
     color: #1f2937 !important;
 }
+
+/* Muted ERP design system v2: final common layer for every page. */
+:root {
+    color-scheme: light;
+    --erp-bg: #F8F7F4;
+    --erp-card: #FFFFFF;
+    --erp-text: #1F2937;
+    --erp-body: #475569;
+    --erp-muted: #64748B;
+    --erp-faint: #94A3B8;
+    --erp-line: #E5E7EB;
+    --erp-line-strong: #D9DEE5;
+    --erp-blue: #4F6F8F;
+    --erp-blue-strong: #36556F;
+    --erp-blue-soft: #EEF3F7;
+    --erp-green: #6F927D;
+    --erp-amber: #B78B5A;
+    --erp-red: #B66A6A;
+    --erp-gray: #8A94A3;
+    --bg: var(--erp-bg);
+    --panel: var(--erp-card);
+    --panel-soft: #F8FAFC;
+    --control-bg: #FFFFFF;
+    --control-bg-soft: #F8FAFC;
+    --control-bg-hover: var(--erp-blue-soft);
+    --line: var(--erp-line);
+    --line-soft: #EEF0F3;
+    --text: var(--erp-text);
+    --muted: var(--erp-muted);
+    --blue: var(--erp-blue);
+    --cyan: var(--erp-blue);
+    --green: var(--erp-green);
+    --orange: var(--erp-amber);
+    --red: var(--erp-red);
+    --purple: #6F7480;
+    --dashboard-gap: clamp(0.75rem, 0.82vw, 1rem);
+    --panel-pad-y: clamp(1rem, 1.05vh, 1.25rem);
+    --panel-pad-x: clamp(1rem, 1.1vw, 1.25rem);
+    --card-pad-y: clamp(1rem, 1.05vh, 1.25rem);
+    --card-pad-x: clamp(1rem, 1.1vw, 1.25rem);
+    --kpi-height: clamp(94px, 9.5vh, 116px);
+    --ops-main-row: clamp(250px, 26vh, 318px);
+    --ops-sub-row: clamp(210px, 22vh, 268px);
+    --ops-donut-size: clamp(128px, 13vh, 164px);
+    --ops-donut-core: clamp(62px, 6.4vh, 80px);
+    --card-radius: 12px;
+    --control-radius: 10px;
+}
+
+html,
+body,
+.stApp,
+[data-testid="stAppViewContainer"],
+.main,
+.block-container {
+    color-scheme: light !important;
+}
+
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"] {
+    background: var(--erp-bg) !important;
+    color: var(--erp-text) !important;
+}
+
+.stApp *,
+.panel *,
+.dashboard-shell *,
+[data-testid="stSidebar"] * {
+    letter-spacing: 0 !important;
+}
+
+.stApp,
+.stApp p,
+.stApp li,
+.stApp label,
+.stApp span,
+.stApp div,
+.stApp [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stCaptionContainer"],
+.stApp [data-testid="stWidgetLabel"],
+.week-cell li,
+.warehouse-row,
+.purchase-progress-row,
+.core-task-list span,
+.table-panel td,
+.order-panel td {
+    color: var(--erp-body) !important;
+}
+
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp h5,
+.stApp h6,
+.panel h2,
+.panel-title-row h2,
+.weekly-schedule-title,
+.weekly-section-title,
+.meeting-section-title h2,
+.meeting-subsection-title,
+.purchase-title,
+.purchase-section-title,
+.inventory-tab-title,
+.bom-title,
+.bom-subtitle,
+.bom-outline-title,
+.product-master-title,
+.product-master-subtitle,
+.product-master-form-title,
+.warehouse3d-title {
+    color: var(--erp-text) !important;
+    font-weight: 760 !important;
+}
+
+.stApp small,
+.panel h2 small,
+.kpi-tile span,
+.kpi-tile small,
+.week-date,
+.chart-y-labels,
+.axis-labels,
+.chart-inline-summary span,
+.legend b,
+.issue-monthly-head,
+.warehouse-head,
+.purchase-progress-head,
+.core-task-list b,
+.notice-panel time,
+.empty-cell {
+    color: var(--erp-muted) !important;
+}
+
+.stApp [aria-disabled="true"],
+.stApp [disabled],
+.stApp .disabled {
+    color: var(--erp-muted) !important;
+    opacity: 1 !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"][aria-expanded="false"],
+[data-testid="stSidebar"][aria-hidden="true"] {
+    background: #FFFFFF !important;
+    border-right: 1px solid var(--erp-line) !important;
+    box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] .block-container {
+    background: #FFFFFF !important;
+}
+
+.portal-brand {
+    border-bottom: 1px solid var(--erp-line) !important;
+}
+
+.portal-name,
+.portal-subtitle {
+    color: var(--erp-text) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button {
+    align-items: center !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-left: 3px solid transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: var(--erp-body) !important;
+    font-size: 0.92rem !important;
+    font-weight: 650 !important;
+    min-height: 38px !important;
+    padding: 0.5rem 0.85rem !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: #F8FAFC !important;
+    border-left-color: #B8C7D6 !important;
+    color: var(--erp-blue-strong) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    background: var(--erp-blue-soft) !important;
+    border-left-color: var(--erp-blue) !important;
+    color: var(--erp-blue-strong) !important;
+}
+
+.panel,
+.kpi-tile,
+.week-board,
+.meeting-table-wrap,
+.meeting-note-box,
+.meeting-kpi-card,
+div[class*="st-key-meeting_issue_"],
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stExpander"],
+[data-testid="stForm"],
+[data-testid="stPopover"],
+[data-testid="stDialog"] {
+    background: var(--erp-card) !important;
+    border: 1px solid var(--erp-line) !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    color: var(--erp-body) !important;
+}
+
+.panel,
+.dashboard-ops-grid > .panel,
+.dashboard-ops-grid > .order-panel,
+.dashboard-ops-grid > .core-task-panel,
+.dashboard-ops-grid > .warehouse-panel,
+.dashboard-ops-grid > .purchase-progress-panel,
+.dashboard-ops-grid > .donut-card,
+.dashboard-chart-stack .chart-card {
+    padding: 16px 18px !important;
+}
+
+.panel:hover,
+.kpi-tile:hover,
+.meeting-kpi-card:hover {
+    border-color: #D8E0E8 !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+    transform: none !important;
+}
+
+.panel h2,
+.panel-title-row h2 {
+    color: var(--erp-text) !important;
+    font-size: clamp(0.95rem, 0.9vw, 1.08rem) !important;
+    font-weight: 760 !important;
+    line-height: 1.25 !important;
+}
+
+.panel-title-row,
+.panel-title-row.compact {
+    align-items: center !important;
+    margin-bottom: 0.75rem !important;
+    min-height: 32px !important;
+}
+
+.ghost-link,
+.panel-title-row button,
+.panel-title-row a,
+.mini-badge,
+.chart-filter-links a,
+.mini-filter-link,
+.stButton > button,
+.stDownloadButton > button,
+.stFormSubmitButton > button,
+button[kind="secondary"],
+button[kind="primary"] {
+    align-items: center !important;
+    background: #FFFFFF !important;
+    border: 1px solid var(--erp-line-strong) !important;
+    border-radius: 999px !important;
+    box-shadow: none !important;
+    color: var(--erp-blue-strong) !important;
+    display: inline-flex !important;
+    font-size: 0.86rem !important;
+    font-weight: 700 !important;
+    height: 34px !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    padding: 0 0.9rem !important;
+    text-decoration: none !important;
+    white-space: nowrap !important;
+}
+
+.ghost-link:hover,
+.panel-title-row button:hover,
+.panel-title-row a:hover,
+.chart-filter-links a:hover,
+.chart-filter-links a.active,
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+.stFormSubmitButton > button:hover,
+button[kind="secondary"]:hover {
+    background: var(--erp-blue-soft) !important;
+    border-color: #C8D5E1 !important;
+    color: var(--erp-blue-strong) !important;
+}
+
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"],
+.stFormSubmitButton > button[kind="primary"],
+button[kind="primary"] {
+    background: var(--erp-blue) !important;
+    border-color: var(--erp-blue) !important;
+    color: #FFFFFF !important;
+}
+
+.stButton > button:disabled,
+.stDownloadButton > button:disabled,
+.stFormSubmitButton > button:disabled,
+button:disabled {
+    background: #F3F4F6 !important;
+    border-color: var(--erp-line) !important;
+    color: var(--erp-muted) !important;
+    opacity: 1 !important;
+}
+
+.dashboard-shell {
+    gap: var(--dashboard-gap) !important;
+}
+
+.dashboard-shell > .kpi-row {
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    grid-template-rows: var(--kpi-height) !important;
+}
+
+.dashboard-shell .kpi-tile {
+    align-items: center !important;
+    background: #FFFFFF !important;
+    gap: 0.85rem !important;
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+    height: var(--kpi-height) !important;
+    min-height: var(--kpi-height) !important;
+    padding: 18px !important;
+}
+
+.dashboard-shell .kpi-icon,
+.kpi-icon {
+    background: var(--erp-blue-soft) !important;
+    border: 1px solid #D6E0EA !important;
+    border-radius: 12px !important;
+    color: var(--erp-blue) !important;
+    height: 48px !important;
+    width: 48px !important;
+}
+
+.dashboard-shell .kpi-icon svg,
+.kpi-icon svg,
+.kpi-icon svg path,
+.kpi-icon svg circle {
+    fill: none !important;
+    stroke: currentColor !important;
+}
+
+.kpi-tile.blue .kpi-icon,
+.kpi-tile.cyan .kpi-icon,
+.kpi-tile.green .kpi-icon,
+.kpi-tile.purple .kpi-icon,
+.kpi-tile.orange .kpi-icon,
+.kpi-tile.red .kpi-icon {
+    color: var(--erp-blue) !important;
+}
+
+.dashboard-shell .kpi-tile span {
+    color: var(--erp-muted) !important;
+    font-size: 0.84rem !important;
+    font-weight: 680 !important;
+}
+
+.dashboard-shell .kpi-tile strong {
+    color: var(--erp-text) !important;
+    font-size: clamp(1.62rem, 1.75vw, 2.25rem) !important;
+    font-variant-numeric: tabular-nums !important;
+    font-weight: 820 !important;
+    line-height: 1 !important;
+}
+
+.dashboard-shell .kpi-tile small {
+    color: var(--erp-muted) !important;
+    font-size: 0.78rem !important;
+}
+
+.dashboard-ops-grid {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: repeat(20, minmax(0, 1fr)) !important;
+    grid-template-rows: var(--ops-main-row) var(--ops-sub-row) !important;
+}
+
+.dashboard-ops-grid > .donut-card {
+    grid-column: 1 / 8 !important;
+    grid-row: 1 !important;
+}
+
+.dashboard-ops-grid > .dashboard-chart-stack {
+    grid-column: 8 / 14 !important;
+    grid-row: 1 !important;
+}
+
+.dashboard-ops-grid > .order-panel {
+    grid-column: 14 / 21 !important;
+    grid-row: 1 !important;
+}
+
+.dashboard-ops-grid > .warehouse-panel {
+    grid-column: 1 / 7 !important;
+    grid-row: 2 !important;
+}
+
+.dashboard-ops-grid > .purchase-progress-panel {
+    grid-column: 7 / 13 !important;
+    grid-row: 2 !important;
+}
+
+.dashboard-ops-grid > .core-task-panel {
+    grid-column: 13 / 21 !important;
+    grid-row: 2 !important;
+}
+
+.dashboard-chart-stack {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.dashboard-chart-stack .chart-card {
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 14px 16px !important;
+}
+
+.dashboard-chart-stack .svg-chart {
+    min-height: 84px !important;
+}
+
+.dashboard-ops-grid > .order-panel,
+.dashboard-ops-grid > .warehouse-panel,
+.dashboard-ops-grid > .purchase-progress-panel,
+.dashboard-ops-grid > .core-task-panel,
+.dashboard-ops-grid > .donut-card {
+    height: 100% !important;
+    min-height: 0 !important;
+}
+
+.dashboard-ops-grid > .core-task-panel {
+    display: grid !important;
+    gap: 0.85rem !important;
+    grid-template-columns: minmax(12rem, 0.75fr) minmax(0, 1.45fr) max-content !important;
+    grid-template-rows: 1fr !important;
+}
+
+.core-task-summary {
+    gap: 0.55rem !important;
+}
+
+.core-task-summary span {
+    background: #F8FAFC !important;
+    border: 1px solid var(--erp-line) !important;
+    border-radius: 10px !important;
+    color: var(--erp-muted) !important;
+}
+
+.core-task-list {
+    min-height: 0 !important;
+    overflow: auto !important;
+}
+
+.core-task-list i {
+    background: var(--erp-blue-soft) !important;
+    color: var(--erp-blue-strong) !important;
+}
+
+.core-task-list li.done i {
+    background: #EFF5F1 !important;
+    color: #4F725E !important;
+}
+
+.chart-card,
+.svg-chart {
+    background: #FFFFFF !important;
+}
+
+.chart-grid-lines i {
+    background: #E9EDF2 !important;
+}
+
+.svg-chart svg polygon {
+    fill: rgba(79, 111, 143, 0.08) !important;
+}
+
+.svg-chart svg polyline {
+    stroke: var(--erp-blue) !important;
+}
+
+.dashboard-chart-stack .chart-card:nth-child(2) svg polyline {
+    stroke: var(--erp-green) !important;
+}
+
+.svg-chart svg circle {
+    fill: #FFFFFF !important;
+    stroke: var(--erp-blue) !important;
+}
+
+.chart-tooltip,
+.donut-segment-label {
+    background: #FFFFFF !important;
+    border: 1px solid var(--erp-line) !important;
+    box-shadow: none !important;
+    color: var(--erp-text) !important;
+}
+
+.donut::after {
+    background: #FFFFFF !important;
+    border: 1px solid var(--erp-line) !important;
+}
+
+.donut strong,
+.purchase-progress-row em,
+.warehouse-row b,
+.warehouse-row strong,
+.core-task-summary strong {
+    color: var(--erp-text) !important;
+}
+
+.donut span,
+.legend b,
+.issue-monthly-head {
+    color: var(--erp-muted) !important;
+}
+
+.legend a,
+.month-labels a,
+.table-panel td a,
+.order-panel td a,
+.inbound-row {
+    color: var(--erp-text) !important;
+}
+
+.legend a:hover,
+.table-panel td a:hover,
+.order-panel td a:hover {
+    color: var(--erp-blue-strong) !important;
+}
+
+.legend li {
+    grid-template-columns: 10px minmax(0, 1fr) max-content !important;
+}
+
+.legend i {
+    border-radius: 999px !important;
+}
+
+.issue-monthly-mini {
+    border-top-color: var(--erp-line) !important;
+}
+
+.issue-monthly-bars i,
+.bar i,
+.thin-bar i {
+    background: var(--erp-blue) !important;
+}
+
+.warehouse-head,
+.purchase-progress-head,
+.inbound-head,
+.outbound-top-head {
+    background: #F8FAFC !important;
+    border: 1px solid var(--erp-line) !important;
+    border-radius: 10px !important;
+    color: var(--erp-muted) !important;
+}
+
+.warehouse-row,
+.purchase-progress-row,
+.inbound-row,
+.outbound-top-row,
+.core-task-list li {
+    border-bottom: 1px solid var(--erp-line) !important;
+}
+
+.warehouse-row:hover,
+.purchase-progress-row:hover,
+.inbound-row:hover,
+.outbound-top-row:hover {
+    background: #F8FAFC !important;
+}
+
+.bar,
+.thin-bar {
+    background: #EDF1F5 !important;
+}
+
+.purchase-progress-row.red span,
+.purchase-progress-row.red em,
+.purchase-progress-row.orange em,
+.purchase-progress-row.blue em,
+.purchase-progress-row.green em {
+    color: var(--erp-blue-strong) !important;
+}
+
+.table-panel table,
+.order-panel table,
+[data-testid="stTable"] table {
+    background: #FFFFFF !important;
+    border: 0 !important;
+    border-collapse: collapse !important;
+    color: var(--erp-text) !important;
+}
+
+.dashboard-ops-grid > .order-panel table {
+    display: table !important;
+    min-width: 100% !important;
+    overflow: visible !important;
+    table-layout: fixed !important;
+    width: 100% !important;
+}
+
+.dashboard-ops-grid > .order-panel thead {
+    display: table-header-group !important;
+}
+
+.dashboard-ops-grid > .order-panel tbody {
+    display: table-row-group !important;
+}
+
+.table-panel th,
+.order-panel th,
+[data-testid="stTable"] th {
+    background: #F8FAFC !important;
+    border-bottom: 1px solid var(--erp-line) !important;
+    color: var(--erp-body) !important;
+    font-weight: 720 !important;
+}
+
+.table-panel td,
+.order-panel td,
+[data-testid="stTable"] td {
+    background: #FFFFFF !important;
+    border-bottom: 1px solid var(--erp-line) !important;
+    color: var(--erp-text) !important;
+}
+
+.table-panel tbody tr:nth-child(even) td,
+.order-panel tbody tr:nth-child(even) td {
+    background: #FCFCFB !important;
+}
+
+.table-panel tbody tr:hover td,
+.order-panel tbody tr:hover td {
+    background: var(--erp-blue-soft) !important;
+}
+
+.order-panel th,
+.order-panel td {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.status-badge,
+.stock-badge,
+.meeting-status-badge {
+    border-radius: 999px !important;
+    font-weight: 720 !important;
+}
+
+.status-badge.pending,
+.stock-badge.pending,
+.meeting-status-badge.gray {
+    background: #F8F2EA !important;
+    border: 1px solid #E8D5BF !important;
+    color: #7A5833 !important;
+}
+
+.status-badge.ordered,
+.status-badge.done,
+.meeting-status-badge.blue {
+    background: var(--erp-blue-soft) !important;
+    border: 1px solid #D6E0EA !important;
+    color: var(--erp-blue-strong) !important;
+}
+
+.status-badge.partial,
+.stock-badge.normal,
+.meeting-status-badge.green {
+    background: #EFF5F1 !important;
+    border: 1px solid #D5E3DA !important;
+    color: #4F725E !important;
+}
+
+.status-badge.delay,
+.stock-badge.danger,
+.meeting-status-badge.red {
+    background: #FAF0F0 !important;
+    border: 1px solid #E8CCCC !important;
+    color: #864A4A !important;
+}
+
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stDateInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+[data-testid="stFileUploaderDropzone"],
+[data-testid="stChatInput"] textarea {
+    background: #FFFFFF !important;
+    border: 1px solid var(--erp-line-strong) !important;
+    border-radius: 10px !important;
+    box-shadow: none !important;
+    color: var(--erp-text) !important;
+    min-height: 38px !important;
+}
+
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stNumberInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder,
+[data-testid="stChatInput"] textarea::placeholder {
+    color: var(--erp-faint) !important;
+    opacity: 1 !important;
+}
+
+[data-testid="stTextInput"] input:focus,
+[data-testid="stNumberInput"] input:focus,
+[data-testid="stDateInput"] input:focus,
+[data-testid="stTextArea"] textarea:focus,
+[data-testid="stChatInput"] textarea:focus {
+    border-color: #58799A !important;
+    box-shadow: 0 0 0 2px rgba(88, 121, 154, 0.12) !important;
+}
+
+[data-testid="stTextInput"] input:disabled,
+[data-testid="stNumberInput"] input:disabled,
+[data-testid="stDateInput"] input:disabled,
+[data-testid="stTextArea"] textarea:disabled {
+    background: #F3F4F6 !important;
+    color: var(--erp-muted) !important;
+}
+
+[data-testid="stCheckbox"] label,
+[data-testid="stRadio"] label,
+[data-testid="stToggle"] label {
+    color: var(--erp-body) !important;
+}
+
+[data-testid="stCheckbox"] svg,
+[data-testid="stRadio"] svg,
+[data-testid="stToggle"] svg {
+    color: var(--erp-blue) !important;
+    fill: var(--erp-blue) !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: transparent !important;
+    border-bottom: 1px solid var(--erp-line) !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    color: var(--erp-muted) !important;
+    font-weight: 680 !important;
+}
+
+[data-testid="stTabs"] [aria-selected="true"] {
+    color: var(--erp-blue-strong) !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+    background-color: var(--erp-blue) !important;
+}
+
+[data-testid="stDataFrame"],
+[data-testid="stDataEditor"] {
+    background: #FFFFFF !important;
+    border: 1px solid var(--erp-line) !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    color: var(--erp-text) !important;
+}
+
+[data-testid="stDataFrame"] *,
+[data-testid="stDataEditor"] * {
+    color: var(--erp-text) !important;
+}
+
+[data-testid="stFileUploaderDropzone"] small,
+[data-testid="stCaptionContainer"],
+.uploadFileName,
+.uploadedFileName {
+    color: var(--erp-muted) !important;
+}
+
+[data-testid="stAlert"] {
+    background: #FFFFFF !important;
+    border: 1px solid var(--erp-line) !important;
+    border-radius: 12px !important;
+    color: var(--erp-text) !important;
+}
+
+.schedule-highlight-editor,
+.meeting-shell,
+.weekly-schedule-shell,
+.inventory-shell,
+.purchase-shell,
+.bom-shell,
+.warehouse3d-shell,
+.product-master-shell,
+.return-system-frame,
+.placeholder-panel {
+    background: transparent !important;
+    color: var(--erp-body) !important;
+}
+
+@media (max-width: 1280px) {
+    .dashboard-ops-grid {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto !important;
+    }
+
+    .dashboard-ops-grid > .donut-card,
+    .dashboard-ops-grid > .dashboard-chart-stack,
+    .dashboard-ops-grid > .order-panel,
+    .dashboard-ops-grid > .warehouse-panel,
+    .dashboard-ops-grid > .purchase-progress-panel,
+    .dashboard-ops-grid > .core-task-panel {
+        grid-column: 1 / -1 !important;
+        grid-row: auto !important;
+    }
+
+    .dashboard-chart-stack {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        grid-template-rows: minmax(180px, auto) !important;
+    }
+
+    .dashboard-ops-grid > .core-task-panel {
+        display: flex !important;
+    }
+}
+
+@media (max-width: 760px) {
+    .dashboard-shell > .kpi-row,
+    .dashboard-chart-stack {
+        grid-template-columns: 1fr !important;
+    }
+
+    .dashboard-shell > .kpi-row {
+        grid-template-rows: repeat(6, var(--kpi-height)) !important;
+    }
+}

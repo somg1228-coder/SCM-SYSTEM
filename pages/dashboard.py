@@ -601,7 +601,7 @@ def get_return_case_summary(work_date: date) -> dict:
     except sqlite3.Error:
         return summary
 
-    colors = ["#006eff", "#19a0a8", "#ffb020", "#6b7280"]
+    colors = ["#4F6F8F", "#6F927D", "#B78B5A", "#8A94A3"]
     return {
         "total_count": int(total_count or 0),
         "category_rows": [
@@ -1118,7 +1118,7 @@ def inventory_chart_html(rows: list[dict]) -> str:
     return trend_chart_html(
         rows,
         title="재고 추이",
-        color="#19a0a8",
+        color="#6F927D",
         fill_id="inventoryFill",
         tooltip_class="cyan-tip",
         metric_label="총 재고",
@@ -1129,7 +1129,7 @@ def shipping_chart_html(rows: list[dict], outbound_qty: int = 0) -> str:
     return trend_chart_html(
         rows,
         title="출고 추이",
-        color="#006eff",
+        color="#4F6F8F",
         fill_id="shippingFill",
         tooltip_class="blue-tip",
         metric_label="출고",
@@ -1176,10 +1176,10 @@ def purchase_inbound_chart_html(rows: list[dict], trend_days: int, outbound_qty:
             {grid_lines(grid_values)}
             <svg viewBox="0 0 620 230" preserveAspectRatio="none">
                 <polyline points="{balance_points}" fill="none" stroke="#ffb22e" stroke-width="2.4"/>
-                <polyline points="{ordered_points}" fill="none" stroke="#006eff" stroke-width="3"/>
-                <polyline points="{inbound_points}" fill="none" stroke="#19a0a8" stroke-width="3"/>
-                {chart_points(ordered_points, "#006eff")}
-                {chart_points(inbound_points, "#19a0a8")}
+                <polyline points="{ordered_points}" fill="none" stroke="#4F6F8F" stroke-width="3"/>
+                <polyline points="{inbound_points}" fill="none" stroke="#6F927D" stroke-width="3"/>
+                {chart_points(ordered_points, "#4F6F8F")}
+                {chart_points(inbound_points, "#6F927D")}
             </svg>
             <div class="chart-tooltip blue-tip"><b>{escape(str(last.get("label", "-")))}</b><span>발주 {format_won(last.get("ordered_amount", 0))}</span></div>
             {axis_labels(compact_axis_labels(labels))}
@@ -1374,7 +1374,7 @@ def monthly_chart_html(rows: list[dict], year: int) -> str:
                     <line x1="20" y1="72" x2="365" y2="72"/>
                     <line x1="20" y1="120" x2="365" y2="120"/>
                 </g>
-                <polyline points="{points}" fill="none" stroke="#006eff" stroke-width="3"/>
+                <polyline points="{points}" fill="none" stroke="#4F6F8F" stroke-width="3"/>
                 {point_nodes}
             </svg>
             <div class="peak-label" style="left:{peak_left / 380 * 100:.1f}%">{peak_value:,}건</div>
