@@ -48,17 +48,15 @@ def render_dashboard() -> None:
     purchase_summary = get_home_purchase_summary(work_date)
     core_tasks_summary = get_dashboard_core_tasks()
     return_case_summary = get_return_case_summary(work_date)
-    inventory_charts = inventory_summary.get("charts", {})
     render_html(
         f"""
         <main class="dashboard-shell">
             {weekly_schedule_html()}
             {kpi_cards_html(inventory_summary, purchase_summary)}
             <section class="dashboard-middle-grid">
-                {issue_donut_html(return_case_summary.get("category_rows", []), return_case_summary.get("total_count", 0), return_case_summary.get("monthly_rows", []), return_case_summary.get("year", date.today().year))}
-                <section class="chart-grid dashboard-chart-stack">
-                    {shipping_chart_html(inventory_charts.get("outbound", []), inventory_summary.get("outbound_qty", 0))}
-                    {inventory_chart_html(inventory_charts.get("stock", []))}
+                <section class="status-grid">
+                    {issue_donut_html(return_case_summary.get("category_rows", []), return_case_summary.get("total_count", 0), return_case_summary.get("monthly_rows", []), return_case_summary.get("year", date.today().year))}
+                    {occurrence_status_html(return_case_summary)}
                 </section>
                 {recent_orders_html(purchase_summary.get("recent_po_inbound", []))}
             </section>
@@ -565,6 +563,11 @@ def get_return_case_summary(work_date: date) -> dict:
         "category_rows": [],
         "monthly_rows": [{"month": month, "month_key": f"{current_year}{month:02d}", "count": 0} for month in range(1, 13)],
         "recent_cases": [],
+        "today_count": 0,
+        "week_count": 0,
+        "in_progress_count": 0,
+        "done_count": 0,
+        "delayed_count": 0,
         "year": current_year,
     }
     if not RETURN_CASE_DB_PATH.exists():
@@ -600,10 +603,20 @@ def get_return_case_summary(work_date: date) -> dict:
                 LIMIT 5
                 """
             ).fetchall()
+            occurrence_rows = conn.execute(
+                """
+                SELECT case_id, category, product, action, repair_method, prevention
+                FROM cases
+                ORDER BY case_id DESC, id DESC
+                """
+            ).fetchall()
     except sqlite3.Error:
         return summary
 
-    colors = ["#4F6F8F", "#6F927D", "#B78B5A", "#8A94A3"]
+    today = work_date if hasattr(work_date, "strftime") else date.today()
+    week_start = today - timedelta(days=today.weekday())
+    occurrence_summary = summarize_return_occurrence_rows(occurrence_rows, today, week_start)
+    colors = ["#66849C", "#5F8F7B", "#A98755", "#8A94A3", "#A86464", "#7B8794"]
     return {
         "total_count": int(total_count or 0),
         "category_rows": [
@@ -623,7 +636,56 @@ def get_return_case_summary(work_date: date) -> dict:
             }
             for case_id, category, product in recent_cases
         ],
+        **occurrence_summary,
         "year": current_year,
+    }
+
+
+def summarize_return_occurrence_rows(rows: list, today: date, week_start: date) -> dict:
+    today_key = today.strftime("%Y%m%d")
+    week_start_key = week_start.strftime("%Y%m%d")
+    today_count = 0
+    week_count = 0
+    in_progress_count = 0
+    done_count = 0
+    delayed_count = 0
+    recent_cases = []
+    for case_id, category, product, action, repair_method, prevention in rows:
+        case_text = str(case_id or "")
+        case_key = case_text[:8] if len(case_text) >= 8 and case_text[:8].isdigit() else ""
+        is_done = any(str(value or "").strip() for value in (action, repair_method, prevention))
+        if case_key == today_key:
+            today_count += 1
+        if case_key and week_start_key <= case_key <= today_key:
+            week_count += 1
+        if is_done:
+            done_count += 1
+        else:
+            in_progress_count += 1
+            if case_key:
+                try:
+                    case_date = date(int(case_key[:4]), int(case_key[4:6]), int(case_key[6:8]))
+                except ValueError:
+                    case_date = today
+                if (today - case_date).days >= 7:
+                    delayed_count += 1
+        if len(recent_cases) < 4:
+            recent_cases.append(
+                {
+                    "case_id": case_id or "-",
+                    "category": category or "-",
+                    "product": product or "-",
+                    "date": format_case_id_date(case_id),
+                    "done": is_done,
+                }
+            )
+    return {
+        "today_count": today_count,
+        "week_count": week_count,
+        "in_progress_count": in_progress_count,
+        "done_count": done_count,
+        "delayed_count": delayed_count,
+        "recent_cases": recent_cases,
     }
 
 
@@ -1116,29 +1178,6 @@ def kpi_cards_html(summary: dict, purchase_summary: dict) -> str:
     ) + "</section>"
 
 
-def inventory_chart_html(rows: list[dict]) -> str:
-    return trend_chart_html(
-        rows,
-        title="재고 추이",
-        color="#6F927D",
-        fill_id="inventoryFill",
-        tooltip_class="cyan-tip",
-        metric_label="총 재고",
-    )
-
-
-def shipping_chart_html(rows: list[dict], outbound_qty: int = 0) -> str:
-    return trend_chart_html(
-        rows,
-        title="출고 추이",
-        color="#4F6F8F",
-        fill_id="shippingFill",
-        tooltip_class="blue-tip",
-        metric_label="출고",
-        summary_html=f'<div class="chart-inline-summary"><span>기준일 출고수량</span><strong>{format_metric(outbound_qty)}개</strong></div>',
-    )
-
-
 def purchase_inbound_chart_html(rows: list[dict], trend_days: int, outbound_qty: int = 0) -> str:
     chart_rows = rows[-trend_days:] if rows else []
     labels = [str(row.get("label", "-")) for row in chart_rows]
@@ -1303,6 +1342,60 @@ def issue_monthly_strip_html(rows: list[dict], year: int) -> str:
         </div>
         <div class="issue-monthly-bars">{''.join(month_nodes)}</div>
     </div>
+    """
+
+
+def occurrence_status_html(summary: dict) -> str:
+    metrics = [
+        ("오늘", int(summary.get("today_count") or 0), "info"),
+        ("이번 주", int(summary.get("week_count") or 0), "info"),
+        ("처리 중", int(summary.get("in_progress_count") or 0), "warning"),
+        ("완료", int(summary.get("done_count") or 0), "success"),
+        ("지연", int(summary.get("delayed_count") or 0), "danger"),
+    ]
+    metric_nodes = "".join(
+        f"""
+        <div class="occurrence-metric {tone}">
+            <span>{label}</span>
+            <strong>{value:,}건</strong>
+        </div>
+        """
+        for label, value, tone in metrics
+    )
+    recent_rows = summary.get("recent_cases", [])
+    if recent_rows:
+        recent_nodes = "".join(
+            f"""
+            <a class="occurrence-row" href="{return_case_detail_link(case_id)}" target="_self">
+                <span>{category}</span>
+                <strong title="{product}">{product}</strong>
+                <em>{status}</em>
+            </a>
+            """
+            for case_id, category, product, status in [
+                (
+                    escape(str(row.get("case_id", ""))),
+                    escape(str(row.get("category", "-"))),
+                    escape(str(row.get("product", "-"))),
+                    "완료" if row.get("done") else "처리 중",
+                )
+                for row in recent_rows
+            ]
+        )
+    else:
+        recent_nodes = '<div class="empty-cell">최근 발생 사례가 없습니다.</div>'
+    return f"""
+    <article class="panel occurrence-panel">
+        <div class="panel-title-row compact">
+            <h2>발생 현황 <small>(반품/AS)</small></h2>
+            <a class="mini-filter-link" href="{return_case_filter_link("ALL")}" target="_self">전체</a>
+        </div>
+        <div class="occurrence-metrics">{metric_nodes}</div>
+        <div class="occurrence-list">
+            <div class="occurrence-list-head"><span>유형</span><span>최근 발생 사례</span><span>상태</span></div>
+            {recent_nodes}
+        </div>
+    </article>
     """
 
 
