@@ -5397,3 +5397,2157 @@ body,
         min-height: clamp(15px, 1.6vh, 19px) !important;
     }
 }
+
+/* ERP dashboard final layout: weighted grid, not equal card rows. */
+:root {
+    --dashboard-gap: clamp(0.62rem, 0.68vw, 0.88rem);
+    --kpi-height: clamp(84px, 8.6vh, 104px);
+    --ops-main-row: clamp(218px, 23vh, 276px);
+    --ops-sub-row: clamp(206px, 21.4vh, 252px);
+    --ops-core-row: clamp(118px, 12.2vh, 148px);
+    --ops-panel-pad-y: clamp(0.62rem, 0.72vh, 0.88rem);
+    --ops-panel-pad-x: clamp(0.82rem, 0.88vw, 1.12rem);
+    --ops-donut-size: clamp(118px, 12.4vh, 152px);
+    --ops-donut-core: clamp(58px, 6.1vh, 74px);
+}
+
+.dashboard-shell {
+    align-content: start !important;
+    gap: var(--dashboard-gap) !important;
+    grid-auto-rows: max-content !important;
+}
+
+.dashboard-shell > .kpi-row {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    grid-template-rows: var(--kpi-height) !important;
+}
+
+.kpi-tile {
+    align-items: center !important;
+    display: grid !important;
+    gap: clamp(0.58rem, 0.66vw, 0.88rem) !important;
+    grid-template-columns: clamp(42px, 2.65vw, 52px) minmax(0, 1fr) !important;
+    height: var(--kpi-height) !important;
+    min-height: var(--kpi-height) !important;
+    overflow: hidden !important;
+    padding: clamp(0.68rem, 0.82vh, 0.96rem) clamp(0.76rem, 0.82vw, 1rem) !important;
+}
+
+.kpi-icon {
+    align-items: center !important;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px !important;
+    display: grid !important;
+    height: clamp(42px, 2.65vw, 52px) !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+    width: clamp(42px, 2.65vw, 52px) !important;
+}
+
+.kpi-icon svg {
+    background: transparent !important;
+    display: block !important;
+    fill: none !important;
+    height: clamp(22px, 1.45vw, 28px) !important;
+    overflow: visible !important;
+    stroke: currentColor !important;
+    stroke-linecap: round !important;
+    stroke-linejoin: round !important;
+    width: clamp(22px, 1.45vw, 28px) !important;
+}
+
+.kpi-icon svg path,
+.kpi-icon svg circle {
+    fill: none !important;
+    stroke: currentColor !important;
+    vector-effect: non-scaling-stroke;
+}
+
+.kpi-tile > div:last-child {
+    align-content: center !important;
+    display: grid !important;
+    gap: clamp(0.16rem, 0.2vh, 0.26rem) !important;
+    min-width: 0 !important;
+}
+
+.kpi-tile span,
+.kpi-tile strong,
+.kpi-tile small {
+    display: block !important;
+    letter-spacing: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.kpi-tile span {
+    color: #dff8f2 !important;
+    font-size: clamp(0.76rem, 0.72vw, 0.9rem) !important;
+    font-weight: 850 !important;
+    line-height: 1.15 !important;
+    white-space: nowrap !important;
+}
+
+.kpi-tile strong {
+    color: #ffffff !important;
+    font-size: clamp(1.08rem, 1.22vw, 1.58rem) !important;
+    font-variant-numeric: tabular-nums !important;
+    font-weight: 950 !important;
+    line-height: 1.02 !important;
+    white-space: nowrap !important;
+}
+
+.kpi-tile small {
+    color: #bde6dd !important;
+    font-size: clamp(0.64rem, 0.6vw, 0.76rem) !important;
+    line-height: 1.18 !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-ops-grid {
+    align-items: stretch;
+    display: grid;
+    gap: var(--dashboard-gap);
+    grid-template-columns: repeat(14, minmax(0, 1fr));
+    grid-template-rows: var(--ops-main-row) var(--ops-sub-row) var(--ops-core-row);
+    min-height: 0;
+}
+
+.dashboard-ops-grid > .donut-card {
+    grid-column: 1 / 5;
+    grid-row: 1;
+}
+
+.dashboard-ops-grid > .dashboard-chart-stack {
+    grid-column: 5 / 9;
+    grid-row: 1;
+}
+
+.dashboard-ops-grid > .warehouse-panel {
+    grid-column: 1 / 5;
+    grid-row: 2;
+}
+
+.dashboard-ops-grid > .purchase-progress-panel {
+    grid-column: 5 / 9;
+    grid-row: 2;
+}
+
+.dashboard-ops-grid > .core-task-panel {
+    grid-column: 1 / 9;
+    grid-row: 3;
+}
+
+.dashboard-ops-grid > .order-panel {
+    grid-column: 9 / 15;
+    grid-row: 1 / 4;
+}
+
+.dashboard-ops-grid > .panel,
+.dashboard-ops-grid > .chart-grid,
+.dashboard-ops-grid .chart-card {
+    min-height: 0 !important;
+    min-width: 0 !important;
+}
+
+.dashboard-ops-grid > .donut-card,
+.dashboard-ops-grid > .warehouse-panel,
+.dashboard-ops-grid > .purchase-progress-panel,
+.dashboard-ops-grid > .core-task-panel,
+.dashboard-ops-grid > .order-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    padding: var(--ops-panel-pad-y) var(--ops-panel-pad-x) !important;
+}
+
+.dashboard-chart-stack {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.dashboard-chart-stack .chart-card {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    padding: clamp(0.48rem, 0.58vh, 0.68rem) clamp(0.7rem, 0.76vw, 0.9rem) clamp(0.42rem, 0.5vh, 0.6rem) !important;
+}
+
+.dashboard-chart-stack .panel-title-row {
+    min-height: clamp(20px, 2.1vh, 26px) !important;
+}
+
+.dashboard-chart-stack .panel-title-row h2 {
+    font-size: clamp(0.74rem, 0.7vw, 0.88rem) !important;
+}
+
+.dashboard-chart-stack .panel-title-row button {
+    height: clamp(18px, 1.9vh, 23px) !important;
+    padding: 0 clamp(0.34rem, 0.38vw, 0.48rem) !important;
+}
+
+.dashboard-chart-stack .chart-inline-summary {
+    font-size: clamp(0.58rem, 0.54vw, 0.68rem) !important;
+    margin: 0 !important;
+}
+
+.dashboard-chart-stack .svg-chart {
+    flex: 1 1 auto !important;
+    margin-left: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
+.dashboard-chart-stack .svg-chart svg {
+    height: calc(100% - 18px) !important;
+    left: clamp(2.55rem, 2.7vw, 3.15rem) !important;
+    top: 0 !important;
+    width: calc(100% - clamp(3rem, 3.15vw, 3.6rem)) !important;
+}
+
+.dashboard-chart-stack .chart-grid-lines,
+.dashboard-chart-stack .chart-y-labels {
+    height: calc(100% - 18px) !important;
+}
+
+.dashboard-chart-stack .chart-grid-lines {
+    left: clamp(2.6rem, 2.72vw, 3.18rem) !important;
+    right: 0.35rem !important;
+}
+
+.dashboard-chart-stack .chart-y-labels {
+    font-size: clamp(0.54rem, 0.5vw, 0.64rem) !important;
+    width: clamp(2.1rem, 2.26vw, 2.72rem) !important;
+}
+
+.dashboard-chart-stack .axis-labels {
+    bottom: 0 !important;
+    font-size: clamp(0.52rem, 0.48vw, 0.62rem) !important;
+    left: clamp(2.55rem, 2.7vw, 3.15rem) !important;
+    right: 0.35rem !important;
+}
+
+.dashboard-chart-stack .chart-tooltip {
+    display: none !important;
+}
+
+.donut-card {
+    gap: clamp(0.34rem, 0.42vh, 0.56rem) !important;
+}
+
+.donut-card .donut-layout {
+    align-items: center !important;
+    display: grid !important;
+    flex: 1 1 auto !important;
+    gap: clamp(0.54rem, 0.6vw, 0.78rem) !important;
+    grid-template-columns: minmax(var(--ops-donut-size), 0.85fr) minmax(0, 1.15fr) !important;
+    margin-top: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
+.donut-card .donut {
+    height: var(--ops-donut-size) !important;
+    width: var(--ops-donut-size) !important;
+}
+
+.donut-card .donut::after {
+    height: var(--ops-donut-core) !important;
+    width: var(--ops-donut-core) !important;
+}
+
+.donut-card .donut strong {
+    font-size: clamp(1rem, 0.98vw, 1.24rem) !important;
+}
+
+.donut-card .legend {
+    align-content: center !important;
+    display: grid !important;
+    gap: clamp(0.08rem, 0.12vh, 0.16rem) !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+}
+
+.donut-card .legend li {
+    grid-template-columns: 8px minmax(0, 1fr) max-content !important;
+    min-height: clamp(18px, 1.8vh, 22px) !important;
+}
+
+.donut-card .legend a,
+.donut-card .legend b {
+    font-size: clamp(0.56rem, 0.52vw, 0.66rem) !important;
+    line-height: 1.1 !important;
+}
+
+.issue-monthly-mini {
+    border-top: 1px solid rgba(105, 178, 169, 0.18);
+    display: grid;
+    gap: clamp(0.22rem, 0.28vh, 0.34rem);
+    margin-top: auto;
+    padding-top: clamp(0.3rem, 0.36vh, 0.46rem);
+}
+
+.issue-monthly-head {
+    align-items: center;
+    color: #c8e5df;
+    display: flex;
+    font-size: clamp(0.58rem, 0.54vw, 0.68rem);
+    font-weight: 850;
+    justify-content: space-between;
+}
+
+.issue-monthly-head b {
+    color: #ffffff;
+    font-size: inherit;
+}
+
+.issue-monthly-bars {
+    align-items: end;
+    display: grid;
+    gap: clamp(0.12rem, 0.14vw, 0.2rem);
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    height: clamp(38px, 4.1vh, 52px);
+}
+
+.issue-monthly-bars a {
+    align-items: center;
+    color: #c8e5df;
+    display: grid;
+    gap: 0.16rem;
+    grid-template-rows: minmax(0, 1fr) auto;
+    height: 100%;
+    min-width: 0;
+    text-align: center;
+    text-decoration: none;
+}
+
+.issue-monthly-bars i {
+    align-self: end;
+    background: linear-gradient(180deg, rgba(22, 213, 198, 0.9), rgba(75, 156, 255, 0.5));
+    border-radius: 3px 3px 0 0;
+    display: block;
+    height: var(--bar-h);
+    min-height: 5px;
+    width: 100%;
+}
+
+.issue-monthly-bars span {
+    font-size: clamp(0.48rem, 0.46vw, 0.58rem);
+    line-height: 1;
+}
+
+.warehouse-head,
+.warehouse-row {
+    grid-template-columns: minmax(4.8rem, 0.85fr) minmax(6rem, 1fr) minmax(3.1rem, max-content) minmax(4.8rem, max-content) !important;
+}
+
+.warehouse-panel {
+    gap: clamp(0.36rem, 0.46vh, 0.58rem) !important;
+}
+
+.warehouse-row {
+    min-height: clamp(34px, 3.35vh, 42px) !important;
+    padding: clamp(0.18rem, 0.26vh, 0.34rem) 0 !important;
+}
+
+.warehouse-row span,
+.warehouse-row b,
+.warehouse-row strong,
+.warehouse-head span {
+    font-size: clamp(0.68rem, 0.62vw, 0.78rem) !important;
+}
+
+.purchase-progress-panel {
+    gap: clamp(0.28rem, 0.36vh, 0.48rem) !important;
+}
+
+.purchase-progress-head,
+.purchase-progress-row {
+    grid-template-columns: minmax(7.2rem, 1.25fr) minmax(3rem, max-content) minmax(7rem, 1fr) !important;
+}
+
+.purchase-progress-row {
+    min-height: clamp(34px, 3.3vh, 42px) !important;
+    padding: clamp(0.16rem, 0.25vh, 0.34rem) 0 !important;
+}
+
+.purchase-progress-row strong,
+.purchase-progress-row em,
+.purchase-progress-row span,
+.purchase-progress-head span {
+    font-size: clamp(0.66rem, 0.6vw, 0.76rem) !important;
+    line-height: 1.16 !important;
+}
+
+.purchase-progress-row strong,
+.purchase-progress-row span {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.purchase-progress-row em {
+    font-variant-numeric: tabular-nums !important;
+    text-align: right !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-ops-grid > .core-task-panel {
+    display: grid !important;
+    gap: clamp(0.36rem, 0.42vh, 0.56rem) !important;
+    grid-template-columns: minmax(13rem, 0.72fr) minmax(0, 1.8fr) max-content !important;
+    grid-template-rows: 1fr !important;
+}
+
+.core-task-panel .panel-title-row {
+    align-content: center !important;
+    display: grid !important;
+    gap: clamp(0.26rem, 0.3vh, 0.38rem) !important;
+    min-height: 0 !important;
+}
+
+.core-task-summary {
+    align-content: center !important;
+    display: grid !important;
+    gap: clamp(0.28rem, 0.34vw, 0.48rem) !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+}
+
+.core-task-summary span {
+    align-content: center !important;
+    display: grid !important;
+    min-height: 0 !important;
+    padding: clamp(0.32rem, 0.44vh, 0.54rem) clamp(0.45rem, 0.52vw, 0.68rem) !important;
+}
+
+.core-task-list {
+    align-content: center !important;
+    display: grid !important;
+    gap: clamp(0.12rem, 0.18vh, 0.24rem) !important;
+    grid-auto-rows: minmax(24px, max-content) !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    overflow: auto !important;
+}
+
+.core-task-list li {
+    min-height: clamp(26px, 2.75vh, 34px) !important;
+    padding: clamp(0.08rem, 0.16vh, 0.22rem) 0 !important;
+}
+
+.dashboard-ops-grid > .core-task-panel .ghost-link {
+    align-self: center !important;
+    margin: 0 !important;
+    max-width: 10rem !important;
+}
+
+.dashboard-ops-grid > .order-panel {
+    gap: clamp(0.44rem, 0.52vh, 0.68rem) !important;
+}
+
+.order-panel > h2 {
+    flex: 0 0 auto !important;
+}
+
+.order-panel table {
+    border-collapse: collapse !important;
+    display: table !important;
+    flex: 1 1 auto !important;
+    font-size: clamp(0.72rem, 0.66vw, 0.84rem) !important;
+    height: auto !important;
+    margin-top: 0 !important;
+    min-height: 0 !important;
+    min-width: 100% !important;
+    overflow: visible !important;
+    table-layout: fixed !important;
+    width: 100% !important;
+}
+
+.order-panel thead,
+.order-panel tbody {
+    display: table-row-group !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    width: 100% !important;
+}
+
+.order-panel thead {
+    display: table-header-group !important;
+}
+
+.order-panel tbody {
+    display: table-row-group !important;
+}
+
+.order-panel th,
+.order-panel td {
+    font-size: clamp(0.68rem, 0.62vw, 0.78rem) !important;
+    line-height: 1.22 !important;
+    padding: clamp(0.42rem, 0.54vh, 0.66rem) clamp(0.34rem, 0.38vw, 0.5rem) !important;
+    vertical-align: middle !important;
+    white-space: nowrap !important;
+}
+
+.order-panel th:nth-child(1),
+.order-panel td:nth-child(1) { width: 16% !important; }
+.order-panel th:nth-child(2),
+.order-panel td:nth-child(2) { width: 14% !important; }
+.order-panel th:nth-child(3),
+.order-panel td:nth-child(3) { width: 22% !important; }
+.order-panel th:nth-child(4),
+.order-panel td:nth-child(4),
+.order-panel th:nth-child(5),
+.order-panel td:nth-child(5) {
+    text-align: right !important;
+    width: 9% !important;
+}
+.order-panel th:nth-child(6),
+.order-panel td:nth-child(6),
+.order-panel th:nth-child(7),
+.order-panel td:nth-child(7) { width: 12% !important; }
+.order-panel th:nth-child(8),
+.order-panel td:nth-child(8) {
+    text-align: center !important;
+    width: 10% !important;
+}
+
+.order-panel .ghost-link,
+.warehouse-panel .ghost-link,
+.purchase-progress-panel .ghost-link {
+    margin-top: auto !important;
+}
+
+@media (max-height: 900px) and (min-width: 1181px) {
+    :root {
+        --kpi-height: clamp(76px, 8vh, 94px);
+        --ops-main-row: clamp(198px, 22vh, 236px);
+        --ops-sub-row: clamp(188px, 20.6vh, 222px);
+        --ops-core-row: clamp(104px, 11.3vh, 128px);
+        --ops-donut-size: clamp(104px, 11.4vh, 132px);
+        --ops-donut-core: clamp(52px, 5.7vh, 66px);
+    }
+
+    .order-panel th,
+    .order-panel td {
+        padding-top: clamp(0.32rem, 0.42vh, 0.5rem) !important;
+        padding-bottom: clamp(0.32rem, 0.42vh, 0.5rem) !important;
+    }
+}
+
+@media (max-width: 1280px) {
+    .dashboard-shell > .kpi-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        grid-template-rows: repeat(2, var(--kpi-height)) !important;
+    }
+
+    .dashboard-ops-grid {
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        grid-template-rows: auto;
+    }
+
+    .dashboard-ops-grid > .donut-card,
+    .dashboard-ops-grid > .dashboard-chart-stack,
+    .dashboard-ops-grid > .warehouse-panel,
+    .dashboard-ops-grid > .purchase-progress-panel,
+    .dashboard-ops-grid > .core-task-panel,
+    .dashboard-ops-grid > .order-panel {
+        grid-column: 1 / -1;
+        grid-row: auto;
+        min-height: auto !important;
+    }
+
+    .dashboard-chart-stack {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        grid-template-rows: minmax(180px, auto) !important;
+    }
+
+    .dashboard-ops-grid > .core-task-panel {
+        display: flex !important;
+    }
+}
+
+@media (max-width: 760px) {
+    .dashboard-shell > .kpi-row,
+    .dashboard-chart-stack {
+        grid-template-columns: 1fr !important;
+    }
+
+    .dashboard-shell > .kpi-row {
+        grid-template-rows: repeat(6, var(--kpi-height)) !important;
+    }
+
+    .order-panel {
+        overflow-x: auto !important;
+    }
+
+    .order-panel table {
+        min-width: 860px !important;
+    }
+}
+
+/* Final ERP dashboard override: 1 schedule / 2 KPI / 3 charts / 4 ops / 5 orders. */
+:root {
+    --dashboard-gap: clamp(0.5rem, 0.6vw, 0.75rem);
+    --dashboard-pad-x: clamp(0.72rem, 0.85vw, 1rem);
+    --card-pad-x: clamp(0.76rem, 0.9vw, 1.05rem);
+    --card-pad-y: clamp(0.58rem, 0.72vh, 0.82rem);
+    --schedule-cell-h: clamp(70px, 7.1vh, 90px);
+    --kpi-height: clamp(92px, 9.3vh, 112px);
+    --chart-card-h: clamp(166px, 16.5vh, 192px);
+    --chart-h: clamp(124px, 12.3vh, 148px);
+    --chart-plot-h: calc(var(--chart-h) - 22px);
+    --middle-card-h: clamp(238px, 23.8vh, 270px);
+    --core-card-h: clamp(138px, 14vh, 164px);
+    --order-card-h: clamp(246px, 25vh, 292px);
+    --donut-size: clamp(142px, 14.2vh, 168px);
+    --donut-core: clamp(66px, 6.6vh, 80px);
+}
+
+.dashboard-shell {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    padding: clamp(0.28rem, 0.38vh, 0.45rem) var(--dashboard-pad-x) clamp(0.75rem, 0.95vh, 1rem) !important;
+}
+
+.panel {
+    border-radius: 8px !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    padding: var(--card-pad-y) var(--card-pad-x) !important;
+}
+
+.panel h2,
+.panel-title-row h2 {
+    font-size: clamp(0.98rem, 0.95vw, 1.15rem) !important;
+    letter-spacing: 0 !important;
+    line-height: 1.15 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.panel-title-row {
+    align-items: center !important;
+    display: flex !important;
+    gap: clamp(0.5rem, 0.55vw, 0.7rem) !important;
+    justify-content: space-between !important;
+    margin: 0 0 clamp(0.36rem, 0.44vh, 0.52rem) !important;
+    min-height: clamp(26px, 2.6vh, 32px) !important;
+}
+
+.panel-title-row button,
+.panel-title-row a,
+.ghost-link {
+    align-items: center !important;
+    border-radius: 6px !important;
+    display: inline-flex !important;
+    flex: 0 0 auto !important;
+    font-size: clamp(0.68rem, 0.66vw, 0.78rem) !important;
+    height: clamp(28px, 2.8vh, 34px) !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 0 clamp(0.65rem, 0.7vw, 0.85rem) !important;
+    white-space: nowrap !important;
+}
+
+.weekly-card {
+    padding-bottom: clamp(0.5rem, 0.58vh, 0.7rem) !important;
+}
+
+.weekly-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    min-height: var(--schedule-cell-h) !important;
+}
+
+.week-day {
+    gap: clamp(0.28rem, 0.34vh, 0.42rem) !important;
+    min-height: var(--schedule-cell-h) !important;
+    padding: clamp(0.52rem, 0.62vh, 0.7rem) clamp(0.55rem, 0.62vw, 0.76rem) !important;
+}
+
+.week-day strong,
+.week-day li {
+    font-size: clamp(0.72rem, 0.68vw, 0.82rem) !important;
+    line-height: 1.28 !important;
+}
+
+.kpi-row {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    grid-template-rows: var(--kpi-height) !important;
+}
+
+.kpi-tile {
+    align-items: center !important;
+    display: grid !important;
+    gap: clamp(0.7rem, 0.8vw, 1rem) !important;
+    grid-template-columns: clamp(48px, 3vw, 60px) minmax(0, 1fr) !important;
+    height: var(--kpi-height) !important;
+    min-height: var(--kpi-height) !important;
+    overflow: hidden !important;
+    padding: clamp(0.8rem, 0.94vh, 1.05rem) clamp(0.82rem, 0.92vw, 1.1rem) !important;
+}
+
+.kpi-icon {
+    align-items: center !important;
+    aspect-ratio: 1 !important;
+    background: rgba(20, 196, 177, 0.18) !important;
+    border: 1px solid rgba(38, 255, 226, 0.12) !important;
+    border-radius: 999px !important;
+    color: #38e4d2 !important;
+    display: flex !important;
+    height: clamp(46px, 2.9vw, 58px) !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+    width: clamp(46px, 2.9vw, 58px) !important;
+}
+
+.kpi-tile.blue .kpi-icon { color: #4b9cff !important; }
+.kpi-tile.green .kpi-icon { color: #58d163 !important; }
+.kpi-tile.purple .kpi-icon { color: #a78bfa !important; }
+.kpi-tile.orange .kpi-icon { color: #ffb22e !important; }
+
+.kpi-icon svg {
+    background: transparent !important;
+    display: block !important;
+    fill: none !important;
+    height: clamp(23px, 1.5vw, 29px) !important;
+    stroke: currentColor !important;
+    stroke-linecap: round !important;
+    stroke-linejoin: round !important;
+    width: clamp(23px, 1.5vw, 29px) !important;
+}
+
+.kpi-tile > div:last-child {
+    align-self: center !important;
+    display: grid !important;
+    gap: clamp(0.16rem, 0.22vh, 0.28rem) !important;
+    min-width: 0 !important;
+}
+
+.kpi-tile span,
+.kpi-tile strong,
+.kpi-tile small {
+    display: block !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.kpi-tile span {
+    font-size: clamp(0.76rem, 0.72vw, 0.88rem) !important;
+}
+
+.kpi-tile strong {
+    font-size: clamp(1.45rem, 1.45vw, 1.88rem) !important;
+    letter-spacing: 0 !important;
+    line-height: 1.02 !important;
+}
+
+.kpi-tile small {
+    font-size: clamp(0.62rem, 0.6vw, 0.72rem) !important;
+    opacity: 0.78 !important;
+}
+
+.chart-grid {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.chart-card {
+    display: grid !important;
+    grid-template-rows: auto auto minmax(0, 1fr) !important;
+    height: var(--chart-card-h) !important;
+    min-height: var(--chart-card-h) !important;
+    padding-bottom: clamp(0.42rem, 0.52vh, 0.62rem) !important;
+}
+
+.chart-inline-summary {
+    align-items: center !important;
+    display: flex !important;
+    gap: 0.45rem !important;
+    margin: calc(var(--dashboard-gap) * -0.15) 0 0 !important;
+    min-height: 0 !important;
+}
+
+.chart-inline-summary span,
+.chart-inline-summary strong {
+    font-size: clamp(0.7rem, 0.66vw, 0.8rem) !important;
+    line-height: 1.1 !important;
+}
+
+.svg-chart {
+    height: var(--chart-h) !important;
+    margin-top: clamp(0.05rem, 0.12vh, 0.18rem) !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+}
+
+.svg-chart svg,
+.chart-grid-lines,
+.axis-labels {
+    inset: 0 !important;
+}
+
+.svg-chart svg {
+    height: var(--chart-plot-h) !important;
+    width: 100% !important;
+}
+
+.chart-grid-lines {
+    height: var(--chart-plot-h) !important;
+}
+
+.axis-labels {
+    bottom: 0 !important;
+    height: 20px !important;
+}
+
+.chart-tooltip {
+    font-size: clamp(0.64rem, 0.6vw, 0.74rem) !important;
+    max-width: min(180px, 30%) !important;
+    padding: 0.42rem 0.52rem !important;
+}
+
+.middle-grid {
+    align-items: stretch !important;
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.6fr) !important;
+}
+
+.donut-card,
+.warehouse-panel,
+.purchase-progress-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    height: var(--middle-card-h) !important;
+    min-height: var(--middle-card-h) !important;
+    padding: var(--card-pad-y) var(--card-pad-x) !important;
+}
+
+.mini-line-card {
+    display: none !important;
+}
+
+.donut-layout {
+    align-items: center !important;
+    display: grid !important;
+    flex: 1 1 auto !important;
+    gap: clamp(0.55rem, 0.65vw, 0.85rem) !important;
+    grid-template-columns: minmax(var(--donut-size), 0.95fr) minmax(130px, 1fr) !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+}
+
+.donut {
+    height: var(--donut-size) !important;
+    justify-self: center !important;
+    width: var(--donut-size) !important;
+}
+
+.donut::after {
+    height: var(--donut-core) !important;
+    width: var(--donut-core) !important;
+}
+
+.donut strong {
+    font-size: clamp(1.2rem, 1.18vw, 1.48rem) !important;
+    line-height: 1 !important;
+}
+
+.donut span {
+    font-size: clamp(0.62rem, 0.58vw, 0.72rem) !important;
+}
+
+.donut-segment-label {
+    font-size: clamp(0.48rem, 0.46vw, 0.56rem) !important;
+    padding: 0.06rem 0.16rem !important;
+}
+
+.legend {
+    align-content: center !important;
+    display: grid !important;
+    gap: clamp(0.09rem, 0.12vh, 0.18rem) !important;
+    max-height: calc(var(--middle-card-h) - 86px) !important;
+    min-width: 0 !important;
+    overflow-y: auto !important;
+    padding: 0 clamp(0.18rem, 0.22vw, 0.28rem) 0 0 !important;
+}
+
+.legend li {
+    align-items: center !important;
+    display: grid !important;
+    gap: clamp(0.3rem, 0.36vw, 0.45rem) !important;
+    grid-template-columns: 8px minmax(3.2rem, 1fr) max-content !important;
+    min-height: clamp(18px, 1.85vh, 22px) !important;
+}
+
+.legend i {
+    height: 8px !important;
+    width: 8px !important;
+}
+
+.legend a,
+.legend b {
+    font-size: clamp(0.58rem, 0.54vw, 0.68rem) !important;
+    line-height: 1.1 !important;
+    min-width: 0 !important;
+}
+
+.legend a {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.legend b {
+    white-space: nowrap !important;
+}
+
+.issue-monthly-mini {
+    border-top: 1px solid rgba(93, 226, 205, 0.16) !important;
+    display: grid !important;
+    flex: 0 0 auto !important;
+    gap: clamp(0.24rem, 0.3vh, 0.36rem) !important;
+    margin-top: clamp(0.34rem, 0.42vh, 0.52rem) !important;
+    padding-top: clamp(0.34rem, 0.42vh, 0.52rem) !important;
+}
+
+.issue-monthly-head {
+    align-items: center !important;
+    display: flex !important;
+    justify-content: space-between !important;
+}
+
+.issue-monthly-head span,
+.issue-monthly-head b {
+    font-size: clamp(0.62rem, 0.6vw, 0.72rem) !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+}
+
+.issue-monthly-bars {
+    align-items: end !important;
+    display: grid !important;
+    gap: clamp(0.16rem, 0.18vw, 0.22rem) !important;
+    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+    height: clamp(34px, 3.3vh, 42px) !important;
+}
+
+.issue-monthly-bars a {
+    align-items: end !important;
+    color: #c8fff4 !important;
+    display: grid !important;
+    grid-template-rows: minmax(0, 1fr) auto !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    text-align: center !important;
+    text-decoration: none !important;
+}
+
+.issue-monthly-bars i {
+    align-self: end !important;
+    background: linear-gradient(180deg, #ff4545, #ffb22e) !important;
+    border-radius: 999px 999px 2px 2px !important;
+    display: block !important;
+    height: var(--bar-h) !important;
+    margin: 0 auto !important;
+    min-height: 3px !important;
+    width: min(100%, 10px) !important;
+}
+
+.issue-monthly-bars span {
+    font-size: clamp(0.48rem, 0.46vw, 0.56rem) !important;
+    line-height: 1.1 !important;
+    margin-top: 0.12rem !important;
+}
+
+.warehouse-status {
+    display: grid !important;
+    flex: 1 1 auto !important;
+    gap: clamp(0.34rem, 0.4vh, 0.5rem) !important;
+    min-height: 0 !important;
+    overflow: auto !important;
+}
+
+.warehouse-head,
+.warehouse-row {
+    align-items: center !important;
+    display: grid !important;
+    gap: clamp(0.45rem, 0.52vw, 0.68rem) !important;
+    grid-template-columns: minmax(3.6rem, 0.75fr) minmax(7rem, 1.45fr) max-content max-content !important;
+}
+
+.warehouse-head span,
+.warehouse-row strong,
+.warehouse-row span,
+.warehouse-row b {
+    font-size: clamp(0.64rem, 0.62vw, 0.74rem) !important;
+    line-height: 1.18 !important;
+    min-width: 0 !important;
+}
+
+.warehouse-row strong,
+.warehouse-row span {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.purchase-progress-panel {
+    gap: clamp(0.2rem, 0.26vh, 0.34rem) !important;
+}
+
+.purchase-progress-head,
+.purchase-progress-row {
+    align-items: center !important;
+    display: grid !important;
+    gap: clamp(0.55rem, 0.65vw, 0.8rem) !important;
+    grid-template-columns: minmax(8rem, 1.2fr) minmax(3.5rem, max-content) minmax(7.2rem, 1fr) !important;
+}
+
+.purchase-progress-head {
+    margin-top: 0 !important;
+    padding: clamp(0.18rem, 0.24vh, 0.3rem) 0 !important;
+}
+
+.purchase-progress-row {
+    min-height: clamp(27px, 2.75vh, 33px) !important;
+    padding: clamp(0.08rem, 0.12vh, 0.16rem) 0 !important;
+}
+
+.purchase-progress-head span,
+.purchase-progress-row strong,
+.purchase-progress-row em,
+.purchase-progress-row span {
+    font-size: clamp(0.64rem, 0.6vw, 0.74rem) !important;
+    line-height: 1.18 !important;
+    min-width: 0 !important;
+}
+
+.purchase-progress-row strong,
+.purchase-progress-row span {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    word-break: keep-all !important;
+}
+
+.purchase-progress-row em {
+    white-space: nowrap !important;
+}
+
+.purchase-progress-panel .ghost-link,
+.warehouse-panel .ghost-link {
+    margin-top: auto !important;
+    max-width: min(100%, 220px) !important;
+    place-self: end center !important;
+}
+
+.bottom-grid {
+    align-items: start !important;
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: minmax(0, 0.54fr) minmax(0, 1fr) !important;
+}
+
+.core-task-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    height: var(--core-card-h) !important;
+    min-height: var(--core-card-h) !important;
+    padding: var(--card-pad-y) var(--card-pad-x) !important;
+}
+
+.core-task-stats {
+    gap: clamp(0.34rem, 0.4vw, 0.5rem) !important;
+    margin-bottom: clamp(0.32rem, 0.38vh, 0.48rem) !important;
+}
+
+.core-task-stat {
+    min-height: clamp(38px, 3.7vh, 46px) !important;
+    padding: clamp(0.34rem, 0.42vh, 0.5rem) clamp(0.5rem, 0.55vw, 0.68rem) !important;
+}
+
+.core-task-list {
+    flex: 1 1 auto !important;
+    gap: clamp(0.08rem, 0.12vh, 0.16rem) !important;
+    min-height: 0 !important;
+    overflow: auto !important;
+}
+
+.core-task-list li {
+    min-height: clamp(23px, 2.2vh, 28px) !important;
+    padding: clamp(0.06rem, 0.1vh, 0.14rem) 0 !important;
+}
+
+.core-task-list span,
+.core-task-list b,
+.core-task-stat span,
+.core-task-stat strong {
+    font-size: clamp(0.64rem, 0.6vw, 0.74rem) !important;
+    line-height: 1.16 !important;
+}
+
+.core-task-panel .ghost-link {
+    height: clamp(24px, 2.4vh, 29px) !important;
+    margin-top: clamp(0.24rem, 0.28vh, 0.36rem) !important;
+    max-width: min(100%, 220px) !important;
+    place-self: end center !important;
+}
+
+.order-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    height: var(--order-card-h) !important;
+    min-height: var(--order-card-h) !important;
+    padding: var(--card-pad-y) var(--card-pad-x) !important;
+}
+
+.order-panel table {
+    border-collapse: collapse !important;
+    display: block !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    min-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    table-layout: auto !important;
+    width: 100% !important;
+}
+
+.order-panel thead,
+.order-panel tbody {
+    display: table !important;
+    min-width: 1120px !important;
+    table-layout: auto !important;
+    width: 100% !important;
+}
+
+.order-panel tr {
+    display: table-row !important;
+}
+
+.order-panel th,
+.order-panel td {
+    display: table-cell !important;
+    font-size: clamp(0.68rem, 0.64vw, 0.78rem) !important;
+    line-height: 1.2 !important;
+    min-height: clamp(32px, 3.2vh, 40px) !important;
+    overflow: visible !important;
+    padding: clamp(0.38rem, 0.45vh, 0.55rem) clamp(0.5rem, 0.55vw, 0.7rem) !important;
+    text-overflow: clip !important;
+    vertical-align: middle !important;
+    white-space: nowrap !important;
+}
+
+.order-panel th:nth-child(1),
+.order-panel td:nth-child(1) { min-width: 126px !important; }
+.order-panel th:nth-child(2),
+.order-panel td:nth-child(2) { min-width: 118px !important; }
+.order-panel th:nth-child(3),
+.order-panel td:nth-child(3) { min-width: 210px !important; }
+.order-panel th:nth-child(4),
+.order-panel td:nth-child(4),
+.order-panel th:nth-child(5),
+.order-panel td:nth-child(5) { min-width: 94px !important; }
+.order-panel th:nth-child(6),
+.order-panel td:nth-child(6),
+.order-panel th:nth-child(7),
+.order-panel td:nth-child(7) { min-width: 128px !important; }
+.order-panel th:nth-child(8),
+.order-panel td:nth-child(8) { min-width: 120px !important; }
+
+.order-panel .empty-cell {
+    font-size: clamp(0.74rem, 0.7vw, 0.84rem) !important;
+    padding: clamp(0.6rem, 0.7vh, 0.9rem) 0 !important;
+}
+
+.order-panel .ghost-link {
+    height: clamp(28px, 2.8vh, 34px) !important;
+    margin-top: clamp(0.5rem, 0.58vh, 0.72rem) !important;
+    max-width: min(100%, 260px) !important;
+    place-self: end center !important;
+}
+
+@media (max-height: 940px) and (min-width: 1181px) {
+    :root {
+        --schedule-cell-h: clamp(64px, 6.6vh, 78px);
+        --kpi-height: clamp(82px, 8.7vh, 98px);
+        --chart-card-h: clamp(148px, 15.8vh, 176px);
+        --chart-h: clamp(108px, 11.5vh, 132px);
+        --middle-card-h: clamp(214px, 22.8vh, 244px);
+        --core-card-h: clamp(126px, 13.3vh, 150px);
+        --order-card-h: clamp(220px, 23.5vh, 260px);
+        --donut-size: clamp(126px, 13.4vh, 150px);
+        --donut-core: clamp(60px, 6.3vh, 72px);
+    }
+
+    .legend li {
+        min-height: clamp(16px, 1.7vh, 20px) !important;
+    }
+
+    .purchase-progress-row {
+        min-height: clamp(24px, 2.55vh, 30px) !important;
+    }
+}
+
+@media (max-width: 1180px) {
+    .kpi-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        grid-template-rows: repeat(2, var(--kpi-height)) !important;
+    }
+
+    .chart-grid,
+    .middle-grid,
+    .bottom-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .core-task-panel,
+    .order-panel {
+        height: auto !important;
+        min-height: var(--core-card-h) !important;
+    }
+}
+
+@media (max-width: 720px) {
+    .weekly-grid,
+    .kpi-row {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: none !important;
+    }
+
+    .kpi-tile {
+        grid-template-columns: 48px minmax(0, 1fr) !important;
+    }
+
+    .donut-layout {
+        grid-template-columns: 1fr !important;
+    }
+
+    .legend {
+        max-height: none !important;
+    }
+}
+
+/* SCM dashboard terminal overrides: this must stay at EOF. */
+:root {
+    --dashboard-gap: clamp(0.62rem, 0.68vw, 0.88rem);
+    --kpi-height: clamp(84px, 8.6vh, 104px);
+    --ops-main-row: clamp(218px, 23vh, 276px);
+    --ops-sub-row: clamp(206px, 21.4vh, 252px);
+    --ops-core-row: clamp(118px, 12.2vh, 148px);
+    --ops-panel-pad-y: clamp(0.62rem, 0.72vh, 0.88rem);
+    --ops-panel-pad-x: clamp(0.82rem, 0.88vw, 1.12rem);
+    --ops-donut-size: clamp(118px, 12.4vh, 152px);
+    --ops-donut-core: clamp(58px, 6.1vh, 74px);
+}
+
+.dashboard-shell > .kpi-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    grid-template-rows: var(--kpi-height) !important;
+}
+
+.dashboard-shell .kpi-tile {
+    grid-template-columns: clamp(42px, 2.65vw, 52px) minmax(0, 1fr) !important;
+    height: var(--kpi-height) !important;
+    min-height: var(--kpi-height) !important;
+    padding: clamp(0.68rem, 0.82vh, 0.96rem) clamp(0.76rem, 0.82vw, 1rem) !important;
+}
+
+.dashboard-shell .kpi-icon {
+    border-radius: 8px !important;
+    display: grid !important;
+    height: clamp(42px, 2.65vw, 52px) !important;
+    overflow: hidden !important;
+    place-items: center !important;
+    width: clamp(42px, 2.65vw, 52px) !important;
+}
+
+.dashboard-shell .kpi-icon svg {
+    background: transparent !important;
+    display: block !important;
+    fill: none !important;
+    height: clamp(22px, 1.45vw, 28px) !important;
+    overflow: visible !important;
+    stroke: currentColor !important;
+    stroke-linecap: round !important;
+    stroke-linejoin: round !important;
+    width: clamp(22px, 1.45vw, 28px) !important;
+}
+
+.dashboard-shell .kpi-icon svg path,
+.dashboard-shell .kpi-icon svg circle {
+    fill: none !important;
+    stroke: currentColor !important;
+    vector-effect: non-scaling-stroke;
+}
+
+.dashboard-shell .kpi-tile span,
+.dashboard-shell .kpi-tile strong,
+.dashboard-shell .kpi-tile small {
+    letter-spacing: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-shell .kpi-tile strong {
+    font-size: clamp(1.08rem, 1.22vw, 1.58rem) !important;
+    font-variant-numeric: tabular-nums !important;
+    line-height: 1.02 !important;
+}
+
+.dashboard-ops-grid {
+    align-items: stretch !important;
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: repeat(14, minmax(0, 1fr)) !important;
+    grid-template-rows: var(--ops-main-row) var(--ops-sub-row) var(--ops-core-row) !important;
+    min-height: 0 !important;
+}
+
+.dashboard-ops-grid > .donut-card { grid-column: 1 / 5 !important; grid-row: 1 !important; }
+.dashboard-ops-grid > .dashboard-chart-stack { grid-column: 5 / 9 !important; grid-row: 1 !important; }
+.dashboard-ops-grid > .warehouse-panel { grid-column: 1 / 5 !important; grid-row: 2 !important; }
+.dashboard-ops-grid > .purchase-progress-panel { grid-column: 5 / 9 !important; grid-row: 2 !important; }
+.dashboard-ops-grid > .core-task-panel { grid-column: 1 / 9 !important; grid-row: 3 !important; }
+.dashboard-ops-grid > .order-panel { grid-column: 9 / 15 !important; grid-row: 1 / 4 !important; }
+
+.dashboard-ops-grid > .donut-card,
+.dashboard-ops-grid > .warehouse-panel,
+.dashboard-ops-grid > .purchase-progress-panel,
+.dashboard-ops-grid > .core-task-panel,
+.dashboard-ops-grid > .order-panel {
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding: var(--ops-panel-pad-y) var(--ops-panel-pad-x) !important;
+}
+
+.dashboard-chart-stack {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: repeat(2, minmax(0, 1fr)) !important;
+    min-height: 0 !important;
+}
+
+.dashboard-chart-stack .chart-card {
+    height: 100% !important;
+    min-height: 0 !important;
+}
+
+.dashboard-ops-grid .donut-layout {
+    grid-template-columns: minmax(var(--ops-donut-size), 0.85fr) minmax(0, 1.15fr) !important;
+}
+
+.dashboard-ops-grid .donut {
+    height: var(--ops-donut-size) !important;
+    width: var(--ops-donut-size) !important;
+}
+
+.dashboard-ops-grid .donut::after {
+    height: var(--ops-donut-core) !important;
+    width: var(--ops-donut-core) !important;
+}
+
+.dashboard-ops-grid .issue-monthly-bars {
+    height: clamp(38px, 4.1vh, 52px) !important;
+}
+
+.dashboard-ops-grid .warehouse-head,
+.dashboard-ops-grid .warehouse-row {
+    grid-template-columns: minmax(4.8rem, 0.85fr) minmax(6rem, 1fr) minmax(3.1rem, max-content) minmax(4.8rem, max-content) !important;
+}
+
+.dashboard-ops-grid .purchase-progress-head,
+.dashboard-ops-grid .purchase-progress-row {
+    grid-template-columns: minmax(7.2rem, 1.25fr) minmax(3rem, max-content) minmax(7rem, 1fr) !important;
+}
+
+.dashboard-ops-grid > .core-task-panel {
+    display: grid !important;
+    grid-template-columns: minmax(13rem, 0.72fr) minmax(0, 1.8fr) max-content !important;
+    grid-template-rows: 1fr !important;
+}
+
+.dashboard-ops-grid .core-task-summary {
+    align-content: center !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    margin: 0 !important;
+}
+
+.dashboard-ops-grid .core-task-list li {
+    min-height: clamp(26px, 2.75vh, 34px) !important;
+}
+
+.dashboard-ops-grid > .order-panel table {
+    display: table !important;
+    min-width: 100% !important;
+    overflow: visible !important;
+    table-layout: fixed !important;
+    width: 100% !important;
+}
+
+.dashboard-ops-grid > .order-panel thead {
+    display: table-header-group !important;
+    min-width: 0 !important;
+}
+
+.dashboard-ops-grid > .order-panel tbody {
+    display: table-row-group !important;
+    min-width: 0 !important;
+}
+
+.dashboard-ops-grid > .order-panel th,
+.dashboard-ops-grid > .order-panel td {
+    font-size: clamp(0.68rem, 0.62vw, 0.78rem) !important;
+    line-height: 1.22 !important;
+    overflow: hidden !important;
+    padding: clamp(0.42rem, 0.54vh, 0.66rem) clamp(0.34rem, 0.38vw, 0.5rem) !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-ops-grid > .order-panel th:nth-child(1),
+.dashboard-ops-grid > .order-panel td:nth-child(1) { width: 16% !important; }
+.dashboard-ops-grid > .order-panel th:nth-child(2),
+.dashboard-ops-grid > .order-panel td:nth-child(2) { width: 14% !important; }
+.dashboard-ops-grid > .order-panel th:nth-child(3),
+.dashboard-ops-grid > .order-panel td:nth-child(3) { width: 22% !important; }
+.dashboard-ops-grid > .order-panel th:nth-child(4),
+.dashboard-ops-grid > .order-panel td:nth-child(4),
+.dashboard-ops-grid > .order-panel th:nth-child(5),
+.dashboard-ops-grid > .order-panel td:nth-child(5) { width: 9% !important; }
+.dashboard-ops-grid > .order-panel th:nth-child(6),
+.dashboard-ops-grid > .order-panel td:nth-child(6),
+.dashboard-ops-grid > .order-panel th:nth-child(7),
+.dashboard-ops-grid > .order-panel td:nth-child(7) { width: 12% !important; }
+.dashboard-ops-grid > .order-panel th:nth-child(8),
+.dashboard-ops-grid > .order-panel td:nth-child(8) { width: 10% !important; }
+
+@media (max-height: 900px) and (min-width: 1181px) {
+    :root {
+        --kpi-height: clamp(76px, 8vh, 94px);
+        --ops-main-row: clamp(198px, 22vh, 236px);
+        --ops-sub-row: clamp(188px, 20.6vh, 222px);
+        --ops-core-row: clamp(104px, 11.3vh, 128px);
+        --ops-donut-size: clamp(104px, 11.4vh, 132px);
+        --ops-donut-core: clamp(52px, 5.7vh, 66px);
+    }
+}
+
+@media (max-width: 1280px) {
+    .dashboard-shell > .kpi-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        grid-template-rows: repeat(2, var(--kpi-height)) !important;
+    }
+
+    .dashboard-ops-grid {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto !important;
+    }
+
+    .dashboard-ops-grid > .donut-card,
+    .dashboard-ops-grid > .dashboard-chart-stack,
+    .dashboard-ops-grid > .warehouse-panel,
+    .dashboard-ops-grid > .purchase-progress-panel,
+    .dashboard-ops-grid > .core-task-panel,
+    .dashboard-ops-grid > .order-panel {
+        grid-column: 1 / -1 !important;
+        grid-row: auto !important;
+        min-height: auto !important;
+    }
+
+    .dashboard-chart-stack {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        grid-template-rows: minmax(180px, auto) !important;
+    }
+
+    .dashboard-ops-grid > .core-task-panel {
+        display: flex !important;
+    }
+}
+
+/* Actual weekly schedule class aliases used by dashboard.py. */
+.schedule-panel {
+    padding: var(--card-pad-y) var(--card-pad-x) clamp(0.5rem, 0.58vh, 0.7rem) !important;
+}
+
+.week-board {
+    display: grid !important;
+    gap: 0 !important;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    margin-top: clamp(0.38rem, 0.45vh, 0.56rem) !important;
+    min-height: var(--schedule-cell-h) !important;
+}
+
+.week-cell {
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
+    min-height: var(--schedule-cell-h) !important;
+    padding: clamp(0.52rem, 0.62vh, 0.7rem) clamp(0.55rem, 0.62vw, 0.76rem) !important;
+}
+
+.week-cell ul {
+    align-content: start !important;
+    display: grid !important;
+    gap: clamp(0.14rem, 0.18vh, 0.24rem) !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding-left: clamp(0.62rem, 0.62vw, 0.78rem) !important;
+}
+
+.week-date,
+.week-cell li {
+    font-size: clamp(0.72rem, 0.68vw, 0.82rem) !important;
+    line-height: 1.28 !important;
+}
+
+@media (max-width: 720px) {
+    .week-board {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* Dashboard 5-row layout must win after legacy ops-grid rules. */
+.dashboard-shell {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+}
+
+.dashboard-shell > .chart-grid {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.dashboard-shell > .middle-grid {
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.6fr) !important;
+}
+
+.dashboard-shell > .bottom-grid {
+    align-items: start !important;
+    display: grid !important;
+    gap: var(--dashboard-gap) !important;
+    grid-template-columns: minmax(0, 0.54fr) minmax(0, 1fr) !important;
+}
+
+.dashboard-shell > .kpi-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    grid-template-rows: var(--kpi-height) !important;
+}
+
+.dashboard-shell > .middle-grid > .donut-card,
+.dashboard-shell > .middle-grid > .warehouse-panel,
+.dashboard-shell > .middle-grid > .purchase-progress-panel {
+    height: var(--middle-card-h) !important;
+    min-height: var(--middle-card-h) !important;
+}
+
+.dashboard-shell > .bottom-grid > .core-task-panel {
+    height: var(--core-card-h) !important;
+    min-height: var(--core-card-h) !important;
+}
+
+.dashboard-shell > .bottom-grid > .order-panel {
+    height: var(--order-card-h) !important;
+    min-height: var(--order-card-h) !important;
+}
+
+@media (max-width: 1180px) {
+    .dashboard-shell > .kpi-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        grid-template-rows: repeat(2, var(--kpi-height)) !important;
+    }
+
+    .dashboard-shell > .chart-grid,
+    .dashboard-shell > .middle-grid,
+    .dashboard-shell > .bottom-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* Light ERP redesign: Notion + Stripe Dashboard + Linear + SAP Fiori tone. */
+:root {
+    color-scheme: light;
+    --bg: #fff8f1;
+    --sidebar: #ffffff;
+    --sidebar-deep: #f8fafc;
+    --panel: #ffffff;
+    --panel-soft: #f8fafc;
+    --control-bg: #ffffff;
+    --control-bg-soft: #f8fafc;
+    --control-bg-hover: #eef5ff;
+    --line: #eadfd3;
+    --line-soft: #f1e8df;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --gold: #b7791f;
+    --cyan: #19a0a8;
+    --blue: #006eff;
+    --green: #148f5d;
+    --orange: #d97706;
+    --purple: #7057ff;
+    --red: #dc2626;
+    --card-radius: 12px;
+    --control-radius: 999px;
+    --dashboard-gap: clamp(0.84rem, 0.9vw, 1.12rem);
+    --panel-pad-y: clamp(0.9rem, 1.05vh, 1.18rem);
+    --panel-pad-x: clamp(1rem, 1.08vw, 1.32rem);
+    --card-pad-y: clamp(0.9rem, 1.05vh, 1.18rem);
+    --card-pad-x: clamp(1rem, 1.08vw, 1.32rem);
+    --ops-panel-pad-y: clamp(0.95rem, 1.05vh, 1.22rem);
+    --ops-panel-pad-x: clamp(1.05rem, 1.12vw, 1.36rem);
+}
+
+html,
+body,
+.stApp,
+[data-testid="stAppViewContainer"] {
+    color-scheme: light !important;
+}
+
+.stApp,
+[data-testid="stAppViewContainer"] {
+    background: #fff8f1 !important;
+    color: #1f2937 !important;
+}
+
+.stApp [data-testid="stHeader"],
+.stApp [data-testid="stToolbar"],
+.stApp [data-testid="stDecoration"] {
+    background: transparent !important;
+}
+
+.stApp,
+.stApp p,
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp h5,
+.stApp h6,
+.stApp label,
+.stApp [data-testid="stMarkdownContainer"],
+.breadcrumb,
+.home-mark,
+.topbar-actions,
+.calendar-icon,
+.gear-mark,
+.bell-wrap,
+.panel,
+.panel h2,
+.panel-title-row h2,
+.kpi-tile,
+.week-cell,
+.table-panel,
+.order-panel {
+    color: #1f2937 !important;
+}
+
+.stApp small,
+.panel h2 small,
+.kpi-tile span,
+.kpi-tile small,
+.chart-inline-summary span,
+.week-date,
+.warehouse-head,
+.purchase-progress-head,
+.axis-labels,
+.chart-y-labels,
+.core-task-list b,
+.issue-monthly-head,
+.legend b {
+    color: #6b7280 !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"][aria-expanded="false"],
+[data-testid="stSidebar"][aria-hidden="true"] {
+    background: #ffffff !important;
+    border-right: 1px solid #eadfd3 !important;
+    box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] .block-container {
+    background: #ffffff !important;
+}
+
+.portal-brand {
+    border-bottom-color: #f1e8df !important;
+}
+
+.portal-name {
+    color: #111827 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button {
+    background: transparent !important;
+    border: 0 !important;
+    border-left: 3px solid transparent !important;
+    border-radius: 0 !important;
+    color: #374151 !important;
+    box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:hover,
+[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    background: #eef5ff !important;
+    border-left-color: #006eff !important;
+    color: #006eff !important;
+}
+
+.topbar,
+.dashboard-shell {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.panel,
+.kpi-tile,
+.week-board,
+.meeting-table-wrap,
+.meeting-note-box,
+.meeting-kpi-card,
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stExpander"],
+[data-testid="stForm"] {
+    background: #ffffff !important;
+    border: 1px solid #eadfd3 !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+}
+
+.panel:hover,
+.kpi-tile:hover,
+.meeting-kpi-card:hover {
+    border-color: #c9ddff !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+.panel h2,
+.panel-title-row h2 {
+    color: #111827 !important;
+    font-weight: 760 !important;
+    letter-spacing: 0 !important;
+}
+
+.panel-title-row button,
+.panel-title-row a,
+.ghost-link,
+.mini-badge,
+.chart-filter-links a,
+.mini-filter-link,
+.purchase-trend-summary span {
+    align-items: center !important;
+    background: #ffffff !important;
+    border: 1px solid #d7e4f8 !important;
+    border-radius: 999px !important;
+    color: #006eff !important;
+    display: inline-flex !important;
+    font-weight: 700 !important;
+    justify-content: center !important;
+    box-shadow: none !important;
+}
+
+.panel-title-row button:hover,
+.panel-title-row a:hover,
+.ghost-link:hover,
+.chart-filter-links a:hover,
+.chart-filter-links a.active {
+    background: #eef5ff !important;
+    border-color: #aac9ff !important;
+    color: #0057cc !important;
+}
+
+.kpi-tile {
+    background: #ffffff !important;
+    border-color: #eadfd3 !important;
+    border-radius: 14px !important;
+}
+
+.dashboard-shell .kpi-icon,
+.kpi-icon {
+    background: #eef5ff !important;
+    border: 1px solid #d7e4f8 !important;
+    border-radius: 12px !important;
+    color: #006eff !important;
+}
+
+.dashboard-shell .kpi-icon svg,
+.kpi-icon svg,
+.kpi-icon svg path,
+.kpi-icon svg circle {
+    fill: none !important;
+    stroke: currentColor !important;
+}
+
+.kpi-tile.blue .kpi-icon,
+.kpi-tile.cyan .kpi-icon,
+.kpi-tile.green .kpi-icon,
+.kpi-tile.purple .kpi-icon,
+.kpi-tile.orange .kpi-icon,
+.kpi-tile.red .kpi-icon {
+    color: #006eff !important;
+}
+
+.dashboard-shell .kpi-tile span,
+.kpi-tile span {
+    color: #6b7280 !important;
+    font-size: clamp(0.78rem, 0.74vw, 0.92rem) !important;
+    font-weight: 650 !important;
+}
+
+.dashboard-shell .kpi-tile strong,
+.kpi-tile strong {
+    color: #111827 !important;
+    font-size: clamp(1.5rem, 1.68vw, 2.18rem) !important;
+    font-weight: 820 !important;
+}
+
+.dashboard-shell .kpi-tile small,
+.kpi-tile small {
+    color: #8a94a6 !important;
+    font-weight: 560 !important;
+}
+
+.week-board {
+    background: #ffffff !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+
+.week-cell {
+    background: #ffffff !important;
+    border-right: 1px solid #f1e8df !important;
+}
+
+.week-cell:nth-child(even) {
+    background: #fffdfa !important;
+}
+
+.week-cell.active .week-date {
+    background: #eef5ff !important;
+    color: #006eff !important;
+}
+
+.week-cell.blue .week-date,
+.week-cell.red .week-date {
+    color: #006eff !important;
+}
+
+.week-cell li,
+.purchase-progress-row,
+.warehouse-row,
+.core-task-list span,
+.order-panel td,
+.table-panel td {
+    color: #374151 !important;
+}
+
+.week-cell li::marker {
+    color: #006eff !important;
+}
+
+.chart-card {
+    background: #ffffff !important;
+    border-color: #eadfd3 !important;
+}
+
+.svg-chart {
+    background: #ffffff !important;
+}
+
+.chart-grid-lines i {
+    background: #f1e8df !important;
+}
+
+.svg-chart svg polygon {
+    fill: rgba(0, 110, 255, 0.08) !important;
+}
+
+.svg-chart svg polyline {
+    stroke: #006eff !important;
+}
+
+.dashboard-chart-stack .chart-card:nth-child(2) svg polyline,
+.inventory-chart-card svg polyline {
+    stroke: #19a0a8 !important;
+}
+
+.svg-chart svg circle {
+    fill: #ffffff !important;
+    stroke: #006eff !important;
+}
+
+.chart-tooltip,
+.donut-segment-label {
+    background: #ffffff !important;
+    border: 1px solid #d7e4f8 !important;
+    box-shadow: none !important;
+    color: #111827 !important;
+}
+
+.donut::after {
+    background: #ffffff !important;
+    border: 1px solid #f1e8df !important;
+}
+
+.donut strong {
+    color: #111827 !important;
+}
+
+.donut span {
+    color: #6b7280 !important;
+}
+
+.legend i {
+    border-radius: 999px !important;
+}
+
+.legend a,
+.month-labels a,
+.table-panel td a,
+.order-panel td a,
+.inbound-row {
+    color: #1f2937 !important;
+}
+
+.legend a:hover,
+.month-labels a:hover,
+.table-panel td a:hover,
+.order-panel td a:hover,
+.inbound-row:hover strong {
+    color: #006eff !important;
+}
+
+.issue-monthly-mini {
+    border-top-color: #f1e8df !important;
+}
+
+.issue-monthly-bars i {
+    background: #006eff !important;
+    border-radius: 999px 999px 3px 3px !important;
+}
+
+.warehouse-head,
+.purchase-progress-head,
+.inbound-head,
+.outbound-top-head {
+    background: #f8fafc !important;
+    border: 1px solid #f1e8df !important;
+    border-radius: 10px !important;
+    color: #6b7280 !important;
+    padding: clamp(0.42rem, 0.5vh, 0.62rem) clamp(0.56rem, 0.62vw, 0.76rem) !important;
+}
+
+.warehouse-row,
+.purchase-progress-row,
+.inbound-row,
+.outbound-top-row,
+.core-task-list li {
+    border-bottom: 1px solid #f1e8df !important;
+}
+
+.warehouse-row:hover,
+.purchase-progress-row:hover,
+.inbound-row:hover,
+.outbound-top-row:hover,
+.order-panel tbody tr:hover td {
+    background: #f8fbff !important;
+}
+
+.bar,
+.thin-bar {
+    background: #edf2f7 !important;
+}
+
+.bar i,
+.thin-bar i,
+.warehouse-row.cyan i,
+.warehouse-row.orange i,
+.warehouse-row.green i,
+.warehouse-row.red i {
+    background: #006eff !important;
+}
+
+.purchase-progress-row em,
+.warehouse-row b,
+.warehouse-row strong,
+.core-task-summary strong {
+    color: #111827 !important;
+}
+
+.purchase-progress-row.red span,
+.purchase-progress-row.red em,
+.purchase-progress-row.orange em,
+.purchase-progress-row.blue em,
+.purchase-progress-row.green em {
+    color: #006eff !important;
+}
+
+.core-task-summary span {
+    background: #f8fafc !important;
+    border: 1px solid #f1e8df !important;
+    border-radius: 10px !important;
+    color: #6b7280 !important;
+}
+
+.core-task-list i {
+    background: #eef5ff !important;
+    color: #006eff !important;
+}
+
+.core-task-list li.done i {
+    background: #edfdf7 !important;
+    color: #148f5d !important;
+}
+
+.table-panel table,
+.order-panel table {
+    background: #ffffff !important;
+    border: 0 !important;
+    color: #1f2937 !important;
+}
+
+.table-panel th,
+.order-panel th {
+    background: #f8fafc !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    color: #6b7280 !important;
+    font-weight: 720 !important;
+}
+
+.table-panel td,
+.order-panel td {
+    background: #ffffff !important;
+    border-bottom: 1px solid #f1e8df !important;
+}
+
+.order-panel tbody tr:nth-child(even) td,
+.table-panel tbody tr:nth-child(even) td {
+    background: #fffdfa !important;
+}
+
+.status-badge,
+.stock-badge,
+.meeting-status-badge {
+    border-radius: 999px !important;
+    font-weight: 720 !important;
+}
+
+.status-badge.pending,
+.status-badge.ordered,
+.status-badge.done,
+.status-badge.partial,
+.status-badge.delay,
+.stock-badge,
+.meeting-status-badge.gray,
+.meeting-status-badge.blue,
+.meeting-status-badge.green,
+.meeting-status-badge.red {
+    background: #eef5ff !important;
+    border: 1px solid #c9ddff !important;
+    color: #006eff !important;
+}
+
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stDateInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+[data-testid="stFileUploaderDropzone"],
+[data-testid="stChatInput"] textarea {
+    background: #ffffff !important;
+    border-color: #dfe7f3 !important;
+    border-radius: 12px !important;
+    color: #1f2937 !important;
+    box-shadow: none !important;
+}
+
+.stButton > button,
+.stDownloadButton > button,
+.stFormSubmitButton > button,
+button[kind="secondary"],
+button[kind="primary"] {
+    background: #ffffff !important;
+    border: 1px solid #d7e4f8 !important;
+    border-radius: 999px !important;
+    color: #006eff !important;
+    box-shadow: none !important;
+    font-weight: 720 !important;
+}
+
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+.stFormSubmitButton > button:hover,
+button[kind="secondary"]:hover,
+button[kind="primary"]:hover,
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"],
+.stFormSubmitButton > button[kind="primary"],
+button[kind="primary"] {
+    background: #006eff !important;
+    border-color: #006eff !important;
+    color: #ffffff !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: transparent !important;
+    border-bottom: 1px solid #eadfd3 !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    color: #6b7280 !important;
+}
+
+[data-testid="stTabs"] [aria-selected="true"] {
+    color: #006eff !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+    background-color: #006eff !important;
+}
+
+[data-testid="stDataFrame"],
+[data-testid="stDataEditor"],
+[data-testid="stTable"] table {
+    background: #ffffff !important;
+    border: 1px solid #eadfd3 !important;
+    border-radius: 12px !important;
+    color: #1f2937 !important;
+}
+
+[data-testid="stAlert"] {
+    background: #ffffff !important;
+    border-color: #d7e4f8 !important;
+    color: #1f2937 !important;
+}

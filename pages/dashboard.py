@@ -48,18 +48,20 @@ def render_dashboard() -> None:
     purchase_summary = get_home_purchase_summary(work_date)
     core_tasks_summary = get_dashboard_core_tasks()
     return_case_summary = get_return_case_summary(work_date)
+    inventory_charts = inventory_summary.get("charts", {})
     render_html(
         f"""
         <main class="dashboard-shell">
             {weekly_schedule_html()}
             {kpi_cards_html(inventory_summary, purchase_summary)}
-            <section class="middle-grid">
-                {issue_donut_html(return_case_summary.get("category_rows", []), return_case_summary.get("total_count", 0))}
-                {monthly_chart_html(return_case_summary.get("monthly_rows", []), return_case_summary.get("year", date.today().year))}
+            <section class="dashboard-ops-grid">
+                {issue_donut_html(return_case_summary.get("category_rows", []), return_case_summary.get("total_count", 0), return_case_summary.get("monthly_rows", []), return_case_summary.get("year", date.today().year))}
+                <section class="chart-grid dashboard-chart-stack">
+                    {shipping_chart_html(inventory_charts.get("outbound", []), inventory_summary.get("outbound_qty", 0))}
+                    {inventory_chart_html(inventory_charts.get("stock", []))}
+                </section>
                 {warehouse_status_html(inventory_summary.get("source_status", []))}
                 {purchase_progress_html(purchase_summary.get("progress_rows", []))}
-            </section>
-            <section class="bottom-grid">
                 {schedule_core_tasks_html(core_tasks_summary)}
                 {recent_orders_html(purchase_summary.get("recent_po_inbound", []))}
             </section>
@@ -599,7 +601,7 @@ def get_return_case_summary(work_date: date) -> dict:
     except sqlite3.Error:
         return summary
 
-    colors = ["#ff4545", "#ffb22e", "#3d86ff", "#58d163", "#bd72ff", "#25d6ce", "#94a3b8"]
+    colors = ["#006eff", "#19a0a8", "#ffb020", "#6b7280"]
     return {
         "total_count": int(total_count or 0),
         "category_rows": [
@@ -1116,7 +1118,7 @@ def inventory_chart_html(rows: list[dict]) -> str:
     return trend_chart_html(
         rows,
         title="재고 추이",
-        color="#20d6c8",
+        color="#19a0a8",
         fill_id="inventoryFill",
         tooltip_class="cyan-tip",
         metric_label="총 재고",
@@ -1127,7 +1129,7 @@ def shipping_chart_html(rows: list[dict], outbound_qty: int = 0) -> str:
     return trend_chart_html(
         rows,
         title="출고 추이",
-        color="#4b9cff",
+        color="#006eff",
         fill_id="shippingFill",
         tooltip_class="blue-tip",
         metric_label="출고",
@@ -1174,10 +1176,10 @@ def purchase_inbound_chart_html(rows: list[dict], trend_days: int, outbound_qty:
             {grid_lines(grid_values)}
             <svg viewBox="0 0 620 230" preserveAspectRatio="none">
                 <polyline points="{balance_points}" fill="none" stroke="#ffb22e" stroke-width="2.4"/>
-                <polyline points="{ordered_points}" fill="none" stroke="#4b9cff" stroke-width="3"/>
-                <polyline points="{inbound_points}" fill="none" stroke="#58d163" stroke-width="3"/>
-                {chart_points(ordered_points, "#4b9cff")}
-                {chart_points(inbound_points, "#58d163")}
+                <polyline points="{ordered_points}" fill="none" stroke="#006eff" stroke-width="3"/>
+                <polyline points="{inbound_points}" fill="none" stroke="#19a0a8" stroke-width="3"/>
+                {chart_points(ordered_points, "#006eff")}
+                {chart_points(inbound_points, "#19a0a8")}
             </svg>
             <div class="chart-tooltip blue-tip"><b>{escape(str(last.get("label", "-")))}</b><span>발주 {format_won(last.get("ordered_amount", 0))}</span></div>
             {axis_labels(compact_axis_labels(labels))}
@@ -1239,7 +1241,7 @@ def trend_chart_html(rows: list[dict], title: str, color: str, fill_id: str, too
     """
 
 
-def issue_donut_html(rows: list[dict], total_count: int) -> str:
+def issue_donut_html(rows: list[dict], total_count: int, monthly_rows: list[dict] | None = None, year: int | None = None) -> str:
     if rows and total_count:
         stops = donut_gradient_stops(rows, total_count)
         labels = donut_segment_labels(rows, total_count)
@@ -1267,7 +1269,38 @@ def issue_donut_html(rows: list[dict], total_count: int) -> str:
             </a>
             <ul class="legend">{legend}</ul>
         </div>
+        {issue_monthly_strip_html(monthly_rows or [], year or date.today().year)}
     </article>
+    """
+
+
+def issue_monthly_strip_html(rows: list[dict], year: int) -> str:
+    if not rows:
+        rows = [{"month": month, "month_key": f"{year}{month:02d}", "count": 0} for month in range(1, 13)]
+    values = [int(row.get("count") or 0) for row in rows]
+    max_value = max(max(values), 1) if values else 1
+    month_nodes = []
+    for row in rows:
+        month = int(row.get("month") or 0)
+        count = int(row.get("count") or 0)
+        href = return_case_filter_link("MONTH", str(row.get("month_key", "")))
+        height = max(8, count / max_value * 100)
+        month_nodes.append(
+            f"""
+            <a href="{href}" target="_self" title="{month}M {count:,} cases">
+                <i style="--bar-h:{height:.1f}%"></i>
+                <span>{month}</span>
+            </a>
+            """
+        )
+    return f"""
+    <div class="issue-monthly-mini">
+        <div class="issue-monthly-head">
+            <span>월별 발생 추이</span>
+            <b>{year}년</b>
+        </div>
+        <div class="issue-monthly-bars">{''.join(month_nodes)}</div>
+    </div>
     """
 
 
@@ -1341,7 +1374,7 @@ def monthly_chart_html(rows: list[dict], year: int) -> str:
                     <line x1="20" y1="72" x2="365" y2="72"/>
                     <line x1="20" y1="120" x2="365" y2="120"/>
                 </g>
-                <polyline points="{points}" fill="none" stroke="#ff4545" stroke-width="3"/>
+                <polyline points="{points}" fill="none" stroke="#006eff" stroke-width="3"/>
                 {point_nodes}
             </svg>
             <div class="peak-label" style="left:{peak_left / 380 * 100:.1f}%">{peak_value:,}건</div>
