@@ -50,6 +50,7 @@ def activate_page(label: str) -> None:
 
 def render_sidebar() -> str:
     active_page = normalize_page()
+    group_tones = ["work", "ops", "support"]
 
     with st.sidebar:
         st.markdown(
@@ -57,8 +58,12 @@ def render_sidebar() -> str:
             '<div class="sidebar-divider"></div>',
             unsafe_allow_html=True,
         )
-        for group_label, items in MENU_GROUPS:
-            st.markdown(f'<div class="sidebar-group-title">{escape(group_label)}</div>', unsafe_allow_html=True)
+        for group_index, (group_label, items) in enumerate(MENU_GROUPS):
+            group_tone = group_tones[group_index] if group_index < len(group_tones) else "support"
+            st.markdown(
+                f'<div class="sidebar-group-title sidebar-group-{group_tone}">{escape(group_label)}</div>',
+                unsafe_allow_html=True,
+            )
             for key, label in items:
                 st.button(
                     label,
@@ -71,7 +76,7 @@ def render_sidebar() -> str:
 
         st.markdown('<div class="sidebar-bottom"><div class="sidebar-meta">SCM Portal · v1.0</div>', unsafe_allow_html=True)
         settings_label = SETTINGS_ITEM[1]
-        st.markdown('<div class="sidebar-group-title">설정</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-group-title sidebar-group-settings">설정</div>', unsafe_allow_html=True)
         st.button(
             settings_label,
             key=f"sidebar_nav_{SETTINGS_ITEM[0]}",
