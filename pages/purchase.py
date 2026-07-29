@@ -2245,16 +2245,69 @@ def inject_purchase_css() -> None:
         """
         <style>
         .purchase-title {
-            color: #ecfeff;
+            color: #24303c;
             font-size: 1.45rem;
             font-weight: 800;
             margin: 0.2rem 0 0.1rem;
         }
         .purchase-section-title {
-            color: #b9fff8;
+            color: #3f596f;
             font-size: 1.02rem;
             font-weight: 800;
             margin: 1rem 0 0.45rem;
+        }
+        [data-testid="stTabs"] [data-baseweb="tab-list"] {
+            background: transparent !important;
+            border-bottom: 1px solid #d7dde2 !important;
+            gap: 0.25rem !important;
+        }
+        [data-testid="stTabs"] [data-baseweb="tab"] {
+            background: transparent !important;
+            border-radius: 7px 7px 0 0 !important;
+            color: #52606e !important;
+            font-weight: 720 !important;
+            padding: 0.55rem 0.75rem !important;
+        }
+        [data-testid="stTabs"] [data-baseweb="tab"]:hover {
+            background: #e9eef1 !important;
+            color: #24303c !important;
+        }
+        [data-testid="stTabs"] [aria-selected="true"] {
+            background: #e3e9ed !important;
+            color: #3f596f !important;
+            font-weight: 800 !important;
+        }
+        [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+            background-color: #536d84 !important;
+        }
+        [data-testid="stForm"],
+        [data-testid="stDataFrame"],
+        [data-testid="stDataEditor"],
+        [data-testid="stTable"] table {
+            background: #f3f3f0 !important;
+            border: 1px solid #d7dde2 !important;
+            border-radius: 8px !important;
+            box-shadow: 0 8px 22px rgba(34, 45, 56, 0.055) !important;
+        }
+        [data-testid="stTextInput"] input,
+        [data-testid="stNumberInput"] input,
+        [data-testid="stDateInput"] input,
+        [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+        [data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+        [data-testid="stFileUploaderDropzone"] {
+            background: #f0f2f1 !important;
+            border-color: #cfd7dd !important;
+            color: #24303c !important;
+        }
+        [data-testid="stWidgetLabel"] p,
+        [data-testid="stCaptionContainer"],
+        .stCaptionContainer {
+            color: #6b7785 !important;
+        }
+        .stButton > button,
+        .stDownloadButton > button,
+        .stFormSubmitButton > button {
+            filter: saturate(0.82) brightness(0.97);
         }
         </style>
         """,

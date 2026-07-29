@@ -2120,7 +2120,7 @@ def render_event_calendar_html(
                     "meeting_event_row": str(row_position),
                     "meeting_event_day": f"{display_month.year:04d}-{display_month.month:02d}-{day:02d}",
                 }
-                chip = f'<a class="{chip_class}" href="?{urlencode(params)}">{chip_body}</a>'
+                chip = f'<a class="{chip_class}" href="?{urlencode(params)}" target="_self">{chip_body}</a>'
             events_by_day.setdefault(day, []).append(chip)
 
     week_labels = "".join(f"<b>{day}</b>" for day in ["월", "화", "수", "목", "금", "토", "일"])

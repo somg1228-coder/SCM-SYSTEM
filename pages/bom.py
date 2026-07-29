@@ -1676,35 +1676,35 @@ def inject_bom_css() -> None:
         section[data-testid="stSidebar"] + div,
         .stApp {
             background:
-                radial-gradient(circle at 48% 4%, rgba(18, 155, 139, 0.2), transparent 34%),
-                linear-gradient(135deg, #031b18 0%, #062b26 46%, #073a34 100%) !important;
-            color: #f2fffb !important;
+                radial-gradient(circle at 48% 4%, rgba(58, 112, 105, 0.12), transparent 34%),
+                linear-gradient(135deg, #041714 0%, #08231f 46%, #0a2b27 100%) !important;
+            color: #e7f0ed !important;
             color-scheme: dark;
         }
         .bom-title {
-            color: #ffffff;
+            color: #eef4f2;
             font-size: 1.34rem;
             font-weight: 950;
             margin: 0.1rem 0 0.75rem;
         }
         .bom-subtitle {
-            color: #ffffff;
+            color: #e7f0ed;
             font-size: 1.02rem;
             font-weight: 900;
             margin: 0.15rem 0 0.35rem;
         }
         .bom-outline-title {
-            color: #dffaf4;
+            color: #bfd5d0;
             font-size: 0.86rem;
             font-weight: 900;
             margin: 0.7rem 0 0.35rem;
         }
         div[data-testid="stExpander"]:has(.bom-outline-scroll) {
-            background: rgba(6, 48, 43, 0.5);
-            border-color: rgba(126, 197, 185, 0.24);
+            background: rgba(7, 40, 36, 0.5);
+            border-color: rgba(142, 170, 164, 0.22);
         }
         .bom-outline-scroll {
-            border: 1px solid rgba(126, 197, 185, 0.22);
+            border: 1px solid rgba(142, 170, 164, 0.2);
             border-radius: 6px;
             overflow-x: auto;
         }
@@ -1716,49 +1716,49 @@ def inject_bom_css() -> None:
         }
         .bom-outline-table th,
         .bom-outline-table td {
-            border: 1px solid rgba(210, 232, 228, 0.18);
-            color: #f7fffc;
+            border: 1px solid rgba(190, 206, 202, 0.16);
+            color: #e7f0ed;
             padding: 0.36rem 0.5rem;
             white-space: nowrap;
         }
         .bom-outline-table th {
-            background: rgba(31, 78, 120, 0.86);
+            background: rgba(49, 72, 92, 0.82);
             text-align: center;
         }
         .bom-outline-table tr.group td {
-            background: rgba(210, 210, 210, 0.25);
+            background: rgba(174, 182, 180, 0.18);
             font-weight: 900;
         }
         .bom-outline-table tr.child td {
-            background: rgba(8, 39, 36, 0.84);
+            background: rgba(8, 34, 31, 0.84);
         }
         .bom-outline-table .empty {
-            color: #b2d5cd;
+            color: #adc4bf;
             text-align: center;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) {
-            background: rgba(6, 48, 43, 0.66) !important;
-            border: 1px solid rgba(87, 178, 165, 0.28);
+            background: rgba(7, 40, 36, 0.62) !important;
+            border: 1px solid rgba(142, 170, 164, 0.22);
             border-radius: 8px;
             padding: 0.85rem;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel),
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) * {
-            color: #f2fffb;
+            color: #e7f0ed;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) input,
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) textarea,
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) [data-baseweb="select"] > div,
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) [data-testid="stDataFrame"],
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) [data-testid="stDataEditor"] {
-            background: rgba(5, 38, 34, 0.9) !important;
-            border-color: rgba(126, 197, 185, 0.34) !important;
-            color: #f2fffb !important;
+            background: rgba(6, 31, 28, 0.9) !important;
+            border-color: rgba(142, 170, 164, 0.28) !important;
+            color: #e7f0ed !important;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) button {
-            background: linear-gradient(180deg, rgba(11, 83, 75, 0.94), rgba(5, 45, 41, 0.94)) !important;
-            border-color: rgba(126, 197, 185, 0.34) !important;
-            color: #ffffff !important;
+            background: linear-gradient(180deg, rgba(29, 70, 65, 0.9), rgba(8, 38, 35, 0.94)) !important;
+            border-color: rgba(142, 170, 164, 0.28) !important;
+            color: #edf4f2 !important;
         }
         </style>
         """,

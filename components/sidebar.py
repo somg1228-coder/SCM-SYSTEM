@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from urllib.parse import urlencode
+from html import escape
 
 import streamlit as st
 
@@ -39,26 +39,47 @@ def normalize_page() -> str:
     return page
 
 
-def sidebar_markdown(active_page: str) -> str:
-    lines = ["### SCM 물류운영포털", "---"]
-    for group_label, items in MENU_GROUPS:
-        lines.append(f"###### {group_label}")
-        for _, label in items:
-            display_label = f"**{label}**" if active_page == label else label
-            href = "?" + urlencode({"page": label})
-            lines.append(f"[{display_label}]({href})")
-        lines.append("")
-    settings_label = SETTINGS_ITEM[1]
-    settings_display = f"**{settings_label}**" if active_page == settings_label else settings_label
-    settings_href = "?" + urlencode({"page": settings_label})
-    lines.extend(["---", "###### 설정", "SCM Portal · v1.0", f"[{settings_display}]({settings_href})"])
-    return "\n\n".join(lines)
+def activate_page(label: str) -> None:
+    st.session_state["page"] = label
+    try:
+        st.query_params.clear()
+        st.query_params["page"] = label
+    except Exception:
+        pass
 
 
 def render_sidebar() -> str:
     active_page = normalize_page()
 
     with st.sidebar:
-        st.markdown(sidebar_markdown(active_page))
+        st.markdown(
+            '<div class="sidebar-brand"><span class="sidebar-brand-mark"></span><span>SCM 물류운영포털</span></div>'
+            '<div class="sidebar-divider"></div>',
+            unsafe_allow_html=True,
+        )
+        for group_label, items in MENU_GROUPS:
+            st.markdown(f'<div class="sidebar-group-title">{escape(group_label)}</div>', unsafe_allow_html=True)
+            for key, label in items:
+                st.button(
+                    label,
+                    key=f"sidebar_nav_{key}",
+                    use_container_width=True,
+                    type="primary" if active_page == label else "secondary",
+                    on_click=activate_page,
+                    args=(label,),
+                )
+
+        st.markdown('<div class="sidebar-bottom"><div class="sidebar-meta">SCM Portal · v1.0</div>', unsafe_allow_html=True)
+        settings_label = SETTINGS_ITEM[1]
+        st.markdown('<div class="sidebar-group-title">설정</div>', unsafe_allow_html=True)
+        st.button(
+            settings_label,
+            key=f"sidebar_nav_{SETTINGS_ITEM[0]}",
+            use_container_width=True,
+            type="primary" if active_page == settings_label else "secondary",
+            on_click=activate_page,
+            args=(settings_label,),
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
 
     return st.session_state["page"]

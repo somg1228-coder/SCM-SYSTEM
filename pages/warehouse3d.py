@@ -211,13 +211,13 @@ def render_warehouse3d_page() -> None:
                 zones=FLOOR_ZONES.get(floor, []),
                 inventory_rows=inventory_rows,
             ),
-            height=760,
+            height=700,
             scrolling=False,
         )
     with stock_tab:
         components.html(
             warehouse_stock_position_html(building=building, inventory_rows=inventory_rows),
-            height=760,
+            height=700,
             scrolling=False,
         )
 
@@ -241,20 +241,20 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
             * {{ box-sizing: border-box; letter-spacing: 0; }}
             body {{
                 background: transparent;
-                color: #f2fffb;
+                color: #1f2937;
                 font-family: "Pretendard", "Noto Sans KR", Arial, sans-serif;
                 margin: 0;
                 overflow: hidden;
             }}
             .stock-board {{
-                background: rgba(6, 48, 43, 0.66);
-                border: 1px solid rgba(87, 178, 165, 0.28);
-                border-radius: 8px;
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
                 display: flex;
                 flex-direction: column;
-                height: 744px;
+                height: 684px;
                 min-height: 0;
-                padding: 0.88rem;
+                padding: 0.86rem;
             }}
             .stock-head {{
                 align-items: center;
@@ -264,12 +264,12 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
                 margin-bottom: 0.7rem;
             }}
             h3 {{
-                color: #ffffff;
+                color: #1f2937;
                 font-size: 1rem;
                 margin: 0;
             }}
             .stock-head span {{
-                color: #b2d5cd;
+                color: #64748b;
                 font-size: 0.74rem;
                 font-weight: 850;
             }}
@@ -282,10 +282,10 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
             input,
             select,
             button {{
-                background: #171a22;
-                border: 1px solid rgba(126, 197, 185, 0.28);
-                border-radius: 7px;
-                color: #ffffff;
+                background: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 9px;
+                color: #1f2937;
                 font-size: 0.78rem;
                 font-weight: 850;
                 min-height: 34px;
@@ -294,8 +294,8 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
             }}
             button {{ cursor: pointer; }}
             .stock-table {{
-                border: 1px solid rgba(126, 197, 185, 0.2);
-                border-radius: 7px;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
                 flex: 1 1 auto;
                 min-height: 0;
                 overflow: auto;
@@ -307,25 +307,25 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
             }}
             th,
             td {{
-                border-bottom: 1px solid rgba(126, 197, 185, 0.14);
-                color: #f2fffb;
+                border-bottom: 1px solid #e2e8f0;
+                color: #1f2937;
                 padding: 0.5rem;
                 text-align: left;
             }}
             th {{
-                background: rgba(255, 255, 255, 0.07);
-                color: #cfe8e2;
+                background: #f8fafc;
+                color: #475569;
                 font-weight: 900;
                 position: sticky;
                 top: 0;
             }}
             .empty {{
-                color: #b2d5cd;
+                color: #64748b;
                 padding: 1rem;
                 text-align: center;
             }}
             .stock-foot {{
-                color: #b2d5cd;
+                color: #64748b;
                 font-size: 0.72rem;
                 font-weight: 850;
                 margin-top: 0.62rem;
@@ -703,21 +703,21 @@ def render_summary(summary: dict, work_date: str) -> None:
                     width: 100%;
                 }}
                 .warehouse3d-kpi {{
-                    background: rgba(7, 58, 52, 0.68);
-                    border: 1px solid rgba(87, 178, 165, 0.25);
-                    border-radius: 8px;
-                    min-height: 70px;
-                    padding: 0.68rem;
+                    background: #ffffff;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 12px;
+                    min-height: 58px;
+                    padding: 0.58rem 0.68rem;
                 }}
                 .warehouse3d-kpi span {{
-                    color: #b2d5cd;
+                    color: #64748b;
                     display: block;
                     font-size: 0.72rem;
                     font-weight: 900;
                     margin-bottom: 0.28rem;
                 }}
                 .warehouse3d-kpi strong {{
-                    color: #ffffff;
+                    color: #1f2937;
                     display: block;
                     font-size: 0.94rem;
                     font-weight: 950;
@@ -735,7 +735,7 @@ def render_summary(summary: dict, work_date: str) -> None:
         <body><div class="warehouse3d-kpi-grid">{html}</div></body>
         </html>
         """,
-        height=86,
+        height=72,
         scrolling=False,
     )
 
@@ -809,7 +809,7 @@ def warehouse_scene_html(
             * {{ box-sizing: border-box; letter-spacing: 0; }}
             body {{
                 background: transparent;
-                color: #f2fffb;
+                color: #1f2937;
                 font-family: "Pretendard", "Noto Sans KR", Arial, sans-serif;
                 margin: 0;
                 overflow: hidden;
@@ -1585,13 +1585,13 @@ def warehouse_scene3d_html(
             .warehouse-scene {{
                 display: grid;
                 gap: 0.72rem;
-                grid-template-columns: 170px minmax(0, 1.15fr) minmax(430px, 0.95fr);
-                height: 744px;
+                grid-template-columns: 160px minmax(0, 1.18fr) minmax(410px, 0.92fr);
+                height: 684px;
             }}
             .panel {{
-                background: rgba(6, 48, 43, 0.66);
-                border: 1px solid rgba(87, 178, 165, 0.28);
-                border-radius: 8px;
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
                 min-height: 0;
                 overflow: hidden;
             }}
@@ -1603,13 +1603,13 @@ def warehouse_scene3d_html(
             .building-panel h3,
             .model-panel h3,
             .detail-panel h3 {{
-                color: #ffffff;
+                color: #1f2937;
                 font-size: 0.96rem;
                 margin: 0 0 0.56rem;
             }}
             .building-name,
             .scene-head span {{
-                color: #b2d5cd;
+                color: #64748b;
                 font-size: 0.74rem;
                 font-weight: 850;
                 line-height: 1.45;
@@ -1624,10 +1624,10 @@ def warehouse_scene3d_html(
             button,
             select,
             input {{
-                background: #171a22;
-                border: 1px solid rgba(126, 197, 185, 0.28);
-                border-radius: 7px;
-                color: #ffffff;
+                background: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 9px;
+                color: #1f2937;
                 font-size: 0.76rem;
                 font-weight: 850;
                 min-height: 34px;
@@ -1638,18 +1638,20 @@ def warehouse_scene3d_html(
                 cursor: pointer;
             }}
             button:hover {{
-                border-color: rgba(117, 236, 219, 0.58);
+                background: #eef3f7;
+                border-color: #9fb1c3;
             }}
             .floor-chip {{
-                color: #dffaf4;
+                color: #334155;
                 font-weight: 900;
                 padding: 0.52rem 0.6rem;
                 text-align: center;
             }}
             .floor-chip.active {{
-                background: rgba(22, 213, 198, 0.18);
-                border-color: rgba(22, 213, 198, 0.58);
-                box-shadow: inset 3px 0 0 #16d5c6;
+                background: #eef3f7;
+                border-color: #b9c8d6;
+                box-shadow: inset 3px 0 0 #58799a;
+                color: #36556f;
             }}
             .zone-tags {{
                 display: flex;
@@ -1658,10 +1660,10 @@ def warehouse_scene3d_html(
                 margin-top: 0.8rem;
             }}
             .zone-tags span {{
-                background: rgba(75, 156, 255, 0.14);
-                border: 1px solid rgba(75, 156, 255, 0.28);
+                background: #eef3f7;
+                border: 1px solid #dbe3ec;
                 border-radius: 999px;
-                color: #d8ebff;
+                color: #58708a;
                 font-size: 0.68rem;
                 font-weight: 850;
                 padding: 0.24rem 0.42rem;
@@ -1707,10 +1709,10 @@ def warehouse_scene3d_html(
             }}
             .fixture-name-toggle {{
                 align-items: center;
-                background: rgba(6, 48, 43, 0.82);
-                border: 1px solid rgba(126, 197, 185, 0.28);
-                border-radius: 6px;
-                color: #e9fff9;
+                background: #eef3f7;
+                border: 1px solid #dbe3ec;
+                border-radius: 9px;
+                color: #36556f;
                 display: inline-flex;
                 font-size: 0.76rem;
                 font-weight: 900;
@@ -1721,14 +1723,14 @@ def warehouse_scene3d_html(
                 white-space: nowrap;
             }}
             .fixture-name-toggle input {{
-                accent-color: #16d5c6;
+                accent-color: #58799a;
                 margin: 0;
             }}
             .floor-size-tools {{
                 align-items: center;
-                background: rgba(3, 27, 24, 0.56);
-                border: 1px solid rgba(126, 197, 185, 0.22);
-                border-radius: 7px;
+                background: rgba(255, 255, 255, 0.92);
+                border: 1px solid #dbe3ec;
+                border-radius: 10px;
                 display: grid;
                 gap: 0.34rem;
                 grid-template-columns: auto 72px auto 72px 58px 58px;
@@ -1739,7 +1741,7 @@ def warehouse_scene3d_html(
                 z-index: 3;
             }}
             .floor-size-tools span {{
-                color: #b2d5cd;
+                color: #475569;
                 font-size: 0.68rem;
                 font-weight: 900;
                 white-space: nowrap;
@@ -1755,9 +1757,9 @@ def warehouse_scene3d_html(
             }}
             .zoom-tools {{
                 align-items: center;
-                background: rgba(3, 27, 24, 0.56);
-                border: 1px solid rgba(126, 197, 185, 0.22);
-                border-radius: 7px;
+                background: rgba(255, 255, 255, 0.92);
+                border: 1px solid #dbe3ec;
+                border-radius: 10px;
                 display: flex;
                 gap: 0.36rem;
                 padding: 0.34rem;
@@ -1767,7 +1769,7 @@ def warehouse_scene3d_html(
                 z-index: 3;
             }}
             .zoom-tools span {{
-                color: #b2d5cd;
+                color: #475569;
                 font-size: 0.68rem;
                 font-weight: 900;
                 margin-right: 0.1rem;
@@ -1777,14 +1779,14 @@ def warehouse_scene3d_html(
                 padding: 0 0.42rem;
             }}
             .zoom-tools button.active {{
-                background: rgba(22, 213, 198, 0.2);
-                border-color: rgba(22, 213, 198, 0.62);
+                background: #58799a;
+                border-color: #58799a;
                 color: #ffffff;
             }}
             .nav-tools {{
-                background: rgba(3, 27, 24, 0.56);
-                border: 1px solid rgba(126, 197, 185, 0.22);
-                border-radius: 7px;
+                background: rgba(255, 255, 255, 0.92);
+                border: 1px solid #dbe3ec;
+                border-radius: 10px;
                 display: grid;
                 gap: 0.28rem;
                 grid-template-columns: repeat(3, 30px);
@@ -1804,10 +1806,10 @@ def warehouse_scene3d_html(
             }}
             .model-viewport {{
                 background:
-                    radial-gradient(circle at 50% 18%, rgba(86, 218, 203, 0.18), transparent 28%),
-                    linear-gradient(180deg, rgba(9, 38, 42, 0.96), rgba(2, 20, 19, 0.96));
-                border: 1px solid rgba(126, 197, 185, 0.22);
-                border-radius: 8px;
+                    radial-gradient(circle at 50% 15%, rgba(238, 243, 247, 0.82), transparent 34%),
+                    linear-gradient(180deg, #f8fafc, #eef3f7);
+                border: 1px solid #dbe3ec;
+                border-radius: 12px;
                 min-height: 0;
                 overflow: hidden;
                 position: relative;
@@ -1818,10 +1820,10 @@ def warehouse_scene3d_html(
                 width: 100%;
             }}
             .model-label {{
-                background: rgba(3, 27, 24, 0.86);
-                border: 1px solid rgba(126, 197, 185, 0.24);
-                border-radius: 6px;
-                color: #dffaf4;
+                background: rgba(255, 255, 255, 0.9);
+                border: 1px solid #dbe3ec;
+                border-radius: 9px;
+                color: #36556f;
                 font-size: 0.68rem;
                 font-weight: 900;
                 left: 1rem;
@@ -1831,11 +1833,11 @@ def warehouse_scene3d_html(
                 z-index: 3;
             }}
             .model-help {{
-                background: rgba(3, 27, 24, 0.86);
-                border: 1px solid rgba(126, 197, 185, 0.24);
-                border-radius: 6px;
+                background: rgba(255, 255, 255, 0.9);
+                border: 1px solid #dbe3ec;
+                border-radius: 9px;
                 bottom: 1rem;
-                color: #b2d5cd;
+                color: #64748b;
                 font-size: 0.68rem;
                 font-weight: 900;
                 left: 1rem;
@@ -1845,7 +1847,7 @@ def warehouse_scene3d_html(
             }}
             .model-error {{
                 align-items: center;
-                color: #ffffff;
+                color: #1f2937;
                 display: none;
                 font-size: 0.86rem;
                 font-weight: 900;
@@ -1862,19 +1864,19 @@ def warehouse_scene3d_html(
                 flex-direction: column;
             }}
             .rack-detail {{
-                background: rgba(2, 20, 19, 0.5);
-                border: 1px solid rgba(126, 197, 185, 0.2);
-                border-radius: 7px;
-                margin-bottom: 0.7rem;
-                padding: 0.68rem;
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+                margin-bottom: 0.58rem;
+                padding: 0.62rem;
             }}
             .rack-detail strong {{
-                color: #ffffff;
+                color: #1f2937;
                 display: block;
                 font-size: 1.05rem;
             }}
             .rack-detail span {{
-                color: #b2d5cd;
+                color: #64748b;
                 display: block;
                 font-size: 0.76rem;
                 font-weight: 800;
@@ -1882,9 +1884,9 @@ def warehouse_scene3d_html(
             }}
             .assign-box {{
                 display: grid;
-                gap: 0.42rem;
+                gap: 0.36rem;
                 grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.85fr) 56px 74px 82px 62px 64px;
-                margin-bottom: 0.68rem;
+                margin-bottom: 0.5rem;
             }}
             #itemSelect {{
                 display: none !important;
@@ -1893,33 +1895,33 @@ def warehouse_scene3d_html(
                 flex: 0 0 auto;
             }}
             .stock-guide {{
-                background: rgba(22, 213, 198, 0.08);
-                border: 1px solid rgba(22, 213, 198, 0.22);
-                border-radius: 7px;
-                color: #cfe8e2;
+                background: #eef3f7;
+                border: 1px solid #dbe3ec;
+                border-radius: 10px;
+                color: #475569;
                 font-size: 0.7rem;
                 font-weight: 850;
                 line-height: 1.45;
-                margin-bottom: 0.68rem;
+                margin-bottom: 0.5rem;
                 padding: 0.52rem 0.62rem;
             }}
             .nudge-grid {{
                 display: grid;
-                gap: 0.36rem;
+                gap: 0.3rem;
                 grid-template-columns: repeat(4, minmax(0, 1fr));
-                margin-bottom: 0.68rem;
+                margin-bottom: 0.5rem;
             }}
             .fixture-box {{
                 display: grid;
-                gap: 0.42rem;
+                gap: 0.36rem;
                 grid-template-columns: minmax(0, 1fr) repeat(4, 76px);
-                margin-bottom: 0.68rem;
+                margin-bottom: 0.5rem;
             }}
             .move-to-rack-box {{
                 display: grid;
-                gap: 0.42rem;
+                gap: 0.36rem;
                 grid-template-columns: minmax(0, 1fr) 82px 116px;
-                margin-bottom: 0.68rem;
+                margin-bottom: 0.5rem;
             }}
             .move-floor-box {{
                 display: none;
@@ -1946,16 +1948,16 @@ def warehouse_scene3d_html(
                 white-space: nowrap;
             }}
             .tool-label {{
-                color: #dffaf4;
+                color: #334155;
                 font-size: 0.72rem;
                 font-weight: 900;
                 margin: 0.1rem 0 0.36rem;
             }}
             .item-list {{
-                border: 1px solid rgba(126, 197, 185, 0.2);
-                border-radius: 7px;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
                 flex: 1 1 auto;
-                min-height: 180px;
+                min-height: 122px;
                 overflow: auto;
             }}
             .item-list table {{
@@ -2003,20 +2005,20 @@ def warehouse_scene3d_html(
             }}
             th,
             td {{
-                border-bottom: 1px solid rgba(126, 197, 185, 0.14);
-                color: #f2fffb;
-                padding: 0.42rem;
+                border-bottom: 1px solid #e2e8f0;
+                color: #1f2937;
+                padding: 0.38rem 0.42rem;
                 text-align: left;
             }}
             th {{
-                background: rgba(255, 255, 255, 0.07);
-                color: #cfe8e2;
+                background: #f8fafc;
+                color: #475569;
                 font-weight: 900;
                 position: sticky;
                 top: 0;
             }}
             .empty {{
-                color: #b2d5cd;
+                color: #64748b;
                 text-align: center;
             }}
             @media (max-width: 980px) {{
@@ -2245,8 +2247,8 @@ def warehouse_scene3d_html(
             const placementScale = 1.45;
 
             const scene = new THREE.Scene();
-            const screenSceneBackground = new THREE.Color(0x071d1b);
-            const screenSceneFog = new THREE.Fog(0x071d1b, 28, 76);
+            const screenSceneBackground = new THREE.Color(0xf8fafc);
+            const screenSceneFog = new THREE.Fog(0xf8fafc, 42, 96);
             scene.background = screenSceneBackground;
             scene.fog = screenSceneFog;
 
@@ -2308,12 +2310,12 @@ def warehouse_scene3d_html(
                 controls.update();
             }}
 
-            const ambient = new THREE.HemisphereLight(0xdffff9, 0x071d1b, 1.7);
+            const ambient = new THREE.HemisphereLight(0xffffff, 0xd9e2ea, 1.55);
             scene.add(ambient);
-            const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+            const keyLight = new THREE.DirectionalLight(0xffffff, 2.05);
             keyLight.position.set(18, 28, 22);
             scene.add(keyLight);
-            const fillLight = new THREE.DirectionalLight(0x58d9d0, 0.8);
+            const fillLight = new THREE.DirectionalLight(0xb9c8d6, 0.72);
             fillLight.position.set(-20, 12, -18);
             scene.add(fillLight);
 
@@ -2344,19 +2346,19 @@ def warehouse_scene3d_html(
             let lastRackAddAt = 0;
             let dragOffset = new THREE.Vector3();
             const fixtureDefaults = {{
-                entrance: {{ label: "출입구", w: 4.2, d: 0.45, h: 0.34, color: 0x16d5c6 }},
-                door: {{ label: "문", w: 2.2, d: 0.32, h: 1.55, color: 0x75ecdb }},
-                shutter: {{ label: "셔터", w: 4.8, d: 0.38, h: 1.8, color: 0xa7c3c0 }},
-                dock: {{ label: "상차도크", w: 5.4, d: 1.6, h: 0.42, color: 0x4b9cff }},
-                exit: {{ label: "비상구", w: 2.8, d: 0.38, h: 1.45, color: 0x58d163 }},
-                elevator: {{ label: "엘리베이터", w: 2.6, d: 2.4, h: 2.3, color: 0x7f9f9b }},
+                entrance: {{ label: "출입구", w: 4.2, d: 0.45, h: 0.34, color: 0x58799a }},
+                door: {{ label: "문", w: 2.2, d: 0.32, h: 1.55, color: 0x8aa0b4 }},
+                shutter: {{ label: "셔터", w: 4.8, d: 0.38, h: 1.8, color: 0xa8b3bf }},
+                dock: {{ label: "상차도크", w: 5.4, d: 1.6, h: 0.42, color: 0x6f879f }},
+                exit: {{ label: "비상구", w: 2.8, d: 0.38, h: 1.45, color: 0x6f927d }},
+                elevator: {{ label: "엘리베이터", w: 2.6, d: 2.4, h: 2.3, color: 0x8c99a6 }},
                 desk: {{ label: "책상", w: 2.4, d: 1.25, h: 0.82, color: 0xb8874f }},
                 wall: {{ label: "벽/칸막이", w: 6.8, d: 0.18, h: 1.35, color: 0x9fb7b2 }},
-                aisle: {{ label: "통로", w: 8.0, d: 2.0, h: 0.08, color: 0x4b9cff }},
-                zone: {{ label: "작업구역", w: 6.2, d: 4.0, h: 0.08, color: 0xffb22e }},
-                box: {{ label: "박스", w: 1.2, d: 1.0, h: 0.72, color: 0xffb22e }},
-                pallet: {{ label: "파렛트", w: 1.55, d: 1.55, h: 1.35, color: 0xd8a35d }},
-                wrapped_pallet: {{ label: "랩핑 파렛트", w: 1.55, d: 1.55, h: 1.45, color: 0x8ec7ff }},
+                aisle: {{ label: "통로", w: 8.0, d: 2.0, h: 0.08, color: 0x9fb1c3 }},
+                zone: {{ label: "작업구역", w: 6.2, d: 4.0, h: 0.08, color: 0xb78b5a }},
+                box: {{ label: "박스", w: 1.2, d: 1.0, h: 0.72, color: 0xb78b5a }},
+                pallet: {{ label: "파렛트", w: 1.55, d: 1.55, h: 1.35, color: 0xa88661 }},
+                wrapped_pallet: {{ label: "랩핑 파렛트", w: 1.55, d: 1.55, h: 1.45, color: 0x8da3b8 }},
             }};
             const outsideFixtureTypes = new Set(["entrance", "door", "shutter", "dock", "exit"]);
             const fixtureLabelStorageKey = `${{baseStorageKey}}fixtureLabels`;
@@ -2367,34 +2369,34 @@ def warehouse_scene3d_html(
             }}
 
             const materials = {{
-                slab: new THREE.MeshStandardMaterial({{ color: 0x194d48, roughness: 0.88, metalness: 0.05, transparent: true, opacity: 0.18 }}),
-                activeSlab: new THREE.MeshStandardMaterial({{ color: 0x16d5c6, roughness: 0.72, metalness: 0.08, transparent: true, opacity: 0.34 }}),
-                wall: new THREE.MeshStandardMaterial({{ color: 0x8fded3, roughness: 0.9, transparent: true, opacity: 0.16 }}),
-                rack: new THREE.MeshStandardMaterial({{ color: 0x159886, roughness: 0.78, metalness: 0.08 }}),
-                rackEmpty: new THREE.MeshStandardMaterial({{ color: 0x5d7774, roughness: 0.9, transparent: true, opacity: 0.55 }}),
-                rackShort: new THREE.MeshStandardMaterial({{ color: 0xff4c4c, roughness: 0.75, metalness: 0.08 }}),
+                slab: new THREE.MeshStandardMaterial({{ color: 0xe7edf3, roughness: 0.88, metalness: 0.03, transparent: true, opacity: 0.72 }}),
+                activeSlab: new THREE.MeshStandardMaterial({{ color: 0xdbe5ee, roughness: 0.72, metalness: 0.04, transparent: true, opacity: 0.78 }}),
+                wall: new THREE.MeshStandardMaterial({{ color: 0xcbd5e1, roughness: 0.9, transparent: true, opacity: 0.34 }}),
+                rack: new THREE.MeshStandardMaterial({{ color: 0x58799a, roughness: 0.78, metalness: 0.05 }}),
+                rackEmpty: new THREE.MeshStandardMaterial({{ color: 0x94a3b8, roughness: 0.9, transparent: true, opacity: 0.46 }}),
+                rackShort: new THREE.MeshStandardMaterial({{ color: 0xb66a6a, roughness: 0.75, metalness: 0.04 }}),
                 rackPost: new THREE.MeshStandardMaterial({{ color: 0xf4f7f3, roughness: 0.58, metalness: 0.28 }}),
                 rackShelf: new THREE.MeshStandardMaterial({{ color: 0xe7ece7, roughness: 0.62, metalness: 0.18 }}),
                 rackBrace: new THREE.MeshStandardMaterial({{ color: 0xbecac5, roughness: 0.7, metalness: 0.25 }}),
-                heavyPost: new THREE.MeshStandardMaterial({{ color: 0x0f78c8, roughness: 0.42, metalness: 0.32 }}),
-                heavyBeam: new THREE.MeshStandardMaterial({{ color: 0xff7a1a, roughness: 0.46, metalness: 0.24 }}),
-                heavyDeck: new THREE.MeshStandardMaterial({{ color: 0xf3dfc6, roughness: 0.7, metalness: 0.04 }}),
-                heavyBrace: new THREE.MeshStandardMaterial({{ color: 0x0a4d86, roughness: 0.5, metalness: 0.28 }}),
-                itemBox: new THREE.MeshStandardMaterial({{ color: 0x58d163, roughness: 0.72, metalness: 0.04 }}),
-                itemBoxShort: new THREE.MeshStandardMaterial({{ color: 0xff4c4c, roughness: 0.72, metalness: 0.04 }}),
-                itemBoxSelected: new THREE.MeshStandardMaterial({{ color: 0x16d5c6, emissive: 0x063a36, roughness: 0.68, metalness: 0.05 }}),
+                heavyPost: new THREE.MeshStandardMaterial({{ color: 0x58799a, roughness: 0.42, metalness: 0.24 }}),
+                heavyBeam: new THREE.MeshStandardMaterial({{ color: 0xb78b5a, roughness: 0.46, metalness: 0.18 }}),
+                heavyDeck: new THREE.MeshStandardMaterial({{ color: 0xf1e4d1, roughness: 0.7, metalness: 0.04 }}),
+                heavyBrace: new THREE.MeshStandardMaterial({{ color: 0x36556f, roughness: 0.5, metalness: 0.22 }}),
+                itemBox: new THREE.MeshStandardMaterial({{ color: 0x6f927d, roughness: 0.72, metalness: 0.04 }}),
+                itemBoxShort: new THREE.MeshStandardMaterial({{ color: 0xb66a6a, roughness: 0.72, metalness: 0.04 }}),
+                itemBoxSelected: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.68, metalness: 0.04 }}),
                 hitbox: new THREE.MeshBasicMaterial({{ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }}),
-                room: new THREE.MeshStandardMaterial({{ color: 0x2b6860, roughness: 0.85, transparent: true, opacity: 0.26 }}),
-                column: new THREE.MeshStandardMaterial({{ color: 0xdffaf4, roughness: 0.72, metalness: 0.18, transparent: true, opacity: 0.74 }}),
-                entrance: new THREE.MeshStandardMaterial({{ color: 0x16d5c6, emissive: 0x063a36, roughness: 0.5 }}),
-                locked: new THREE.MeshStandardMaterial({{ color: 0xffd12c, emissive: 0x3a2a00, roughness: 0.45 }}),
-                resizeHandle: new THREE.MeshStandardMaterial({{ color: 0x16d5c6, emissive: 0x063a36, roughness: 0.36, metalness: 0.12 }}),
-                roofGarden: new THREE.MeshStandardMaterial({{ color: 0x4fbf72, roughness: 0.86, metalness: 0.02, transparent: true, opacity: 0.76 }}),
+                room: new THREE.MeshStandardMaterial({{ color: 0xdbe3ec, roughness: 0.85, transparent: true, opacity: 0.36 }}),
+                column: new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.72, metalness: 0.14, transparent: true, opacity: 0.82 }}),
+                entrance: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.5 }}),
+                locked: new THREE.MeshStandardMaterial({{ color: 0xb78b5a, emissive: 0x4a3720, roughness: 0.45 }}),
+                resizeHandle: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.36, metalness: 0.1 }}),
+                roofGarden: new THREE.MeshStandardMaterial({{ color: 0x6f927d, roughness: 0.86, metalness: 0.02, transparent: true, opacity: 0.72 }}),
                 roofEquip: new THREE.MeshStandardMaterial({{ color: 0xa7c3c0, roughness: 0.68, metalness: 0.32, transparent: true, opacity: 0.88 }}),
                 roofDetail: new THREE.MeshStandardMaterial({{ color: 0xd8c88c, roughness: 0.82, metalness: 0.05, transparent: true, opacity: 0.5 }}),
-                selected: new THREE.LineBasicMaterial({{ color: 0x16d5c6 }}),
-                edge: new THREE.LineBasicMaterial({{ color: 0x98fff4, transparent: true, opacity: 0.42 }}),
-                floorEdge: new THREE.LineBasicMaterial({{ color: 0x6fd6ca, transparent: true, opacity: 0.32 }}),
+                selected: new THREE.LineBasicMaterial({{ color: 0x36556f }}),
+                edge: new THREE.LineBasicMaterial({{ color: 0x9fb1c3, transparent: true, opacity: 0.48 }}),
+                floorEdge: new THREE.LineBasicMaterial({{ color: 0x94a3b8, transparent: true, opacity: 0.36 }}),
             }};
 
             function escapeHtml(value) {{
@@ -2803,8 +2805,8 @@ def warehouse_scene3d_html(
                 labelCanvas.height = lines.length > 1 ? 176 : 132;
                 const ctx = labelCanvas.getContext("2d");
                 ctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
-                ctx.fillStyle = "rgba(3, 27, 24, 0.9)";
-                ctx.strokeStyle = "rgba(126, 236, 219, 0.72)";
+                ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+                ctx.strokeStyle = "rgba(88, 121, 154, 0.62)";
                 ctx.lineWidth = 5;
                 if (ctx.roundRect) {{
                     ctx.roundRect(14, 18, labelCanvas.width - 28, labelCanvas.height - 36, 16);
@@ -2813,7 +2815,7 @@ def warehouse_scene3d_html(
                 }}
                 ctx.fill();
                 ctx.stroke();
-                ctx.fillStyle = "#f2fffb";
+                ctx.fillStyle = "#1f2937";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 let fontSize = lines.length > 1 ? 30 : 36;
@@ -2867,7 +2869,7 @@ def warehouse_scene3d_html(
 
             function itemMaterialFor(index, status) {{
                 if (status === "short") return materials.itemBoxShort;
-                const palette = [0x58d163, 0x4b9cff, 0xff941f, 0xc77dff, 0x16d5c6, 0xffd12c];
+                const palette = [0x6f927d, 0x58799a, 0xb78b5a, 0x8c99a6, 0x94a3b8, 0xb66a6a];
                 return new THREE.MeshStandardMaterial({{ color: palette[index % palette.length], roughness: 0.72, metalness: 0.04 }});
             }}
 
@@ -2904,7 +2906,7 @@ def warehouse_scene3d_html(
                 const height = Math.max(0.06, Number(world.h || 0.1));
                 let visualHeight = height;
                 const group = new THREE.Group();
-                const color = Number(fixture.color || fixtureDefaults[fixture.type]?.color || 0x16d5c6);
+                const color = Number(fixture.color || fixtureDefaults[fixture.type]?.color || 0x58799a);
                 group.position.set(world.x, 0.2, world.z);
                 group.rotation.y = THREE.MathUtils.degToRad(Number(fixture.rotation || 0));
                 group.userData.fixtureId = fixture.id;
@@ -2933,7 +2935,7 @@ def warehouse_scene3d_html(
                 }} else if (fixture.type === "elevator") {{
                     const shellMaterial = new THREE.MeshStandardMaterial({{ color, roughness: 0.58, metalness: 0.28, transparent: true, opacity: 0.92 }});
                     const doorMaterial = new THREE.MeshStandardMaterial({{ color: 0x263d3a, roughness: 0.48, metalness: 0.36 }});
-                    const lineMaterial = new THREE.MeshStandardMaterial({{ color: 0x16d5c6, emissive: 0x063a36, roughness: 0.38, metalness: 0.12 }});
+                    const lineMaterial = new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.38, metalness: 0.1 }});
                     group.add(makeBox(world.w, height, world.d, shellMaterial, new THREE.Vector3(0, height / 2, 0)));
                     group.add(rackPart(world.w * 0.42, height * 0.68, 0.055, doorMaterial, -world.w * 0.22, height * 0.42, -world.d / 2 - 0.035));
                     group.add(rackPart(world.w * 0.42, height * 0.68, 0.055, doorMaterial, world.w * 0.22, height * 0.42, -world.d / 2 - 0.035));
@@ -3228,7 +3230,7 @@ def warehouse_scene3d_html(
                 const centerZ = Number(size.z || 0);
                 const floorThickness = 0.16;
 
-                const grid = new THREE.GridHelper(Math.max(gridSize.width, gridSize.depth) + 10, 34, 0x2fe3d0, 0x164944);
+                const grid = new THREE.GridHelper(Math.max(gridSize.width, gridSize.depth) + 10, 34, 0x9fb1c3, 0xd5dde6);
                 grid.position.y = -0.08;
                 buildingGroup.add(grid);
 
@@ -4786,33 +4788,34 @@ def inject_warehouse3d_css() -> None:
         """
         <style>
         .warehouse3d-title {
-            color: #ffffff;
+            color: #26384a;
             font-size: 1.34rem;
-            font-weight: 950;
-            margin: 0.1rem 0 0.75rem;
+            font-weight: 900;
+            letter-spacing: 0;
+            margin: 0 0 0.62rem;
         }
         .warehouse3d-kpi-grid {
             display: grid;
-            gap: 0.48rem;
+            gap: 0.62rem;
             grid-template-columns: repeat(6, minmax(0, 1fr));
-            margin: 0.55rem 0 0.72rem;
+            margin: 0.46rem 0 0.54rem;
         }
         .warehouse3d-kpi {
-            background: rgba(7, 58, 52, 0.68);
-            border: 1px solid rgba(87, 178, 165, 0.25);
-            border-radius: 8px;
-            min-height: 70px;
-            padding: 0.68rem;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            min-height: 58px;
+            padding: 0.58rem 0.68rem;
         }
         .warehouse3d-kpi span {
-            color: #b2d5cd;
+            color: #64748b;
             display: block;
             font-size: 0.72rem;
             font-weight: 900;
             margin-bottom: 0.28rem;
         }
         .warehouse3d-kpi strong {
-            color: #ffffff;
+            color: #1f2937;
             display: block;
             font-size: 0.94rem;
             font-weight: 950;

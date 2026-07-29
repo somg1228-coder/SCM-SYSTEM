@@ -10341,3 +10341,273 @@ select:focus,
         grid-row: auto !important;
     }
 }
+
+/* Sidebar HTML navigation: current-page links, stronger category hierarchy. */
+.sidebar-brand {
+    align-items: center !important;
+    color: #26384a !important;
+    display: grid !important;
+    font-size: 17px !important;
+    font-weight: 850 !important;
+    gap: 10px !important;
+    grid-template-columns: 30px minmax(0, 1fr) !important;
+    letter-spacing: 0 !important;
+    line-height: 1.15 !important;
+    margin: 2px 0 14px !important;
+    min-height: 36px !important;
+}
+
+.sidebar-brand span:last-child {
+    color: #26384a !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.sidebar-brand-mark {
+    background: #eef3f7 !important;
+    border: 1px solid #d5e0e9 !important;
+    border-radius: 9px !important;
+    display: block !important;
+    height: 30px !important;
+    position: relative !important;
+    width: 30px !important;
+}
+
+.sidebar-brand-mark::after {
+    border: 2px solid #58799a !important;
+    border-radius: 4px !important;
+    content: "" !important;
+    height: 11px !important;
+    left: 8px !important;
+    position: absolute !important;
+    top: 8px !important;
+    transform: rotate(45deg) !important;
+    width: 11px !important;
+}
+
+.sidebar-divider {
+    border-top: 1px solid #e2e8f0 !important;
+    margin: 0 0 14px !important;
+}
+
+.sidebar-menu-group {
+    margin: 0 0 16px !important;
+}
+
+.sidebar-group-title {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 7px !important;
+    color: #58708a !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+    letter-spacing: 0 !important;
+    min-height: 25px !important;
+    padding: 6px 9px !important;
+    text-transform: none !important;
+}
+
+.sidebar-menu-item .sidebar-icon {
+    background: #eef3f7 !important;
+    border: 1px solid #dbe3ec !important;
+    border-radius: 6px !important;
+    display: block !important;
+    height: 18px !important;
+    width: 18px !important;
+}
+
+.sidebar-menu-item.active .sidebar-icon {
+    background: #dfe8f0 !important;
+    border-color: #c7d3df !important;
+}
+
+/* Sidebar button navigation: all categories switch in the current Streamlit page. */
+[data-testid="stSidebar"] .stButton {
+    margin: 2px 0 !important;
+}
+
+[data-testid="stSidebar"] .stButton button {
+    align-items: center !important;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    border-radius: 9px !important;
+    box-shadow: none !important;
+    color: #334155 !important;
+    display: flex !important;
+    font-size: 14px !important;
+    font-weight: 720 !important;
+    justify-content: flex-start !important;
+    min-height: 39px !important;
+    padding: 0 12px 0 40px !important;
+    position: relative !important;
+    text-align: left !important;
+    transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease !important;
+    width: 100% !important;
+}
+
+[data-testid="stSidebar"] .stButton button::before {
+    background: #eef3f7 !important;
+    border: 1px solid #dbe3ec !important;
+    border-radius: 6px !important;
+    content: "" !important;
+    height: 18px !important;
+    left: 12px !important;
+    position: absolute !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 18px !important;
+}
+
+[data-testid="stSidebar"] .stButton button:hover {
+    background: #f1f5f9 !important;
+    border-color: #e2e8f0 !important;
+    color: #1f2937 !important;
+}
+
+[data-testid="stSidebar"] .stButton button[kind="primary"] {
+    background: #eaf0f5 !important;
+    border-color: #dbe3ec !important;
+    box-shadow: inset 2px 0 0 #58799a !important;
+    color: #36556f !important;
+    font-weight: 820 !important;
+}
+
+[data-testid="stSidebar"] .stButton button[kind="primary"]::before {
+    background: #dfe8f0 !important;
+    border-color: #c7d3df !important;
+}
+
+[data-testid="stSidebar"] .stButton button p,
+[data-testid="stSidebar"] .stButton button span {
+    color: inherit !important;
+    font-size: 14px !important;
+    font-weight: inherit !important;
+    line-height: 1.15 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    text-align: left !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+/* Final tone-down pass: slightly lower brightness and saturation across light ERP screens. */
+:root {
+    --erp-bg: #F0F1EF;
+    --erp-card: #F6F5F2;
+    --erp-text: #24303C;
+    --erp-body: #52606E;
+    --erp-muted: #6B7785;
+    --erp-faint: #8F9BA7;
+    --erp-line: #D7DDE2;
+    --erp-line-strong: #C8D0D7;
+    --erp-blue: #536D84;
+    --erp-blue-strong: #3F596F;
+    --erp-blue-soft: #E7EDF1;
+    --erp-green: #6D8878;
+    --erp-amber: #A98258;
+    --erp-red: #A96666;
+    --erp-gray: #858E9A;
+    --bg: var(--erp-bg);
+    --panel: var(--erp-card);
+    --panel-soft: #F0F2F1;
+    --control-bg: #F6F5F2;
+    --control-bg-soft: #EFF1F0;
+    --control-bg-hover: #E7EDF1;
+    --line: var(--erp-line);
+    --line-soft: #E5E9EC;
+    --text: var(--erp-text);
+    --muted: var(--erp-muted);
+    --blue: var(--erp-blue);
+    --cyan: var(--erp-blue);
+    --green: var(--erp-green);
+    --orange: var(--erp-amber);
+    --red: var(--erp-red);
+    --purple: #747986;
+}
+
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"] {
+    background: linear-gradient(135deg, #F0F1EF 0%, #F3F3F0 48%, #F6F5F2 100%) !important;
+}
+
+.panel,
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stExpander"],
+[data-testid="stForm"],
+.meeting-table-wrap,
+.meeting-note-box,
+.meeting-kpi-card,
+.kpi-tile,
+.week-board,
+.order-panel,
+.warehouse-panel,
+.purchase-progress-panel,
+.core-task-panel,
+.table-panel,
+.notice-panel {
+    background: #F6F5F2 !important;
+    border-color: var(--erp-line) !important;
+    box-shadow: 0 8px 22px rgba(34, 45, 56, 0.055) !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    background: #F2F3F1 !important;
+    border-right-color: #D8DEE3 !important;
+}
+
+[data-testid="stSidebar"] .stButton button:hover,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] a:hover {
+    background: #E9EEF1 !important;
+    border-color: #D8DEE3 !important;
+}
+
+[data-testid="stSidebar"] .stButton button[kind="primary"],
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] a:has(strong) {
+    background: #E3E9ED !important;
+    border-color: #D1D9E0 !important;
+    box-shadow: inset 2px 0 0 #536D84 !important;
+    color: #3F596F !important;
+}
+
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stDateInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+[data-testid="stFileUploaderDropzone"],
+[data-testid="stDataFrame"],
+[data-testid="stDataEditor"],
+[data-testid="stTable"] table,
+.warehouse-head,
+.purchase-progress-head,
+.week-range,
+.core-task-summary span,
+.core-task-list li,
+.purchase-progress-row {
+    background: #F0F2F1 !important;
+    border-color: #D7DDE2 !important;
+}
+
+.stButton > button,
+.stDownloadButton > button,
+.stFormSubmitButton > button,
+button[kind="secondary"],
+button[kind="primary"],
+.ghost-link,
+.mini-badge,
+.chart-filter-links a,
+.purchase-trend-summary span {
+    filter: saturate(0.82) brightness(0.97);
+}
+
+.status-badge,
+.stock-badge,
+.meeting-status-badge {
+    filter: saturate(0.78) brightness(0.97);
+}
