@@ -1195,8 +1195,8 @@ def purchase_inbound_chart_html(rows: list[dict], trend_days: int, outbound_qty:
     last_balance = int(last.get("open_balance") or 0)
     change_rate = float(last.get("change_rate") or 0)
     empty = '<div class="empty-cell">구매관리 발주 데이터가 없습니다.</div>' if not chart_rows or max_value == 0 else ""
-    filter_7 = "?" + urlencode({"page": "홈", "purchase_trend": "7"})
-    filter_30 = "?" + urlencode({"page": "홈", "purchase_trend": "30"})
+    filter_7 = "?" + urlencode({"page": "대시보드", "purchase_trend": "7"})
+    filter_30 = "?" + urlencode({"page": "대시보드", "purchase_trend": "30"})
     return f"""
     <article class="panel chart-card purchase-chart-card">
         <div class="panel-title-row compact">
@@ -1678,7 +1678,7 @@ def weekly_outbound_top_html(summary: dict) -> str:
     start_date = summary.get("start_date")
     end_date = summary.get("end_date")
     period_links = "".join(
-        f'<a class="{"active" if period == key else ""}" href="?{urlencode({"page": "홈", "outbound_top_period": key})}" target="_self">{label}</a>'
+        f'<a class="{"active" if period == key else ""}" href="?{urlencode({"page": "대시보드", "outbound_top_period": key})}" target="_self">{label}</a>'
         for key, label in [("7", "최근 7일"), ("30", "최근 30일"), ("month", "이번 달")]
     )
     summary_html = f"""

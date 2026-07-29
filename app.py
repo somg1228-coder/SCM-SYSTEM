@@ -84,7 +84,7 @@ def render_settings() -> None:
 
 
 def render_page(page: str) -> None:
-    if page == "홈":
+    if page in {"홈", "대시보드"}:
         render_home()
     elif page == "일정관리":
         render_schedule()

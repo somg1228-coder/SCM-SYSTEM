@@ -11793,3 +11793,58 @@ button[kind="primary"],
 [data-testid="stSidebar"] div[class*="sidebar_group_settings_closed"] button::after {
     transform: translateY(-50%) rotate(-90deg) !important;
 }
+
+/* Sidebar top alignment and light-page text repair. */
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    align-items: flex-start !important;
+    display: block !important;
+    justify-content: flex-start !important;
+    padding-top: 0 !important;
+}
+
+[data-testid="stSidebar"] .block-container {
+    margin-top: 0 !important;
+    padding: 6px 14px 12px !important;
+    transform: none !important;
+}
+
+.sidebar-brand {
+    margin-top: 0 !important;
+}
+
+.weekly-schedule-title,
+.weekly-section-title {
+    color: #475569 !important;
+}
+
+.schedule-week-chip {
+    color: #475569 !important;
+}
+
+div[class*="st-key-schedule_week_picker"] {
+    background: rgba(255, 255, 255, 0.72) !important;
+    border-color: #E2E8F0 !important;
+}
+
+.weekly-table-wrap {
+    border-color: #E2E8F0 !important;
+}
+
+.weekly-table-wrap table {
+    color: #334155 !important;
+}
+
+.weekly-table-wrap th,
+.weekly-table-wrap td {
+    border-color: #E5E7EB !important;
+    color: #334155 !important;
+}
+
+.weekly-table-wrap th {
+    background: #F8FAFC !important;
+    color: #64748B !important;
+}
+
+.weekly-table-wrap .empty {
+    color: #94A3B8 !important;
+}

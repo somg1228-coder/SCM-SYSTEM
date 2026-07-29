@@ -683,15 +683,15 @@ def inject_schedule_css() -> None:
             padding-bottom: 2rem;
         }
         .weekly-schedule-title {
-            color: #ffffff;
+            color: #475569;
             font-size: 1.25rem;
             font-weight: 950;
             line-height: 1.2;
             margin: 0.1rem 0 0.25rem;
         }
         div[class*="st-key-schedule_week_picker"] {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid #E2E8F0;
             border-radius: 8px;
             padding: 0.72rem;
         }
@@ -704,13 +704,13 @@ def inject_schedule_css() -> None:
         }
         .schedule-week-chip {
             align-items: center;
-            color: #f5fffb;
+            color: #475569;
             display: flex;
             font-weight: 800;
             min-height: 40px;
         }
         .weekly-section-title {
-            color: #ffffff;
+            color: #475569;
             font-size: 1rem;
             font-weight: 900;
             margin: 0.55rem 0 0.25rem;
@@ -737,26 +737,28 @@ def inject_schedule_css() -> None:
             padding: 0.34rem 0.55rem;
         }
         .weekly-table-wrap {
-            border: 1px solid rgba(200, 218, 213, 0.18);
+            border: 1px solid #E2E8F0;
             border-radius: 6px;
             overflow-x: auto;
         }
         .weekly-table-wrap table {
             border-collapse: collapse;
-            color: #f4fffc;
+            color: #334155;
             font-size: 0.82rem;
             table-layout: fixed;
             width: 100%;
         }
         .weekly-table-wrap th,
         .weekly-table-wrap td {
-            border: 1px solid rgba(200, 218, 213, 0.18);
+            border: 1px solid #E5E7EB;
+            color: #334155;
             padding: 0.52rem 0.58rem;
             vertical-align: top;
             white-space: normal;
         }
         .weekly-table-wrap th {
-            background: rgba(255, 255, 255, 0.05);
+            background: #F8FAFC;
+            color: #64748B;
             font-weight: 900;
             text-align: left;
         }
@@ -770,7 +772,7 @@ def inject_schedule_css() -> None:
             line-height: 1.45;
         }
         .weekly-table-wrap .empty {
-            color: #b2d5cd;
+            color: #94A3B8;
             text-align: center;
         }
         </style>

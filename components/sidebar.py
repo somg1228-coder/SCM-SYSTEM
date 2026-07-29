@@ -4,7 +4,7 @@ import streamlit as st
 
 
 MENU_ITEMS = [
-    ("home", "홈"),
+    ("home", "대시보드"),
     ("calendar", "일정관리"),
     ("meeting", "회의자료"),
     ("return_as", "반품/AS 관리"),
@@ -28,11 +28,13 @@ VALID_PAGES = {label for _, label in MENU_ITEMS}
 
 
 def normalize_page() -> str:
-    page = st.session_state.get("page", "홈")
+    page = st.session_state.get("page", "대시보드")
+    if page == "홈":
+        page = "대시보드"
     if page == "발주관리":
         page = "구매관리"
     if page not in VALID_PAGES:
-        page = "홈"
+        page = "대시보드"
     st.session_state["page"] = page
     return page
 
