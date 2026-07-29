@@ -11280,3 +11280,41 @@ button[kind="primary"],
     margin-top: 0 !important;
     padding-top: 0 !important;
 }
+
+/* Sidebar clipping repair: keep cards inside the sidebar rail. */
+[data-testid="stSidebar"] *,
+[data-testid="stSidebar"] *::before,
+[data-testid="stSidebar"] *::after {
+    box-sizing: border-box !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] .block-container,
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"],
+[data-testid="stSidebar"] [data-testid="stElementContainer"],
+[data-testid="stSidebar"] .stButton,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+    width: 100% !important;
+}
+
+[data-testid="stSidebar"] .block-container {
+    padding-left: 11px !important;
+    padding-right: 11px !important;
+}
+
+.sidebar-brand,
+.sidebar-group-title,
+[data-testid="stSidebar"] .stButton > button,
+.sidebar-meta {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    width: 100% !important;
+}
+
+[data-testid="stSidebar"] .stButton > button {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
