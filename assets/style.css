@@ -11432,3 +11432,83 @@ button[kind="primary"],
     margin: 5px 2px 0 !important;
     padding: 6px 5px 0 !important;
 }
+
+/* Sidebar category hierarchy repair: category headers are larger and never clipped. */
+[data-testid="stSidebar"] .block-container {
+    padding: 9px 10px 8px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stElementContainer"] {
+    overflow: visible !important;
+}
+
+.sidebar-brand {
+    min-height: 40px !important;
+    padding: 6px 8px !important;
+}
+
+.sidebar-group-title {
+    align-items: center !important;
+    border-radius: 14px !important;
+    display: grid !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    grid-template-columns: 25px minmax(0, 1fr) 14px !important;
+    height: 38px !important;
+    line-height: 1.25 !important;
+    margin: 7px 0 5px !important;
+    min-height: 38px !important;
+    overflow: visible !important;
+    padding: 5px 9px 5px 7px !important;
+}
+
+.sidebar-category-label {
+    align-items: center !important;
+    color: #334155 !important;
+    display: flex !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    height: 100% !important;
+    line-height: 1.25 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.sidebar-group-title::before {
+    align-self: center !important;
+    height: 24px !important;
+    -webkit-mask-size: 15px 15px !important;
+    mask-size: 15px 15px !important;
+    width: 24px !important;
+}
+
+.sidebar-group-title::after {
+    align-self: center !important;
+    height: 14px !important;
+    -webkit-mask-size: 14px 14px !important;
+    mask-size: 14px 14px !important;
+    width: 14px !important;
+}
+
+[data-testid="stSidebar"] .stButton {
+    margin: 0 0 2px !important;
+}
+
+[data-testid="stSidebar"] .stButton > button {
+    border-radius: 13px !important;
+    font-size: 12.5px !important;
+    min-height: 29px !important;
+    padding: 0 8px 0 36px !important;
+}
+
+[data-testid="stSidebar"] .stButton > button p,
+[data-testid="stSidebar"] .stButton > button span {
+    font-size: 12.5px !important;
+    line-height: 1.1 !important;
+}
+
+.sidebar-meta {
+    margin-top: 6px !important;
+}

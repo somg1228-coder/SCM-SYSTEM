@@ -42,6 +42,15 @@ def ensure_sqlite_columns() -> None:
         "inventory_inbound": {
             "product_code": "VARCHAR(120) NOT NULL DEFAULT ''",
         },
+        "offline_product_master": {
+            "sort_order": "INTEGER NOT NULL DEFAULT 0",
+        },
+        "thirdparty_product_master": {
+            "sort_order": "INTEGER NOT NULL DEFAULT 0",
+        },
+        "warehouse_product_master": {
+            "sort_order": "INTEGER NOT NULL DEFAULT 0",
+        },
         "category_bom_items": {
             "barcode": "VARCHAR(120) NOT NULL DEFAULT ''",
             "spec": "VARCHAR(160) NOT NULL DEFAULT ''",
@@ -119,6 +128,7 @@ def rebuild_product_master_table(conn, table_name: str, prefix: str) -> None:
         "box_qty",
         "default_lead_time",
         "min_stock",
+        "sort_order",
         "is_active",
         "memo",
         "created_at",
@@ -144,6 +154,7 @@ def rebuild_product_master_table(conn, table_name: str, prefix: str) -> None:
             box_qty INTEGER NOT NULL,
             default_lead_time INTEGER NOT NULL,
             min_stock INTEGER NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
             is_active VARCHAR(20) NOT NULL,
             memo VARCHAR(500) NOT NULL,
             created_at DATETIME NOT NULL,

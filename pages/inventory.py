@@ -34,13 +34,16 @@ SOURCE_KEY_MAP = {
 }
 
 DAILY_COLUMNS = [
-    "삭제",
+    "선택",
+    "카테고리",
     "상품명",
     "현재고",
     "안전재고",
     "재고상태",
     "바코드",
     "리드타임",
+    "정렬순서",
+    "사용 여부",
 ]
 
 INBOUND_COLUMNS = [
@@ -646,97 +649,106 @@ def render_material_inventory_tab() -> None:
 def render_daily_tab(source_type: str) -> None:
     st.markdown(f'<div class="inventory-tab-title">{source_type} 재고조회</div>', unsafe_allow_html=True)
     today = date.today()
-    default_date = today
     daily_date_key = f"{source_type}_daily_date_{today.isoformat()}"
     pending_daily_date_key = f"{source_type}_daily_date_sync"
     if pending_daily_date_key in st.session_state:
         st.session_state[daily_date_key] = st.session_state.pop(pending_daily_date_key)
+    work_date = st.date_input("기준일자", value=today, key=daily_date_key)
 
-    controls = st.columns([1.05, 0.9, 0.9, 0.9, 0.9], gap="small")
-    with controls[0]:
-        with st.container(key=f"inventory_control_{source_key(source_type)}_date"):
-            st.markdown('<div class="inventory-control-label">날짜 선택</div>', unsafe_allow_html=True)
-            work_date = st.date_input(
-                "날짜 선택",
-                value=default_date,
-                key=daily_date_key,
-                label_visibility="collapsed",
-            )
-            upload_daily("재고조회 엑셀 업로드", "stock", source_type, work_date, f"{source_type}_stock")
-    with controls[1]:
-        with st.container(key=f"inventory_control_{source_key(source_type)}_order"):
-            st.markdown('<div class="inventory-control-label">날짜 선택</div>', unsafe_allow_html=True)
-            order_date = st.date_input(
-                "주문조회 날짜 선택",
-                value=work_date,
-                key=f"{source_type}_order_date_{today.isoformat()}",
-                label_visibility="collapsed",
-            )
-            upload_daily("주문조회 엑셀 업로드", "order", source_type, order_date, f"{source_type}_order")
-    with controls[2]:
-        with st.container(key=f"inventory_control_{source_key(source_type)}_safe"):
-            st.markdown('<div class="inventory-control-label">안전재고 계산</div>', unsafe_allow_html=True)
-            if st.button("안전재고 계산", key=f"{source_type}_safe", use_container_width=True):
-                show_result(with_db(lambda db: result("안전재고 계산 완료", services.calculate_safe_stock(db, source_type, work_date))))
-            render_empty_upload_slot()
-    with controls[3]:
-        with st.container(key=f"inventory_control_{source_key(source_type)}_status"):
-            st.markdown('<div class="inventory-control-label">재고상태 계산</div>', unsafe_allow_html=True)
-            if st.button("재고상태 계산", key=f"{source_type}_status", use_container_width=True):
-                show_result(with_db(lambda db: result("재고상태 계산 완료", services.update_status(db, source_type, work_date))))
-            render_empty_upload_slot()
-    with controls[4]:
-        with st.container(key=f"inventory_control_{source_key(source_type)}_cycle"):
-            st.markdown('<div class="inventory-control-label">입고주기 계산</div>', unsafe_allow_html=True)
-            if st.button("입고주기 계산", key=f"{source_type}_cycle", use_container_width=True):
-                show_result(with_db(lambda db: result("입고주기 계산 완료", services.calculate_inbound_cycle(db, source_type))))
-            render_empty_upload_slot()
+    rows = fetch_master_inventory(source_type, work_date)
+    base_df = daily_to_editor(rows)
+    filters = render_inventory_filters(source_type, base_df)
+    filtered_df = apply_inventory_filters(base_df, filters)
+    output_df = filtered_df.drop(columns=["선택"], errors="ignore")
+    upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
 
-    df = daily_to_editor(fetch_daily(source_type, work_date))
-    daily_buffer_key = f"{source_type}_daily_editor_buffer_{work_date.isoformat()}"
-    if daily_buffer_key not in st.session_state:
-        st.session_state[daily_buffer_key] = df
-    edited = st.session_state[daily_buffer_key]
-    with st.form(key=f"{source_type}_daily_editor_form_{work_date.isoformat()}", clear_on_submit=False):
-        edited = st.data_editor(
-            st.session_state[daily_buffer_key],
-            num_rows="dynamic",
-            hide_index=True,
-            use_container_width=True,
-            key=f"{source_type}_daily_editor_{work_date.isoformat()}",
-            column_order=DAILY_COLUMNS,
-            column_config={
-                "삭제": st.column_config.CheckboxColumn("삭제", default=False),
-                "상품명": st.column_config.TextColumn("상품명", width="large"),
-                "현재고": st.column_config.NumberColumn("현재고", step=1),
-                "안전재고": st.column_config.NumberColumn("안전재고", step=1),
-                "재고상태": st.column_config.SelectboxColumn("재고상태", options=["", "미출", "품절", "입고필요"]),
-                "바코드": st.column_config.TextColumn("바코드", width="medium"),
-                "리드타임": st.column_config.NumberColumn("리드타임", min_value=0, step=1),
-            },
+    action_cols = st.columns([1.05, 1.05, 1.05, 1.05, 2.4], gap="small")
+    with action_cols[0]:
+        uploaded = st.file_uploader(
+            "재고 업로드",
+            type=["xlsx", "xls", "csv"],
+            key=f"{source_type}_stock_master_upload_{work_date}",
+            label_visibility="collapsed",
         )
-        if st.form_submit_button("저장", type="primary", use_container_width=True):
-            rows = daily_payload(edited, source_type, work_date)
-            outcome = with_db(lambda db: result("재고조회 저장 완료", services.bulk_save_daily(db, source_type, work_date, rows)))
-            if outcome and outcome.get("ok", True):
-                clear_inventory_editor_buffer(daily_buffer_key)
+        upload_mode = st.radio(
+            "업로드 방식",
+            ["일부 재고 파일", "전체 재고 파일"],
+            horizontal=True,
+            key=f"{source_type}_stock_upload_mode",
+            label_visibility="collapsed",
+        )
+        if st.button("재고 업로드", key=f"{source_type}_stock_preview_btn_{work_date}", use_container_width=True):
+            if uploaded is None:
+                st.warning("먼저 재고 파일을 업로드해주세요.")
             else:
-                st.session_state[daily_buffer_key] = edited
-            show_result(outcome)
-
-    actions = st.columns([1.05, 4.55], gap="small")
-    with actions[0]:
-        download_data = daily_excel(source_type, work_date)
+                mode = "full" if upload_mode == "전체 재고 파일" else "partial"
+                preview = with_db(
+                    lambda db: services.prepare_stock_upload_preview(
+                        db,
+                        source_type,
+                        work_date,
+                        uploaded.getvalue(),
+                        uploaded.name,
+                        mode,
+                    )
+                )
+                if preview:
+                    st.session_state[upload_preview_key] = preview
+    with action_cols[1]:
+        if st.button("안전재고 계산", key=f"{source_type}_safe", use_container_width=True):
+            show_result(with_db(lambda db: result("안전재고 계산 완료", services.calculate_safe_stock(db, source_type, work_date))))
+    with action_cols[2]:
+        pdf_bytes = inventory_pdf_bytes(output_df, source_type, work_date, filters)
+        st.download_button(
+            "PDF 생성",
+            data=pdf_bytes,
+            file_name=inventory_file_name("pdf", output_df, filters),
+            mime="application/pdf",
+            use_container_width=True,
+            key=f"{source_type}_daily_pdf_download_{work_date}",
+            on_click=record_inventory_output,
+            args=(source_type, work_date, "PDF", filters, len(output_df)),
+        )
+    with action_cols[3]:
         st.download_button(
             "엑셀 다운로드",
-            data=download_data or dataframe_to_excel(st.session_state.get(daily_buffer_key, edited)),
-            file_name=f"{source_type}_재고조회_{work_date:%Y%m%d}.xlsx",
+            data=dataframe_to_excel(output_df),
+            file_name=inventory_file_name("xlsx", output_df, filters),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
-            key=f"{source_type}_daily_download",
+            key=f"{source_type}_daily_download_{work_date}",
+            on_click=record_inventory_output,
+            args=(source_type, work_date, "EXCEL", filters, len(output_df)),
         )
-    with actions[1]:
-        st.empty()
+    with action_cols[4]:
+        st.caption(f"전체 {len(base_df):,}개 중 {len(filtered_df):,}개 표시")
+
+    preview = st.session_state.get(upload_preview_key)
+    if preview:
+        render_stock_upload_preview(source_type, work_date, upload_preview_key, preview)
+
+    st.data_editor(
+        filtered_df,
+        num_rows="fixed",
+        hide_index=True,
+        use_container_width=True,
+        key=f"{source_type}_daily_master_view_{work_date.isoformat()}_{len(filtered_df)}",
+        column_order=DAILY_COLUMNS,
+        disabled=["카테고리", "상품명", "현재고", "안전재고", "재고상태", "바코드", "리드타임", "정렬순서", "사용 여부"],
+        column_config={
+            "선택": st.column_config.CheckboxColumn("선택", default=False, width=58),
+            "카테고리": st.column_config.TextColumn("카테고리", width="medium"),
+            "상품명": st.column_config.TextColumn("상품명", width="large"),
+            "현재고": st.column_config.NumberColumn("현재고", step=1),
+            "안전재고": st.column_config.NumberColumn("안전재고", step=1),
+            "재고상태": st.column_config.SelectboxColumn("재고상태", options=["정상", "미출", "품절", "입고필요"]),
+            "바코드": st.column_config.TextColumn("바코드", width="medium"),
+            "리드타임": st.column_config.NumberColumn("리드타임", min_value=0, step=1),
+            "정렬순서": st.column_config.NumberColumn("정렬순서", min_value=0, step=1, width=80),
+            "사용 여부": st.column_config.TextColumn("사용 여부", width=80),
+        },
+        height=520,
+    )
 
 
 def render_inbound_tab(source_type: str) -> None:
@@ -994,6 +1006,216 @@ def fetch_work_dates(source_type: str) -> list[date]:
 
 def fetch_daily(source_type: str, work_date: date) -> list[dict]:
     return with_db(lambda db: [services.daily_to_dict(row) for row in services.list_daily(db, source_type, work_date)]) or []
+
+
+def fetch_master_inventory(source_type: str, work_date: date) -> list[dict]:
+    return with_db(lambda db: services.master_based_inventory_rows(db, source_type, work_date)) or []
+
+
+def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
+    category_options = sorted([value for value in df.get("카테고리", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
+    status_options = sorted([value for value in df.get("재고상태", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
+    filter_key = source_key(source_type)
+    with st.container(key=f"inventory_filter_{filter_key}"):
+        cols = st.columns([1.25, 1.1, 1.45, 1.25, 0.85], gap="small")
+        categories = cols[0].multiselect("카테고리", category_options, key=f"{filter_key}_category_filter")
+        statuses = cols[1].multiselect("재고상태", status_options, key=f"{filter_key}_status_filter")
+        product_name = cols[2].text_input("상품명 검색", key=f"{filter_key}_product_filter")
+        barcode = cols[3].text_input("바코드 검색", key=f"{filter_key}_barcode_filter")
+        with cols[4]:
+            st.write("")
+            if st.button("필터 초기화", key=f"{filter_key}_filter_reset", use_container_width=True):
+                for key in [
+                    f"{filter_key}_category_filter",
+                    f"{filter_key}_status_filter",
+                    f"{filter_key}_product_filter",
+                    f"{filter_key}_barcode_filter",
+                ]:
+                    st.session_state.pop(key, None)
+                st.rerun()
+    return {
+        "categories": categories,
+        "statuses": statuses,
+        "product_name": product_name,
+        "barcode": barcode,
+    }
+
+
+def apply_inventory_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
+    if df.empty:
+        return df
+    filtered = df.copy()
+    categories = filters.get("categories") or []
+    statuses = filters.get("statuses") or []
+    product_name = clean_cell(filters.get("product_name")).lower()
+    barcode = clean_cell(filters.get("barcode")).lower()
+    if categories:
+        filtered = filtered[filtered["카테고리"].isin(categories)]
+    if statuses:
+        filtered = filtered[filtered["재고상태"].isin(statuses)]
+    if product_name:
+        filtered = filtered[filtered["상품명"].astype(str).str.lower().str.contains(product_name, na=False)]
+    if barcode:
+        filtered = filtered[filtered["바코드"].astype(str).str.lower().str.contains(barcode, na=False)]
+    return filtered.sort_values(["정렬순서", "카테고리", "상품명", "바코드"], kind="stable").reset_index(drop=True)
+
+
+def render_stock_upload_preview(source_type: str, work_date: date, preview_key: str, preview: dict) -> None:
+    st.markdown("#### 재고 업로드 미리보기")
+    metric_cols = st.columns(5, gap="small")
+    metric_cols[0].metric("전체 행", f"{preview.get('total_rows', 0):,}")
+    metric_cols[1].metric("정상 매칭", f"{preview.get('matched_count', 0):,}")
+    metric_cols[2].metric("매칭/검증 실패", f"{preview.get('failed_count', 0):,}")
+    metric_cols[3].metric("중복", f"{preview.get('duplicate_count', 0):,}")
+    metric_cols[4].metric("0 처리", f"{preview.get('zeroed_count', 0):,}")
+    st.caption(
+        f"빈 바코드 {preview.get('empty_barcode_count', 0):,}건 / "
+        f"숫자 오류 {preview.get('invalid_stock_count', 0):,}건 / "
+        f"음수 재고 {preview.get('negative_stock_count', 0):,}건"
+    )
+    preview_df = pd.DataFrame(preview.get("preview_rows", []))
+    if not preview_df.empty:
+        display_df = preview_df.rename(
+            columns={
+                "category": "카테고리",
+                "product_name": "상품명",
+                "barcode": "바코드",
+                "previous_stock": "기존 현재고",
+                "new_stock": "변경 현재고",
+                "status": "검증결과",
+            }
+        )[["카테고리", "상품명", "바코드", "기존 현재고", "변경 현재고", "검증결과"]]
+        st.dataframe(display_df.head(200), hide_index=True, use_container_width=True, height=220)
+    apply_col, cancel_col, spacer = st.columns([1.0, 1.0, 4.2], gap="small")
+    with apply_col:
+        if st.button("현재고 반영", type="primary", key=f"{preview_key}_apply", use_container_width=True):
+            outcome = with_db(
+                lambda db: services.apply_stock_upload_preview(
+                    db,
+                    source_type,
+                    work_date,
+                    preview,
+                    current_user_name(),
+                )
+            )
+            if outcome and outcome.get("ok", True):
+                st.session_state.pop(preview_key, None)
+            show_result(outcome)
+    with cancel_col:
+        if st.button("미리보기 취소", key=f"{preview_key}_cancel", use_container_width=True):
+            st.session_state.pop(preview_key, None)
+            st.rerun()
+    with spacer:
+        st.empty()
+
+
+def current_user_name() -> str:
+    for key in ("user_name", "username", "user", "meeting_author"):
+        value = clean_cell(st.session_state.get(key))
+        if value:
+            return value
+    return "SYSTEM"
+
+
+def record_inventory_output(source_type: str, work_date: date, output_type: str, filters: dict, item_count: int) -> None:
+    with_db(lambda db: services.record_inventory_output(db, source_type, work_date, output_type, filters, item_count, current_user_name()))
+
+
+def inventory_file_name(extension: str, df: pd.DataFrame, filters: dict) -> str:
+    today_text = date.today().strftime("%Y%m%d")
+    categories = filters.get("categories") or []
+    if len(categories) == 1:
+        scope = categories[0]
+    elif filters.get("categories") or filters.get("statuses") or clean_cell(filters.get("product_name")) or clean_cell(filters.get("barcode")):
+        scope = "필터결과"
+    else:
+        scope = "전체"
+    return f"SCM재고관리_{safe_file_part(scope)}_{today_text}.{extension}"
+
+
+def safe_file_part(value: str) -> str:
+    text = clean_cell(value) or "전체"
+    return "".join(ch if ch not in '\\/:*?"<>|' else "_" for ch in text)
+
+
+def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, filters: dict) -> bytes:
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    font_name = "HYSMyeongJo-Medium"
+    bold_name = "HYGoThic-Medium"
+    for name in (font_name, bold_name):
+        if name not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(UnicodeCIDFont(name))
+
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        leftMargin=9 * mm,
+        rightMargin=9 * mm,
+        topMargin=10 * mm,
+        bottomMargin=10 * mm,
+    )
+    styles = {
+        "title": ParagraphStyle("inventory_title", fontName=bold_name, fontSize=16, leading=20, alignment=TA_CENTER),
+        "meta": ParagraphStyle("inventory_meta", fontName=font_name, fontSize=8, leading=11, alignment=TA_LEFT),
+        "cell": ParagraphStyle("inventory_cell", fontName=font_name, fontSize=7.2, leading=9, alignment=TA_LEFT),
+        "center": ParagraphStyle("inventory_center", fontName=font_name, fontSize=7.2, leading=9, alignment=TA_CENTER),
+        "right": ParagraphStyle("inventory_right", fontName=font_name, fontSize=7.2, leading=9, alignment=TA_RIGHT),
+    }
+    export_columns = ["카테고리", "상품명", "현재고", "안전재고", "재고상태", "바코드", "리드타임", "정렬순서", "사용 여부"]
+    export_df = df.copy()
+    export_df = export_df[[column for column in export_columns if column in export_df.columns]]
+    meta = [
+        f"재고처: {source_type}",
+        f"기준일자: {work_date:%Y-%m-%d}",
+        f"생성일시: {pd.Timestamp.now():%Y-%m-%d %H:%M}",
+        f"카테고리: {', '.join(filters.get('categories') or ['전체'])}",
+        f"재고상태: {', '.join(filters.get('statuses') or ['전체'])}",
+        f"상품 수: {len(export_df):,}",
+    ]
+    story = [Paragraph("SCM 재고관리", styles["title"]), Spacer(1, 4 * mm), Paragraph(" / ".join(meta), styles["meta"]), Spacer(1, 4 * mm)]
+    table_data = [[Paragraph(column, styles["center"]) for column in export_df.columns]]
+    for _, row in export_df.iterrows():
+        table_data.append(
+            [
+                Paragraph(clean_cell(row.get("카테고리")), styles["cell"]),
+                Paragraph(clean_cell(row.get("상품명")), styles["cell"]),
+                Paragraph(f"{to_int(row.get('현재고')):,}", styles["right"]),
+                Paragraph(f"{to_int(row.get('안전재고')):,}", styles["right"]),
+                Paragraph(clean_cell(row.get("재고상태")), styles["center"]),
+                Paragraph(clean_cell(row.get("바코드")), styles["center"]),
+                Paragraph(f"{to_int(row.get('리드타임')):,}", styles["right"]),
+                Paragraph(f"{to_int(row.get('정렬순서')):,}", styles["right"]),
+                Paragraph(clean_cell(row.get("사용 여부")), styles["center"]),
+            ]
+        )
+    table = Table(table_data, repeatRows=1, colWidths=[24 * mm, 76 * mm, 18 * mm, 18 * mm, 20 * mm, 34 * mm, 18 * mm, 18 * mm, 18 * mm])
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0B6B60")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D7E8E4")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FBFA")]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
+    story.append(table)
+    doc.build(story)
+    return output.getvalue()
 
 
 def fetch_inbound(source_type: str) -> list[dict]:
@@ -1435,13 +1657,16 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
     for row in rows:
         mapped.append(
             {
-                "삭제": False,
+                "선택": False,
+                "카테고리": row.get("category", ""),
                 "상품명": row.get("product_name", ""),
                 "현재고": row.get("current_stock", 0),
                 "안전재고": row.get("safe_stock", 0),
                 "재고상태": row.get("stock_status", ""),
                 "바코드": row.get("barcode", ""),
                 "리드타임": row.get("inbound_cycle", 0) or 0,
+                "정렬순서": row.get("sort_order", 0) or 0,
+                "사용 여부": row.get("is_active", "사용"),
             }
         )
     return pd.DataFrame(mapped, columns=DAILY_COLUMNS)
@@ -1469,7 +1694,7 @@ def inbound_to_editor(rows: list[dict]) -> pd.DataFrame:
 def daily_payload(df: pd.DataFrame, source_type: str, work_date: date) -> list[dict]:
     rows = []
     for _, row in df.iterrows():
-        if bool(row.get("삭제", False)):
+        if bool(row.get("선택", False)) or bool(row.get("삭제", False)):
             continue
         product_name = clean_cell(row.get("상품명"))
         if not product_name:
@@ -1478,7 +1703,7 @@ def daily_payload(df: pd.DataFrame, source_type: str, work_date: date) -> list[d
             {
                 "source_type": source_type,
                 "work_date": work_date.isoformat(),
-                "category": "",
+                "category": clean_cell(row.get("카테고리")),
                 "supplier": "",
                 "product_code": "",
                 "product_name": product_name,
@@ -1586,7 +1811,7 @@ def date_or_none(value):
 def dataframe_to_excel(df: pd.DataFrame) -> bytes:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        export_df = df.drop(columns=["삭제"], errors="ignore").copy()
+        export_df = df.drop(columns=["삭제", "선택"], errors="ignore").copy()
         sheet_name = "재고관리"
         start_row = 2
         export_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=start_row)
@@ -1672,7 +1897,7 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
             worksheet.freeze_panes(start_row + 1, 0)
             worksheet.autofilter(start_row, 0, last_row, last_col)
 
-        numeric_columns = {"현재고", "보유재고", "가용재고", "안전재고", "리드타임", "출고수량", "입고수량"}
+        numeric_columns = {"현재고", "보유재고", "가용재고", "안전재고", "리드타임", "정렬순서", "출고수량", "입고수량"}
         date_columns = {"입고일자", "기준일자"}
         center_columns = {"구분", "SKU", "바코드", "재고상태", "입고구분"}
 
@@ -1695,6 +1920,7 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
                 "품절": workbook.add_format({"bg_color": "#FFE4E4", "font_color": "#B42318"}),
                 "미출": workbook.add_format({"bg_color": "#FFF1D6", "font_color": "#A15C00"}),
                 "입고필요": workbook.add_format({"bg_color": "#FFF7CC", "font_color": "#7A5D00"}),
+                "정상": workbook.add_format({"bg_color": "#EAF7F0", "font_color": "#137333"}),
             }
             for status, fmt in status_formats.items():
                 worksheet.conditional_format(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Integer, LargeBinary, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.database import Base
@@ -65,6 +65,7 @@ class OfflineProductMaster(Base):
     box_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     default_lead_time: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     min_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[str] = mapped_column(String(20), default="사용", nullable=False)
     memo: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
@@ -97,6 +98,7 @@ class ThirdpartyProductMaster(Base):
     box_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     default_lead_time: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     min_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[str] = mapped_column(String(20), default="사용", nullable=False)
     memo: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
@@ -129,6 +131,7 @@ class WarehouseProductMaster(Base):
     box_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     default_lead_time: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     min_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[str] = mapped_column(String(20), default="사용", nullable=False)
     memo: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
@@ -165,6 +168,50 @@ class InventoryInbound(Base):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+
+
+class InventoryUploadHistory(Base):
+    __tablename__ = "inventory_upload_histories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    source_type: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    work_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    uploaded_by: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    upload_mode: Mapped[str] = mapped_column(String(20), default="partial", nullable=False)
+    total_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    matched_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    zeroed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InventoryUploadSnapshot(Base):
+    __tablename__ = "inventory_upload_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    upload_history_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    work_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    product_code: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    barcode: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    previous_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    new_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class InventoryOutputHistory(Base):
+    __tablename__ = "inventory_output_histories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    source_type: Mapped[str] = mapped_column(String(20), default="", index=True, nullable=False)
+    work_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    output_type: Mapped[str] = mapped_column(String(20), default="", nullable=False)
+    created_by: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    filter_json: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    item_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class CategoryBomItem(Base):

@@ -41,6 +41,7 @@ MASTER_COLUMNS = [
     "박스입수",
     "기본 리드타임",
     "최소재고",
+    "정렬순서",
     "사용여부",
     "비고",
 ]
@@ -51,6 +52,7 @@ OFFLINE_MASTER_COLUMNS = [
     "상품명",
     "88바코드",
     "리드타임",
+    "정렬순서",
     "사용여부",
     "비고",
 ]
@@ -223,7 +225,7 @@ def render_single_product_form(source_type: str, key: str) -> None:
             with row2[3]:
                 memo = st.text_input("비고", key=f"product_master_{key}_single_memo")
 
-            row3 = st.columns([0.8, 0.8, 0.9, 0.8, 0.9], gap="small")
+            row3 = st.columns([0.8, 0.8, 0.9, 0.8, 0.8, 0.9], gap="small")
             with row3[0]:
                 pack_qty = st.number_input("입수", min_value=0, step=1, key=f"product_master_{key}_single_pack_qty")
             with row3[1]:
@@ -233,6 +235,8 @@ def render_single_product_form(source_type: str, key: str) -> None:
             with row3[3]:
                 min_stock = st.number_input("최소재고", min_value=0, step=1, key=f"product_master_{key}_single_min_stock")
             with row3[4]:
+                sort_order = st.number_input("정렬순서", min_value=0, step=1, key=f"product_master_{key}_single_sort_order")
+            with row3[5]:
                 is_active = st.selectbox("사용여부", ["사용", "미사용"], key=f"product_master_{key}_single_is_active")
 
             submitted = st.form_submit_button("단품 추가", type="primary", use_container_width=True)
@@ -248,6 +252,7 @@ def render_single_product_form(source_type: str, key: str) -> None:
                     "박스입수": box_qty,
                     "기본 리드타임": default_lead_time,
                     "최소재고": min_stock,
+                    "정렬순서": sort_order,
                     "사용여부": is_active,
                     "비고": memo,
                 }
@@ -319,6 +324,7 @@ def master_column_config() -> dict:
         "박스입수": st.column_config.NumberColumn("박스입수", min_value=0, step=1),
         "기본 리드타임": st.column_config.NumberColumn("기본 리드타임", min_value=0, step=1),
         "최소재고": st.column_config.NumberColumn("최소재고", min_value=0, step=1),
+        "정렬순서": st.column_config.NumberColumn("정렬순서", min_value=0, step=1),
         "사용여부": st.column_config.SelectboxColumn("사용여부", options=["사용", "미사용"]),
     }
 
@@ -330,6 +336,7 @@ def offline_master_column_config() -> dict:
         "상품명": st.column_config.TextColumn("상품명", width="large"),
         "88바코드": st.column_config.TextColumn("88바코드", width="medium"),
         "리드타임": st.column_config.NumberColumn("리드타임", min_value=0, step=1),
+        "정렬순서": st.column_config.NumberColumn("정렬순서", min_value=0, step=1),
         "사용여부": st.column_config.SelectboxColumn("사용여부", options=["사용", "미사용"]),
     }
 
@@ -350,6 +357,7 @@ def master_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "박스입수": row.get("box_qty", 0),
                 "기본 리드타임": row.get("default_lead_time", 0),
                 "최소재고": row.get("min_stock", 0),
+                "정렬순서": row.get("sort_order", 0),
                 "사용여부": row.get("is_active", "사용"),
                 "비고": row.get("memo", ""),
             }
@@ -369,6 +377,7 @@ def offline_master_to_editor(rows: list[dict], keyword: str = "", active_filter:
                 "상품명": product_name,
                 "88바코드": barcode,
                 "리드타임": row.get("default_lead_time", 0),
+                "정렬순서": row.get("sort_order", 0),
                 "사용여부": row.get("is_active", "사용"),
                 "비고": row.get("memo", ""),
             }
@@ -437,6 +446,7 @@ def offline_editor_to_payload(df: pd.DataFrame) -> list[dict]:
             "상품명": product_name,
             "카테고리": clean_value(row.get("카테고리")),
             "기본 리드타임": to_int_value(row.get("리드타임")),
+            "정렬순서": to_int_value(row.get("정렬순서")),
             "사용여부": clean_value(row.get("사용여부")) or "사용",
             "비고": clean_value(row.get("비고")),
         }
@@ -546,6 +556,7 @@ def master_excel(df: pd.DataFrame, title: str) -> bytes:
             "박스입수",
             "기본 리드타임",
             "최소재고",
+            "정렬순서",
             "현재고",
             "안전재고",
             "전일 판매량",

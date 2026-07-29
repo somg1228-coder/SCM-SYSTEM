@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from html.parser import HTMLParser
 from io import BytesIO, StringIO
+import json
 from math import ceil
 import re
 from statistics import median
@@ -14,6 +15,9 @@ from sqlalchemy.orm import Session
 from backend.models import (
     InventoryDaily,
     InventoryInbound,
+    InventoryOutputHistory,
+    InventoryUploadHistory,
+    InventoryUploadSnapshot,
     OfflineProductMaster,
     ThirdpartyProductMaster,
     WarehouseProductMaster,
@@ -45,6 +49,7 @@ PRODUCT_MASTER_COLUMNS = [
     "박스입수",
     "기본 리드타임",
     "최소재고",
+    "정렬순서",
     "사용여부",
     "비고",
 ]
@@ -382,6 +387,7 @@ def product_master_to_dict(row) -> dict:
         "box_qty": row.box_qty,
         "default_lead_time": row.default_lead_time,
         "min_stock": row.min_stock,
+        "sort_order": row.sort_order,
         "is_active": row.is_active,
         "memo": row.memo,
         "created_at": row.created_at,
@@ -405,12 +411,12 @@ def list_product_master(db: Session, source_type: str, keyword: str = "", active
             | (model.brand.like(like))
             | (model.supplier.like(like))
         )
-    return list(db.execute(query.order_by(model.is_active, model.sku)).scalars())
+    return list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
 
 
 def active_product_options(db: Session, source_type: str) -> list[dict]:
     model = product_master_model(source_type)
-    rows = db.execute(select(model).where(model.is_active == "사용").order_by(model.sku)).scalars()
+    rows = db.execute(select(model).where(model.is_active == "사용").order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars()
     return [product_master_to_dict(row) for row in rows]
 
 
@@ -476,6 +482,7 @@ def product_master_dataframe(rows: list) -> pd.DataFrame:
                 "박스입수": row.box_qty,
                 "기본 리드타임": row.default_lead_time,
                 "최소재고": row.min_stock,
+                "정렬순서": row.sort_order,
                 "사용여부": row.is_active,
                 "비고": row.memo,
             }
@@ -533,6 +540,7 @@ def normalize_product_master_row(row: dict) -> dict:
             or data.get("위험수량")
             or data.get("min_stock")
         ),
+        "sort_order": to_int(data.get("정렬순서") or data.get("sort_order") or data.get("순서")),
         "is_active": is_active if is_active in {"사용", "미사용"} else "사용",
         "memo": clean_text(data.get("비고") or data.get("memo")),
     }
@@ -704,6 +712,343 @@ def list_daily(db: Session, source_type: str, work_date: date) -> list[Inventory
             .order_by(InventoryDaily.category, InventoryDaily.product_name, InventoryDaily.barcode)
         ).scalars()
     )
+
+
+def daily_row_for_product(db: Session, source_type: str, work_date: date, product) -> InventoryDaily | None:
+    if product.sku:
+        row = db.execute(
+            select(InventoryDaily).where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date == work_date,
+                InventoryDaily.product_code == product.sku,
+            )
+        ).scalars().first()
+        if row:
+            return row
+    if product.barcode:
+        row = db.execute(
+            select(InventoryDaily).where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date == work_date,
+                InventoryDaily.barcode == product.barcode,
+            )
+        ).scalars().first()
+        if row:
+            return row
+    return db.execute(
+        select(InventoryDaily).where(
+            InventoryDaily.source_type == source_type,
+            InventoryDaily.work_date == work_date,
+            InventoryDaily.product_name == product.product_name,
+        )
+    ).scalars().first()
+
+
+def ensure_daily_for_product(db: Session, source_type: str, work_date: date, product) -> InventoryDaily:
+    row = daily_row_for_product(db, source_type, work_date, product)
+    if row is None:
+        row = InventoryDaily(
+            source_type=source_type,
+            work_date=work_date,
+            product_code=product.sku,
+            product_name=product.product_name,
+            barcode=product.barcode,
+            category=product.large_category,
+            supplier=product.supplier,
+            safe_stock=product.min_stock,
+            inbound_cycle=product.default_lead_time or None,
+        )
+        db.add(row)
+        db.flush()
+    apply_product_master_to_daily(row, product)
+    row.safe_stock = product.min_stock
+    row.inbound_cycle = product.default_lead_time or None
+    return row
+
+
+def stock_status_for_values(current_stock: int, safe_stock: int) -> str:
+    if current_stock < 0:
+        return "미출"
+    if current_stock == 0:
+        return "품절"
+    if safe_stock > 0 and current_stock < safe_stock:
+        return "입고필요"
+    return "정상"
+
+
+def master_based_inventory_rows(db: Session, source_type: str, work_date: date, active_only: bool = False) -> list[dict]:
+    model = product_master_model(source_type)
+    query = select(model)
+    if active_only:
+        query = query.where(model.is_active == "사용")
+    products = list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
+    rows = []
+    for product in products:
+        daily = daily_row_for_product(db, source_type, work_date, product)
+        current_stock = int(daily.current_stock or 0) if daily else 0
+        safe_stock = int(product.min_stock or 0)
+        status = stock_status_for_values(current_stock, safe_stock)
+        rows.append(
+            {
+                "source_type": source_type,
+                "work_date": work_date,
+                "category": product.large_category,
+                "product_code": product.sku,
+                "product_name": product.product_name,
+                "current_stock": current_stock,
+                "available_stock": current_stock,
+                "safe_stock": safe_stock,
+                "stock_status": status,
+                "barcode": product.barcode,
+                "inbound_cycle": product.default_lead_time or 0,
+                "sort_order": product.sort_order or 0,
+                "is_active": product.is_active,
+            }
+        )
+    return rows
+
+
+def read_inventory_upload_file(file_bytes: bytes, file_name: str = "") -> pd.DataFrame:
+    if file_name.lower().endswith(".csv"):
+        for encoding in ("utf-8-sig", "cp949", "utf-8"):
+            try:
+                df = pd.read_csv(BytesIO(file_bytes), encoding=encoding)
+                df.attrs["read_method"] = "csv"
+                return normalize_import_headers(df)
+            except UnicodeDecodeError:
+                continue
+        df = pd.read_csv(BytesIO(file_bytes))
+        df.attrs["read_method"] = "csv"
+        return normalize_import_headers(df)
+    return read_excel(file_bytes)
+
+
+def to_int_strict(value) -> tuple[int, bool]:
+    text = clean_text(value).replace(",", "")
+    if not text:
+        return 0, False
+    try:
+        number = int(float(text))
+    except ValueError:
+        return 0, False
+    return number, number >= 0
+
+
+def prepare_stock_upload_preview(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    file_bytes: bytes,
+    file_name: str = "",
+    upload_mode: str = "partial",
+) -> dict:
+    df = read_inventory_upload_file(file_bytes, file_name)
+    try:
+        current_col = find_column(df, ["보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고"])
+    except ValueError:
+        try:
+            current_col = find_column(df, ["가용재고", "판매가능재고"])
+        except ValueError as exc:
+            raise ValueError("현재고를 찾지 못했습니다. 현재고/보유재고/재고수량 컬럼을 확인해주세요.") from exc
+    try:
+        product_code_col = find_column(df, ["SKU", "상품코드", "품목코드", "상품번호"])
+    except ValueError:
+        product_code_col = None
+    try:
+        barcode_col = find_column(df, ["88바코드", "바코드", "옵션바코드"])
+    except ValueError:
+        barcode_col = None
+    try:
+        name_col = find_column(df, ["상품명", "품목"])
+    except ValueError:
+        name_col = None
+
+    products = list(db.execute(select(product_master_model(source_type))).scalars())
+    by_sku = {product.sku: product for product in products if product.sku}
+    by_name = {product.product_name: product for product in products if product.product_name}
+    by_barcode: dict[str, object] = {}
+    duplicate_master_barcodes: set[str] = set()
+    for product in products:
+        if not product.barcode:
+            continue
+        if product.barcode in by_barcode:
+            duplicate_master_barcodes.add(product.barcode)
+        by_barcode[product.barcode] = product
+
+    seen_barcodes: set[str] = set()
+    duplicate_barcodes: set[str] = set()
+    preview_rows = []
+    uploaded_product_keys: set[str] = set()
+    matched_count = failed_count = duplicate_count = empty_barcode_count = invalid_stock_count = negative_stock_count = 0
+
+    for index, row in enumerate(df.fillna("").to_dict("records"), start=1):
+        barcode = clean_text(row.get(barcode_col)) if barcode_col else ""
+        product_code = clean_text(row.get(product_code_col)) if product_code_col else ""
+        product_name = clean_text(row.get(name_col)) if name_col else ""
+        current_stock, stock_ok = to_int_strict(row.get(current_col))
+        errors = []
+        if not barcode:
+            empty_barcode_count += 1
+        elif barcode in seen_barcodes:
+            duplicate_barcodes.add(barcode)
+            duplicate_count += 1
+            errors.append("중복 바코드")
+        else:
+            seen_barcodes.add(barcode)
+        if barcode in duplicate_master_barcodes:
+            errors.append("마스터 중복 바코드")
+        if not stock_ok:
+            if clean_text(row.get(current_col)).replace(",", "").startswith("-"):
+                negative_stock_count += 1
+                errors.append("음수 재고")
+            else:
+                invalid_stock_count += 1
+                errors.append("숫자가 아닌 재고")
+
+        product = by_barcode.get(barcode) if barcode else None
+        if product is None and product_code:
+            product = by_sku.get(product_code)
+        if product is None and product_name:
+            product = by_name.get(product_name)
+        if product is None:
+            errors.append("매칭 실패")
+
+        previous_stock = 0
+        if product:
+            daily = daily_row_for_product(db, source_type, work_date, product)
+            previous_stock = int(daily.current_stock or 0) if daily else 0
+
+        if errors:
+            failed_count += 1
+        else:
+            matched_count += 1
+            uploaded_product_keys.add(product.sku)
+
+        preview_rows.append(
+            {
+                "row_no": index,
+                "product_code": product.sku if product else product_code,
+                "category": product.large_category if product else "",
+                "product_name": product.product_name if product else product_name,
+                "barcode": product.barcode if product else barcode,
+                "previous_stock": previous_stock,
+                "new_stock": current_stock,
+                "status": "정상" if not errors else ", ".join(errors),
+                "matched": bool(product) and not errors,
+            }
+        )
+
+    zero_rows = []
+    if upload_mode == "full":
+        for product in products:
+            if product.sku in uploaded_product_keys:
+                continue
+            daily = daily_row_for_product(db, source_type, work_date, product)
+            previous_stock = int(daily.current_stock or 0) if daily else 0
+            if previous_stock == 0:
+                continue
+            zero_rows.append(
+                {
+                    "row_no": "",
+                    "product_code": product.sku,
+                    "category": product.large_category,
+                    "product_name": product.product_name,
+                    "barcode": product.barcode,
+                    "previous_stock": previous_stock,
+                    "new_stock": 0,
+                    "status": "전체 파일 누락 0 처리",
+                    "matched": True,
+                    "zero_missing": True,
+                }
+            )
+    preview_rows.extend(zero_rows)
+    return {
+        "ok": True,
+        "file_name": file_name,
+        "upload_mode": upload_mode,
+        "total_rows": len(df.index),
+        "matched_count": matched_count,
+        "failed_count": failed_count,
+        "duplicate_count": duplicate_count,
+        "empty_barcode_count": empty_barcode_count,
+        "invalid_stock_count": invalid_stock_count,
+        "negative_stock_count": negative_stock_count,
+        "zeroed_count": len(zero_rows),
+        "preview_rows": preview_rows,
+    }
+
+
+def apply_stock_upload_preview(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    preview: dict,
+    uploaded_by: str = "",
+) -> dict:
+    rows = [row for row in preview.get("preview_rows", []) if row.get("matched")]
+    history = InventoryUploadHistory(
+        source_type=source_type,
+        work_date=work_date,
+        file_name=clean_text(preview.get("file_name")),
+        uploaded_by=clean_text(uploaded_by) or "SYSTEM",
+        upload_mode=clean_text(preview.get("upload_mode")) or "partial",
+        total_rows=int(preview.get("total_rows") or 0),
+        matched_count=int(preview.get("matched_count") or 0),
+        failed_count=int(preview.get("failed_count") or 0),
+        duplicate_count=int(preview.get("duplicate_count") or 0),
+        zeroed_count=int(preview.get("zeroed_count") or 0),
+    )
+    db.add(history)
+    db.flush()
+
+    count = 0
+    for row in rows:
+        product = find_product_master(db, source_type, clean_text(row.get("product_code")), clean_text(row.get("barcode")), clean_text(row.get("product_name")))
+        if not product:
+            continue
+        item = ensure_daily_for_product(db, source_type, work_date, product)
+        previous_stock = int(item.current_stock or 0)
+        new_stock = to_int(row.get("new_stock"))
+        db.add(
+            InventoryUploadSnapshot(
+                upload_history_id=history.id,
+                source_type=source_type,
+                work_date=work_date,
+                product_code=product.sku,
+                barcode=product.barcode,
+                product_name=product.product_name,
+                previous_stock=previous_stock,
+                new_stock=new_stock,
+            )
+        )
+        item.current_stock = new_stock
+        item.available_stock = new_stock
+        item.stock_status = stock_status_for_values(new_stock, product.min_stock or 0)
+        count += 1
+    db.commit()
+    return {"ok": True, "message": "재고 업로드 반영 완료", "count": count, "history_id": history.id}
+
+
+def record_inventory_output(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    output_type: str,
+    filters: dict,
+    item_count: int,
+    created_by: str = "",
+) -> None:
+    db.add(
+        InventoryOutputHistory(
+            source_type=source_type,
+            work_date=work_date,
+            output_type=output_type,
+            created_by=clean_text(created_by) or "SYSTEM",
+            filter_json=json.dumps(filters, ensure_ascii=False, default=str),
+            item_count=item_count,
+        )
+    )
+    db.commit()
 
 
 def list_inbound(db: Session, source_type: str) -> list[InventoryInbound]:
@@ -1126,7 +1471,11 @@ def calculate_safe_stock(db: Session, source_type: str, work_date: date) -> int:
     for item in list_daily(db, source_type, work_date):
         key = (item.product_name, item.barcode or "")
         base = max(last_map.get(key, 0), prev_map.get(key, 0))
-        item.safe_stock = ceil(base * 6 / 5)
+        safe_stock = ceil(base * 6 / 5)
+        item.safe_stock = safe_stock
+        product = find_product_master(db, source_type, item.product_code, item.barcode, item.product_name)
+        if product:
+            product.min_stock = safe_stock
         count += 1
     db.commit()
     return count
@@ -1135,15 +1484,10 @@ def calculate_safe_stock(db: Session, source_type: str, work_date: date) -> int:
 def update_status(db: Session, source_type: str, work_date: date) -> int:
     count = 0
     for item in list_daily(db, source_type, work_date):
-        stock_value = item.available_stock if item.available_stock is not None else item.current_stock
-        if stock_value < 0:
-            item.stock_status = "미출"
-        elif stock_value == 0:
-            item.stock_status = "품절"
-        elif stock_value < item.safe_stock:
-            item.stock_status = "입고필요"
-        else:
-            item.stock_status = ""
+        product = find_product_master(db, source_type, item.product_code, item.barcode, item.product_name)
+        safe_stock = int(product.min_stock or 0) if product else int(item.safe_stock or 0)
+        stock_value = int(item.available_stock if item.available_stock is not None else item.current_stock or 0)
+        item.stock_status = stock_status_for_values(stock_value, safe_stock)
         count += 1
     db.commit()
     return count

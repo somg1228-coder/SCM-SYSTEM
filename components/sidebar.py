@@ -61,7 +61,7 @@ def render_sidebar() -> str:
         for group_index, (group_label, items) in enumerate(MENU_GROUPS):
             group_tone = group_tones[group_index] if group_index < len(group_tones) else "support"
             st.markdown(
-                f'<div class="sidebar-group-title sidebar-group-{group_tone}">{escape(group_label)}</div>',
+                f'<div class="sidebar-group-title sidebar-group-{group_tone}"><span class="sidebar-category-label">{escape(group_label)}</span></div>',
                 unsafe_allow_html=True,
             )
             for key, label in items:
@@ -75,7 +75,7 @@ def render_sidebar() -> str:
                 )
 
         settings_label = SETTINGS_ITEM[1]
-        st.markdown('<div class="sidebar-group-title sidebar-group-settings">설정</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-group-title sidebar-group-settings"><span class="sidebar-category-label">설정</span></div>', unsafe_allow_html=True)
         st.button(
             settings_label,
             key=f"sidebar_nav_{SETTINGS_ITEM[0]}",
