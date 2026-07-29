@@ -11848,3 +11848,25 @@ div[class*="st-key-schedule_week_picker"] {
 .weekly-table-wrap .empty {
     color: #94A3B8 !important;
 }
+
+/* Pull the sidebar brand up to the main header row. */
+section[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}
+
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+    padding: 6px 14px 12px !important;
+}
+
+section[data-testid="stSidebar"] .block-container {
+    padding-top: 0 !important;
+}
+
+section[data-testid="stSidebar"] .sidebar-brand {
+    margin-top: -58px !important;
+}
