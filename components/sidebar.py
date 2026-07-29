@@ -74,7 +74,6 @@ def render_sidebar() -> str:
                     args=(label,),
                 )
 
-        st.markdown('<div class="sidebar-bottom"><div class="sidebar-meta">SCM Portal · v1.0</div>', unsafe_allow_html=True)
         settings_label = SETTINGS_ITEM[1]
         st.markdown('<div class="sidebar-group-title sidebar-group-settings">설정</div>', unsafe_allow_html=True)
         st.button(
@@ -85,6 +84,6 @@ def render_sidebar() -> str:
             on_click=activate_page,
             args=(settings_label,),
         )
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-meta">SCM Portal · v1.0</div>', unsafe_allow_html=True)
 
     return st.session_state["page"]

@@ -11151,3 +11151,132 @@ button[kind="primary"],
     --menu-accent: #A98258;
     --menu-icon-bg: #F8F1EA;
 }
+
+/* Sidebar final compact repair: no bottom clipping, no detached color blocks. */
+[data-testid="stSidebar"] {
+    background: #F3F2EF !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+}
+
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    height: 100vh !important;
+    max-height: 100vh !important;
+    min-height: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+}
+
+[data-testid="stSidebar"] .block-container {
+    height: auto !important;
+    margin: 0 !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    padding: 12px 10px 12px !important;
+}
+
+.sidebar-brand {
+    border-radius: 16px !important;
+    grid-template-columns: 30px minmax(0, 1fr) !important;
+    margin: 0 0 8px !important;
+    min-height: 44px !important;
+    padding: 7px 9px !important;
+}
+
+.sidebar-brand-mark {
+    border-radius: 11px !important;
+    height: 30px !important;
+    width: 30px !important;
+}
+
+.sidebar-brand-mark::after {
+    height: 11px !important;
+    left: 8px !important;
+    top: 8px !important;
+    width: 11px !important;
+}
+
+.sidebar-brand span:last-child {
+    font-size: 13.5px !important;
+}
+
+.sidebar-divider {
+    display: none !important;
+}
+
+.sidebar-group-title {
+    border-radius: 15px !important;
+    box-shadow: 0 2px 8px rgba(31, 41, 55, 0.025) !important;
+    font-size: 12px !important;
+    grid-template-columns: 26px minmax(0, 1fr) 14px !important;
+    margin: 8px 0 6px !important;
+    min-height: 36px !important;
+    padding: 5px 10px 5px 8px !important;
+}
+
+.sidebar-group-title:first-of-type {
+    margin-top: 6px !important;
+}
+
+.sidebar-group-title::before {
+    border-radius: 10px !important;
+    height: 26px !important;
+    -webkit-mask-size: 16px 16px !important;
+    mask-size: 16px 16px !important;
+    width: 26px !important;
+}
+
+.sidebar-group-title::after {
+    height: 14px !important;
+    -webkit-mask-size: 14px 14px !important;
+    mask-size: 14px 14px !important;
+    width: 14px !important;
+}
+
+[data-testid="stSidebar"] .stButton {
+    margin: 0 0 4px !important;
+}
+
+[data-testid="stSidebar"] .stButton > button {
+    border-radius: 15px !important;
+    font-size: 13px !important;
+    min-height: 34px !important;
+    padding: 0 10px 0 43px !important;
+}
+
+[data-testid="stSidebar"] .stButton > button::before {
+    border-radius: 10px !important;
+    height: 24px !important;
+    left: 9px !important;
+    width: 24px !important;
+}
+
+[data-testid="stSidebar"] .stButton > button::after {
+    height: 16px !important;
+    left: 13px !important;
+    width: 16px !important;
+}
+
+[data-testid="stSidebar"] .stButton > button p,
+[data-testid="stSidebar"] .stButton > button span {
+    font-size: 13px !important;
+}
+
+.sidebar-meta {
+    border-top: 1px solid #E2E6EA !important;
+    color: #8A94A3 !important;
+    display: block !important;
+    font-size: 10.5px !important;
+    line-height: 1 !important;
+    margin: 8px 2px 0 !important;
+    padding: 8px 6px 0 !important;
+}
+
+.sidebar-bottom {
+    border-top: 0 !important;
+    display: block !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}
