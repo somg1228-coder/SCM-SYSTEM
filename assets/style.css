@@ -11512,3 +11512,284 @@ button[kind="primary"],
 .sidebar-meta {
     margin-top: 6px !important;
 }
+
+/* Sidebar hierarchy and spacing final repair. */
+[data-testid="stSidebar"] {
+    background: #F8F7F4 !important;
+}
+
+[data-testid="stSidebar"] .block-container {
+    padding: 14px 14px 12px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stElementContainer"] {
+    overflow: visible !important;
+}
+
+.sidebar-brand {
+    align-items: center !important;
+    background: #FFFFFF !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 17px !important;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06) !important;
+    display: grid !important;
+    gap: 10px !important;
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    min-height: 54px !important;
+    margin: 0 0 12px !important;
+    padding: 9px 11px !important;
+}
+
+.sidebar-brand-mark {
+    background: linear-gradient(180deg, #F3F4FF 0%, #ECEEFE 100%) !important;
+    border: 1px solid #C9CBE8 !important;
+    border-radius: 12px !important;
+    height: 34px !important;
+    width: 34px !important;
+}
+
+.sidebar-brand-mark::after {
+    border-color: #5256A8 !important;
+    height: 12px !important;
+    left: 10px !important;
+    top: 10px !important;
+    width: 12px !important;
+}
+
+.sidebar-brand-title,
+.sidebar-brand span:last-child {
+    color: #111827 !important;
+    display: block !important;
+    font-size: 14px !important;
+    font-weight: 850 !important;
+    letter-spacing: 0 !important;
+    line-height: 1.2 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.sidebar-divider {
+    background: #E5E7EB !important;
+    height: 1px !important;
+    margin: 0 2px 12px !important;
+}
+
+.sidebar-group-title {
+    align-items: center !important;
+    border-radius: 15px !important;
+    display: grid !important;
+    font-size: 13px !important;
+    font-weight: 760 !important;
+    grid-template-columns: 25px minmax(0, 1fr) 14px !important;
+    height: 36px !important;
+    line-height: 1.2 !important;
+    margin: 14px 0 8px !important;
+    min-height: 36px !important;
+    padding: 5px 10px 5px 8px !important;
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+.sidebar-group-title:first-of-type {
+    margin-top: 0 !important;
+}
+
+.sidebar-category-label {
+    align-items: center !important;
+    color: #263445 !important;
+    display: flex !important;
+    font-size: 13px !important;
+    font-weight: 760 !important;
+    height: 100% !important;
+    line-height: 1.2 !important;
+}
+
+.sidebar-group-title::before {
+    border-radius: 9px !important;
+    height: 23px !important;
+    -webkit-mask-size: 14px 14px !important;
+    mask-size: 14px 14px !important;
+    width: 23px !important;
+}
+
+.sidebar-group-title::after {
+    height: 14px !important;
+    -webkit-mask-size: 13px 13px !important;
+    mask-size: 13px 13px !important;
+    width: 14px !important;
+}
+
+[data-testid="stSidebar"] .stButton {
+    margin: 0 0 7px !important;
+    position: relative !important;
+    z-index: 2 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button {
+    align-items: center !important;
+    border-radius: 15px !important;
+    font-size: 13px !important;
+    font-weight: 560 !important;
+    justify-content: center !important;
+    min-height: 38px !important;
+    padding: 0 12px 0 42px !important;
+}
+
+[data-testid="stSidebar"] .stButton > button::before {
+    border-radius: 10px !important;
+    height: 24px !important;
+    left: 10px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 24px !important;
+}
+
+[data-testid="stSidebar"] .stButton > button::after {
+    height: 15px !important;
+    left: 14px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 15px !important;
+}
+
+[data-testid="stSidebar"] .stButton > button p,
+[data-testid="stSidebar"] .stButton > button span {
+    font-size: 13px !important;
+    font-weight: 560 !important;
+    line-height: 1.2 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] {
+    font-weight: 700 !important;
+}
+
+.sidebar-meta {
+    border-top: 1px solid #E5E7EB !important;
+    color: #64748B !important;
+    font-size: 10px !important;
+    margin: 10px 2px 0 !important;
+    padding: 8px 4px 0 !important;
+}
+
+/* Clickable sidebar category toggles. */
+[data-testid="stSidebar"] div[class*="sidebar_group_"] {
+    margin: 12px 0 7px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button {
+    --group-accent: #64748B;
+    --group-bg: #F8FAFC;
+    --group-border: #E5E7EB;
+    align-items: center !important;
+    background: var(--group-bg) !important;
+    border: 1px solid var(--group-border) !important;
+    border-radius: 15px !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035) !important;
+    color: #263445 !important;
+    display: flex !important;
+    font-size: 13px !important;
+    font-weight: 780 !important;
+    justify-content: flex-start !important;
+    min-height: 38px !important;
+    padding: 0 34px 0 40px !important;
+    text-align: left !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button:hover {
+    background: #FFFFFF !important;
+    border-color: #D8DEE8 !important;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05) !important;
+    color: #111827 !important;
+    transform: translateY(-1px) !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button::before {
+    background: var(--group-accent) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    content: "" !important;
+    height: 16px !important;
+    left: 13px !important;
+    position: absolute !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 16px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button::after {
+    background: var(--group-accent) !important;
+    content: "" !important;
+    height: 16px !important;
+    left: auto !important;
+    position: absolute !important;
+    right: 12px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    transition: transform 220ms ease-in-out !important;
+    width: 16px !important;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / 15px 15px no-repeat !important;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / 15px 15px no-repeat !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button p,
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button span {
+    color: inherit !important;
+    font-size: 13px !important;
+    font-weight: 780 !important;
+    line-height: 1.2 !important;
+    text-align: left !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_work"] button {
+    --group-accent: #5D78C8;
+    --group-bg: #F4F7FC;
+    --group-border: #DDE8F8;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_ops"] button {
+    --group-accent: #5F8F78;
+    --group-bg: #F5FAF7;
+    --group-border: #DDEDE4;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_support"] button {
+    --group-accent: #7D6CC8;
+    --group-bg: #F8F5FF;
+    --group-border: #E6DFFC;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_settings"] button {
+    --group-accent: #B88658;
+    --group-bg: #FFF9F2;
+    --group-border: #F1E3D2;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_work"] button::before {
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16'/%3E%3Crect width='20' height='14' x='2' y='6' rx='2'/%3E%3Cpath d='M12 12h.01'/%3E%3C/svg%3E") center / 16px 16px no-repeat !important;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16'/%3E%3Crect width='20' height='14' x='2' y='6' rx='2'/%3E%3Cpath d='M12 12h.01'/%3E%3C/svg%3E") center / 16px 16px no-repeat !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_ops"] button::before {
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 7h-9'/%3E%3Cpath d='M14 17H5'/%3E%3Ccircle cx='17' cy='17' r='3'/%3E%3Ccircle cx='7' cy='7' r='3'/%3E%3C/svg%3E") center / 16px 16px no-repeat !important;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 7h-9'/%3E%3Cpath d='M14 17H5'/%3E%3Ccircle cx='17' cy='17' r='3'/%3E%3Ccircle cx='7' cy='7' r='3'/%3E%3C/svg%3E") center / 16px 16px no-repeat !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_support"] button::before {
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m4.93 4.93 4.24 4.24'/%3E%3Cpath d='m14.83 9.17 4.24-4.24'/%3E%3Cpath d='m14.83 14.83 4.24 4.24'/%3E%3Cpath d='m9.17 14.83-4.24 4.24'/%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3C/svg%3E") center / 16px 16px no-repeat !important;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m4.93 4.93 4.24 4.24'/%3E%3Cpath d='m14.83 9.17 4.24-4.24'/%3E%3Cpath d='m14.83 14.83 4.24 4.24'/%3E%3Cpath d='m9.17 14.83-4.24 4.24'/%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3C/svg%3E") center / 16px 16px no-repeat !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_settings"] button::before {
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.52a2 2 0 0 1-1 1.72l-.15.1a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.52a2 2 0 0 1 1-1.72l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") center / 16px 16px no-repeat !important;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.52a2 2 0 0 1-1 1.72l-.15.1a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.52a2 2 0 0 1 1-1.72l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") center / 16px 16px no-repeat !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_work_closed"] button::after,
+[data-testid="stSidebar"] div[class*="sidebar_group_ops_closed"] button::after,
+[data-testid="stSidebar"] div[class*="sidebar_group_support_closed"] button::after,
+[data-testid="stSidebar"] div[class*="sidebar_group_settings_closed"] button::after {
+    transform: translateY(-50%) rotate(-90deg) !important;
+}

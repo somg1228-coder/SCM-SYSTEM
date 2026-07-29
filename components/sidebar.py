@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from html import escape
-
 import streamlit as st
 
 
@@ -48,42 +46,69 @@ def activate_page(label: str) -> None:
         pass
 
 
+def sidebar_group_state_key(group_tone: str) -> str:
+    return f"sidebar_group_expanded_{group_tone}"
+
+
+def is_group_expanded(group_tone: str) -> bool:
+    key = sidebar_group_state_key(group_tone)
+    if key not in st.session_state:
+        st.session_state[key] = True
+    return bool(st.session_state[key])
+
+
+def toggle_group(group_tone: str) -> None:
+    key = sidebar_group_state_key(group_tone)
+    st.session_state[key] = not bool(st.session_state.get(key, True))
+
+
+def render_group_toggle(group_label: str, group_tone: str) -> bool:
+    expanded = is_group_expanded(group_tone)
+    state = "open" if expanded else "closed"
+    st.button(
+        group_label,
+        key=f"sidebar_group_{group_tone}_{state}",
+        use_container_width=True,
+        type="secondary",
+        on_click=toggle_group,
+        args=(group_tone,),
+    )
+    return expanded
+
+
 def render_sidebar() -> str:
     active_page = normalize_page()
     group_tones = ["work", "ops", "support"]
 
     with st.sidebar:
         st.markdown(
-            '<div class="sidebar-brand"><span class="sidebar-brand-mark"></span><span>SCM 물류운영포털</span></div>'
+            '<div class="sidebar-brand"><span class="sidebar-brand-mark"></span><span class="sidebar-brand-title">SCM 물류운영포털</span></div>'
             '<div class="sidebar-divider"></div>',
             unsafe_allow_html=True,
         )
         for group_index, (group_label, items) in enumerate(MENU_GROUPS):
             group_tone = group_tones[group_index] if group_index < len(group_tones) else "support"
-            st.markdown(
-                f'<div class="sidebar-group-title sidebar-group-{group_tone}"><span class="sidebar-category-label">{escape(group_label)}</span></div>',
-                unsafe_allow_html=True,
-            )
-            for key, label in items:
-                st.button(
-                    label,
-                    key=f"sidebar_nav_{key}",
-                    use_container_width=True,
-                    type="primary" if active_page == label else "secondary",
-                    on_click=activate_page,
-                    args=(label,),
-                )
+            if render_group_toggle(group_label, group_tone):
+                for key, label in items:
+                    st.button(
+                        label,
+                        key=f"sidebar_nav_{key}",
+                        use_container_width=True,
+                        type="primary" if active_page == label else "secondary",
+                        on_click=activate_page,
+                        args=(label,),
+                    )
 
         settings_label = SETTINGS_ITEM[1]
-        st.markdown('<div class="sidebar-group-title sidebar-group-settings"><span class="sidebar-category-label">설정</span></div>', unsafe_allow_html=True)
-        st.button(
-            settings_label,
-            key=f"sidebar_nav_{SETTINGS_ITEM[0]}",
-            use_container_width=True,
-            type="primary" if active_page == settings_label else "secondary",
-            on_click=activate_page,
-            args=(settings_label,),
-        )
+        if render_group_toggle("설정", "settings"):
+            st.button(
+                settings_label,
+                key=f"sidebar_nav_{SETTINGS_ITEM[0]}",
+                use_container_width=True,
+                type="primary" if active_page == settings_label else "secondary",
+                on_click=activate_page,
+                args=(settings_label,),
+            )
         st.markdown('<div class="sidebar-meta">SCM Portal · v1.0</div>', unsafe_allow_html=True)
 
     return st.session_state["page"]
