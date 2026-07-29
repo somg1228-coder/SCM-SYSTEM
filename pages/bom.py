@@ -643,14 +643,14 @@ def style_bom_editor_df(df: pd.DataFrame):
     def row_style(row: pd.Series) -> list[str]:
         if is_group_item_type(row.get("유형", "")):
             return [
-                "background-color: rgba(210, 210, 210, 0.25); "
-                "color: #ffffff; "
+                "background-color: #eef1f0; "
+                "color: #24303c; "
                 "font-weight: 900;"
             ] * len(row)
         if str(row.get("표시", "")).strip().startswith("└"):
             return [
-                "background-color: rgba(210, 210, 210, 0.08); "
-                "color: #eefaf7;"
+                "background-color: #fbfaf7; "
+                "color: #52606e;"
             ] * len(row)
         return [""] * len(row)
 
@@ -681,24 +681,25 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
         <style>
             :root,
             html {{
-                color-scheme: dark;
+                color-scheme: light;
                 font-family: "Pretendard", "Noto Sans KR", Arial, sans-serif;
-                background: #031b18;
+                background: transparent;
             }}
             * {{
                 box-sizing: border-box;
                 letter-spacing: 0;
             }}
             body {{
-                background: #031b18;
-                color: #f2fffb;
+                background: transparent;
+                color: #24303c;
                 margin: 0;
                 overflow: hidden;
             }}
             .outline-shell {{
-                background: rgba(6, 48, 43, 0.58);
-                border: 1px solid rgba(126, 197, 185, 0.28);
+                background: #f6f5f2;
+                border: 1px solid #d7dde2;
                 border-radius: 8px;
+                box-shadow: 0 8px 22px rgba(34, 45, 56, 0.055);
                 display: flex;
                 flex-direction: column;
                 height: 604px;
@@ -706,8 +707,8 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 padding: 0.72rem;
             }}
             .outline-toolbar {{
-                background: rgba(6, 48, 43, 0.96);
-                border-bottom: 1px solid rgba(126, 197, 185, 0.24);
+                background: #eef1f0;
+                border-bottom: 1px solid #d7dde2;
                 flex: 0 0 auto;
                 margin: -0.72rem -0.72rem 0;
                 padding: 0.72rem 0.72rem 0.66rem;
@@ -722,7 +723,7 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 margin-bottom: 0.56rem;
             }}
             .outline-field label {{
-                color: #cfe8e2;
+                color: #52606e;
                 display: block;
                 font-size: 0.72rem;
                 font-weight: 900;
@@ -730,10 +731,10 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
             }}
             .outline-field input,
             .outline-field select {{
-                background: #171a22;
-                border: 1px solid rgba(126, 197, 185, 0.28);
+                background: #f8f8f5;
+                border: 1px solid #cfd7dd;
                 border-radius: 7px;
-                color: #ffffff;
+                color: #24303c;
                 font-size: 0.82rem;
                 font-weight: 750;
                 height: 38px;
@@ -753,15 +754,15 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 gap: 0.42rem;
             }}
             .outline-divider {{
-                border-top: 1px solid rgba(126, 197, 185, 0.2);
+                border-top: 1px solid #d7dde2;
                 flex: 0 0 auto;
                 margin: 0 -0.72rem 0.56rem;
             }}
             button {{
-                background: #141720;
-                border: 1px solid rgba(126, 197, 185, 0.32);
+                background: #e7edf1;
+                border: 1px solid #c8d0d7;
                 border-radius: 7px;
-                color: #ffffff;
+                color: #24303c;
                 cursor: pointer;
                 font-size: 0.78rem;
                 font-weight: 900;
@@ -769,18 +770,19 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 padding: 0 0.82rem;
             }}
             button:hover {{
-                border-color: rgba(117, 236, 219, 0.58);
+                background: #dfe7ec;
+                border-color: #aebbc7;
             }}
             .outline-count {{
-                color: #b2d5cd;
+                color: #6b7785;
                 font-size: 0.78rem;
                 font-weight: 850;
             }}
             .outline-count strong {{
-                color: #ffffff;
+                color: #24303c;
             }}
             .sku-list {{
-                border: 1px solid rgba(126, 197, 185, 0.2);
+                border: 1px solid #d7dde2;
                 border-radius: 7px;
                 flex: 1 1 auto;
                 min-height: 0;
@@ -788,14 +790,14 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 padding: 0.42rem;
             }}
             .sku-card {{
-                background: rgba(8, 39, 36, 0.78);
-                border: 1px solid rgba(126, 197, 185, 0.22);
+                background: #fbfaf7;
+                border: 1px solid #d7dde2;
                 border-radius: 7px;
                 margin-bottom: 0.42rem;
                 overflow: hidden;
             }}
             .sku-card[open] {{
-                border-color: rgba(117, 236, 219, 0.42);
+                border-color: #b7c4cf;
             }}
             .sku-card[hidden] {{
                 display: none;
@@ -819,7 +821,7 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 min-width: 0;
             }}
             .sku-title {{
-                color: #ffffff;
+                color: #24303c;
                 display: block;
                 font-size: 0.9rem;
                 font-weight: 950;
@@ -828,7 +830,7 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 white-space: nowrap;
             }}
             .sku-meta {{
-                color: #b2d5cd;
+                color: #52606e;
                 display: flex;
                 flex-wrap: wrap;
                 font-size: 0.72rem;
@@ -845,21 +847,21 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 padding: 0 0.62rem;
             }}
             .sku-body {{
-                border-top: 1px solid rgba(126, 197, 185, 0.18);
+                border-top: 1px solid #d7dde2;
                 padding: 0.5rem 0.72rem 0.72rem;
             }}
             .product-row,
             .component-detail {{
-                border: 1px solid rgba(210, 232, 228, 0.16);
+                border: 1px solid #d7dde2;
                 border-radius: 6px;
                 margin-top: 0.36rem;
                 overflow: hidden;
             }}
             .product-row {{
-                background: rgba(210, 210, 210, 0.18);
+                background: #eef1f0;
             }}
             .component-detail {{
-                background: rgba(2, 20, 19, 0.62);
+                background: #f6f5f2;
             }}
             .component-detail summary {{
                 align-items: center;
@@ -874,13 +876,13 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 display: none;
             }}
             .component-detail[open] summary {{
-                border-bottom: 1px solid rgba(210, 232, 228, 0.13);
+                border-bottom: 1px solid #d7dde2;
             }}
             .chip {{
-                background: rgba(22, 213, 198, 0.13);
-                border: 1px solid rgba(22, 213, 198, 0.22);
+                background: #e7edf1;
+                border: 1px solid #c8d0d7;
                 border-radius: 999px;
-                color: #dffaf4;
+                color: #3f596f;
                 display: inline-flex;
                 font-size: 0.68rem;
                 font-weight: 950;
@@ -890,7 +892,7 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 white-space: nowrap;
             }}
             .name {{
-                color: #ffffff;
+                color: #24303c;
                 font-size: 0.78rem;
                 font-weight: 900;
                 overflow: hidden;
@@ -898,7 +900,7 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 white-space: nowrap;
             }}
             .muted {{
-                color: #b2d5cd;
+                color: #6b7785;
                 font-size: 0.72rem;
                 font-weight: 800;
                 overflow: hidden;
@@ -911,7 +913,7 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 grid-template-columns: repeat(6, minmax(0, 1fr));
             }}
             .detail-cell {{
-                border-right: 1px solid rgba(210, 232, 228, 0.12);
+                border-right: 1px solid #d7dde2;
                 padding: 0.44rem 0.52rem;
                 min-width: 0;
             }}
@@ -919,14 +921,14 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 border-right: 0;
             }}
             .detail-cell span {{
-                color: #8fb9b2;
+                color: #6b7785;
                 display: block;
                 font-size: 0.62rem;
                 font-weight: 900;
                 margin-bottom: 0.12rem;
             }}
             .detail-cell b {{
-                color: #f7fffc;
+                color: #24303c;
                 display: block;
                 font-size: 0.73rem;
                 overflow: hidden;
@@ -934,7 +936,7 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 white-space: nowrap;
             }}
             .empty {{
-                color: #b2d5cd;
+                color: #6b7785;
                 font-size: 0.8rem;
                 font-weight: 800;
                 padding: 0.8rem;
@@ -1676,35 +1678,35 @@ def inject_bom_css() -> None:
         section[data-testid="stSidebar"] + div,
         .stApp {
             background:
-                radial-gradient(circle at 48% 4%, rgba(58, 112, 105, 0.12), transparent 34%),
-                linear-gradient(135deg, #041714 0%, #08231f 46%, #0a2b27 100%) !important;
-            color: #e7f0ed !important;
-            color-scheme: dark;
+                radial-gradient(circle at 48% 4%, rgba(83, 109, 132, 0.07), transparent 34%),
+                linear-gradient(135deg, #f0f1ef 0%, #f3f3f0 48%, #f6f5f2 100%) !important;
+            color: #24303c !important;
+            color-scheme: light;
         }
         .bom-title {
-            color: #eef4f2;
+            color: #24303c;
             font-size: 1.34rem;
             font-weight: 950;
             margin: 0.1rem 0 0.75rem;
         }
         .bom-subtitle {
-            color: #e7f0ed;
+            color: #24303c;
             font-size: 1.02rem;
             font-weight: 900;
             margin: 0.15rem 0 0.35rem;
         }
         .bom-outline-title {
-            color: #bfd5d0;
+            color: #3f596f;
             font-size: 0.86rem;
             font-weight: 900;
             margin: 0.7rem 0 0.35rem;
         }
         div[data-testid="stExpander"]:has(.bom-outline-scroll) {
-            background: rgba(7, 40, 36, 0.5);
-            border-color: rgba(142, 170, 164, 0.22);
+            background: #f6f5f2;
+            border-color: #d7dde2;
         }
         .bom-outline-scroll {
-            border: 1px solid rgba(142, 170, 164, 0.2);
+            border: 1px solid #d7dde2;
             border-radius: 6px;
             overflow-x: auto;
         }
@@ -1716,49 +1718,49 @@ def inject_bom_css() -> None:
         }
         .bom-outline-table th,
         .bom-outline-table td {
-            border: 1px solid rgba(190, 206, 202, 0.16);
-            color: #e7f0ed;
+            border: 1px solid #d7dde2;
+            color: #24303c;
             padding: 0.36rem 0.5rem;
             white-space: nowrap;
         }
         .bom-outline-table th {
-            background: rgba(49, 72, 92, 0.82);
+            background: #e7edf1;
             text-align: center;
         }
         .bom-outline-table tr.group td {
-            background: rgba(174, 182, 180, 0.18);
+            background: #eef1f0;
             font-weight: 900;
         }
         .bom-outline-table tr.child td {
-            background: rgba(8, 34, 31, 0.84);
+            background: #fbfaf7;
         }
         .bom-outline-table .empty {
-            color: #adc4bf;
+            color: #6b7785;
             text-align: center;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) {
-            background: rgba(7, 40, 36, 0.62) !important;
-            border: 1px solid rgba(142, 170, 164, 0.22);
+            background: #f6f5f2 !important;
+            border: 1px solid #d7dde2;
             border-radius: 8px;
             padding: 0.85rem;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel),
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) * {
-            color: #e7f0ed;
+            color: #24303c;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) input,
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) textarea,
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) [data-baseweb="select"] > div,
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) [data-testid="stDataFrame"],
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) [data-testid="stDataEditor"] {
-            background: rgba(6, 31, 28, 0.9) !important;
-            border-color: rgba(142, 170, 164, 0.28) !important;
-            color: #e7f0ed !important;
+            background: #f0f2f1 !important;
+            border-color: #cfd7dd !important;
+            color: #24303c !important;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) button {
-            background: linear-gradient(180deg, rgba(29, 70, 65, 0.9), rgba(8, 38, 35, 0.94)) !important;
-            border-color: rgba(142, 170, 164, 0.28) !important;
-            color: #edf4f2 !important;
+            background: #e7edf1 !important;
+            border-color: #c8d0d7 !important;
+            color: #24303c !important;
         }
         </style>
         """,
