@@ -12950,3 +12950,379 @@ div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDat
     font-weight: 950 !important;
     letter-spacing: 0.08em !important;
 }
+
+/* Warm beige portal theme: applied last so every category shares one calm surface tone. */
+:root {
+    --bg: #E8E1D6;
+    --panel: #F4EFE7;
+    --panel-soft: #ECE5DA;
+    --control-bg: #F7F3EC;
+    --control-bg-soft: #EEE7DD;
+    --control-bg-hover: #E5D9C8;
+    --line: #CDBFAA;
+    --line-soft: #DCCFBE;
+    --text: #1F2933;
+    --muted: #675F56;
+    --erp-bg: #E8E1D6;
+    --erp-card: #F4EFE7;
+    --erp-line: #CDBFAA;
+    --erp-line-strong: #B9A78E;
+    --erp-text: #1F2933;
+    --erp-body: #2E3740;
+    --erp-muted: #675F56;
+    --erp-faint: #82786B;
+    --layout-bg: #E8E1D6;
+    --layout-card: #F4EFE7;
+    --layout-card-soft: #ECE5DA;
+    --layout-body: #2E3740;
+    --layout-muted: #675F56;
+    --bg-main: #E8E1D6;
+    --bg-card: #F4EFE7;
+    --bg-card-secondary: #ECE5DA;
+    --border-main: #CDBFAA;
+    --border-strong: #B9A78E;
+    --text-title: #1F2933;
+    --text-main: #2E3740;
+    --text-secondary: #675F56;
+    --text-muted: #82786B;
+    --app-bg: #E8E1D6;
+    --app-card: #F4EFE7;
+    --app-border: #CDBFAA;
+    --app-primary: #6F7F8F;
+    --app-text: #1F2933;
+    --app-muted: #675F56;
+    --return-bg: #E8E1D6;
+    --return-card: #F4EFE7;
+    --return-card-soft: #ECE5DA;
+    --return-border: #CDBFAA;
+    --return-border-soft: #DCCFBE;
+    --return-title: #1F2933;
+    --return-text: #2E3740;
+    --return-muted: #675F56;
+    --return-faint: #82786B;
+    --return-primary: #6F7F8F;
+    --return-primary-soft: #E2DDD2;
+    --active-bg: #E1D8CA;
+    --active-bg-strong: #D6C8B6;
+    --active-border: #B9A78E;
+    --active-ink: #35473E;
+    --active-ink-blue: #2F4659;
+}
+
+html,
+body,
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+.main,
+.block-container {
+    background: #E8E1D6 !important;
+    color: #2E3740 !important;
+}
+
+.stApp {
+    background:
+        radial-gradient(circle at 14% -2%, rgba(116, 140, 121, 0.13), transparent 30%),
+        radial-gradient(circle at 86% 5%, rgba(111, 127, 143, 0.12), transparent 28%),
+        linear-gradient(135deg, #E8E1D6 0%, #EFE7DC 48%, #E4DACC 100%) !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] .block-container {
+    background: linear-gradient(180deg, #F4EFE7 0%, #E8E1D6 100%) !important;
+    border-right-color: #CDBFAA !important;
+}
+
+.panel,
+.schedule-panel,
+.week-board,
+.kpi-tile,
+.chart-card,
+.donut-card,
+.table-panel,
+.order-panel,
+.warehouse-panel,
+.purchase-progress-panel,
+.core-task-panel,
+.notice-panel,
+.meeting-calendar,
+.meeting-table-wrap,
+.meeting-note-box,
+.meeting-kpi-card,
+.meeting-selected-event,
+.inventory-panel,
+.inventory-card,
+.purchase-panel,
+.purchase-card,
+.bom-panel,
+.bom-card,
+.warehouse3d-kpi,
+.placeholder-panel,
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stExpander"],
+[data-testid="stForm"],
+[data-testid="stPopover"],
+[data-testid="stDialog"],
+[data-testid="stDataFrame"],
+[data-testid="stDataEditor"],
+[data-testid="stTable"],
+div[class*="st-key-meeting_issue_"],
+div[class*="st-key-meeting_control_card"],
+div[class*="st-key-product_master_"][class*="_controls"],
+div[class*="st-key-product_master_"][class*="_editor_panel"] {
+    background: #F4EFE7 !important;
+    border-color: #CDBFAA !important;
+    box-shadow: 0 7px 18px rgba(45, 38, 30, 0.06) !important;
+    color: #2E3740 !important;
+}
+
+div[class*="st-key-product_master_"][class*="_controls"],
+.stock-guide,
+.rack-detail,
+.core-task-summary span,
+.meeting-event-chip,
+.chart-card,
+.svg-chart,
+.donut::after,
+.bar,
+.thin-bar {
+    background: #ECE5DA !important;
+    border-color: #CDBFAA !important;
+}
+
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp h5,
+.stApp h6,
+.panel h2,
+.panel-title-row h2,
+.weekly-schedule-title,
+.weekly-section-title,
+.meeting-section-title h2,
+.meeting-subsection-title,
+.purchase-title,
+.purchase-section-title,
+.inventory-tab-title,
+.bom-title,
+.bom-subtitle,
+.bom-outline-title,
+.product-master-title,
+.product-master-subtitle,
+.product-master-control-title,
+.product-master-form-title,
+.warehouse3d-title,
+.warehouse3d-kpi strong {
+    color: #1F2933 !important;
+    -webkit-text-fill-color: #1F2933 !important;
+}
+
+.stApp,
+.stApp p,
+.stApp li,
+.stApp label,
+.stApp span,
+.stApp div,
+.stApp [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stCaptionContainer"],
+.stApp [data-testid="stWidgetLabel"],
+.week-cell li,
+.table-panel td,
+.order-panel td,
+.warehouse-row,
+.purchase-progress-row,
+.core-task-list span {
+    color: #2E3740 !important;
+    -webkit-text-fill-color: #2E3740 !important;
+}
+
+.stApp small,
+.kpi-tile span,
+.kpi-tile small,
+.warehouse3d-kpi span,
+.week-date,
+.empty-cell,
+[data-testid="stCaptionContainer"],
+.meeting-calendar-head span,
+.meeting-event-chip small,
+.meeting-event-chip em {
+    color: #675F56 !important;
+    -webkit-text-fill-color: #675F56 !important;
+}
+
+input,
+textarea,
+select,
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stDateInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+[data-baseweb="input"] input,
+[data-baseweb="select"] input,
+[data-testid="stFileUploaderDropzone"] {
+    background: #F7F3EC !important;
+    border-color: #BFAF97 !important;
+    color: #1F2933 !important;
+    -webkit-text-fill-color: #1F2933 !important;
+}
+
+input::placeholder,
+textarea::placeholder,
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder {
+    color: #82786B !important;
+    opacity: 1 !important;
+}
+
+select option,
+[role="option"],
+[data-baseweb="menu"],
+[data-baseweb="menu"] *,
+[data-baseweb="popover"],
+[data-baseweb="popover"] * {
+    background: #F4EFE7 !important;
+    color: #1F2933 !important;
+}
+
+.stButton > button,
+.stDownloadButton > button,
+.stFormSubmitButton > button,
+button[kind="secondary"],
+.ghost-link,
+.mini-badge,
+.chart-filter-links a,
+.panel-title-row a,
+.panel-title-row button {
+    background: #ECE5DA !important;
+    border-color: #BFAF97 !important;
+    color: #35473E !important;
+    -webkit-text-fill-color: #35473E !important;
+}
+
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+.stFormSubmitButton > button:hover,
+button[kind="secondary"]:hover,
+.ghost-link:hover,
+.chart-filter-links a:hover {
+    background: #E1D8CA !important;
+    border-color: #A99373 !important;
+    color: #2F4659 !important;
+    -webkit-text-fill-color: #2F4659 !important;
+}
+
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"],
+.stFormSubmitButton > button[kind="primary"],
+button[kind="primary"] {
+    background: #6F7F8F !important;
+    border-color: #5F6F7F !important;
+    color: #F7F3EC !important;
+    -webkit-text-fill-color: #F7F3EC !important;
+}
+
+.stButton > button[kind="primary"] *,
+.stDownloadButton > button[kind="primary"] *,
+.stFormSubmitButton > button[kind="primary"] *,
+button[kind="primary"] * {
+    color: #F7F3EC !important;
+    -webkit-text-fill-color: #F7F3EC !important;
+}
+
+.week-board,
+.weekly-table-wrap,
+.meeting-calendar-grid,
+.meeting-table-wrap table,
+.table-panel table,
+.order-panel table,
+[data-testid="stTable"] table {
+    background: #F4EFE7 !important;
+    color: #1F2933 !important;
+}
+
+.week-cell,
+.meeting-calendar-day,
+.table-panel td,
+.order-panel td,
+.meeting-table-wrap td,
+[data-testid="stTable"] td,
+[data-testid="stDataFrame"] td {
+    background: #F7F3EC !important;
+    border-color: #DCCFBE !important;
+    color: #1F2933 !important;
+}
+
+.week-cell:nth-child(even),
+.meeting-calendar-day:nth-child(even),
+.table-panel tbody tr:nth-child(even) td,
+.order-panel tbody tr:nth-child(even) td,
+.meeting-table-wrap tbody tr:nth-child(even) td,
+[data-testid="stTable"] tbody tr:nth-child(even) td {
+    background: #EEE7DD !important;
+}
+
+.warehouse-head,
+.purchase-progress-head,
+.inbound-head,
+.outbound-top-head,
+.meeting-calendar-head,
+.meeting-calendar-week,
+.meeting-table-wrap th,
+.table-panel th,
+.order-panel th,
+[data-testid="stTable"] th,
+[data-testid="stDataFrame"] th {
+    background: #E4D9C8 !important;
+    border-color: #CDBFAA !important;
+    color: #35473E !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    color: #675F56 !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+    background: #E1D8CA !important;
+    color: #1F2933 !important;
+}
+
+[data-testid="stTabs"] [aria-selected="true"],
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"],
+.chart-filter-links a.active,
+.week-cell.active .week-date,
+.meeting-calendar-day.today,
+.schedule-week-chip,
+.week-range,
+div[class*="st-key-kpi_"] button[kind="primary"] {
+    background: #DED6C9 !important;
+    border-color: #B9A78E !important;
+    box-shadow: inset 4px 0 0 #748C79, 0 6px 14px rgba(45, 38, 30, 0.06) !important;
+    color: #35473E !important;
+    -webkit-text-fill-color: #35473E !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"] *,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] *,
+[data-testid="stTabs"] [aria-selected="true"] * {
+    color: #35473E !important;
+    -webkit-text-fill-color: #35473E !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"]::before,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"]::before {
+    background: #E9E2D7 !important;
+    border-color: #C7B69D !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"]::after,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"]::after {
+    background: #35473E !important;
+}
