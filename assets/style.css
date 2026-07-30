@@ -12979,3 +12979,60 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     color: var(--editor-muted) !important;
     -webkit-text-fill-color: var(--editor-muted) !important;
 }
+
+/* Dashboard KPI final tone-down: blend summary cards into the beige dashboard. */
+.dashboard-shell > .kpi-row .kpi-tile,
+.dashboard-shell .kpi-row .kpi-tile {
+    background: #F1EEE8 !important;
+    background-color: #F1EEE8 !important;
+    border: 1px solid #D2C8BA !important;
+    box-shadow: 0 5px 14px rgba(48, 40, 30, 0.045) !important;
+    color: #26384A !important;
+    -webkit-text-fill-color: #26384A !important;
+}
+
+.dashboard-shell > .kpi-row .kpi-tile:hover,
+.dashboard-shell .kpi-row .kpi-tile:hover {
+    background: #ECE6DD !important;
+    border-color: #C8BBAA !important;
+    box-shadow: 0 7px 16px rgba(48, 40, 30, 0.055) !important;
+    transform: translateY(-1px);
+}
+
+.dashboard-shell .kpi-tile span,
+.dashboard-shell .kpi-tile small,
+.dashboard-shell .kpi-tile div {
+    color: #526071 !important;
+    -webkit-text-fill-color: #526071 !important;
+}
+
+.dashboard-shell .kpi-tile strong {
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+}
+
+.dashboard-shell .kpi-icon,
+.dashboard-shell .kpi-tile.blue .kpi-icon,
+.dashboard-shell .kpi-tile.cyan .kpi-icon,
+.dashboard-shell .kpi-tile.green .kpi-icon,
+.dashboard-shell .kpi-tile.purple .kpi-icon,
+.dashboard-shell .kpi-tile.orange .kpi-icon,
+.dashboard-shell .kpi-tile.red .kpi-icon {
+    background: #E8E3DA !important;
+    background-color: #E8E3DA !important;
+    border-color: #CFC3B4 !important;
+    color: #617184 !important;
+    -webkit-text-fill-color: #617184 !important;
+    box-shadow: none !important;
+}
+
+.dashboard-shell .kpi-icon svg,
+.dashboard-shell .kpi-icon svg path,
+.dashboard-shell .kpi-icon svg circle,
+.dashboard-shell .kpi-icon svg rect,
+.dashboard-shell .kpi-icon svg line,
+.dashboard-shell .kpi-icon svg polyline {
+    color: #617184 !important;
+    stroke: #617184 !important;
+    fill: none !important;
+}
