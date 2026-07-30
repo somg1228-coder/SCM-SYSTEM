@@ -253,10 +253,34 @@ def repair_sqlite_schema() -> None:
 
     known_stale_indexes = ("ix_purchase_documents_created_at",)
     with engine.begin() as conn:
+        restore_incomplete_product_master_rebuilds(conn)
         for index_name in known_stale_indexes:
             drop_sqlite_index(conn, index_name)
         drop_orphan_sqlite_indexes(conn)
         conn.exec_driver_sql("PRAGMA writable_schema = OFF")
+
+
+def restore_incomplete_product_master_rebuilds(conn) -> None:
+    for table_name in ("offline_product_master", "thirdparty_product_master", "warehouse_product_master"):
+        old_table = f"{table_name}_old_barcode_unique"
+        new_table = f"{table_name}_constraint_rebuild"
+        table_exists = sqlite_table_exists(conn, table_name)
+        old_exists = sqlite_table_exists(conn, old_table)
+        if not table_exists and old_exists:
+            conn.exec_driver_sql(
+                f"ALTER TABLE {quote_sqlite_identifier(old_table)} RENAME TO {quote_sqlite_identifier(table_name)}"
+            )
+            LOGGER.warning("중단된 상품 마스터 테이블 보정을 복구했습니다: %s", table_name)
+        if sqlite_table_exists(conn, new_table):
+            conn.exec_driver_sql(f"DROP TABLE IF EXISTS {quote_sqlite_identifier(new_table)}")
+
+
+def sqlite_table_exists(conn, table_name: str) -> bool:
+    row = conn.exec_driver_sql(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return bool(row)
 
 
 def drop_sqlite_index(conn, index_name: str) -> None:
@@ -377,11 +401,51 @@ def ensure_product_master_barcode_constraints(conn) -> None:
             continue
         if not keep_barcode_product_unique and "UNIQUE (barcode, product_name)" not in table_sql:
             continue
-        rebuild_product_master_table(conn, table_name, prefix, keep_barcode_product_unique)
+        if not product_master_table_can_be_rebuilt(conn, table_name, keep_barcode_product_unique):
+            continue
+        try:
+            rebuild_product_master_table(conn, table_name, prefix, keep_barcode_product_unique)
+        except Exception as exc:
+            LOGGER.exception("상품 마스터 테이블 제약 보정 실패. 기존 테이블은 유지합니다: %s (%s)", table_name, exc)
+
+
+def product_master_table_can_be_rebuilt(conn, table_name: str, keep_barcode_product_unique: bool) -> bool:
+    duplicate_sku = conn.exec_driver_sql(
+        f"""
+        SELECT sku, COUNT(*)
+        FROM {quote_sqlite_identifier(table_name)}
+        GROUP BY sku
+        HAVING COUNT(*) > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    if duplicate_sku:
+        LOGGER.warning("SKU 중복이 있어 상품 마스터 제약 보정을 건너뜁니다: %s / %s", table_name, duplicate_sku[0])
+        return False
+    if keep_barcode_product_unique:
+        duplicate_barcode_product = conn.exec_driver_sql(
+            f"""
+            SELECT barcode, product_name, COUNT(*)
+            FROM {quote_sqlite_identifier(table_name)}
+            GROUP BY barcode, product_name
+            HAVING COUNT(*) > 1
+            LIMIT 1
+            """
+        ).fetchone()
+        if duplicate_barcode_product:
+            LOGGER.warning(
+                "바코드/상품명 중복이 있어 상품 마스터 제약 보정을 건너뜁니다: %s / %s / %s",
+                table_name,
+                duplicate_barcode_product[0],
+                duplicate_barcode_product[1],
+            )
+            return False
+    return True
 
 
 def rebuild_product_master_table(conn, table_name: str, prefix: str, keep_barcode_product_unique: bool = True) -> None:
     old_table = f"{table_name}_old_barcode_unique"
+    new_table = f"{table_name}_constraint_rebuild"
     columns = [
         "id",
         "sku",
@@ -403,9 +467,11 @@ def rebuild_product_master_table(conn, table_name: str, prefix: str, keep_barcod
         "updated_at",
     ]
     column_sql = ", ".join(columns)
+    quoted_table = quote_sqlite_identifier(table_name)
+    quoted_old_table = quote_sqlite_identifier(old_table)
+    quoted_new_table = quote_sqlite_identifier(new_table)
 
-    conn.exec_driver_sql(f"DROP TABLE IF EXISTS {old_table}")
-    conn.exec_driver_sql(f"ALTER TABLE {table_name} RENAME TO {old_table}")
+    conn.exec_driver_sql(f"DROP TABLE IF EXISTS {quoted_new_table}")
     barcode_constraint = (
         f"CONSTRAINT uq_{prefix}_product_master_barcode_product_name UNIQUE (barcode, product_name),"
         if keep_barcode_product_unique
@@ -413,7 +479,7 @@ def rebuild_product_master_table(conn, table_name: str, prefix: str, keep_barcod
     )
     conn.exec_driver_sql(
         f"""
-        CREATE TABLE {table_name} (
+        CREATE TABLE {quoted_new_table} (
             id INTEGER NOT NULL,
             sku VARCHAR(120) NOT NULL,
             barcode VARCHAR(120) NOT NULL,
@@ -439,12 +505,15 @@ def rebuild_product_master_table(conn, table_name: str, prefix: str, keep_barcod
         )
         """
     )
-    conn.exec_driver_sql(f"INSERT INTO {table_name} ({column_sql}) SELECT {column_sql} FROM {old_table}")
-    conn.exec_driver_sql(f"DROP TABLE {old_table}")
-    conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_id ON {table_name} (id)")
-    conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_sku ON {table_name} (sku)")
-    conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_barcode ON {table_name} (barcode)")
-    conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_product_name ON {table_name} (product_name)")
+    conn.exec_driver_sql(f"INSERT INTO {quoted_new_table} ({column_sql}) SELECT {column_sql} FROM {quoted_table}")
+    conn.exec_driver_sql(f"DROP TABLE IF EXISTS {quoted_old_table}")
+    conn.exec_driver_sql(f"ALTER TABLE {quoted_table} RENAME TO {quoted_old_table}")
+    conn.exec_driver_sql(f"ALTER TABLE {quoted_new_table} RENAME TO {quoted_table}")
+    conn.exec_driver_sql(f"DROP TABLE {quoted_old_table}")
+    conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_id ON {quoted_table} (id)")
+    conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_sku ON {quoted_table} (sku)")
+    conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_barcode ON {quoted_table} (barcode)")
+    conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_product_name ON {quoted_table} (product_name)")
 
 
 def get_db():
