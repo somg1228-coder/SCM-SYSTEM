@@ -57,11 +57,10 @@ THREEPL_MASTER_COLUMNS = [
     "업체명",
     "파렛트,박스단위",
     "담당자",
-    "최종입고일",
+    "리드타임",
     "SKU",
     "입수",
     "박스입수",
-    "기본 리드타임",
     "정렬순서",
     "사용여부",
 ]
@@ -375,11 +374,10 @@ def threepl_master_column_config() -> dict:
         "업체명": st.column_config.TextColumn("업체명", width="medium"),
         "파렛트,박스단위": st.column_config.TextColumn("파렛트,박스단위", width="medium"),
         "담당자": st.column_config.TextColumn("담당자", width="medium"),
-        "최종입고일": st.column_config.DateColumn("최종입고일"),
+        "리드타임": st.column_config.NumberColumn("리드타임", min_value=0, step=1),
         "SKU": st.column_config.TextColumn("SKU", width="medium"),
         "입수": st.column_config.NumberColumn("입수", min_value=0, step=1),
         "박스입수": st.column_config.NumberColumn("박스입수", min_value=0, step=1),
-        "기본 리드타임": st.column_config.NumberColumn("기본 리드타임", min_value=0, step=1),
         "정렬순서": st.column_config.NumberColumn("정렬순서", min_value=0, step=1),
         "사용여부": st.column_config.SelectboxColumn("사용여부", options=["사용", "미사용"]),
     }
@@ -411,7 +409,7 @@ def master_column_config_for_source(source_type: str) -> dict:
 
 def master_disabled_columns(source_type: str) -> list[str]:
     if uses_threepl_master_form(source_type):
-        return ["평균출고수량", "재고상태", "최종입고일"]
+        return ["평균출고수량", "재고상태"]
     return []
 
 
@@ -469,11 +467,10 @@ def threepl_master_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "업체명": row.get("supplier", ""),
                 "파렛트,박스단위": format_pack_box_unit(row.get("pack_qty", 0), row.get("box_qty", 0)),
                 "담당자": row.get("memo", ""),
-                "최종입고일": row.get("last_inbound_date"),
+                "리드타임": row.get("avg_lead_time", 0) or row.get("default_lead_time", 0),
                 "SKU": row.get("sku", ""),
                 "입수": row.get("pack_qty", 0),
                 "박스입수": row.get("box_qty", 0),
-                "기본 리드타임": row.get("avg_lead_time", 0) or row.get("default_lead_time", 0),
                 "정렬순서": row.get("sort_order", 0),
                 "사용여부": row.get("is_active", "사용"),
             }
@@ -511,13 +508,12 @@ def threepl_master_template_df() -> pd.DataFrame:
             "카테고리",
             "바코드",
             "상품명",
-            "평균출고수량",
             "안전재고",
             "재고상태",
             "업체명",
             "파렛트,박스단위",
             "담당자",
-            "최종입고일",
+            "리드타임",
         ]
     )
 
@@ -581,7 +577,7 @@ def threepl_editor_to_payload(df: pd.DataFrame) -> list[dict]:
             "공급처": clean_value(row.get("업체명")),
             "입수": to_int_value(row.get("입수")),
             "박스입수": to_int_value(row.get("박스입수")) or to_box_unit_value(row.get("파렛트,박스단위")),
-            "기본 리드타임": to_int_value(row.get("기본 리드타임")),
+            "기본 리드타임": to_int_value(row.get("리드타임") or row.get("기본 리드타임")),
             "최소재고": to_int_value(row.get("안전재고")),
             "정렬순서": to_int_value(row.get("정렬순서")),
             "사용여부": clean_value(row.get("사용여부")) or "사용",
