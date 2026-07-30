@@ -12635,3 +12635,67 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     margin: 0 !important;
     padding: 0 !important;
 }
+
+/* Sidebar group toggles: muted pastel headers for clearer category separation. */
+[data-testid="stSidebar"] div[class*="sidebar_group_work"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_work"] button {
+    background: #E8EEF7 !important;
+    border-color: #CAD4E0 !important;
+    color: #344B63 !important;
+    -webkit-text-fill-color: #344B63 !important;
+    box-shadow: inset 4px 0 0 #6F86A0 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_ops"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_ops"] button {
+    background: #E8EFE7 !important;
+    border-color: #CBD9CC !important;
+    color: #3F5949 !important;
+    -webkit-text-fill-color: #3F5949 !important;
+    box-shadow: inset 4px 0 0 #78927B !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_support"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_support"] button {
+    background: #EFEAF6 !important;
+    border-color: #D7CEE3 !important;
+    color: #584B66 !important;
+    -webkit-text-fill-color: #584B66 !important;
+    box-shadow: inset 4px 0 0 #8B7A9B !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_work"] button:hover,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_work"] button:hover {
+    background: #DEE7F2 !important;
+    border-color: #B8C6D5 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_ops"] button:hover,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_ops"] button:hover {
+    background: #DDE8DC !important;
+    border-color: #BACDBB !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_support"] button:hover,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_support"] button:hover {
+    background: #E7E0F0 !important;
+    border-color: #CABED8 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_work"] button *,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_work"] button * {
+    color: #344B63 !important;
+    -webkit-text-fill-color: #344B63 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_ops"] button *,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_ops"] button * {
+    color: #3F5949 !important;
+    -webkit-text-fill-color: #3F5949 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_support"] button *,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_support"] button * {
+    color: #584B66 !important;
+    -webkit-text-fill-color: #584B66 !important;
+}
