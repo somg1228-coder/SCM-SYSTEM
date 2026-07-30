@@ -52,6 +52,25 @@ PO_INBOUND = ["입고대기", "부분입고", "입고완료"]
 CURRENCIES = ["KRW", "USD"]
 PRICE_DECIMAL_OPTIONS = [0, 1, 2, 3, 4, 5]
 PRICE_DECIMAL_COLUMNS = {"단가", "공급가액", "부가세", "총금액", "배송비", "발주금액", "총 구매비용", "구매금액"}
+PR_EDITOR_COLUMNS = [
+    "선택",
+    "구매요청번호",
+    "요청부서",
+    "품목코드",
+    "품목",
+    "규격",
+    "수량",
+    "단위",
+    "요청일",
+    "견적회신요청일",
+    "희망납기일",
+    "납품장소",
+    "요청자",
+    "승인자",
+    "승인상태",
+    "발주번호",
+    "비고",
+]
 PO_EDITOR_COLUMNS = [
     "입고완료처리",
     "삭제",
@@ -143,23 +162,24 @@ def with_db(action):
 def render_pr_tab() -> None:
     st.markdown('<div class="purchase-section-title">구매요청 등록</div>', unsafe_allow_html=True)
     with st.form("purchase_pr_form", clear_on_submit=True):
-        cols = st.columns([1.0, 0.9, 1.35, 1.0, 0.65, 0.55, 0.9, 0.9, 0.75], gap="small")
+        cols = st.columns([1.0, 0.95, 1.75, 1.05], gap="small")
         department = cols[0].text_input("요청부서", placeholder="예: 생산팀")
         item_code = cols[1].text_input("품목코드", placeholder="SKU")
         item_name = cols[2].text_input("품목", placeholder="구매 요청 품목")
         spec = cols[3].text_input("규격", placeholder="규격/사양")
-        quantity = cols[4].number_input("수량", min_value=1, step=1, value=1)
-        unit = cols[5].text_input("단위", value="EA")
-        request_date = cols[6].date_input("요청일", value=date.today())
-        requester = cols[7].text_input("요청자", placeholder="담당자")
-        approval_status = cols[8].selectbox("승인상태", PR_STATUS, index=0)
-        doc_cols = st.columns([0.9, 0.9, 1.25, 1.25, 1.4], gap="small")
-        reply_due_date = doc_cols[0].date_input("견적 회신 요청일", value=date.today() + timedelta(days=3))
-        desired_due_date = doc_cols[1].date_input("희망납기일", value=date.today() + timedelta(days=14))
-        delivery_place = doc_cols[2].text_input("납품장소", value=DEFAULT_DELIVERY_PLACE)
-        approver = doc_cols[3].text_input("승인자", placeholder="승인 담당자")
-        request_notes = doc_cols[4].text_input("요청사항", placeholder="포장/시험성적서/배송 조건 등")
-        memo = st.text_input("비고", placeholder="요청 사유 또는 특이사항")
+        qty_cols = st.columns([0.72, 0.62, 0.95, 0.95, 0.82, 1.4], gap="small")
+        quantity = qty_cols[0].number_input("수량", min_value=1, step=1, value=1)
+        unit = qty_cols[1].text_input("단위", value="EA")
+        request_date = qty_cols[2].date_input("요청일", value=date.today())
+        reply_due_date = qty_cols[3].date_input("견적 회신 요청일", value=date.today() + timedelta(days=3))
+        approval_status = qty_cols[4].selectbox("승인상태", PR_STATUS, index=0)
+        requester = qty_cols[5].text_input("요청자", placeholder="담당자")
+        doc_cols = st.columns([0.95, 1.2, 1.0, 1.65, 1.35], gap="small")
+        desired_due_date = doc_cols[0].date_input("희망납기일", value=date.today() + timedelta(days=14))
+        delivery_place = doc_cols[1].text_input("납품장소", value=DEFAULT_DELIVERY_PLACE)
+        approver = doc_cols[2].text_input("승인자", placeholder="승인 담당자")
+        request_notes = doc_cols[3].text_input("요청사항", placeholder="포장/시험성적서/배송 조건 등")
+        memo = doc_cols[4].text_input("비고", placeholder="요청 사유 또는 특이사항")
         if st.form_submit_button("구매요청 저장", type="primary", use_container_width=True):
             if not item_name.strip():
                 st.warning("품목을 입력하세요.")
@@ -190,52 +210,36 @@ def render_pr_tab() -> None:
                     st.rerun()
 
     rows = with_db(lambda db: [pr_to_dict(row) for row in list_purchase_requests(db)]) or []
-    if not rows:
-        st.info("등록된 구매요청이 없습니다. 재고관리 MRP/발주추천에서도 PR을 생성할 수 있습니다.")
-        return
-
     st.markdown('<div class="purchase-section-title">구매요청 목록</div>', unsafe_allow_html=True)
-    df = pd.DataFrame(rows)
-    df.insert(0, "선택", False)
+    if rows:
+        df = pd.DataFrame(rows)
+        df.insert(0, "선택", False)
+        df = df.reindex(columns=PR_EDITOR_COLUMNS)
+    else:
+        st.caption("등록된 구매요청이 없어도 목록 구조는 유지됩니다. 재고관리 MRP/발주추천에서도 PR을 생성할 수 있습니다.")
+        df = pd.DataFrame(columns=PR_EDITOR_COLUMNS)
     edited = st.data_editor(
         df,
         hide_index=True,
         use_container_width=True,
-        column_order=[
-            "선택",
-            "구매요청번호",
-            "요청부서",
-            "품목코드",
-            "품목",
-            "규격",
-            "수량",
-            "단위",
-            "요청일",
-            "견적회신요청일",
-            "희망납기일",
-            "납품장소",
-            "요청자",
-            "승인자",
-            "승인상태",
-            "발주번호",
-            "비고",
-        ],
+        column_order=PR_EDITOR_COLUMNS,
         column_config={
             "선택": st.column_config.CheckboxColumn("선택", default=False),
             "승인상태": st.column_config.SelectboxColumn("승인상태", options=PR_STATUS),
         },
         disabled=["구매요청번호", "발주번호"],
         key="purchase_pr_editor",
+        height=340,
     )
     action_cols = st.columns([0.95, 0.95, 4.5], gap="small")
     with action_cols[0]:
-        if st.button("선택 승인", type="primary", use_container_width=True, key="purchase_pr_approve"):
+        if st.button("선택 승인", type="primary", use_container_width=True, key="purchase_pr_approve", disabled=not rows):
             count = with_db(lambda db: approve_selected_pr(db, selected_numbers(edited, "구매요청번호")))
             if count:
                 st.success(f"승인 완료: {count}건")
                 st.rerun()
     with action_cols[1]:
-        if st.button("상태 저장", use_container_width=True, key="purchase_pr_save"):
+        if st.button("상태 저장", use_container_width=True, key="purchase_pr_save", disabled=not rows):
             count = with_db(lambda db: save_pr_editor(db, edited))
             st.success(f"구매요청 변경사항 저장 완료: {count or 0}건")
             st.rerun()
@@ -680,7 +684,6 @@ def filter_supplier_rows(rows: list[dict], keyword: str) -> list[dict]:
 
 def render_kpi_tab() -> None:
     payload = with_db(lambda db: purchase_kpi(db)) or {}
-    cols = st.columns(6, gap="small")
     metrics = [
         ("총 구매금액", format_currency_totals(payload.get("total_amounts_by_currency", {}))),
         ("발주건수", f"{int(payload.get('po_count', 0)):,}건"),
@@ -689,8 +692,10 @@ def render_kpi_tab() -> None:
         ("단가절감률", f"{payload.get('saving_rate', 0):.1f}%"),
         ("지연건수", f"{int(payload.get('delayed_count', 0)):,}건"),
     ]
-    for col, (label, value) in zip(cols, metrics):
-        col.metric(label, value)
+    for start in range(0, len(metrics), 3):
+        cols = st.columns(3, gap="small")
+        for col, (label, value) in zip(cols, metrics[start : start + 3]):
+            col.metric(label, value)
 
     monthly = pd.DataFrame(payload.get("monthly", []))
     supplier = pd.DataFrame(payload.get("supplier", []))
@@ -2317,10 +2322,17 @@ def inject_purchase_css() -> None:
         [data-testid="stDataFrame"],
         [data-testid="stDataEditor"],
         [data-testid="stTable"] table {
-            background: #f3f3f0 !important;
-            border: 1px solid #d7dde2 !important;
+            background: #f1eee8 !important;
+            border: 1px solid #d7d0c5 !important;
             border-radius: 8px !important;
             box-shadow: 0 8px 22px rgba(34, 45, 56, 0.055) !important;
+        }
+        [data-testid="stForm"] {
+            padding: 1rem !important;
+        }
+        [data-testid="stForm"] [data-testid="stVerticalBlock"],
+        [data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+            gap: 0.55rem !important;
         }
         [data-testid="stTextInput"] input,
         [data-testid="stNumberInput"] input,
@@ -2328,19 +2340,91 @@ def inject_purchase_css() -> None:
         [data-testid="stSelectbox"] [data-baseweb="select"] > div,
         [data-testid="stMultiSelect"] [data-baseweb="select"] > div,
         [data-testid="stFileUploaderDropzone"] {
-            background: #f0f2f1 !important;
-            border-color: #cfd7dd !important;
+            background: #f8f5ef !important;
+            border-color: #cec5b7 !important;
             color: #24303c !important;
+            -webkit-text-fill-color: #24303c !important;
+            min-height: 38px !important;
+        }
+        [data-testid="stTextInput"] input::placeholder,
+        [data-testid="stNumberInput"] input::placeholder {
+            color: #7a8590 !important;
+            -webkit-text-fill-color: #7a8590 !important;
+            opacity: 1 !important;
+        }
+        [data-testid="stSelectbox"] [data-baseweb="select"] span,
+        [data-testid="stMultiSelect"] [data-baseweb="select"] span,
+        [data-testid="stDateInput"] input,
+        [data-testid="stFileUploaderDropzone"] * {
+            color: #24303c !important;
+            -webkit-text-fill-color: #24303c !important;
         }
         [data-testid="stWidgetLabel"] p,
         [data-testid="stCaptionContainer"],
         .stCaptionContainer {
-            color: #6b7785 !important;
+            color: #5f6975 !important;
+            -webkit-text-fill-color: #5f6975 !important;
+            font-weight: 650 !important;
         }
         .stButton > button,
         .stDownloadButton > button,
         .stFormSubmitButton > button {
-            filter: saturate(0.82) brightness(0.97);
+            min-height: 38px !important;
+            border-radius: 999px !important;
+            background: #e7e1d8 !important;
+            border-color: #cfc5b7 !important;
+            color: #304257 !important;
+            -webkit-text-fill-color: #304257 !important;
+            font-weight: 800 !important;
+            filter: saturate(0.86) brightness(0.98);
+            box-shadow: none !important;
+            white-space: normal !important;
+        }
+        .stButton > button *,
+        .stDownloadButton > button *,
+        .stFormSubmitButton > button * {
+            color: inherit !important;
+            -webkit-text-fill-color: inherit !important;
+            opacity: 1 !important;
+        }
+        .stButton > button[kind="primary"],
+        .stFormSubmitButton > button[kind="primary"],
+        .stDownloadButton > button[kind="primary"] {
+            background: #516d86 !important;
+            border-color: #435d73 !important;
+            color: #faf8f5 !important;
+            -webkit-text-fill-color: #faf8f5 !important;
+        }
+        .stButton > button:disabled,
+        .stFormSubmitButton > button:disabled,
+        .stDownloadButton > button:disabled {
+            background: #dfd9cf !important;
+            border-color: #cbc1b4 !important;
+            color: #8a8277 !important;
+            -webkit-text-fill-color: #8a8277 !important;
+            opacity: 1 !important;
+        }
+        [data-testid="stMetric"] {
+            background: #f1eee8 !important;
+            border: 1px solid #d7d0c5 !important;
+            border-radius: 8px !important;
+            padding: 0.72rem 0.85rem !important;
+            min-height: 82px !important;
+            box-shadow: 0 6px 16px rgba(72, 63, 52, 0.04) !important;
+        }
+        [data-testid="stMetric"] * {
+            color: #24303c !important;
+            -webkit-text-fill-color: #24303c !important;
+        }
+        [data-testid="stDataFrame"] *,
+        [data-testid="stDataEditor"] *,
+        [data-testid="stTable"] * {
+            color: #24303c !important;
+            -webkit-text-fill-color: #24303c !important;
+        }
+        [data-testid="stDataFrame"] canvas,
+        [data-testid="stDataEditor"] canvas {
+            background: #f4f1eb !important;
         }
         .purchase-empty-chart {
             min-height: 220px;
