@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import stat
 import tempfile
 
@@ -62,9 +63,25 @@ def sqlite_path_is_writable(db_path: Path) -> bool:
         test_sqlite_directory_writable(db_path.parent)
         with db_path.open("ab"):
             pass
-        return os.access(db_path, os.W_OK) and os.access(db_path.parent, os.W_OK)
-    except OSError as exc:
+        if not os.access(db_path, os.W_OK) or not os.access(db_path.parent, os.W_OK):
+            return False
+        return sqlite_write_probe(db_path)
+    except (OSError, sqlite3.Error) as exc:
         LOGGER.warning("SQLite 경로가 쓰기 불가입니다: %s (%s)", db_path, exc)
+        return False
+
+
+def sqlite_write_probe(db_path: Path) -> bool:
+    try:
+        with sqlite3.connect(str(db_path), timeout=2) as conn:
+            query_only = conn.execute("PRAGMA query_only").fetchone()
+            if query_only and int(query_only[0] or 0) != 0:
+                return False
+            conn.execute("BEGIN IMMEDIATE")
+            conn.rollback()
+        return True
+    except sqlite3.Error as exc:
+        LOGGER.warning("SQLite 실제 쓰기 트랜잭션 테스트 실패: %s (%s)", db_path, exc)
         return False
 
 
@@ -183,6 +200,7 @@ def sqlite_writability_report() -> dict:
         "db_file_writable": False,
         "db_dir": str(db_path.parent if db_path else ""),
         "db_dir_writable": False,
+        "sqlite_writeable": False,
         "readonly_url_option": "mode=ro" in RAW_DATABASE_URL.lower(),
     }
     if db_path is None:
@@ -194,18 +212,20 @@ def sqlite_writability_report() -> dict:
     report["db_exists"] = db_path.exists()
     report["db_file_writable"] = os.access(db_path, os.W_OK)
     report["db_dir_writable"] = os.access(db_path.parent, os.W_OK)
+    report["sqlite_writeable"] = sqlite_write_probe(db_path)
     return report
 
 
 def log_sqlite_writability(context: str = "") -> dict:
     report = sqlite_writability_report()
     LOGGER.warning(
-        "SQLite write check%s | path=%s | file_writable=%s | dir=%s | dir_writable=%s | readonly_url_option=%s | url=%s",
+        "SQLite write check%s | path=%s | file_writable=%s | dir=%s | dir_writable=%s | sqlite_writeable=%s | readonly_url_option=%s | url=%s",
         f" ({context})" if context else "",
         report.get("db_path"),
         report.get("db_file_writable"),
         report.get("db_dir"),
         report.get("db_dir_writable"),
+        report.get("sqlite_writeable"),
         report.get("readonly_url_option"),
         report.get("database_url"),
     )

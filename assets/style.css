@@ -12858,3 +12858,124 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     -webkit-text-fill-color: #24384E !important;
     box-shadow: inset 4px 0 0 #516D86, 0 6px 14px rgba(36, 56, 78, 0.04) !important;
 }
+
+/* Final data editor harmonization: remove bright white cells from edit grids. */
+:root {
+    --editor-bg: #F1EEE8;
+    --editor-bg-soft: #F6F3EE;
+    --editor-cell: #F4F1EB;
+    --editor-cell-alt: #EFEAE2;
+    --editor-header: #E6E0D7;
+    --editor-line: #D4CABD;
+    --editor-ink: #26384A;
+    --editor-muted: #6D7784;
+}
+
+.stApp :where(
+    [data-testid="stDataFrame"],
+    [data-testid="stDataEditor"],
+    [data-testid="stTable"],
+    [data-testid="stDataFrameResizable"],
+    [data-testid="stDataEditorResizable"],
+    .stDataFrame,
+    .stDataEditor,
+    .glideDataEditor,
+    .dvn-scroller,
+    .dvn-underlay,
+    [role="grid"]
+) {
+    background: var(--editor-bg) !important;
+    background-color: var(--editor-bg) !important;
+    border-color: var(--editor-line) !important;
+    color: var(--editor-ink) !important;
+    -webkit-text-fill-color: var(--editor-ink) !important;
+}
+
+.stApp :where(
+    [data-testid="stDataFrame"] div,
+    [data-testid="stDataEditor"] div,
+    .glideDataEditor div,
+    .dvn-scroller div,
+    .dvn-underlay div
+) {
+    border-color: var(--editor-line) !important;
+}
+
+.stApp :where(
+    [data-testid="stDataFrame"] canvas,
+    [data-testid="stDataEditor"] canvas,
+    .glideDataEditor canvas,
+    .dvn-scroller canvas
+) {
+    background: var(--editor-cell) !important;
+    background-color: var(--editor-cell) !important;
+}
+
+.stApp :where(
+    [role="columnheader"],
+    [data-testid="stDataFrame"] th,
+    [data-testid="stTable"] th,
+    .glideDataEditor .gdg-header,
+    .glideDataEditor .gdg-cell-header
+) {
+    background: var(--editor-header) !important;
+    background-color: var(--editor-header) !important;
+    border-color: var(--editor-line) !important;
+    color: var(--editor-ink) !important;
+    -webkit-text-fill-color: var(--editor-ink) !important;
+}
+
+.stApp :where(
+    [role="gridcell"],
+    [data-testid="stDataFrame"] td,
+    [data-testid="stTable"] td,
+    .glideDataEditor .gdg-cell,
+    .glideDataEditor .gdg-cell-edit,
+    .dvn-cell,
+    .dvn-cell-edit
+) {
+    background: var(--editor-cell) !important;
+    background-color: var(--editor-cell) !important;
+    border-color: var(--editor-line) !important;
+    color: var(--editor-ink) !important;
+    -webkit-text-fill-color: var(--editor-ink) !important;
+}
+
+.stApp :where(
+    [data-testid="stDataEditor"] input,
+    [data-testid="stDataEditor"] textarea,
+    .glideDataEditor input,
+    .glideDataEditor textarea,
+    .dvn-cell-edit input,
+    .dvn-cell-edit textarea,
+    [data-baseweb="input"] input,
+    [data-baseweb="textarea"] textarea
+) {
+    background: var(--editor-bg-soft) !important;
+    background-color: var(--editor-bg-soft) !important;
+    border-color: var(--editor-line) !important;
+    color: var(--editor-ink) !important;
+    -webkit-text-fill-color: var(--editor-ink) !important;
+    caret-color: var(--editor-ink) !important;
+}
+
+.stApp :where(
+    [data-testid="stDataFrame"] [aria-selected="true"],
+    [data-testid="stDataEditor"] [aria-selected="true"],
+    .glideDataEditor .gdg-cell-selected,
+    .dvn-cell-selected
+) {
+    background: #E8E1D6 !important;
+    background-color: #E8E1D6 !important;
+    color: var(--editor-ink) !important;
+    -webkit-text-fill-color: var(--editor-ink) !important;
+}
+
+.stApp :where(
+    [data-testid="stDataFrame"] p,
+    [data-testid="stDataEditor"] p,
+    [data-testid="stTable"] p
+) {
+    color: var(--editor-muted) !important;
+    -webkit-text-fill-color: var(--editor-muted) !important;
+}

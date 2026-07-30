@@ -764,14 +764,16 @@ def show_sqlite_write_status(context: str) -> bool:
         return True
     file_ok = bool(report.get("db_file_writable"))
     dir_ok = bool(report.get("db_dir_writable"))
-    status = "가능" if file_ok and dir_ok else "불가"
+    sqlite_ok = bool(report.get("sqlite_writeable", file_ok and dir_ok))
+    status = "가능" if file_ok and dir_ok and sqlite_ok else "불가"
     st.caption(
         f"DB 경로: {report.get('db_path')} / "
         f"파일 쓰기: {'가능' if file_ok else '불가'} / "
         f"폴더 쓰기: {'가능' if dir_ok else '불가'} / "
+        f"SQLite 실제 쓰기: {'가능' if sqlite_ok else '불가'} / "
         f"읽기전용 URL 옵션: {'있음' if report.get('readonly_url_option') else '없음'}"
     )
-    if not file_ok or not dir_ok:
+    if not file_ok or not dir_ok or not sqlite_ok:
         st.error(f"SQLite DB 쓰기 상태가 {status}입니다. DB 파일과 data 폴더 권한을 확인해주세요.")
         return False
     return True
