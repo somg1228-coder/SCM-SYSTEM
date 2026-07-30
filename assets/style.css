@@ -13036,3 +13036,27 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     stroke: #617184 !important;
     fill: none !important;
 }
+
+/* Tabs: keep the selected accent but move it away from the label text. */
+.stApp [data-testid="stTabs"] [data-baseweb="tab-list"] {
+    gap: 0.15rem !important;
+}
+
+.stApp [data-testid="stTabs"] [data-baseweb="tab"] {
+    padding-left: 0.65rem !important;
+    padding-right: 0.65rem !important;
+}
+
+.stApp [data-testid="stTabs"] [aria-selected="true"] {
+    background: #E8E1D6 !important;
+    border-color: #CDBFAE !important;
+    color: #26384A !important;
+    -webkit-text-fill-color: #26384A !important;
+    box-shadow: inset 0 -3px 0 #58799A, 0 5px 12px rgba(45, 38, 30, 0.035) !important;
+}
+
+.stApp [data-testid="stTabs"] [aria-selected="true"] *,
+.stApp [data-testid="stTabs"] [aria-selected="true"] p {
+    color: #26384A !important;
+    -webkit-text-fill-color: #26384A !important;
+}
