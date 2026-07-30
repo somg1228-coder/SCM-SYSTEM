@@ -12856,3 +12856,70 @@ select,
     color: var(--active-ink) !important;
     -webkit-text-fill-color: var(--active-ink) !important;
 }
+
+/* Product master tone repair: remove the heavy green wash from the master forms. */
+div[class*="st-key-product_master_"][class*="_controls"] {
+    background: #EEF3F7 !important;
+    border-color: #C9D5DF !important;
+    box-shadow: none !important;
+}
+
+div[class*="st-key-product_master_"][class*="_editor_panel"] {
+    background: #F3F2EF !important;
+    border-color: #D4D8DC !important;
+    box-shadow: none !important;
+}
+
+div[class*="st-key-product_master_"][class*="_controls"] input,
+div[class*="st-key-product_master_"][class*="_controls"] textarea,
+div[class*="st-key-product_master_"][class*="_controls"] [data-testid="stFileUploaderDropzone"],
+div[class*="st-key-product_master_"][class*="_controls"] [data-baseweb="select"] > div,
+div[class*="st-key-product_master_"][class*="_editor_panel"] input,
+div[class*="st-key-product_master_"][class*="_editor_panel"] textarea,
+div[class*="st-key-product_master_"][class*="_editor_panel"] [data-baseweb="select"] > div {
+    background: #F8FAFC !important;
+    border-color: #CBD5E1 !important;
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+}
+
+div[class*="st-key-product_master_"][class*="_controls"] .stButton > button,
+div[class*="st-key-product_master_"][class*="_controls"] .stDownloadButton > button,
+div[class*="st-key-product_master_"][class*="_editor_panel"] .stButton > button,
+div[class*="st-key-product_master_"][class*="_editor_panel"] .stDownloadButton > button,
+div[class*="st-key-product_master_"][class*="_editor_panel"] .stFormSubmitButton > button {
+    background: #E7EDF3 !important;
+    border-color: #B8C7D4 !important;
+    color: #36556F !important;
+    -webkit-text-fill-color: #36556F !important;
+}
+
+div[class*="st-key-product_master_"][class*="_controls"] .stButton > button:hover,
+div[class*="st-key-product_master_"][class*="_controls"] .stDownloadButton > button:hover,
+div[class*="st-key-product_master_"][class*="_editor_panel"] .stButton > button:hover,
+div[class*="st-key-product_master_"][class*="_editor_panel"] .stDownloadButton > button:hover,
+div[class*="st-key-product_master_"][class*="_editor_panel"] .stFormSubmitButton > button:hover {
+    background: #DCE6EF !important;
+    border-color: #9EB2C4 !important;
+    color: #26384A !important;
+    -webkit-text-fill-color: #26384A !important;
+}
+
+div[class*="st-key-product_master_"][class*="_editor_panel"] .stFormSubmitButton > button[kind="primary"] {
+    background: #6F879A !important;
+    border-color: #5F778A !important;
+    color: #F8FAFC !important;
+    -webkit-text-fill-color: #F8FAFC !important;
+}
+
+div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDataFrame"],
+div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDataFrame"] *,
+div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDataEditor"],
+div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDataEditor"] * {
+    border-color: #D6DDE4 !important;
+}
+
+div[class*="st-key-product_master_"][class*="_editor_panel"] [role="grid"],
+div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDataFrame"] [role="grid"] {
+    background: #F8FAFC !important;
+}

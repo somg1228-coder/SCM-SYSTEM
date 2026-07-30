@@ -711,34 +711,34 @@ def inject_product_master_css() -> None:
         """
         <style>
         .product-master-title {
-            color: #ffffff;
+            color: #172033;
             font-size: 1.32rem;
             font-weight: 950;
             margin: 0.15rem 0 0.85rem;
         }
         .product-master-subtitle {
-            color: #ffffff;
+            color: #26384A;
             font-size: 1.08rem;
             font-weight: 900;
             margin: 0.35rem 0 0.75rem;
         }
         .product-master-control-title,
         .product-master-form-title {
-            color: #ffffff;
+            color: #26384A;
             font-size: 1.02rem;
             font-weight: 900;
             margin: 0.1rem 0 0.45rem;
         }
         div[class*="st-key-product_master_"][class*="_controls"] {
-            background: rgba(7, 58, 52, 0.48);
-            border: 1px solid rgba(87, 178, 165, 0.28);
+            background: #EEF3F7;
+            border: 1px solid #C9D5DF;
             border-radius: 8px;
             margin: 0.2rem 0 0.75rem;
             padding: 0.82rem;
         }
         div[class*="st-key-product_master_"][class*="_editor_panel"] {
-            background: rgba(7, 58, 52, 0.36);
-            border: 1px solid rgba(87, 178, 165, 0.28);
+            background: #F1F4F2;
+            border: 1px solid #CDD7D1;
             border-radius: 8px;
             padding: 0.85rem;
         }
@@ -753,7 +753,7 @@ def inject_product_master_css() -> None:
             display: none !important;
         }
         div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stExpander"] {
-            border-color: rgba(87, 178, 165, 0.28);
+            border-color: #C9D5DF;
             margin: 0.25rem 0 0.75rem;
         }
         </style>
