@@ -79,10 +79,6 @@ def render_files() -> None:
     render_placeholder("자료실")
 
 
-def render_settings() -> None:
-    render_placeholder("시스템 설정")
-
-
 def render_page(page: str) -> None:
     if page in {"홈", "대시보드"}:
         render_home()
@@ -104,8 +100,6 @@ def render_page(page: str) -> None:
         render_guide()
     elif page == "자료실":
         render_files()
-    elif page == "시스템 설정":
-        render_settings()
     else:
         render_home()
 

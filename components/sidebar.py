@@ -14,7 +14,6 @@ MENU_ITEMS = [
     ("warehouse3d", "3D 창고관리"),
     ("guide", "업무가이드"),
     ("files", "자료실"),
-    ("settings", "시스템 설정"),
 ]
 
 MENU_GROUPS = [
@@ -23,7 +22,6 @@ MENU_GROUPS = [
     ("지원", MENU_ITEMS[8:10]),
 ]
 
-SETTINGS_ITEM = MENU_ITEMS[10]
 VALID_PAGES = {label for _, label in MENU_ITEMS}
 
 
@@ -101,16 +99,6 @@ def render_sidebar() -> str:
                         args=(label,),
                     )
 
-        settings_label = SETTINGS_ITEM[1]
-        if render_group_toggle("설정", "settings"):
-            st.button(
-                settings_label,
-                key=f"sidebar_nav_{SETTINGS_ITEM[0]}",
-                use_container_width=True,
-                type="primary" if active_page == settings_label else "secondary",
-                on_click=activate_page,
-                args=(settings_label,),
-            )
         st.markdown('<div class="sidebar-meta">SCM Portal · v1.0</div>', unsafe_allow_html=True)
 
     return st.session_state["page"]
