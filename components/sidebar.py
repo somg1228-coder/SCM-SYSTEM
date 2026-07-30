@@ -82,7 +82,7 @@ def render_sidebar() -> str:
 
     with st.sidebar:
         st.markdown(
-            '<div class="sidebar-brand"><span class="sidebar-brand-mark"></span><span class="sidebar-brand-title">SCM 물류운영포털</span></div>'
+            '<div class="sidebar-brand"><span class="sidebar-brand-mark"></span><span class="sidebar-brand-title">SCM</span></div>'
             '<div class="sidebar-divider"></div>',
             unsafe_allow_html=True,
         )

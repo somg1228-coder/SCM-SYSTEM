@@ -977,30 +977,47 @@ def create_po_from_selected_quote(db: Session, pr_number: str) -> PurchaseOrder 
 
 def receive_selected_po(db: Session, po_numbers: list[str]) -> int:
     count = 0
+    applied_sources: set[str] = set()
     for po_number in po_numbers:
         po = db.execute(select(PurchaseOrder).where(PurchaseOrder.po_number == po_number)).scalar_one_or_none()
         if not po or po.inbound_status == "입고완료":
             continue
+        pr = db.execute(select(PurchaseRequest).where(PurchaseRequest.pr_number == po.pr_number)).scalar_one_or_none()
+        item_code = pr.item_code if pr else ""
+        inventory_source = "창고"
+        product = None
+        if services is not None:
+            inventory_source, product = services.find_product_master_any(
+                db,
+                sku=item_code,
+                product_name=po.item_name,
+                preferred_source="창고",
+            )
         po.inbound_status = "입고완료"
         po.progress_status = "종결"
         po.actual_inbound_date = date.today()
         db.add(
             InventoryInbound(
-                source_type="창고",
+                source_type=inventory_source,
                 inbound_date=date.today(),
-                product_name=po.item_name,
-                barcode="",
+                category=product.large_category if product else "",
+                product_code=product.sku if product else item_code,
+                product_name=product.product_name if product else po.item_name,
+                barcode=product.barcode if product else "",
                 inbound_qty=int(po.quantity or 0),
-                vendor=po.supplier_name,
+                vendor=(product.supplier if product and product.supplier else po.supplier_name),
                 inbound_type="PO 입고",
                 memo=po.po_number,
                 is_applied=False,
             )
         )
+        applied_sources.add(inventory_source)
         count += 1
     db.commit()
     if count and services is not None:
-        services.apply_inbound_to_stock(db, "창고", date.today())
+        for source_type in applied_sources:
+            services.apply_inbound_to_stock(db, source_type, date.today())
+            services.sync_purchase_metrics_to_inventory(db, source_type, date.today())
     return count
 
 
@@ -1345,9 +1362,9 @@ def update_supplier_purchase_average(db: Session, supplier_name: str) -> None:
     supplier.avg_unit_price_currency = latest_currency
     supplier.handled_items = append_unique_items(supplier.handled_items, *(row.item_name for row in rows))
     lead_times = [
-        (row.expected_inbound_date - row.order_date).days
+        ((row.actual_inbound_date or row.expected_inbound_date) - row.order_date).days
         for row in rows
-        if row.expected_inbound_date and row.order_date
+        if (row.actual_inbound_date or row.expected_inbound_date) and row.order_date
     ]
     if lead_times:
         supplier.avg_lead_time_days = round(sum(lead_times) / len(lead_times))

@@ -46,6 +46,26 @@ MASTER_COLUMNS = [
     "비고",
 ]
 
+THREEPL_MASTER_COLUMNS = [
+    "미사용 처리",
+    "카테고리",
+    "바코드",
+    "상품명",
+    "평균출고수량",
+    "안전재고",
+    "재고상태",
+    "업체명",
+    "파렛트,박스단위",
+    "담당자",
+    "최종입고일",
+    "SKU",
+    "입수",
+    "박스입수",
+    "기본 리드타임",
+    "정렬순서",
+    "사용여부",
+]
+
 OFFLINE_MASTER_COLUMNS = [
     "미사용 처리",
     "카테고리",
@@ -123,7 +143,9 @@ def render_master_tab(source_type: str, title: str) -> None:
         with template_col:
             st.write("")
             template_df = (
-                offline_master_template_df()
+                threepl_master_template_df()
+                if uses_threepl_master_form(source_type)
+                else offline_master_template_df()
                 if uses_simple_master_form(source_type)
                 else services.product_master_template_df()
             )
@@ -138,7 +160,9 @@ def render_master_tab(source_type: str, title: str) -> None:
         with download_col:
             st.write("")
             download_df = (
-                offline_master_to_editor(rows, keyword, active_filter)
+                threepl_master_to_editor(rows)
+                if uses_threepl_master_form(source_type)
+                else offline_master_to_editor(rows, keyword, active_filter)
                 if uses_simple_master_form(source_type)
                 else master_to_editor(rows)
             ).drop(columns=["미사용 처리"], errors="ignore")
@@ -160,7 +184,9 @@ def render_master_tab(source_type: str, title: str) -> None:
             render_single_product_form(source_type, key)
 
         df = (
-            offline_master_to_editor(rows, keyword, active_filter)
+            threepl_master_to_editor(rows)
+            if uses_threepl_master_form(source_type)
+            else offline_master_to_editor(rows, keyword, active_filter)
             if uses_simple_master_form(source_type)
             else master_to_editor(rows)
         )
@@ -174,13 +200,14 @@ def render_master_tab(source_type: str, title: str) -> None:
                 hide_index=True,
                 use_container_width=True,
                 num_rows="dynamic",
-                height=470 if uses_simple_master_form(source_type) else 360,
+                height=470 if uses_simple_master_form(source_type) or uses_threepl_master_form(source_type) else 360,
                 key=f"product_master_{key}_editor",
-                column_order=OFFLINE_MASTER_COLUMNS if uses_simple_master_form(source_type) else MASTER_COLUMNS,
-                column_config=offline_master_column_config() if uses_simple_master_form(source_type) else master_column_config(),
+                column_order=master_column_order(source_type),
+                column_config=master_column_config_for_source(source_type),
+                disabled=master_disabled_columns(source_type),
             )
             if st.form_submit_button("저장", type="primary", use_container_width=True):
-                payload = offline_editor_to_payload(edited) if uses_simple_master_form(source_type) else editor_to_payload(edited)
+                payload = editor_payload_for_source(source_type, edited)
                 outcome = with_db(lambda db: services.bulk_save_product_master(db, source_type, payload))
                 if outcome and outcome.get("ok", True):
                     clear_master_editor_buffer(key)
@@ -274,6 +301,10 @@ def uses_simple_master_form(source_type: str) -> bool:
     return source_type in {"오프라인", "창고"}
 
 
+def uses_threepl_master_form(source_type: str) -> bool:
+    return source_type == "3PL"
+
+
 def product_master_available() -> bool:
     if init_db is None or SessionLocal is None or services is None:
         return False
@@ -300,15 +331,18 @@ def with_db(action):
 
 
 def fetch_master(source_type: str, keyword: str, active_filter: str) -> list[dict]:
-    return (
-        with_db(
-            lambda db: [
-                services.product_master_to_dict(row)
-                for row in services.list_product_master(db, source_type, keyword, active_filter)
-            ]
-        )
-        or []
-    )
+    def action(db):
+        rows = [
+            services.product_master_to_dict(row)
+            for row in services.list_product_master(db, source_type, keyword, active_filter)
+        ]
+        if uses_threepl_master_form(source_type):
+            metrics = services.product_master_operational_metrics(db, source_type)
+            for row in rows:
+                row.update(metrics.get(row.get("sku", ""), {}))
+        return rows
+
+    return with_db(action) or []
 
 
 def master_column_config() -> dict:
@@ -329,6 +363,28 @@ def master_column_config() -> dict:
     }
 
 
+def threepl_master_column_config() -> dict:
+    return {
+        "미사용 처리": st.column_config.CheckboxColumn("미사용 처리", width=74, default=False),
+        "카테고리": st.column_config.TextColumn("카테고리", width="medium"),
+        "바코드": st.column_config.TextColumn("바코드", width="medium"),
+        "상품명": st.column_config.TextColumn("상품명", width="large"),
+        "평균출고수량": st.column_config.NumberColumn("평균출고수량", min_value=0, step=1),
+        "안전재고": st.column_config.NumberColumn("안전재고", min_value=0, step=1),
+        "재고상태": st.column_config.TextColumn("재고상태", width="small"),
+        "업체명": st.column_config.TextColumn("업체명", width="medium"),
+        "파렛트,박스단위": st.column_config.TextColumn("파렛트,박스단위", width="medium"),
+        "담당자": st.column_config.TextColumn("담당자", width="medium"),
+        "최종입고일": st.column_config.DateColumn("최종입고일"),
+        "SKU": st.column_config.TextColumn("SKU", width="medium"),
+        "입수": st.column_config.NumberColumn("입수", min_value=0, step=1),
+        "박스입수": st.column_config.NumberColumn("박스입수", min_value=0, step=1),
+        "기본 리드타임": st.column_config.NumberColumn("기본 리드타임", min_value=0, step=1),
+        "정렬순서": st.column_config.NumberColumn("정렬순서", min_value=0, step=1),
+        "사용여부": st.column_config.SelectboxColumn("사용여부", options=["사용", "미사용"]),
+    }
+
+
 def offline_master_column_config() -> dict:
     return {
         "미사용 처리": st.column_config.CheckboxColumn("미사용 처리", width=74, default=False),
@@ -339,6 +395,30 @@ def offline_master_column_config() -> dict:
         "정렬순서": st.column_config.NumberColumn("정렬순서", min_value=0, step=1),
         "사용여부": st.column_config.SelectboxColumn("사용여부", options=["사용", "미사용"]),
     }
+
+
+def master_column_order(source_type: str) -> list[str]:
+    if uses_threepl_master_form(source_type):
+        return THREEPL_MASTER_COLUMNS
+    return OFFLINE_MASTER_COLUMNS if uses_simple_master_form(source_type) else MASTER_COLUMNS
+
+
+def master_column_config_for_source(source_type: str) -> dict:
+    if uses_threepl_master_form(source_type):
+        return threepl_master_column_config()
+    return offline_master_column_config() if uses_simple_master_form(source_type) else master_column_config()
+
+
+def master_disabled_columns(source_type: str) -> list[str]:
+    if uses_threepl_master_form(source_type):
+        return ["평균출고수량", "재고상태", "최종입고일"]
+    return []
+
+
+def editor_payload_for_source(source_type: str, edited: pd.DataFrame) -> list[dict]:
+    if uses_threepl_master_form(source_type):
+        return threepl_editor_to_payload(edited)
+    return offline_editor_to_payload(edited) if uses_simple_master_form(source_type) else editor_to_payload(edited)
 
 
 def master_to_editor(rows: list[dict]) -> pd.DataFrame:
@@ -365,6 +445,42 @@ def master_to_editor(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(data, columns=MASTER_COLUMNS)
 
 
+def format_pack_box_unit(pack_qty: int, box_qty: int) -> str:
+    parts = []
+    if pack_qty:
+        parts.append(f"파렛트 {int(pack_qty):,}")
+    if box_qty:
+        parts.append(f"박스 {int(box_qty):,}")
+    return " / ".join(parts)
+
+
+def threepl_master_to_editor(rows: list[dict]) -> pd.DataFrame:
+    data = []
+    for row in rows:
+        data.append(
+            {
+                "미사용 처리": False,
+                "카테고리": row.get("large_category", ""),
+                "바코드": row.get("barcode", ""),
+                "상품명": row.get("product_name", ""),
+                "평균출고수량": row.get("avg_outbound_qty", 0) or 0,
+                "안전재고": row.get("min_stock", 0),
+                "재고상태": row.get("stock_status", ""),
+                "업체명": row.get("supplier", ""),
+                "파렛트,박스단위": format_pack_box_unit(row.get("pack_qty", 0), row.get("box_qty", 0)),
+                "담당자": row.get("memo", ""),
+                "최종입고일": row.get("last_inbound_date"),
+                "SKU": row.get("sku", ""),
+                "입수": row.get("pack_qty", 0),
+                "박스입수": row.get("box_qty", 0),
+                "기본 리드타임": row.get("avg_lead_time", 0) or row.get("default_lead_time", 0),
+                "정렬순서": row.get("sort_order", 0),
+                "사용여부": row.get("is_active", "사용"),
+            }
+        )
+    return pd.DataFrame(data, columns=THREEPL_MASTER_COLUMNS)
+
+
 def offline_master_to_editor(rows: list[dict], keyword: str = "", active_filter: str = "전체") -> pd.DataFrame:
     data = []
     for row in rows:
@@ -387,6 +503,23 @@ def offline_master_to_editor(rows: list[dict], keyword: str = "", active_filter:
 
 def offline_master_template_df() -> pd.DataFrame:
     return pd.DataFrame(columns=[column for column in OFFLINE_MASTER_COLUMNS if column != "미사용 처리"])
+
+
+def threepl_master_template_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "카테고리",
+            "바코드",
+            "상품명",
+            "평균출고수량",
+            "안전재고",
+            "재고상태",
+            "업체명",
+            "파렛트,박스단위",
+            "담당자",
+            "최종입고일",
+        ]
+    )
 
 
 def offline_stock_matches_keyword(stock: dict, keyword: str) -> bool:
@@ -427,6 +560,35 @@ def editor_to_payload(df: pd.DataFrame) -> list[dict]:
         if bool(payload.get("미사용 처리", False)):
             payload["사용여부"] = "미사용"
         payload.pop("미사용 처리", None)
+        rows.append(payload)
+    return rows
+
+
+def threepl_editor_to_payload(df: pd.DataFrame) -> list[dict]:
+    rows = []
+    for _, row in df.fillna("").iterrows():
+        product_name = clean_value(row.get("상품명"))
+        barcode = clean_value(row.get("바코드"))
+        sku = clean_value(row.get("SKU")) or barcode or product_name
+        if not product_name and not barcode and not sku:
+            continue
+        payload = {
+            "SKU": sku,
+            "바코드": barcode or sku,
+            "상품명": product_name,
+            "카테고리": clean_value(row.get("카테고리")),
+            "브랜드": "",
+            "공급처": clean_value(row.get("업체명")),
+            "입수": to_int_value(row.get("입수")),
+            "박스입수": to_int_value(row.get("박스입수")) or to_box_unit_value(row.get("파렛트,박스단위")),
+            "기본 리드타임": to_int_value(row.get("기본 리드타임")),
+            "최소재고": to_int_value(row.get("안전재고")),
+            "정렬순서": to_int_value(row.get("정렬순서")),
+            "사용여부": clean_value(row.get("사용여부")) or "사용",
+            "비고": clean_value(row.get("담당자")),
+        }
+        if bool(row.get("미사용 처리", False)):
+            payload["사용여부"] = "미사용"
         rows.append(payload)
     return rows
 
@@ -477,6 +639,38 @@ def to_int_value(value) -> int:
         return int(float(digits))
     except ValueError:
         return 0
+
+
+def to_box_unit_value(value) -> int:
+    text = clean_value(value).replace(",", "")
+    if not text:
+        return 0
+    normalized = text.replace(" ", "")
+    marker = "박스"
+    if marker in normalized:
+        tail = normalized.split(marker, 1)[1]
+        digits = "".join(ch for ch in tail if ch.isdigit() or ch in {".", "-"})
+        if digits:
+            try:
+                return int(float(digits))
+            except ValueError:
+                pass
+    numbers = []
+    current = ""
+    for ch in text:
+        if ch.isdigit() or ch in {".", "-"}:
+            current += ch
+        elif current:
+            numbers.append(current)
+            current = ""
+    if current:
+        numbers.append(current)
+    if numbers:
+        try:
+            return int(float(numbers[-1]))
+        except ValueError:
+            return 0
+    return 0
 
 
 def format_date_value(value) -> str:

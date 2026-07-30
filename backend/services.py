@@ -19,6 +19,8 @@ from backend.models import (
     InventoryUploadHistory,
     InventoryUploadSnapshot,
     OfflineProductMaster,
+    PurchaseOrder,
+    PurchaseRequest,
     ThirdpartyProductMaster,
     WarehouseProductMaster,
 )
@@ -59,6 +61,8 @@ PRODUCT_MASTER_MODEL_BY_SOURCE = {
     "3PL": ThirdpartyProductMaster,
     "창고": WarehouseProductMaster,
 }
+
+PURCHASE_METRIC_SOURCE_ORDER = ["창고", "3PL", "오프라인"]
 
 
 def product_master_model(source_type: str):
@@ -146,6 +150,19 @@ def to_int(value) -> int:
             return int(float(number.group(0)))
         except ValueError:
             return 0
+
+
+def to_box_unit_int(value) -> int:
+    text = clean_text(value).replace(",", "")
+    if not text:
+        return 0
+    box_match = re.search(r"박스\s*(\d+(?:\.\d+)?)", text)
+    if box_match:
+        return int(float(box_match.group(1)))
+    numbers = re.findall(r"\d+(?:\.\d+)?", text)
+    if numbers:
+        return int(float(numbers[-1]))
+    return to_int(text)
 
 
 def parse_date(value) -> date | None:
@@ -442,6 +459,207 @@ def find_product_master(db: Session, source_type: str, sku: str = "", barcode: s
     return None
 
 
+def purchase_metric_source_order(preferred_source: str = "") -> list[str]:
+    order = []
+    if preferred_source in PURCHASE_METRIC_SOURCE_ORDER:
+        order.append(preferred_source)
+    for source_type in PURCHASE_METRIC_SOURCE_ORDER:
+        if source_type not in order:
+            order.append(source_type)
+    return order
+
+
+def find_product_master_any(
+    db: Session,
+    sku: str = "",
+    barcode: str = "",
+    product_name: str = "",
+    preferred_source: str = "창고",
+) -> tuple[str, object] | tuple[str, None]:
+    for source_type in purchase_metric_source_order(preferred_source):
+        product = find_product_master(db, source_type, sku, barcode, product_name)
+        if product:
+            return source_type, product
+    return preferred_source or "창고", None
+
+
+def purchase_inventory_metrics(db: Session, source_type: str | None = None) -> dict[tuple[str, str], dict]:
+    source_types = [source_type] if source_type else PURCHASE_METRIC_SOURCE_ORDER
+    products_by_key: dict[tuple[str, str], object] = {}
+    sku_lookup: dict[str, list[tuple[str, object]]] = {}
+    name_lookup: dict[str, list[tuple[str, object]]] = {}
+    barcode_lookup: dict[str, list[tuple[str, object]]] = {}
+
+    for product_source in source_types:
+        model = product_master_model(product_source)
+        for product in db.execute(select(model)).scalars():
+            key = (product_source, product.sku)
+            products_by_key[key] = product
+            if product.sku:
+                sku_lookup.setdefault(clean_text(product.sku).lower(), []).append((product_source, product))
+            if product.barcode:
+                barcode_lookup.setdefault(clean_text(product.barcode).lower(), []).append((product_source, product))
+            if product.product_name:
+                name_lookup.setdefault(clean_text(product.product_name).lower(), []).append((product_source, product))
+
+    if not products_by_key:
+        return {}
+
+    pr_rows = db.execute(select(PurchaseRequest.pr_number, PurchaseRequest.item_code)).all()
+    pr_item_codes = {pr_number: clean_text(item_code) for pr_number, item_code in pr_rows if pr_number}
+    metrics: dict[tuple[str, str], dict] = {}
+    completed_pos = db.execute(
+        select(PurchaseOrder).where(
+            PurchaseOrder.order_date.is_not(None),
+            PurchaseOrder.actual_inbound_date.is_not(None),
+        ).order_by(PurchaseOrder.actual_inbound_date, PurchaseOrder.id)
+    ).scalars()
+
+    for po in completed_pos:
+        item_code = pr_item_codes.get(po.pr_number, "")
+        lookup_key = clean_text(item_code).lower()
+        matched = sku_lookup.get(lookup_key, []) if lookup_key else []
+        if not matched and lookup_key:
+            matched = barcode_lookup.get(lookup_key, [])
+        if not matched:
+            matched = name_lookup.get(clean_text(po.item_name).lower(), [])
+        if not matched:
+            continue
+
+        lead_time = max((po.actual_inbound_date - po.order_date).days, 0)
+        for product_source, product in matched:
+            key = (product_source, product.sku)
+            metric = metrics.setdefault(
+                key,
+                {
+                    "lead_times": [],
+                    "last_order_date": None,
+                    "last_inbound_date": None,
+                    "last_po_number": "",
+                    "last_supplier": "",
+                    "last_quantity": 0,
+                },
+            )
+            metric["lead_times"].append(lead_time)
+            last_inbound_date = metric.get("last_inbound_date")
+            if last_inbound_date is None or po.actual_inbound_date >= last_inbound_date:
+                metric["last_order_date"] = po.order_date
+                metric["last_inbound_date"] = po.actual_inbound_date
+                metric["last_po_number"] = po.po_number
+                metric["last_supplier"] = po.supplier_name
+                metric["last_quantity"] = int(po.quantity or 0)
+
+    for key, metric in metrics.items():
+        lead_times = metric.get("lead_times", [])
+        metric["avg_lead_time"] = round(sum(lead_times) / len(lead_times)) if lead_times else 0
+        metric["recent_lead_time"] = lead_times[-1] if lead_times else 0
+        metric["sample_count"] = len(lead_times)
+    return metrics
+
+
+def latest_inbound_metrics(db: Session, source_type: str | None = None) -> dict[tuple[str, str], dict]:
+    query = select(InventoryInbound)
+    if source_type:
+        query = query.where(InventoryInbound.source_type == source_type)
+    metrics: dict[tuple[str, str], dict] = {}
+    for inbound in db.execute(query.order_by(InventoryInbound.inbound_date)).scalars():
+        product = find_product_master(db, inbound.source_type, inbound.product_code, inbound.barcode, inbound.product_name)
+        if not product:
+            continue
+        key = (inbound.source_type, product.sku)
+        metric = metrics.setdefault(key, {"last_inbound_date": None, "last_inbound_qty": 0})
+        if metric["last_inbound_date"] is None or inbound.inbound_date >= metric["last_inbound_date"]:
+            metric["last_inbound_date"] = inbound.inbound_date
+            metric["last_inbound_qty"] = int(inbound.inbound_qty or 0)
+    return metrics
+
+
+def sync_purchase_metrics_to_inventory(
+    db: Session,
+    source_type: str | None = None,
+    work_date: date | None = None,
+) -> int:
+    metrics = purchase_inventory_metrics(db, source_type)
+    if not metrics:
+        return 0
+    source_types = [source_type] if source_type else PURCHASE_METRIC_SOURCE_ORDER
+    count = 0
+
+    for product_source in source_types:
+        model = product_master_model(product_source)
+        for product in db.execute(select(model)).scalars():
+            metric = metrics.get((product_source, product.sku))
+            if not metric:
+                continue
+            avg_lead_time = int(metric.get("avg_lead_time") or 0)
+            if avg_lead_time and int(product.default_lead_time or 0) != avg_lead_time:
+                product.default_lead_time = avg_lead_time
+                count += 1
+
+    daily_query = select(InventoryDaily)
+    if source_type:
+        daily_query = daily_query.where(InventoryDaily.source_type == source_type)
+    if work_date:
+        daily_query = daily_query.where(InventoryDaily.work_date == work_date)
+    for daily in db.execute(daily_query).scalars():
+        product = find_product_master(db, daily.source_type, daily.product_code, daily.barcode, daily.product_name)
+        if not product:
+            continue
+        metric = metrics.get((daily.source_type, product.sku))
+        if not metric:
+            continue
+        avg_lead_time = int(metric.get("avg_lead_time") or 0)
+        if avg_lead_time and int(daily.inbound_cycle or 0) != avg_lead_time:
+            daily.inbound_cycle = avg_lead_time
+            count += 1
+        if metric.get("last_inbound_date") and daily.last_inbound_date != metric["last_inbound_date"]:
+            daily.last_inbound_date = metric["last_inbound_date"]
+            count += 1
+
+    db.commit()
+    return count
+
+
+def product_master_operational_metrics(db: Session, source_type: str) -> dict[str, dict]:
+    dates = list_work_dates(db, source_type)
+    latest_date = dates[0] if dates else None
+    latest_rows = list_daily(db, source_type, latest_date) if latest_date else []
+    latest_by_sku = {row.product_code: row for row in latest_rows if row.product_code}
+    purchase_metrics = purchase_inventory_metrics(db, source_type)
+    inbound_metrics = latest_inbound_metrics(db, source_type)
+    result: dict[str, dict] = {}
+
+    model = product_master_model(source_type)
+    for product in db.execute(select(model)).scalars():
+        daily = latest_by_sku.get(product.sku)
+        avg_outbound = 0
+        if latest_date:
+            avg_outbound = ceil(
+                sum(
+                    int(row.outbound_qty or 0)
+                    for row in db.execute(
+                        select(InventoryDaily).where(
+                            InventoryDaily.source_type == source_type,
+                            InventoryDaily.product_code == product.sku,
+                            InventoryDaily.work_date >= latest_date - timedelta(days=14),
+                            InventoryDaily.work_date <= latest_date,
+                        )
+                    ).scalars()
+                )
+                / 14
+            )
+        key = (source_type, product.sku)
+        purchase_metric = purchase_metrics.get(key, {})
+        inbound_metric = inbound_metrics.get(key, {})
+        result[product.sku] = {
+            "avg_outbound_qty": avg_outbound,
+            "stock_status": daily.stock_status if daily else "",
+            "last_inbound_date": purchase_metric.get("last_inbound_date") or inbound_metric.get("last_inbound_date"),
+            "avg_lead_time": purchase_metric.get("avg_lead_time", 0),
+        }
+    return result
+
+
 def apply_product_master_to_daily(item: InventoryDaily, product) -> None:
     if not product:
         return
@@ -524,9 +742,9 @@ def normalize_product_master_row(row: dict) -> dict:
         "medium_category": "",
         "small_category": "",
         "brand": clean_text(data.get("브랜드") or data.get("brand")),
-        "supplier": clean_text(data.get("공급처") or data.get("거래처") or data.get("supplier")),
+        "supplier": clean_text(data.get("공급처") or data.get("업체명") or data.get("거래처") or data.get("supplier")),
         "pack_qty": to_int(data.get("입수") or data.get("pack_qty")),
-        "box_qty": to_int(data.get("박스입수") or data.get("box_qty")),
+        "box_qty": to_int(data.get("박스입수") or data.get("box_qty")) or to_box_unit_int(data.get("파렛트,박스단위")),
         "default_lead_time": to_int(
             data.get("기본 리드타임")
             or data.get("리드타임")
@@ -542,7 +760,7 @@ def normalize_product_master_row(row: dict) -> dict:
         ),
         "sort_order": to_int(data.get("정렬순서") or data.get("sort_order") or data.get("순서")),
         "is_active": is_active if is_active in {"사용", "미사용"} else "사용",
-        "memo": clean_text(data.get("비고") or data.get("memo")),
+        "memo": clean_text(data.get("비고") or data.get("담당자") or data.get("memo")),
     }
 
 
@@ -782,12 +1000,19 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     if active_only:
         query = query.where(model.is_active == "사용")
     products = list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
+    purchase_metrics = purchase_inventory_metrics(db, source_type)
+    inbound_metrics = latest_inbound_metrics(db, source_type)
     rows = []
     for product in products:
         daily = daily_row_for_product(db, source_type, work_date, product)
         current_stock = int(daily.current_stock or 0) if daily else 0
         safe_stock = int(product.min_stock or 0)
         status = stock_status_for_values(current_stock, safe_stock)
+        purchase_metric = purchase_metrics.get((source_type, product.sku), {})
+        inbound_metric = inbound_metrics.get((source_type, product.sku), {})
+        measured_lead_time = int(purchase_metric.get("avg_lead_time") or 0)
+        box_qty = int(product.box_qty or product.pack_qty or 0)
+        shortage_qty = max(safe_stock - current_stock, 0)
         rows.append(
             {
                 "source_type": source_type,
@@ -800,7 +1025,13 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "safe_stock": safe_stock,
                 "stock_status": status,
                 "barcode": product.barcode,
-                "inbound_cycle": product.default_lead_time or 0,
+                "inbound_cycle": measured_lead_time or product.default_lead_time or 0,
+                "box_qty": box_qty,
+                "recommended_boxes": ceil(shortage_qty / box_qty) if box_qty and shortage_qty > 0 else 0,
+                "measured_lead_time": measured_lead_time,
+                "last_purchase_order_date": purchase_metric.get("last_order_date"),
+                "last_purchase_inbound_date": purchase_metric.get("last_inbound_date") or inbound_metric.get("last_inbound_date"),
+                "last_po_number": purchase_metric.get("last_po_number", ""),
                 "sort_order": product.sort_order or 0,
                 "is_active": product.is_active,
             }

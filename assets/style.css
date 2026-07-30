@@ -12730,3 +12730,129 @@ div[class*="selected_delete_btn"] button * {
     color: #84453E !important;
     -webkit-text-fill-color: #84453E !important;
 }
+
+/* Pastel active-state polish: selected items stay readable without white text. */
+:root {
+    --active-bg: #D7E2DD;
+    --active-bg-strong: #CBDAD3;
+    --active-border: #9FB8AF;
+    --active-ink: #21463F;
+    --active-ink-blue: #26384A;
+}
+
+[data-testid="stSidebar"] .sidebar-brand {
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand-title,
+[data-testid="stSidebar"] .sidebar-brand span:last-child {
+    color: #172033 !important;
+    font-size: 17px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.02em !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"],
+[data-testid="stTabs"] [aria-selected="true"],
+.chart-filter-links a.active,
+.week-cell.active .week-date,
+.meeting-calendar-day.today,
+.schedule-week-chip,
+.week-range,
+div[class*="st-key-kpi_"] button[kind="primary"] {
+    background: var(--active-bg) !important;
+    border-color: var(--active-border) !important;
+    box-shadow: inset 4px 0 0 #6F927D, 0 6px 14px rgba(24, 36, 48, 0.05) !important;
+    color: var(--active-ink) !important;
+    -webkit-text-fill-color: var(--active-ink) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"] *,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] *,
+[data-testid="stTabs"] [aria-selected="true"] *,
+.chart-filter-links a.active *,
+.week-cell.active .week-date *,
+.meeting-calendar-day.today *,
+.schedule-week-chip *,
+.week-range *,
+div[class*="st-key-kpi_"] button[kind="primary"] * {
+    color: var(--active-ink) !important;
+    -webkit-text-fill-color: var(--active-ink) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"]::before,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"]::before {
+    background: #C9D9D2 !important;
+    border-color: #ABC0B7 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"]::after,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"]::after {
+    background: var(--active-ink) !important;
+}
+
+[data-testid="stTabs"] [aria-selected="true"] {
+    box-shadow: inset 0 -2px 0 #6F927D !important;
+}
+
+.stButton > button[kind="primary"]:not([data-testid="stBaseButton-primary"]),
+.stDownloadButton > button[kind="primary"],
+.stFormSubmitButton > button[kind="primary"] {
+    background: #6F879A !important;
+    border-color: #5F778A !important;
+    color: #F8FAFC !important;
+    -webkit-text-fill-color: #F8FAFC !important;
+}
+
+.stButton > button[kind="primary"]:not([data-testid="stBaseButton-primary"]) *,
+.stDownloadButton > button[kind="primary"] *,
+.stFormSubmitButton > button[kind="primary"] * {
+    color: #F8FAFC !important;
+    -webkit-text-fill-color: #F8FAFC !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_home"] button::after {
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='9' rx='1.2'/%3E%3Crect x='14' y='3' width='7' height='5' rx='1.2'/%3E%3Crect x='14' y='12' width='7' height='9' rx='1.2'/%3E%3Crect x='3' y='16' width='7' height='5' rx='1.2'/%3E%3C/svg%3E") center / 19px 19px no-repeat !important;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='9' rx='1.2'/%3E%3Crect x='14' y='3' width='7' height='5' rx='1.2'/%3E%3Crect x='14' y='12' width='7' height='9' rx='1.2'/%3E%3Crect x='3' y='16' width='7' height='5' rx='1.2'/%3E%3C/svg%3E") center / 19px 19px no-repeat !important;
+}
+
+.panel,
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stExpander"],
+[data-testid="stForm"],
+.st-key-dashboard_card_category,
+.st-key-dashboard_card_month,
+.st-key-dashboard_card_recent,
+.st-key-dashboard_card_top5,
+.detail-section-card {
+    background: #E4EAE5 !important;
+    border-color: #B5C3BD !important;
+}
+
+input,
+textarea,
+select,
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stNumberInput"] input,
+[data-testid="stDateInput"] input,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div {
+    background: #DEE6E1 !important;
+    border-color: #A9B8B1 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] {
+    background: var(--active-bg) !important;
+    border-color: var(--active-border) !important;
+    color: var(--active-ink) !important;
+    -webkit-text-fill-color: var(--active-ink) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"] *,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] * {
+    color: var(--active-ink) !important;
+    -webkit-text-fill-color: var(--active-ink) !important;
+}

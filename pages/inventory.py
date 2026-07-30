@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from io import BytesIO
+from math import ceil
 from pathlib import Path
 
 import pandas as pd
@@ -43,6 +44,11 @@ DAILY_COLUMNS = [
     "재고상태",
     "바코드",
     "리드타임",
+    "실측 리드타임",
+    "박스입수",
+    "권장 박스수",
+    "최근 발주일",
+    "최근 입고일",
     "정렬순서",
     "사용 여부",
 ]
@@ -663,7 +669,7 @@ def render_daily_tab(source_type: str) -> None:
     output_df = filtered_df.drop(columns=["선택"], errors="ignore")
     upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
 
-    action_cols = st.columns([1.05, 1.05, 1.05, 1.05, 2.4], gap="small")
+    action_cols = st.columns([1.05, 1.05, 1.05, 1.05, 1.05, 1.7], gap="small")
     with action_cols[0]:
         uploaded = st.file_uploader(
             "재고 업로드",
@@ -699,6 +705,17 @@ def render_daily_tab(source_type: str) -> None:
         if st.button("안전재고 계산", key=f"{source_type}_safe", use_container_width=True):
             show_result(with_db(lambda db: result("안전재고 계산 완료", services.calculate_safe_stock(db, source_type, work_date))))
     with action_cols[2]:
+        if st.button("구매이력 동기화", key=f"{source_type}_purchase_metric_sync", use_container_width=True):
+            show_result(
+                with_db(
+                    lambda db: result(
+                        "구매이력 기준 리드타임 동기화 완료",
+                        services.sync_purchase_metrics_to_inventory(db, source_type, work_date),
+                    )
+                )
+            )
+            st.rerun()
+    with action_cols[3]:
         pdf_error = ""
         try:
             pdf_bytes = inventory_pdf_bytes(output_df, source_type, work_date, filters)
@@ -717,7 +734,7 @@ def render_daily_tab(source_type: str) -> None:
             on_click=record_inventory_output,
             args=(source_type, work_date, "PDF", filters, len(output_df)),
         )
-    with action_cols[3]:
+    with action_cols[4]:
         st.download_button(
             "엑셀 다운로드",
             data=dataframe_to_excel(output_df),
@@ -728,7 +745,7 @@ def render_daily_tab(source_type: str) -> None:
             on_click=record_inventory_output,
             args=(source_type, work_date, "EXCEL", filters, len(output_df)),
         )
-    with action_cols[4]:
+    with action_cols[5]:
         st.caption(f"전체 {len(base_df):,}개 중 {len(filtered_df):,}개 표시")
 
     preview = st.session_state.get(upload_preview_key)
@@ -742,7 +759,22 @@ def render_daily_tab(source_type: str) -> None:
         use_container_width=True,
         key=f"{source_type}_daily_master_view_{work_date.isoformat()}_{len(filtered_df)}",
         column_order=DAILY_COLUMNS,
-        disabled=["카테고리", "상품명", "현재고", "안전재고", "재고상태", "바코드", "리드타임", "정렬순서", "사용 여부"],
+        disabled=[
+            "카테고리",
+            "상품명",
+            "현재고",
+            "안전재고",
+            "재고상태",
+            "바코드",
+            "리드타임",
+            "실측 리드타임",
+            "박스입수",
+            "권장 박스수",
+            "최근 발주일",
+            "최근 입고일",
+            "정렬순서",
+            "사용 여부",
+        ],
         column_config={
             "선택": st.column_config.CheckboxColumn("선택", default=False, width=58),
             "카테고리": st.column_config.TextColumn("카테고리", width="medium"),
@@ -752,6 +784,11 @@ def render_daily_tab(source_type: str) -> None:
             "재고상태": st.column_config.SelectboxColumn("재고상태", options=["정상", "미출", "품절", "입고필요"]),
             "바코드": st.column_config.TextColumn("바코드", width="medium"),
             "리드타임": st.column_config.NumberColumn("리드타임", min_value=0, step=1),
+            "실측 리드타임": st.column_config.NumberColumn("실측 리드타임", min_value=0, step=1),
+            "박스입수": st.column_config.NumberColumn("박스입수", min_value=0, step=1),
+            "권장 박스수": st.column_config.NumberColumn("권장 박스수", min_value=0, step=1),
+            "최근 발주일": st.column_config.DateColumn("최근 발주일"),
+            "최근 입고일": st.column_config.DateColumn("최근 입고일"),
             "정렬순서": st.column_config.NumberColumn("정렬순서", min_value=0, step=1, width=80),
             "사용 여부": st.column_config.TextColumn("사용 여부", width=80),
         },
@@ -1598,6 +1635,8 @@ def purchase_recommendation_rows(db, source_type: str, work_date: date, include_
         current_stock = int(row.available_stock if row.available_stock is not None else row.current_stock or 0)
         safe_stock = int(row.safe_stock or 0)
         lead_time = int(row.inbound_cycle or 0)
+        product = services.find_product_master(db, source_type, row.product_code, row.barcode, row.product_name)
+        box_qty = int((product.box_qty or product.pack_qty or 0) if product else 0)
         avg_outbound = avg_daily_outbound(db, source_type, row.product_name, row.barcode or "", work_date, 14)
         leadtime_need = ceil(avg_outbound * lead_time) if include_leadtime and lead_time else 0
         reorder_point = safe_stock + leadtime_need
@@ -1605,8 +1644,12 @@ def purchase_recommendation_rows(db, source_type: str, work_date: date, include_
         below_safe = current_stock <= safe_stock if safe_stock else current_stock <= 0
         if not below_safe and shortage_qty <= 0:
             continue
+        base_recommend_qty = max(shortage_qty, max(safe_stock - current_stock, 0), 1)
+        recommended_boxes = ceil(base_recommend_qty / box_qty) if box_qty else 0
+        recommended_qty = recommended_boxes * box_qty if recommended_boxes else base_recommend_qty
         result_rows.append(
             {
+                "SKU": row.product_code,
                 "상품명": row.product_name,
                 "규격": "",
                 "현재재고": current_stock,
@@ -1614,7 +1657,9 @@ def purchase_recommendation_rows(db, source_type: str, work_date: date, include_
                 "리드타임": lead_time,
                 "리드타임 예상소요": leadtime_need,
                 "부족수량": max(safe_stock - current_stock, 0),
-                "발주추천수량": max(shortage_qty, max(safe_stock - current_stock, 0), 1),
+                "박스입수": box_qty,
+                "권장 박스수": recommended_boxes,
+                "발주추천수량": recommended_qty,
                 "발주권장": "권장" if shortage_qty > 0 or below_safe else "보류",
                 "공급처": row.supplier,
                 "재고상태": row.stock_status,
@@ -1647,6 +1692,7 @@ def create_pr_from_recommendation_rows(db, edited: pd.DataFrame, source_type: st
         if not bool(record.get("PR생성", False)):
             continue
         item_name = clean_cell(record.get("품목") or record.get("상품명"))
+        item_code = clean_cell(record.get("SKU") or record.get("품목코드"))
         quantity = to_int(record.get("발주추천수량"))
         if not item_name or quantity <= 0 or has_open_purchase_request(db, item_name):
             continue
@@ -1654,6 +1700,7 @@ def create_pr_from_recommendation_rows(db, edited: pd.DataFrame, source_type: st
             PurchaseRequest(
                 pr_number=next_inventory_number(db, PurchaseRequest, PurchaseRequest.pr_number, "PR"),
                 department="자재/구매",
+                item_code=item_code,
                 item_name=item_name,
                 spec=clean_cell(record.get("규격")),
                 quantity=quantity,
@@ -1722,6 +1769,11 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "재고상태": row.get("stock_status", ""),
                 "바코드": row.get("barcode", ""),
                 "리드타임": row.get("inbound_cycle", 0) or 0,
+                "실측 리드타임": row.get("measured_lead_time", 0) or 0,
+                "박스입수": row.get("box_qty", 0) or 0,
+                "권장 박스수": row.get("recommended_boxes", 0) or 0,
+                "최근 발주일": row.get("last_purchase_order_date"),
+                "최근 입고일": row.get("last_purchase_inbound_date"),
                 "정렬순서": row.get("sort_order", 0) or 0,
                 "사용 여부": row.get("is_active", "사용"),
             }
