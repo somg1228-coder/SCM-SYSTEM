@@ -25,8 +25,54 @@ Base = declarative_base()
 def init_db() -> None:
     from backend import models  # noqa: F401
 
+    repair_sqlite_schema()
     Base.metadata.create_all(bind=engine)
     ensure_sqlite_columns()
+
+
+def repair_sqlite_schema() -> None:
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+
+    known_stale_indexes = ("ix_purchase_documents_created_at",)
+    with engine.begin() as conn:
+        for index_name in known_stale_indexes:
+            drop_sqlite_index(conn, index_name)
+        drop_orphan_sqlite_indexes(conn)
+        conn.exec_driver_sql("PRAGMA writable_schema = OFF")
+
+
+def drop_sqlite_index(conn, index_name: str) -> None:
+    try:
+        conn.exec_driver_sql(f"DROP INDEX IF EXISTS {quote_sqlite_identifier(index_name)}")
+    except Exception:
+        conn.exec_driver_sql("PRAGMA writable_schema = ON")
+        conn.exec_driver_sql(
+            "DELETE FROM sqlite_master WHERE type = 'index' AND name = ?",
+            (index_name,),
+        )
+        conn.exec_driver_sql("PRAGMA writable_schema = OFF")
+
+
+def drop_orphan_sqlite_indexes(conn) -> None:
+    try:
+        tables = {
+            row[0]
+            for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+        }
+        indexes = conn.exec_driver_sql(
+            "SELECT name, tbl_name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL"
+        ).fetchall()
+    except Exception:
+        return
+
+    for index_name, table_name in indexes:
+        if table_name not in tables:
+            drop_sqlite_index(conn, index_name)
+
+
+def quote_sqlite_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
 
 
 def ensure_sqlite_columns() -> None:

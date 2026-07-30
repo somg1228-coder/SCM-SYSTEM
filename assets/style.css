@@ -12508,3 +12508,225 @@ button[kind="primary"] *,
 [data-testid="stSidebar"] .stButton > button[kind="primary"] * {
     color: #F8FAFC !important;
 }
+
+/* Final contrast repair: remove leftover white text on muted surfaces. */
+:root {
+    --app-bg: #DDE2DD;
+    --app-card: #E8ECE7;
+    --app-border: #B8C4BE;
+    --app-primary: #536D84;
+    --app-text: #172033;
+    --app-muted: #526274;
+    --return-bg: #DDE2DD;
+    --return-card: #E8ECE7;
+    --return-card-soft: #E1E7E3;
+    --return-border: #A9B8B1;
+    --return-border-soft: #B8C4BE;
+    --return-title: #172033;
+    --return-text: #263445;
+    --return-muted: #526274;
+    --return-faint: #718092;
+    --return-primary: #536D84;
+    --return-primary-soft: #D7E2DD;
+}
+
+.stApp :where(
+    [data-testid="stTextInput"],
+    [data-testid="stTextArea"],
+    [data-testid="stNumberInput"],
+    [data-testid="stDateInput"],
+    [data-testid="stSelectbox"],
+    [data-testid="stMultiSelect"],
+    [data-testid="stFileUploader"],
+    [data-testid="stDataFrame"],
+    [data-testid="stDataEditor"],
+    [data-baseweb="input"],
+    [data-baseweb="textarea"],
+    [data-baseweb="select"],
+    [data-baseweb="popover"],
+    [data-baseweb="menu"],
+    [role="combobox"],
+    [role="listbox"],
+    [role="grid"],
+    [role="row"],
+    [role="gridcell"],
+    [role="columnheader"]
+) {
+    color: #172033 !important;
+}
+
+.stApp :where(
+    [data-testid="stTextInput"],
+    [data-testid="stTextArea"],
+    [data-testid="stNumberInput"],
+    [data-testid="stDateInput"],
+    [data-testid="stSelectbox"],
+    [data-testid="stMultiSelect"],
+    [data-testid="stFileUploader"],
+    [data-testid="stDataFrame"],
+    [data-testid="stDataEditor"],
+    [data-baseweb="input"],
+    [data-baseweb="textarea"],
+    [data-baseweb="select"],
+    [data-baseweb="popover"],
+    [data-baseweb="menu"],
+    [role="combobox"],
+    [role="listbox"],
+    [role="grid"],
+    [role="row"],
+    [role="gridcell"],
+    [role="columnheader"]
+) * {
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+}
+
+.stApp input,
+.stApp textarea,
+.stApp select,
+.stApp [contenteditable="true"],
+.stApp [data-baseweb="input"],
+.stApp [data-baseweb="textarea"],
+.stApp [data-baseweb="select"] > div,
+.stApp [role="combobox"] {
+    background: #E1E7E3 !important;
+    border-color: #A9B8B1 !important;
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+    caret-color: #172033 !important;
+}
+
+.stApp input::placeholder,
+.stApp textarea::placeholder,
+.stApp [data-baseweb="input"] input::placeholder,
+.stApp [data-baseweb="textarea"] textarea::placeholder {
+    color: #718092 !important;
+    -webkit-text-fill-color: #718092 !important;
+    opacity: 1 !important;
+}
+
+.stApp [data-baseweb="select"] svg,
+.stApp [data-baseweb="input"] svg,
+.stApp [role="combobox"] svg {
+    color: #36556F !important;
+    fill: #36556F !important;
+}
+
+.stApp [data-testid="stDataFrame"],
+.stApp [data-testid="stDataEditor"],
+.stApp [data-testid="stDataFrame"] [role="grid"],
+.stApp [data-testid="stDataEditor"] [role="grid"] {
+    background: #E8ECE7 !important;
+    border-color: #B8C4BE !important;
+}
+
+.stApp [data-testid="stDataFrame"] [role="columnheader"],
+.stApp [data-testid="stDataEditor"] [role="columnheader"] {
+    background: #D5DED9 !important;
+    color: #36556F !important;
+    -webkit-text-fill-color: #36556F !important;
+}
+
+.stApp [data-testid="stDataFrame"] [role="gridcell"],
+.stApp [data-testid="stDataEditor"] [role="gridcell"] {
+    background: #E4E9E4 !important;
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+}
+
+.stApp [data-testid="stDataFrame"] canvas,
+.stApp [data-testid="stDataEditor"] canvas {
+    filter: brightness(0.92) contrast(1.08) saturate(0.9) !important;
+}
+
+.st-key-dashboard_card_category,
+.st-key-dashboard_card_month,
+.st-key-dashboard_card_recent,
+.st-key-dashboard_card_top5,
+.st-key-detail_info_card,
+div[class*="st-key-detail_info_card"],
+.detail-section-card,
+.st-key-search_results_scroll,
+.kpi-card,
+.search-result-card,
+div[class*="st-key-kpi_"] button {
+    background: #E8ECE7 !important;
+    border-color: #B8C4BE !important;
+    box-shadow: 0 6px 16px rgba(24, 36, 48, 0.055) !important;
+    color: #263445 !important;
+}
+
+.st-key-dashboard_card_category *,
+.st-key-dashboard_card_month *,
+.st-key-dashboard_card_recent *,
+.st-key-dashboard_card_top5 *,
+.st-key-detail_info_card *,
+div[class*="st-key-detail_info_card"] *,
+.detail-section-card *,
+.st-key-search_results_scroll *,
+.kpi-card *,
+.search-result-card *,
+div[class*="st-key-kpi_"] button * {
+    color: #263445 !important;
+    -webkit-text-fill-color: #263445 !important;
+}
+
+.dashboard-card-title,
+.search-result-title,
+.detail-section-card strong,
+.detail-section-card b,
+.kpi-card strong,
+div[class*="st-key-kpi_"] button strong {
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+}
+
+.stButton > button:not([kind="primary"]),
+.stDownloadButton > button:not([kind="primary"]),
+.stFormSubmitButton > button:not([kind="primary"]) {
+    background: #E1E7E3 !important;
+    border-color: #A9B8B1 !important;
+    color: #36556F !important;
+    -webkit-text-fill-color: #36556F !important;
+}
+
+.stButton > button:not([kind="primary"]) *,
+.stDownloadButton > button:not([kind="primary"]) *,
+.stFormSubmitButton > button:not([kind="primary"]) * {
+    color: #36556F !important;
+    -webkit-text-fill-color: #36556F !important;
+}
+
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"],
+.stFormSubmitButton > button[kind="primary"] {
+    background: #536D84 !important;
+    border-color: #536D84 !important;
+    color: #F8FAFC !important;
+    -webkit-text-fill-color: #F8FAFC !important;
+}
+
+.stButton > button[kind="primary"] *,
+.stDownloadButton > button[kind="primary"] *,
+.stFormSubmitButton > button[kind="primary"] * {
+    color: #F8FAFC !important;
+    -webkit-text-fill-color: #F8FAFC !important;
+}
+
+.st-key-detail_delete_btn button,
+div[class*="st-key-del_"] button,
+div[class*="delete_btn"] button,
+div[class*="selected_delete_btn"] button {
+    background: #F3E7E5 !important;
+    border-color: #DEC7C2 !important;
+    color: #84453E !important;
+    -webkit-text-fill-color: #84453E !important;
+}
+
+.st-key-detail_delete_btn button *,
+div[class*="st-key-del_"] button *,
+div[class*="delete_btn"] button *,
+div[class*="selected_delete_btn"] button * {
+    color: #84453E !important;
+    -webkit-text-fill-color: #84453E !important;
+}
