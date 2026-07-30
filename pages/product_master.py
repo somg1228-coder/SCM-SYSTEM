@@ -8,11 +8,12 @@ import pandas as pd
 import streamlit as st
 
 try:
-    from backend.database import SessionLocal, init_db
+    from backend.database import SessionLocal, init_db, log_sqlite_writability
     from backend import services
 except (ModuleNotFoundError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
+    log_sqlite_writability = None
     services = None
     PRODUCT_MASTER_IMPORT_ERROR = str(exc)
 else:
@@ -263,13 +264,14 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                 if uploaded is None:
                     st.warning(f"먼저 {title} 엑셀을 업로드하세요.")
                 else:
-                    preview = with_db(lambda db: services.prepare_threepl_master_import_preview(db, uploaded.getvalue()))
-                    if preview and preview.get("ok", True):
-                        st.session_state[preview_key] = preview
-                        st.session_state.pop(result_key, None)
-                    else:
-                        st.session_state[result_key] = preview
-                    st.rerun()
+                    if show_sqlite_write_status("3PL 마스터 업로드 미리보기"):
+                        preview = with_db(lambda db: services.prepare_threepl_master_import_preview(db, uploaded.getvalue()))
+                        if preview and preview.get("ok", True):
+                            st.session_state[preview_key] = preview
+                            st.session_state.pop(result_key, None)
+                        else:
+                            st.session_state[result_key] = preview
+                        st.rerun()
         with template_col:
             st.write("")
             st.download_button(
@@ -365,11 +367,12 @@ def render_threepl_import_preview(source_type: str, key: str, preview_key: str, 
     applyable_count = sum(1 for detail in preview.get("details", []) if detail.get("_apply"))
     with apply_col:
         if st.button("미리보기 내용 반영", type="primary", key=f"product_master_{key}_preview_apply", disabled=applyable_count == 0, use_container_width=True):
-            result = with_db(lambda db: services.apply_threepl_master_import_preview(db, preview))
-            st.session_state[result_key] = result
-            st.session_state.pop(preview_key, None)
-            clear_master_editor_buffer(key)
-            st.rerun()
+            if show_sqlite_write_status("3PL 마스터 업로드 반영"):
+                result = with_db(lambda db: services.apply_threepl_master_import_preview(db, preview))
+                st.session_state[result_key] = result
+                st.session_state.pop(preview_key, None)
+                clear_master_editor_buffer(key)
+                st.rerun()
     with cancel_col:
         if st.button("취소", key=f"product_master_{key}_preview_cancel", use_container_width=True):
             st.session_state.pop(preview_key, None)
@@ -747,6 +750,31 @@ def with_db(action):
         return {"ok": False, "message": f"처리 실패: {exc}", "count": 0}
     finally:
         db.close()
+
+
+def show_sqlite_write_status(context: str) -> bool:
+    if log_sqlite_writability is None:
+        return True
+    try:
+        report = log_sqlite_writability(context)
+    except Exception as exc:
+        st.error(f"SQLite DB 쓰기 권한 확인 실패: {exc}")
+        return False
+    if not report.get("db_path"):
+        return True
+    file_ok = bool(report.get("db_file_writable"))
+    dir_ok = bool(report.get("db_dir_writable"))
+    status = "가능" if file_ok and dir_ok else "불가"
+    st.caption(
+        f"DB 경로: {report.get('db_path')} / "
+        f"파일 쓰기: {'가능' if file_ok else '불가'} / "
+        f"폴더 쓰기: {'가능' if dir_ok else '불가'} / "
+        f"읽기전용 URL 옵션: {'있음' if report.get('readonly_url_option') else '없음'}"
+    )
+    if not file_ok or not dir_ok:
+        st.error(f"SQLite DB 쓰기 상태가 {status}입니다. DB 파일과 data 폴더 권한을 확인해주세요.")
+        return False
+    return True
 
 
 def fetch_master(source_type: str, keyword: str, active_filter: str) -> list[dict]:
