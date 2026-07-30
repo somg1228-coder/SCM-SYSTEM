@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from io import BytesIO
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -698,7 +699,13 @@ def render_daily_tab(source_type: str) -> None:
         if st.button("안전재고 계산", key=f"{source_type}_safe", use_container_width=True):
             show_result(with_db(lambda db: result("안전재고 계산 완료", services.calculate_safe_stock(db, source_type, work_date))))
     with action_cols[2]:
-        pdf_bytes = inventory_pdf_bytes(output_df, source_type, work_date, filters)
+        pdf_error = ""
+        try:
+            pdf_bytes = inventory_pdf_bytes(output_df, source_type, work_date, filters)
+        except Exception as exc:
+            pdf_bytes = b""
+            pdf_error = f"PDF 생성 준비 중 오류가 발생했습니다: {exc}"
+            st.error(pdf_error)
         st.download_button(
             "PDF 생성",
             data=pdf_bytes,
@@ -706,6 +713,7 @@ def render_daily_tab(source_type: str) -> None:
             mime="application/pdf",
             use_container_width=True,
             key=f"{source_type}_daily_pdf_download_{work_date}",
+            disabled=bool(pdf_error),
             on_click=record_inventory_output,
             args=(source_type, work_date, "PDF", filters, len(output_df)),
         )
@@ -1138,6 +1146,57 @@ def safe_file_part(value: str) -> str:
     return "".join(ch if ch not in '\\/:*?"<>|' else "_" for ch in text)
 
 
+def register_inventory_pdf_fonts() -> tuple[str, str] | None:
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    font_dirs = [
+        Path(r"C:\Windows\Fonts"),
+        Path.home() / "AppData" / "Local" / "Microsoft" / "Windows" / "Fonts",
+        Path("/usr/share/fonts"),
+        Path("/usr/local/share/fonts"),
+        Path(__file__).resolve().parents[1] / "assets" / "fonts",
+    ]
+    candidates = [
+        ("MalgunGothic", "MalgunGothicBold", "malgun.ttf", "malgunbd.ttf"),
+        ("NanumGothic", "NanumGothicBold", "NanumGothic.ttf", "NanumGothicBold.ttf"),
+        ("NanumGothic", "NanumGothicBold", "NanumGothic-Regular.ttf", "NanumGothic-Bold.ttf"),
+        ("NotoSansKR", "NotoSansKRBold", "NotoSansKR-Regular.ttf", "NotoSansKR-Bold.ttf"),
+        ("NotoSansCJKkr", "NotoSansCJKkrBold", "NotoSansCJKkr-Regular.otf", "NotoSansCJKkr-Bold.otf"),
+        ("UnDotum", "UnDotumBold", "UnDotum.ttf", "UnDotumBold.ttf"),
+    ]
+    for regular_name, bold_name, regular_file, bold_file in candidates:
+        for font_dir in font_dirs:
+            regular_path = next(font_dir.rglob(regular_file), None) if font_dir.exists() else None
+            if regular_path is None:
+                continue
+            bold_path = next(font_dir.rglob(bold_file), None) if font_dir.exists() else None
+            try:
+                if regular_name not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont(regular_name, str(regular_path)))
+                if bold_name not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont(bold_name, str(bold_path or regular_path)))
+                return regular_name, bold_name
+            except Exception:
+                continue
+
+    for regular_name, bold_name in [
+        ("HYGothic-Medium", "HYGothic-Medium"),
+        ("HYSMyeongJo-Medium", "HYGothic-Medium"),
+        ("HeiseiKakuGo-W5", "HeiseiKakuGo-W5"),
+    ]:
+        try:
+            if regular_name not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(UnicodeCIDFont(regular_name))
+            if bold_name not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(UnicodeCIDFont(bold_name))
+            return regular_name, bold_name
+        except Exception:
+            continue
+    return None
+
+
 def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, filters: dict) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -1145,14 +1204,12 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    font_name = "HYSMyeongJo-Medium"
-    bold_name = "HYGoThic-Medium"
-    for name in (font_name, bold_name):
-        if name not in pdfmetrics.getRegisteredFontNames():
-            pdfmetrics.registerFont(UnicodeCIDFont(name))
+    font_pair = register_inventory_pdf_fonts()
+    if font_pair is None:
+        raise RuntimeError("사용 가능한 한글 PDF 폰트를 찾지 못했습니다.")
+    font_name, bold_name = font_pair
 
     output = BytesIO()
     doc = SimpleDocTemplate(

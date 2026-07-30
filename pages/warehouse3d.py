@@ -330,6 +330,35 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
                 font-weight: 850;
                 margin-top: 0.62rem;
             }}
+            body {{
+                color: #263445;
+            }}
+            .stock-board {{
+                background: #E2E7E2;
+                border-color: #B8C4BE;
+            }}
+            input,
+            select,
+            button {{
+                background: #DCE4DF;
+                border-color: #A9B8B1;
+                color: #172033;
+            }}
+            .stock-table {{
+                border-color: #B8C4BE;
+            }}
+            th {{
+                background: #D4DED8;
+                color: #36556F;
+            }}
+            td {{
+                background: #E6EAE5;
+                border-bottom-color: #C3CEC8;
+                color: #172033;
+            }}
+            tr:nth-child(even) td {{
+                background: #DDE5E0;
+            }}
         </style>
     </head>
     <body>
@@ -724,6 +753,16 @@ def render_summary(summary: dict, work_date: str) -> None:
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
+                }}
+                .warehouse3d-kpi {{
+                    background: #E2E7E2;
+                    border-color: #B8C4BE;
+                }}
+                .warehouse3d-kpi span {{
+                    color: #526274;
+                }}
+                .warehouse3d-kpi strong {{
+                    color: #172033;
                 }}
                 @media (max-width: 1100px) {{
                     .warehouse3d-kpi-grid {{
@@ -2021,6 +2060,77 @@ def warehouse_scene3d_html(
                 color: #64748b;
                 text-align: center;
             }}
+            body {{
+                color: #263445;
+            }}
+            .panel {{
+                background: #E2E7E2;
+                border-color: #B8C4BE;
+            }}
+            .building-panel h3,
+            .model-panel h3,
+            .detail-panel h3,
+            .rack-detail strong,
+            .tool-label,
+            th,
+            td {{
+                color: #172033;
+            }}
+            .building-name,
+            .scene-head span,
+            .rack-detail span,
+            .stock-guide,
+            .empty {{
+                color: #526274;
+            }}
+            .floor-chip,
+            button,
+            select,
+            input {{
+                background: #DCE4DF;
+                border-color: #A9B8B1;
+                color: #172033;
+            }}
+            button:hover,
+            .floor-chip.active {{
+                background: #D4DED8;
+                border-color: #94A79E;
+                color: #26384A;
+            }}
+            .zone-tags span,
+            .fixture-name-toggle,
+            .stock-guide,
+            .rack-detail,
+            .floor-size-tools,
+            .zoom-tools,
+            .nav-tools,
+            .model-label,
+            .model-help {{
+                background: rgba(220, 228, 223, 0.94);
+                border-color: #B8C4BE;
+                color: #36556F;
+            }}
+            .model-viewport {{
+                background:
+                    radial-gradient(circle at 50% 15%, rgba(213, 222, 217, 0.76), transparent 34%),
+                    linear-gradient(180deg, #DCE4DF, #CCD7D1);
+                border-color: #B8C4BE;
+            }}
+            .item-list {{
+                border-color: #B8C4BE;
+            }}
+            th {{
+                background: #D4DED8;
+                color: #36556F;
+            }}
+            td {{
+                background: #E6EAE5;
+                border-bottom-color: #C3CEC8;
+                color: #172033;
+            }}
+            tr:nth-child(even) td {{
+                background: #DDE5E0;
+            }}
             @media (max-width: 980px) {{
                 .warehouse-scene {{
                     grid-template-columns: 1fr;
@@ -2247,8 +2357,8 @@ def warehouse_scene3d_html(
             const placementScale = 1.45;
 
             const scene = new THREE.Scene();
-            const screenSceneBackground = new THREE.Color(0xf8fafc);
-            const screenSceneFog = new THREE.Fog(0xf8fafc, 42, 96);
+            const screenSceneBackground = new THREE.Color(0xdce4df);
+            const screenSceneFog = new THREE.Fog(0xdce4df, 42, 96);
             scene.background = screenSceneBackground;
             scene.fog = screenSceneFog;
 
@@ -4788,7 +4898,7 @@ def inject_warehouse3d_css() -> None:
         """
         <style>
         .warehouse3d-title {
-            color: #26384a;
+            color: #172033;
             font-size: 1.34rem;
             font-weight: 900;
             letter-spacing: 0;
@@ -4801,21 +4911,21 @@ def inject_warehouse3d_css() -> None:
             margin: 0.46rem 0 0.54rem;
         }
         .warehouse3d-kpi {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
+            background: #E2E7E2;
+            border: 1px solid #B8C4BE;
             border-radius: 12px;
             min-height: 58px;
             padding: 0.58rem 0.68rem;
         }
         .warehouse3d-kpi span {
-            color: #64748b;
+            color: #526274;
             display: block;
             font-size: 0.72rem;
             font-weight: 900;
             margin-bottom: 0.28rem;
         }
         .warehouse3d-kpi strong {
-            color: #1f2937;
+            color: #172033;
             display: block;
             font-size: 0.94rem;
             font-weight: 950;

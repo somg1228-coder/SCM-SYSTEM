@@ -11843,3 +11843,668 @@ section[data-testid="stSidebar"] .block-container {
 section[data-testid="stSidebar"] .sidebar-brand {
     margin-top: 0 !important;
 }
+
+/* Meeting page final readability pass: light ERP tone, no hidden text. */
+:root,
+.meeting-shell {
+    --meeting-bg: #F3F2EF;
+    --meeting-surface: #F7F6F2;
+    --meeting-surface-strong: #ECEFED;
+    --meeting-surface-soft: #F1F4F2;
+    --meeting-line: #D8DEE3;
+    --meeting-line-strong: #C7D3CF;
+    --meeting-text: #172033;
+    --meeting-body: #334155;
+    --meeting-muted: #64748B;
+    --meeting-accent: #536D84;
+    --meeting-accent-strong: #36556F;
+    --meeting-accent-soft: #E3E9ED;
+    color: var(--meeting-body) !important;
+}
+
+.meeting-shell *,
+.meeting-calendar *,
+.meeting-table-wrap *,
+.meeting-note-box *,
+.meeting-selected-event *,
+.meeting-kpi-card * {
+    letter-spacing: 0 !important;
+}
+
+.st-key-meeting_control_card,
+.meeting-calendar,
+.meeting-table-wrap,
+.meeting-note-box,
+.meeting-kpi-card,
+.meeting-selected-event,
+div[class*="st-key-meeting_issue_"]:not([class*="st-key-meeting_issue_text_"]),
+div[class*="st-key-meeting_issue_text_"],
+div[class*="st-key-meeting_event_product_form_"],
+div[class*="st-key-meeting_production_editor_form_"],
+div[class*="st-key-meeting_events_editor_form_"],
+div[class*="st-key-meeting_action_editor_form_"] {
+    background: var(--meeting-surface) !important;
+    border: 1px solid var(--meeting-line) !important;
+    box-shadow: 0 6px 16px rgba(34, 45, 56, 0.045) !important;
+    color: var(--meeting-body) !important;
+}
+
+.st-key-meeting_control_card {
+    border-radius: 10px !important;
+}
+
+.meeting-control-header .panel-eyebrow,
+.st-key-meeting_control_card label,
+.st-key-meeting_control_card [data-testid="stWidgetLabel"],
+.st-key-meeting_control_card [data-testid="stCaptionContainer"],
+.meeting-shell [data-testid="stCaptionContainer"],
+.meeting-shell small {
+    color: var(--meeting-muted) !important;
+}
+
+.meeting-control-header h1,
+.meeting-section-title h2,
+.meeting-subsection-title,
+div[class*="st-key-meeting_issue_"] h3,
+.meeting-calendar-head h3,
+.meeting-kpi-card strong {
+    color: var(--meeting-text) !important;
+}
+
+.meeting-section-title span {
+    color: var(--meeting-accent-strong) !important;
+}
+
+.st-key-meeting_control_card input,
+.st-key-meeting_control_card textarea,
+.st-key-meeting_control_card [data-baseweb="select"] > div,
+.meeting-shell input,
+.meeting-shell textarea,
+.meeting-shell [data-baseweb="select"] > div {
+    background: var(--meeting-surface-soft) !important;
+    border-color: var(--meeting-line-strong) !important;
+    color: var(--meeting-text) !important;
+}
+
+.meeting-calendar {
+    border-radius: 10px !important;
+    margin-bottom: 0.7rem !important;
+    overflow: hidden !important;
+}
+
+.meeting-calendar-head {
+    background: #E3EAE7 !important;
+    border-bottom: 1px solid var(--meeting-line-strong) !important;
+    color: var(--meeting-body) !important;
+}
+
+.meeting-calendar-head span {
+    color: var(--meeting-muted) !important;
+}
+
+.meeting-calendar-week {
+    background: #DDE7E3 !important;
+}
+
+.meeting-calendar-week b {
+    border-bottom: 1px solid var(--meeting-line-strong) !important;
+    color: var(--meeting-accent-strong) !important;
+    font-weight: 850 !important;
+}
+
+.meeting-calendar-grid {
+    background: var(--meeting-surface) !important;
+}
+
+.meeting-calendar-day {
+    background: #F1F4F2 !important;
+    border-bottom: 1px solid var(--meeting-line) !important;
+    border-right: 1px solid var(--meeting-line) !important;
+    color: var(--meeting-body) !important;
+}
+
+.meeting-calendar-day:nth-child(7n) {
+    border-right: 0 !important;
+}
+
+.meeting-calendar-day strong {
+    color: var(--meeting-text) !important;
+    font-weight: 850 !important;
+}
+
+.meeting-calendar-day.muted {
+    background: #E9ECE9 !important;
+}
+
+.meeting-calendar-day.today {
+    background: #E6EEF3 !important;
+    box-shadow: inset 0 0 0 1px #8EABC2 !important;
+}
+
+.meeting-event-chip {
+    background: #E7F0EC !important;
+    border: 1px solid #BCD3CA !important;
+    color: #1F3F36 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.meeting-event-chip:hover,
+.meeting-event-chip.selected {
+    background: #DCE8F0 !important;
+    border-color: #9CB7CC !important;
+    color: var(--meeting-accent-strong) !important;
+}
+
+.meeting-event-chip small,
+.meeting-event-chip em {
+    color: #4B635B !important;
+    opacity: 1 !important;
+}
+
+.meeting-selected-event {
+    background: #E7EDF1 !important;
+    border-color: #C5D3DE !important;
+}
+
+.meeting-selected-event strong {
+    color: var(--meeting-text) !important;
+}
+
+.meeting-selected-event span {
+    color: var(--meeting-muted) !important;
+}
+
+.meeting-table-wrap {
+    border-radius: 10px !important;
+    overflow: auto !important;
+}
+
+.meeting-table-wrap table {
+    background: var(--meeting-surface) !important;
+    color: var(--meeting-text) !important;
+}
+
+.meeting-table-wrap th {
+    background: #E3EAE7 !important;
+    border-bottom: 1px solid var(--meeting-line-strong) !important;
+    color: var(--meeting-accent-strong) !important;
+}
+
+.meeting-table-wrap td {
+    background: #F6F5F2 !important;
+    border-bottom: 1px solid var(--meeting-line) !important;
+    color: var(--meeting-text) !important;
+}
+
+.meeting-table-wrap tbody tr:nth-child(even) td {
+    background: #EFF2F0 !important;
+}
+
+.meeting-table-wrap tbody tr:hover td {
+    background: #E7EDF1 !important;
+}
+
+.meeting-table-wrap .empty-cell,
+.meeting-note-box.empty {
+    color: var(--meeting-muted) !important;
+}
+
+.meeting-note-box {
+    background: #F1F4F2 !important;
+    border-color: var(--meeting-line) !important;
+    color: var(--meeting-body) !important;
+}
+
+.meeting-note-box p {
+    color: var(--meeting-body) !important;
+}
+
+.meeting-kpi-card {
+    background: #F1F4F2 !important;
+    border-color: var(--meeting-line) !important;
+}
+
+.meeting-kpi-card:hover {
+    border-color: #B8C7D6 !important;
+}
+
+.meeting-kpi-card span,
+.meeting-kpi-card small {
+    color: var(--meeting-muted) !important;
+}
+
+.meeting-kpi-card.blue,
+.meeting-kpi-card.cyan,
+.meeting-kpi-card.orange,
+.meeting-kpi-card.green,
+.meeting-kpi-card.purple {
+    box-shadow: inset 0 3px 0 var(--meeting-accent) !important;
+}
+
+div[class*="st-key-meeting_issue_"]:not([class*="st-key-meeting_issue_text_"]) h3 {
+    color: var(--meeting-text) !important;
+}
+
+.meeting-status-badge.gray {
+    background: #ECE8DF !important;
+    border-color: #D8CFBE !important;
+    color: #6D5635 !important;
+}
+
+.meeting-status-badge.blue {
+    background: #E7EDF1 !important;
+    border-color: #C5D3DE !important;
+    color: var(--meeting-accent-strong) !important;
+}
+
+.meeting-status-badge.green {
+    background: #E7F0EC !important;
+    border-color: #BCD3CA !important;
+    color: #2F5F4F !important;
+}
+
+.meeting-status-badge.red {
+    background: #F3E7E5 !important;
+    border-color: #DEC7C2 !important;
+    color: #84453E !important;
+}
+
+div[class*="st-key-meeting_"] button,
+div[class*="st-key-meeting_"] .stDownloadButton button,
+div[class*="st-key-meeting_"] .stFormSubmitButton button {
+    background: #EEF2F0 !important;
+    border: 1px solid var(--meeting-line-strong) !important;
+    color: var(--meeting-accent-strong) !important;
+}
+
+div[class*="st-key-meeting_"] button:hover,
+div[class*="st-key-meeting_"] .stDownloadButton button:hover,
+div[class*="st-key-meeting_"] .stFormSubmitButton button:hover {
+    background: #E3E9ED !important;
+    border-color: #B8C7D6 !important;
+    color: var(--meeting-accent-strong) !important;
+}
+
+div[class*="st-key-meeting_"] button[kind="primary"],
+div[class*="st-key-meeting_"] .stDownloadButton button[kind="primary"],
+div[class*="st-key-meeting_"] .stFormSubmitButton button[kind="primary"] {
+    background: var(--meeting-accent) !important;
+    border-color: var(--meeting-accent) !important;
+    color: #FFFFFF !important;
+}
+
+div[class*="st-key-meeting_"] button[kind="primary"] *,
+div[class*="st-key-meeting_"] .stDownloadButton button[kind="primary"] *,
+div[class*="st-key-meeting_"] .stFormSubmitButton button[kind="primary"] * {
+    color: #FFFFFF !important;
+}
+
+div[class*="st-key-meeting_"][class*="delete_btn"] button,
+div[class*="st-key-meeting_"][class*="selected_delete_btn"] button,
+div[class*="st-key-meeting_"] div[class*="delete_btn"] button,
+div[class*="st-key-meeting_"] div[class*="selected_delete_btn"] button {
+    background: #F3E7E5 !important;
+    border-color: #DEC7C2 !important;
+    color: #84453E !important;
+}
+
+div[class*="st-key-meeting_"][class*="delete_btn"] button *,
+div[class*="st-key-meeting_"][class*="selected_delete_btn"] button *,
+div[class*="st-key-meeting_"] div[class*="delete_btn"] button *,
+div[class*="st-key-meeting_"] div[class*="selected_delete_btn"] button * {
+    color: #84453E !important;
+}
+
+/* Global tone-down pass: reduce white glare across every portal category. */
+:root {
+    color-scheme: light !important;
+    --bg: #DDE2DD;
+    --panel: #E8ECE7;
+    --panel-soft: #E1E7E3;
+    --control-bg: #E5EAE6;
+    --control-bg-soft: #DDE4E0;
+    --line: #B8C4BE;
+    --line-soft: #CAD3CE;
+    --text: #172033;
+    --muted: #526274;
+    --erp-bg: #DDE2DD;
+    --erp-card: #E8ECE7;
+    --erp-line: #B8C4BE;
+    --erp-line-strong: #A9B8B1;
+    --erp-text: #172033;
+    --erp-body: #263445;
+    --erp-muted: #526274;
+    --erp-faint: #718092;
+    --layout-bg: #DDE2DD;
+    --layout-card: #E8ECE7;
+    --layout-body: #263445;
+    --layout-muted: #526274;
+    --bg-main: #DDE2DD;
+    --bg-card: #E8ECE7;
+    --bg-card-secondary: #E1E7E3;
+    --border-main: #B8C4BE;
+    --border-strong: #A9B8B1;
+    --text-title: #172033;
+    --text-main: #263445;
+    --text-secondary: #526274;
+    --text-muted: #718092;
+}
+
+html,
+body,
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+.main,
+.block-container {
+    background: #DDE2DD !important;
+    color: #263445 !important;
+}
+
+.stApp {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(83, 109, 132, 0.12), transparent 32%),
+        linear-gradient(135deg, #D9DED9 0%, #E1E5E0 48%, #D6DDD8 100%) !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] .block-container {
+    background: #D6DCD7 !important;
+    border-right-color: #B6C1BC !important;
+}
+
+.panel,
+.schedule-panel,
+.week-board,
+.kpi-tile,
+.chart-card,
+.donut-card,
+.table-panel,
+.order-panel,
+.warehouse-panel,
+.purchase-progress-panel,
+.core-task-panel,
+.notice-panel,
+.meeting-calendar,
+.meeting-table-wrap,
+.meeting-note-box,
+.meeting-kpi-card,
+.meeting-selected-event,
+.inventory-panel,
+.inventory-card,
+.purchase-panel,
+.purchase-card,
+.bom-panel,
+.bom-card,
+.warehouse3d-kpi,
+.placeholder-panel,
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stExpander"],
+[data-testid="stForm"],
+[data-testid="stPopover"],
+[data-testid="stDialog"],
+[data-testid="stDataFrame"],
+[data-testid="stDataEditor"],
+[data-testid="stTable"],
+div[class*="st-key-meeting_issue_"],
+div[class*="st-key-meeting_control_card"] {
+    background: #E8ECE7 !important;
+    border-color: #B8C4BE !important;
+    box-shadow: 0 6px 16px rgba(24, 36, 48, 0.055) !important;
+    color: #263445 !important;
+}
+
+.panel:hover,
+.kpi-tile:hover,
+.meeting-kpi-card:hover,
+.warehouse3d-kpi:hover {
+    border-color: #9FB0A8 !important;
+    box-shadow: 0 7px 18px rgba(24, 36, 48, 0.075) !important;
+}
+
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp h5,
+.stApp h6,
+.panel h2,
+.panel-title-row h2,
+.weekly-schedule-title,
+.weekly-section-title,
+.meeting-section-title h2,
+.meeting-subsection-title,
+.purchase-title,
+.purchase-section-title,
+.inventory-tab-title,
+.bom-title,
+.bom-subtitle,
+.bom-outline-title,
+.product-master-title,
+.product-master-subtitle,
+.product-master-form-title,
+.warehouse3d-title,
+.warehouse3d-kpi strong {
+    color: #172033 !important;
+}
+
+.stApp,
+.stApp p,
+.stApp li,
+.stApp label,
+.stApp span,
+.stApp div,
+.stApp [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stCaptionContainer"],
+.stApp [data-testid="stWidgetLabel"],
+.week-cell li,
+.table-panel td,
+.order-panel td,
+.warehouse-row,
+.purchase-progress-row,
+.core-task-list span {
+    color: #263445 !important;
+}
+
+.stApp small,
+.kpi-tile span,
+.kpi-tile small,
+.warehouse3d-kpi span,
+.week-date,
+.empty-cell,
+[data-testid="stCaptionContainer"],
+.meeting-calendar-head span,
+.meeting-event-chip small,
+.meeting-event-chip em {
+    color: #526274 !important;
+}
+
+input,
+textarea,
+select,
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stDateInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+[data-baseweb="input"] input,
+[data-baseweb="select"] input,
+[data-testid="stFileUploaderDropzone"] {
+    background: #E1E7E3 !important;
+    border-color: #A9B8B1 !important;
+    color: #172033 !important;
+}
+
+input::placeholder,
+textarea::placeholder,
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder {
+    color: #718092 !important;
+    opacity: 1 !important;
+}
+
+select option,
+[role="option"],
+[data-baseweb="menu"],
+[data-baseweb="menu"] *,
+[data-baseweb="popover"],
+[data-baseweb="popover"] * {
+    background: #E8ECE7 !important;
+    color: #172033 !important;
+}
+
+.stButton > button,
+.stDownloadButton > button,
+.stFormSubmitButton > button,
+button[kind="secondary"],
+.ghost-link,
+.mini-badge,
+.chart-filter-links a,
+.panel-title-row a,
+.panel-title-row button {
+    background: #E1E7E3 !important;
+    border-color: #A9B8B1 !important;
+    color: #36556F !important;
+}
+
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+.stFormSubmitButton > button:hover,
+button[kind="secondary"]:hover,
+.ghost-link:hover,
+.chart-filter-links a:hover,
+.chart-filter-links a.active {
+    background: #D6DFDA !important;
+    border-color: #94A79E !important;
+    color: #26384A !important;
+}
+
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"],
+.stFormSubmitButton > button[kind="primary"],
+button[kind="primary"] {
+    background: #536D84 !important;
+    border-color: #536D84 !important;
+    color: #F8FAFC !important;
+}
+
+.stButton > button[kind="primary"] *,
+.stDownloadButton > button[kind="primary"] *,
+.stFormSubmitButton > button[kind="primary"] *,
+button[kind="primary"] * {
+    color: #F8FAFC !important;
+}
+
+.week-board,
+.weekly-table-wrap,
+.meeting-calendar-grid,
+.meeting-table-wrap table,
+.table-panel table,
+.order-panel table,
+[data-testid="stTable"] table {
+    background: #E8ECE7 !important;
+    color: #172033 !important;
+}
+
+.week-cell,
+.meeting-calendar-day,
+.table-panel td,
+.order-panel td,
+.meeting-table-wrap td,
+[data-testid="stTable"] td,
+[data-testid="stDataFrame"] td {
+    background: #E4E9E4 !important;
+    border-color: #C3CEC8 !important;
+    color: #172033 !important;
+}
+
+.week-cell:nth-child(even),
+.meeting-calendar-day:nth-child(even),
+.table-panel tbody tr:nth-child(even) td,
+.order-panel tbody tr:nth-child(even) td,
+.meeting-table-wrap tbody tr:nth-child(even) td,
+[data-testid="stTable"] tbody tr:nth-child(even) td {
+    background: #DDE5E0 !important;
+}
+
+.warehouse-head,
+.purchase-progress-head,
+.inbound-head,
+.outbound-top-head,
+.meeting-calendar-head,
+.meeting-calendar-week,
+.meeting-table-wrap th,
+.table-panel th,
+.order-panel th,
+[data-testid="stTable"] th,
+[data-testid="stDataFrame"] th {
+    background: #D5DED9 !important;
+    border-color: #B8C4BE !important;
+    color: #36556F !important;
+}
+
+.week-cell.active .week-date,
+.meeting-calendar-day.today,
+.schedule-week-chip,
+.week-range,
+.core-task-summary span,
+.meeting-event-chip,
+.stock-guide,
+.rack-detail {
+    background: #D7E2DD !important;
+    border-color: #ABC0B7 !important;
+    color: #1F3F36 !important;
+}
+
+.chart-card,
+.svg-chart,
+.chart-tooltip,
+.donut::after,
+.donut-segment-label,
+.bar,
+.thin-bar,
+.chart-grid-lines i {
+    background: #E1E7E3 !important;
+    border-color: #B8C4BE !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: transparent !important;
+    border-bottom-color: #B8C4BE !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    background: transparent !important;
+    color: #526274 !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+    background: #DDE5E0 !important;
+    color: #172033 !important;
+}
+
+[data-testid="stTabs"] [aria-selected="true"] {
+    background: #D5DED9 !important;
+    color: #26384A !important;
+}
+
+.status-badge,
+.stock-badge,
+.meeting-status-badge,
+.mini-badge {
+    filter: saturate(0.78) brightness(0.94) !important;
+}
+
+.stButton > button[kind="primary"] *,
+.stDownloadButton > button[kind="primary"] *,
+.stFormSubmitButton > button[kind="primary"] *,
+button[kind="primary"] *,
+[data-testid="stSidebar"] .stButton > button[kind="primary"] * {
+    color: #F8FAFC !important;
+}

@@ -167,6 +167,7 @@ def main() -> None:
     if page != "반품/AS 관리":
         render_header(page)
     render_page(page)
+    load_css()
 
 
 if __name__ == "__main__":

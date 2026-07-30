@@ -942,6 +942,53 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 padding: 0.8rem;
                 text-align: center;
             }}
+            .outline-shell {{
+                background: #E2E7E2;
+                border-color: #B8C4BE;
+            }}
+            .outline-toolbar,
+            .product-row,
+            .component-detail {{
+                background: #DCE4DF;
+                border-color: #B8C4BE;
+            }}
+            .sku-card {{
+                background: #E8ECE7;
+                border-color: #B8C4BE;
+            }}
+            .outline-field input,
+            .outline-field select,
+            button {{
+                background: #D5DED9;
+                border-color: #A9B8B1;
+                color: #172033;
+            }}
+            .sku-list,
+            .outline-divider,
+            .component-detail[open] summary,
+            .detail-cell {{
+                border-color: #B8C4BE;
+            }}
+            body,
+            .sku-title,
+            .name,
+            .detail-cell b,
+            .outline-count strong {{
+                color: #172033;
+            }}
+            .outline-field label,
+            .sku-meta,
+            .muted,
+            .detail-cell span,
+            .empty,
+            .outline-count {{
+                color: #526274;
+            }}
+            .chip {{
+                background: #D7E2DD;
+                border-color: #ABC0B7;
+                color: #1F3F36;
+            }}
             @media (max-width: 900px) {{
                 .outline-controls {{
                     grid-template-columns: repeat(2, minmax(0, 1fr));
