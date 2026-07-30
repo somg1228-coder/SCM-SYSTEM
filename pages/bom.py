@@ -943,38 +943,38 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                 text-align: center;
             }}
             .outline-shell {{
-                background: #E2E7E2;
-                border-color: #B8C4BE;
+                background: #F2EFEA;
+                border-color: #D8D2C8;
             }}
             .outline-toolbar,
             .product-row,
             .component-detail {{
-                background: #DCE4DF;
-                border-color: #B8C4BE;
+                background: #EDE9E3;
+                border-color: #D8D2C8;
             }}
             .sku-card {{
-                background: #E8ECE7;
-                border-color: #B8C4BE;
+                background: #FAF8F5;
+                border-color: #D8D2C8;
             }}
             .outline-field input,
             .outline-field select,
             button {{
-                background: #D5DED9;
-                border-color: #A9B8B1;
-                color: #172033;
+                background: #FAF8F5;
+                border-color: #CFC7BC;
+                color: #1F2933;
             }}
             .sku-list,
             .outline-divider,
             .component-detail[open] summary,
             .detail-cell {{
-                border-color: #B8C4BE;
+                border-color: #D8D2C8;
             }}
             body,
             .sku-title,
             .name,
             .detail-cell b,
             .outline-count strong {{
-                color: #172033;
+                color: #1F2933;
             }}
             .outline-field label,
             .sku-meta,
@@ -982,12 +982,12 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
             .detail-cell span,
             .empty,
             .outline-count {{
-                color: #526274;
+                color: #64748B;
             }}
             .chip {{
-                background: #D7E2DD;
-                border-color: #ABC0B7;
-                color: #1F3F36;
+                background: #E8E3DC;
+                border-color: #D8D2C8;
+                color: #2F4659;
             }}
             @media (max-width: 900px) {{
                 .outline-controls {{

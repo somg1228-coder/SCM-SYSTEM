@@ -331,33 +331,33 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
                 margin-top: 0.62rem;
             }}
             body {{
-                color: #263445;
+                color: #334155;
             }}
             .stock-board {{
-                background: #E2E7E2;
-                border-color: #B8C4BE;
+                background: #F2EFEA;
+                border-color: #D8D2C8;
             }}
             input,
             select,
             button {{
-                background: #DCE4DF;
-                border-color: #A9B8B1;
-                color: #172033;
+                background: #FAF8F5;
+                border-color: #CFC7BC;
+                color: #1F2933;
             }}
             .stock-table {{
-                border-color: #B8C4BE;
+                border-color: #D8D2C8;
             }}
             th {{
-                background: #D4DED8;
-                color: #36556F;
+                background: #EDE8E1;
+                color: #2F4659;
             }}
             td {{
-                background: #E6EAE5;
-                border-bottom-color: #C3CEC8;
-                color: #172033;
+                background: #FAF8F5;
+                border-bottom-color: #E2DCD4;
+                color: #1F2933;
             }}
             tr:nth-child(even) td {{
-                background: #DDE5E0;
+                background: #F2EFEA;
             }}
         </style>
     </head>
@@ -755,14 +755,14 @@ def render_summary(summary: dict, work_date: str) -> None:
                     white-space: nowrap;
                 }}
                 .warehouse3d-kpi {{
-                    background: #E2E7E2;
-                    border-color: #B8C4BE;
+                    background: #F2EFEA;
+                    border-color: #D8D2C8;
                 }}
                 .warehouse3d-kpi span {{
-                    color: #526274;
+                    color: #64748B;
                 }}
                 .warehouse3d-kpi strong {{
-                    color: #172033;
+                    color: #1F2933;
                 }}
                 @media (max-width: 1100px) {{
                     .warehouse3d-kpi-grid {{
@@ -860,8 +860,8 @@ def warehouse_scene_html(
                 height: 744px;
             }}
             .panel {{
-                background: rgba(6, 48, 43, 0.66);
-                border: 1px solid rgba(87, 178, 165, 0.28);
+                background: #F2EFEA;
+                border: 1px solid #D8D2C8;
                 border-radius: 8px;
                 min-height: 0;
                 overflow: hidden;
@@ -872,12 +872,12 @@ def warehouse_scene_html(
             .building-panel h3,
             .rack-panel h3,
             .detail-panel h3 {{
-                color: #ffffff;
+                color: #1F2933;
                 font-size: 0.96rem;
                 margin: 0 0 0.56rem;
             }}
             .building-name {{
-                color: #b2d5cd;
+                color: #64748B;
                 font-size: 0.76rem;
                 font-weight: 850;
                 line-height: 1.45;
@@ -889,10 +889,10 @@ def warehouse_scene_html(
                 gap: 0.28rem;
             }}
             .floor-chip {{
-                background: #171a22;
-                border: 1px solid rgba(126, 197, 185, 0.25);
+                background: #FAF8F5;
+                border: 1px solid #CFC7BC;
                 border-radius: 7px;
-                color: #dffaf4;
+                color: #2F4659;
                 cursor: pointer;
                 min-height: 34px;
                 font-size: 0.78rem;
@@ -901,10 +901,10 @@ def warehouse_scene_html(
                 text-align: center;
             }}
             .floor-chip.active {{
-                background: rgba(22, 213, 198, 0.18);
-                border-color: rgba(22, 213, 198, 0.58);
-                color: #ffffff;
-                box-shadow: inset 3px 0 0 #16d5c6;
+                background: #E8E3DC;
+                border-color: #C6BDB0;
+                color: #2F4659;
+                box-shadow: inset 3px 0 0 #4F6F8F;
             }}
             .zone-tags {{
                 display: flex;
@@ -913,10 +913,10 @@ def warehouse_scene_html(
                 margin-top: 0.8rem;
             }}
             .zone-tags span {{
-                background: rgba(75, 156, 255, 0.14);
-                border: 1px solid rgba(75, 156, 255, 0.28);
+                background: #E8E3DC;
+                border: 1px solid #D8D2C8;
                 border-radius: 999px;
-                color: #d8ebff;
+                color: #2F4659;
                 font-size: 0.68rem;
                 font-weight: 850;
                 padding: 0.24rem 0.42rem;
@@ -933,7 +933,7 @@ def warehouse_scene_html(
                 margin-bottom: 0.58rem;
             }}
             .scene-head span {{
-                color: #b2d5cd;
+                color: #64748B;
                 font-size: 0.74rem;
                 font-weight: 850;
             }}
@@ -946,10 +946,10 @@ def warehouse_scene_html(
             button,
             select,
             input {{
-                background: #171a22;
-                border: 1px solid rgba(126, 197, 185, 0.28);
+                background: #FAF8F5;
+                border: 1px solid #CFC7BC;
                 border-radius: 7px;
-                color: #ffffff;
+                color: #1F2933;
                 font-size: 0.76rem;
                 font-weight: 850;
                 min-height: 34px;
@@ -960,15 +960,16 @@ def warehouse_scene_html(
                 cursor: pointer;
             }}
             button:hover {{
-                border-color: rgba(117, 236, 219, 0.58);
+                background: #E8E3DC;
+                border-color: #B9AEA0;
             }}
             .floor-plan {{
                 background:
-                    linear-gradient(rgba(143, 247, 232, 0.07) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(143, 247, 232, 0.07) 1px, transparent 1px),
-                    rgba(2, 20, 19, 0.72);
+                    linear-gradient(rgba(79, 111, 143, 0.10) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(79, 111, 143, 0.10) 1px, transparent 1px),
+                    #FAF8F5;
                 background-size: 36px 36px;
-                border: 1px solid rgba(126, 197, 185, 0.22);
+                border: 1px solid #D8D2C8;
                 border-radius: 8px;
                 min-height: 0;
                 overflow: hidden;
@@ -988,7 +989,7 @@ def warehouse_scene_html(
             }}
             .drawing-reference {{
                 align-items: center;
-                color: #dffaf4;
+                color: #2F4659;
                 display: flex;
                 font-size: 0.9rem;
                 font-weight: 900;
@@ -1001,16 +1002,16 @@ def warehouse_scene_html(
                 z-index: 0;
             }}
             .drawing-reference span {{
-                background: rgba(3, 27, 24, 0.82);
-                border: 1px solid rgba(126, 197, 185, 0.28);
+                background: #F2EFEA;
+                border: 1px solid #D8D2C8;
                 border-radius: 8px;
                 padding: 0.82rem 1rem;
             }}
             .plan-label {{
-                background: rgba(3, 27, 24, 0.86);
-                border: 1px solid rgba(126, 197, 185, 0.24);
+                background: #EDE8E1;
+                border: 1px solid #D8D2C8;
                 border-radius: 6px;
-                color: #b2d5cd;
+                color: #2F4659;
                 font-size: 0.68rem;
                 font-weight: 900;
                 padding: 0.32rem 0.42rem;
@@ -1025,11 +1026,11 @@ def warehouse_scene_html(
                 z-index: 3;
             }}
             .rack {{
-                background: linear-gradient(145deg, rgba(20, 132, 118, 0.72), rgba(6, 55, 50, 0.92));
-                border: 1px solid rgba(143, 247, 232, 0.38);
+                background: linear-gradient(145deg, #E8E3DC, #DCD6CE);
+                border: 1px solid #C6BDB0;
                 border-radius: 5px;
-                box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
-                color: #ffffff;
+                box-shadow: 0 8px 18px rgba(45, 38, 30, 0.12);
+                color: #1F2933;
                 cursor: pointer;
                 min-height: 34px;
                 padding: 0.42rem;
@@ -1039,15 +1040,15 @@ def warehouse_scene_html(
             }}
             .rack:hover,
             .rack.active {{
-                border-color: #16d5c6;
-                outline: 2px solid rgba(22, 213, 198, 0.28);
+                border-color: #4F6F8F;
+                outline: 2px solid rgba(79, 111, 143, 0.20);
             }}
             .rack.short {{
-                background: linear-gradient(145deg, rgba(255, 76, 76, 0.54), rgba(72, 24, 24, 0.9));
-                border-color: rgba(255, 140, 140, 0.6);
+                background: linear-gradient(145deg, #F3E8E4, #E8D5CF);
+                border-color: #D9BBB2;
             }}
             .rack.empty {{
-                background: linear-gradient(145deg, rgba(215, 228, 226, 0.12), rgba(5, 36, 33, 0.84));
+                background: linear-gradient(145deg, #FAF8F5, #EEEAE4);
                 border-style: dashed;
             }}
             .rack strong {{
@@ -1055,7 +1056,7 @@ def warehouse_scene_html(
                 font-size: 0.72rem;
             }}
             .rack span {{
-                color: #dffaf4;
+                color: #64748B;
                 display: block;
                 font-size: 0.62rem;
                 font-weight: 900;
@@ -1067,26 +1068,26 @@ def warehouse_scene_html(
                 padding: 0.8rem;
             }}
             .rack-detail {{
-                background: rgba(2, 20, 19, 0.5);
-                border: 1px solid rgba(126, 197, 185, 0.2);
+                background: #FAF8F5;
+                border: 1px solid #D8D2C8;
                 border-radius: 7px;
                 margin-bottom: 0.7rem;
                 padding: 0.68rem;
             }}
             .rack-detail strong {{
-                color: #ffffff;
+                color: #1F2933;
                 display: block;
                 font-size: 1.05rem;
             }}
             .rack-detail span {{
-                color: #b2d5cd;
+                color: #64748B;
                 display: block;
                 font-size: 0.76rem;
                 font-weight: 800;
                 margin-top: 0.26rem;
             }}
             .item-list {{
-                border: 1px solid rgba(126, 197, 185, 0.2);
+                border: 1px solid #D8D2C8;
                 border-radius: 7px;
                 flex: 1 1 auto;
                 min-height: 0;
@@ -1105,20 +1106,20 @@ def warehouse_scene_html(
             }}
             th,
             td {{
-                border-bottom: 1px solid rgba(126, 197, 185, 0.14);
-                color: #f2fffb;
+                border-bottom: 1px solid #E2DCD4;
+                color: #1F2933;
                 padding: 0.42rem;
                 text-align: left;
             }}
             th {{
-                background: rgba(255, 255, 255, 0.07);
-                color: #cfe8e2;
+                background: #EDE8E1;
+                color: #2F4659;
                 font-weight: 900;
                 position: sticky;
                 top: 0;
             }}
             .empty {{
-                color: #b2d5cd;
+                color: #64748B;
                 text-align: center;
             }}
             @media (max-width: 980px) {{
@@ -2061,11 +2062,11 @@ def warehouse_scene3d_html(
                 text-align: center;
             }}
             body {{
-                color: #263445;
+                color: #334155;
             }}
             .panel {{
-                background: #E2E7E2;
-                border-color: #B8C4BE;
+                background: #F2EFEA;
+                border-color: #D8D2C8;
             }}
             .building-panel h3,
             .model-panel h3,
@@ -2074,28 +2075,28 @@ def warehouse_scene3d_html(
             .tool-label,
             th,
             td {{
-                color: #172033;
+                color: #1F2933;
             }}
             .building-name,
             .scene-head span,
             .rack-detail span,
             .stock-guide,
             .empty {{
-                color: #526274;
+                color: #64748B;
             }}
             .floor-chip,
             button,
             select,
             input {{
-                background: #DCE4DF;
-                border-color: #A9B8B1;
-                color: #172033;
+                background: #FAF8F5;
+                border-color: #CFC7BC;
+                color: #1F2933;
             }}
             button:hover,
             .floor-chip.active {{
-                background: #D4DED8;
-                border-color: #94A79E;
-                color: #26384A;
+                background: #E8E3DC;
+                border-color: #B9AEA0;
+                color: #2F4659;
             }}
             .zone-tags span,
             .fixture-name-toggle,
@@ -2106,30 +2107,30 @@ def warehouse_scene3d_html(
             .nav-tools,
             .model-label,
             .model-help {{
-                background: rgba(220, 228, 223, 0.94);
-                border-color: #B8C4BE;
-                color: #36556F;
+                background: rgba(242, 239, 234, 0.94);
+                border-color: #D8D2C8;
+                color: #2F4659;
             }}
             .model-viewport {{
                 background:
-                    radial-gradient(circle at 50% 15%, rgba(213, 222, 217, 0.76), transparent 34%),
-                    linear-gradient(180deg, #DCE4DF, #CCD7D1);
-                border-color: #B8C4BE;
+                    radial-gradient(circle at 50% 15%, rgba(237, 233, 227, 0.76), transparent 34%),
+                    linear-gradient(180deg, #FAF8F5, #EDE9E3);
+                border-color: #D8D2C8;
             }}
             .item-list {{
-                border-color: #B8C4BE;
+                border-color: #D8D2C8;
             }}
             th {{
-                background: #D4DED8;
-                color: #36556F;
+                background: #EDE8E1;
+                color: #2F4659;
             }}
             td {{
-                background: #E6EAE5;
-                border-bottom-color: #C3CEC8;
-                color: #172033;
+                background: #FAF8F5;
+                border-bottom-color: #E2DCD4;
+                color: #1F2933;
             }}
             tr:nth-child(even) td {{
-                background: #DDE5E0;
+                background: #F2EFEA;
             }}
             @media (max-width: 980px) {{
                 .warehouse-scene {{
@@ -4911,21 +4912,21 @@ def inject_warehouse3d_css() -> None:
             margin: 0.46rem 0 0.54rem;
         }
         .warehouse3d-kpi {
-            background: #E2E7E2;
-            border: 1px solid #B8C4BE;
+            background: #F2EFEA;
+            border: 1px solid #D8D2C8;
             border-radius: 12px;
             min-height: 58px;
             padding: 0.58rem 0.68rem;
         }
         .warehouse3d-kpi span {
-            color: #526274;
+            color: #64748B;
             display: block;
             font-size: 0.72rem;
             font-weight: 900;
             margin-bottom: 0.28rem;
         }
         .warehouse3d-kpi strong {
-            color: #172033;
+            color: #1F2933;
             display: block;
             font-size: 0.94rem;
             font-weight: 950;

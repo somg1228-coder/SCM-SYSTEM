@@ -1349,6 +1349,7 @@ def get_next_case_id(case_date, current_case_id=None):
 
 def render_return_case_system():
     global conn, c
+    st.markdown('<div class="return-system-top-offset"></div>', unsafe_allow_html=True)
 
     # ==========================
 

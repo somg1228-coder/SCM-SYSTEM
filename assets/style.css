@@ -12300,3 +12300,338 @@ div[class*="selected_delete_btn"] button {
     color: #84453E !important;
     -webkit-text-fill-color: #84453E !important;
 }
+
+/* Loading-tone component completion: keep every portal category on the same mode. */
+.stApp :where(
+    .dashboard-shell,
+    .weekly-schedule-shell,
+    .schedule-shell,
+    .meeting-shell,
+    .return-system-frame,
+    .return-system-shell,
+    .inventory-shell,
+    .purchase-shell,
+    .bom-shell,
+    .warehouse3d-shell,
+    .product-master-shell,
+    div[class*="st-key-dashboard_"],
+    div[class*="st-key-schedule_"],
+    div[class*="st-key-meeting_"],
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-purchase_"],
+    div[class*="st-key-bom_"],
+    div[class*="st-key-warehouse3d_"],
+    div[class*="st-key-product_master_"],
+    div[class*="st-key-return_"],
+    div[class*="st-key-case_"]
+) {
+    color: var(--beige-body) !important;
+    -webkit-text-fill-color: var(--beige-body) !important;
+}
+
+.stApp :where(
+    .dashboard-middle-grid,
+    .dashboard-bottom-grid,
+    .status-grid,
+    .panel,
+    .schedule-panel,
+    .schedule-highlight-editor,
+    .weekly-table-wrap,
+    .week-board,
+    .week-cell,
+    .meeting-calendar,
+    .meeting-calendar-day,
+    .meeting-table-wrap,
+    .meeting-note-box,
+    .meeting-selected-event,
+    .return-card,
+    .return-section,
+    .return-case-card,
+    .inventory-panel,
+    .inventory-card,
+    .purchase-panel,
+    .purchase-card,
+    .bom-panel,
+    .bom-card,
+    .bom-outline-card,
+    .bom-summary-card,
+    .warehouse-panel,
+    .warehouse3d-panel,
+    .rack-detail,
+    .stock-guide,
+    .placeholder-panel,
+    [data-testid="stVerticalBlockBorderWrapper"],
+    [data-testid="stExpander"],
+    [data-testid="stForm"],
+    [data-testid="stPopover"],
+    [data-testid="stDialog"],
+    [data-testid="stAlert"],
+    [data-testid="stFileUploader"],
+    [data-testid="stFileUploaderDropzone"]
+) {
+    background: var(--beige-surface) !important;
+    border-color: var(--beige-line) !important;
+    color: var(--beige-body) !important;
+    -webkit-text-fill-color: var(--beige-body) !important;
+    box-shadow: 0 6px 16px rgba(45, 38, 30, 0.032) !important;
+}
+
+.stApp :where(
+    .kpi-tile,
+    .kpi-card,
+    .metric-card,
+    .summary-card,
+    .meeting-kpi-card,
+    .return-kpi-card,
+    .warehouse3d-kpi,
+    [data-testid="stMetric"],
+    [data-testid="metric-container"],
+    div[class*="st-key-kpi_"] button
+) {
+    background: linear-gradient(180deg, var(--beige-surface) 0%, var(--beige-surface-2) 100%) !important;
+    border: 1px solid var(--beige-line) !important;
+    color: var(--beige-body) !important;
+    -webkit-text-fill-color: var(--beige-body) !important;
+}
+
+.stApp :where(
+    .kpi-tile,
+    .kpi-card,
+    .metric-card,
+    .summary-card,
+    .meeting-kpi-card,
+    .return-kpi-card,
+    .warehouse3d-kpi,
+    [data-testid="stMetric"],
+    [data-testid="metric-container"]
+) :where(strong, b, [data-testid="stMetricValue"]) {
+    color: var(--beige-ink) !important;
+    -webkit-text-fill-color: var(--beige-ink) !important;
+}
+
+.stApp :where(
+    button,
+    .stButton > button,
+    .stDownloadButton > button,
+    .stFormSubmitButton > button,
+    [data-testid="stButton"] button,
+    [data-testid="stDownloadButton"] button,
+    [data-testid="stFormSubmitButton"] button,
+    [data-testid*="stBaseButton-secondary"],
+    button[kind="secondary"],
+    .ghost-link,
+    .mini-badge,
+    .chart-filter-links a,
+    .panel-title-row a,
+    .panel-title-row button,
+    .inventory-action-slot button,
+    .purchase-action button,
+    .bom-action button
+) {
+    background: var(--beige-surface-2) !important;
+    border-color: var(--beige-line-strong) !important;
+    color: var(--active-ink) !important;
+    -webkit-text-fill-color: var(--active-ink) !important;
+}
+
+.stApp :where(
+    button:hover,
+    .stButton > button:hover,
+    .stDownloadButton > button:hover,
+    .stFormSubmitButton > button:hover,
+    [data-testid="stButton"] button:hover,
+    [data-testid="stDownloadButton"] button:hover,
+    [data-testid="stFormSubmitButton"] button:hover,
+    .ghost-link:hover,
+    .chart-filter-links a:hover,
+    .panel-title-row a:hover,
+    .panel-title-row button:hover
+) {
+    background: #E8E3DC !important;
+    border-color: #B9AEA0 !important;
+    color: var(--active-ink-blue) !important;
+    -webkit-text-fill-color: var(--active-ink-blue) !important;
+}
+
+.stApp :where(
+    .stButton > button[kind="primary"],
+    .stDownloadButton > button[kind="primary"],
+    .stFormSubmitButton > button[kind="primary"],
+    [data-testid="stButton"] button[kind="primary"],
+    [data-testid="stDownloadButton"] button[kind="primary"],
+    [data-testid="stFormSubmitButton"] button[kind="primary"],
+    [data-testid*="stBaseButton-primary"],
+    button[kind="primary"]
+) {
+    background: var(--beige-blue) !important;
+    border-color: #405E7A !important;
+    color: #FAF8F5 !important;
+    -webkit-text-fill-color: #FAF8F5 !important;
+}
+
+.stApp :where(
+    .stButton > button[kind="primary"],
+    .stDownloadButton > button[kind="primary"],
+    .stFormSubmitButton > button[kind="primary"],
+    [data-testid*="stBaseButton-primary"],
+    button[kind="primary"]
+) * {
+    color: #FAF8F5 !important;
+    -webkit-text-fill-color: #FAF8F5 !important;
+}
+
+.stApp :where(
+    input,
+    textarea,
+    select,
+    [contenteditable="true"],
+    [data-baseweb="input"],
+    [data-baseweb="textarea"],
+    [data-baseweb="select"] > div,
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stDateInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+    [data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+    [data-testid="stFileUploaderDropzone"]
+) {
+    background: var(--beige-surface-3) !important;
+    border-color: #CFC7BC !important;
+    color: var(--beige-ink) !important;
+    -webkit-text-fill-color: var(--beige-ink) !important;
+}
+
+.stApp input::placeholder,
+.stApp textarea::placeholder,
+.stApp [data-testid="stTextInput"] input::placeholder,
+.stApp [data-testid="stTextArea"] textarea::placeholder {
+    color: #94A3B8 !important;
+    -webkit-text-fill-color: #94A3B8 !important;
+    opacity: 1 !important;
+}
+
+.stApp :where(
+    [data-baseweb="menu"],
+    [data-baseweb="menu"] *,
+    [data-baseweb="popover"],
+    [data-baseweb="popover"] *,
+    [role="listbox"],
+    [role="option"]
+) {
+    background: var(--beige-surface-3) !important;
+    color: var(--beige-ink) !important;
+    -webkit-text-fill-color: var(--beige-ink) !important;
+}
+
+.stApp :where(
+    [data-testid="stDataFrame"],
+    [data-testid="stDataEditor"],
+    [data-testid="stTable"],
+    [role="grid"],
+    .stDataFrame,
+    .stDataEditor,
+    .glideDataEditor
+) {
+    background: var(--beige-surface) !important;
+    border-color: var(--beige-line) !important;
+    color: var(--beige-ink) !important;
+    -webkit-text-fill-color: var(--beige-ink) !important;
+}
+
+.stApp :where(
+    [data-testid="stDataFrame"],
+    [data-testid="stDataEditor"],
+    [data-testid="stTable"],
+    [role="grid"],
+    .glideDataEditor
+) * {
+    color: var(--beige-ink) !important;
+    -webkit-text-fill-color: var(--beige-ink) !important;
+}
+
+.stApp :where(
+    [role="columnheader"],
+    [data-testid="stTable"] th,
+    [data-testid="stDataFrame"] th,
+    .glideDataEditor .gdg-header,
+    .glideDataEditor .gdg-cell-header
+) {
+    background: #EDE8E1 !important;
+    border-color: var(--beige-line) !important;
+    color: var(--active-ink) !important;
+    -webkit-text-fill-color: var(--active-ink) !important;
+}
+
+.stApp :where(
+    [role="gridcell"],
+    [data-testid="stTable"] td,
+    [data-testid="stDataFrame"] td,
+    .glideDataEditor .gdg-cell
+) {
+    background: var(--beige-surface-3) !important;
+    border-color: #E2DCD4 !important;
+    color: var(--beige-ink) !important;
+    -webkit-text-fill-color: var(--beige-ink) !important;
+}
+
+.stApp :where(
+    [data-testid="stDataFrame"] canvas,
+    [data-testid="stDataEditor"] canvas,
+    .glideDataEditor canvas
+) {
+    background: var(--beige-surface-3) !important;
+}
+
+.stApp :where(
+    [data-testid="stTabs"] [data-baseweb="tab-list"],
+    .chart-filter-links,
+    .weekly-table-wrap,
+    .meeting-table-wrap table,
+    .table-panel table,
+    .order-panel table
+) {
+    border-color: var(--beige-line) !important;
+}
+
+.stApp :where(
+    [data-testid="stTabs"] [data-baseweb="tab"],
+    [data-testid="stCaptionContainer"],
+    small,
+    .empty-cell,
+    .week-date,
+    .meeting-event-chip small,
+    .meeting-event-chip em
+) {
+    color: var(--beige-muted) !important;
+    -webkit-text-fill-color: var(--beige-muted) !important;
+}
+
+.stApp :where(
+    [data-testid="stTabs"] [aria-selected="true"],
+    .chart-filter-links a.active,
+    .week-cell.active .week-date,
+    .meeting-calendar-day.today,
+    .schedule-week-chip,
+    .week-range,
+    .stock-badge.active,
+    div[class*="st-key-kpi_"] button[kind="primary"]
+) {
+    background: var(--beige-accent-soft) !important;
+    border-color: var(--beige-line-strong) !important;
+    color: var(--active-ink) !important;
+    -webkit-text-fill-color: var(--active-ink) !important;
+    box-shadow: inset 4px 0 0 var(--beige-accent), 0 6px 14px rgba(45, 38, 30, 0.04) !important;
+}
+
+.return-system-top-offset {
+    height: 42px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+div[data-testid="stMarkdownContainer"]:has(.return-system-top-offset),
+div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
+    margin: 0 !important;
+    padding: 0 !important;
+}
