@@ -268,7 +268,7 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
             st.write("")
             st.download_button(
                 "양식 다운로드",
-                data=master_excel(threepl_master_template_df(), title),
+                data=threepl_master_excel(threepl_master_template_df()),
                 file_name=f"{title}_양식.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
@@ -279,7 +279,7 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
             download_df = sorted_df[THREEPL_MASTER_COLUMNS] if not sorted_df.empty else threepl_master_template_df()
             st.download_button(
                 "마스터 다운로드",
-                data=master_excel(download_df, title),
+                data=threepl_master_excel(download_df),
                 file_name=f"{title}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
@@ -1025,6 +1025,67 @@ def master_excel(df: pd.DataFrame, title: str) -> bytes:
         worksheet.freeze_panes(2, 0)
         if len(df.columns):
             worksheet.autofilter(1, 0, max(len(df) + 1, 1), last_col)
+    return output.getvalue()
+
+
+def threepl_master_excel(df: pd.DataFrame) -> bytes:
+    export_df = df[THREEPL_MASTER_COLUMNS] if not df.empty else pd.DataFrame(columns=THREEPL_MASTER_COLUMNS)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        sheet_name = "3PL 마스터"
+        export_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=1)
+        workbook = writer.book
+        worksheet = writer.sheets[sheet_name]
+        title_format = workbook.add_format(
+            {
+                "bold": True,
+                "font_size": 14,
+                "font_color": "#FFFFFF",
+                "bg_color": "#07544B",
+                "align": "center",
+                "valign": "vcenter",
+                "border": 1,
+            }
+        )
+        header_format = workbook.add_format(
+            {
+                "bold": True,
+                "font_color": "#FFFFFF",
+                "bg_color": "#0B6B60",
+                "border": 1,
+                "align": "center",
+                "valign": "vcenter",
+            }
+        )
+        cell_format = workbook.add_format({"border": 1, "border_color": "#C9D7D1", "valign": "vcenter"})
+        number_format = workbook.add_format(
+            {
+                "border": 1,
+                "border_color": "#C9D7D1",
+                "num_format": "#,##0",
+                "align": "right",
+                "valign": "vcenter",
+            }
+        )
+        last_col = len(THREEPL_MASTER_COLUMNS) - 1
+        worksheet.merge_range(0, 0, 0, last_col, "3PL 마스터", title_format)
+        worksheet.set_row(0, 24)
+        worksheet.set_row(1, 21)
+        numeric_columns = {"리드타임"}
+        widths = {
+            "카테고리": 16,
+            "바코드": 18,
+            "상품명": 34,
+            "업체명": 20,
+            "박스/파렛트 단위": 28,
+            "담당자": 16,
+            "리드타임": 12,
+        }
+        for idx, column in enumerate(THREEPL_MASTER_COLUMNS):
+            worksheet.write(1, idx, column, header_format)
+            worksheet.set_column(idx, idx, widths.get(column, 16), number_format if column in numeric_columns else cell_format)
+        worksheet.freeze_panes(2, 0)
+        worksheet.autofilter(1, 0, max(len(export_df) + 1, 1), last_col)
     return output.getvalue()
 
 
