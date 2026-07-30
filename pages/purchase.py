@@ -101,13 +101,6 @@ def render_purchase_page() -> None:
     inject_purchase_css()
     st.markdown('<div class="purchase-title">구매관리</div>', unsafe_allow_html=True)
     st.caption("PR → RFQ → PO → 입고 → 재고반영 흐름으로 연결되는 ERP형 구매 업무 화면입니다.")
-    setting_cols = st.columns([0.85, 5.15], gap="small")
-    setting_cols[0].selectbox(
-        "단가 소수점",
-        PRICE_DECIMAL_OPTIONS,
-        index=PRICE_DECIMAL_OPTIONS.index(selected_price_decimal_places()),
-        key="purchase_price_decimal_places",
-    )
 
     if not purchase_available():
         st.error(PURCHASE_IMPORT_ERROR or "구매관리 DB를 초기화하지 못했습니다.")
@@ -167,13 +160,19 @@ def render_pr_tab() -> None:
         item_code = cols[1].text_input("품목코드", placeholder="SKU")
         item_name = cols[2].text_input("품목", placeholder="구매 요청 품목")
         spec = cols[3].text_input("규격", placeholder="규격/사양")
-        qty_cols = st.columns([0.72, 0.62, 0.95, 0.95, 0.82, 1.4], gap="small")
+        qty_cols = st.columns([0.72, 0.72, 0.62, 0.95, 0.95, 0.82, 1.35], gap="small")
         quantity = qty_cols[0].number_input("수량", min_value=1, step=1, value=1)
-        unit = qty_cols[1].text_input("단위", value="EA")
-        request_date = qty_cols[2].date_input("요청일", value=date.today())
-        reply_due_date = qty_cols[3].date_input("견적 회신 요청일", value=date.today() + timedelta(days=3))
-        approval_status = qty_cols[4].selectbox("승인상태", PR_STATUS, index=0)
-        requester = qty_cols[5].text_input("요청자", placeholder="담당자")
+        qty_cols[1].selectbox(
+            "단가 소수점",
+            PRICE_DECIMAL_OPTIONS,
+            index=PRICE_DECIMAL_OPTIONS.index(selected_price_decimal_places()),
+            key="purchase_price_decimal_places",
+        )
+        unit = qty_cols[2].text_input("단위", value="EA")
+        request_date = qty_cols[3].date_input("요청일", value=date.today())
+        reply_due_date = qty_cols[4].date_input("견적 회신 요청일", value=date.today() + timedelta(days=3))
+        approval_status = qty_cols[5].selectbox("승인상태", PR_STATUS, index=0)
+        requester = qty_cols[6].text_input("요청자", placeholder="담당자")
         doc_cols = st.columns([0.95, 1.2, 1.0, 1.65, 1.35], gap="small")
         desired_due_date = doc_cols[0].date_input("희망납기일", value=date.today() + timedelta(days=14))
         delivery_place = doc_cols[1].text_input("납품장소", value=DEFAULT_DELIVERY_PLACE)
