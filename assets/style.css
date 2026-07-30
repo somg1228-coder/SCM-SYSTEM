@@ -12923,3 +12923,292 @@ div[class*="st-key-product_master_"][class*="_editor_panel"] [role="grid"],
 div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDataFrame"] [role="grid"] {
     background: #F8FAFC !important;
 }
+
+/* Cohesive pastel refresh: lift saturation and align every category to one surface system. */
+:root {
+    --bg: #EAF0F5;
+    --panel: #F8FAFC;
+    --panel-soft: #EEF3F7;
+    --control-bg: #F8FAFC;
+    --control-bg-soft: #EEF3F7;
+    --control-bg-hover: #E4ECF5;
+    --line: #C7D4E0;
+    --line-soft: #D8E1EA;
+    --text: #172033;
+    --muted: #58687A;
+    --erp-bg: #EAF0F5;
+    --erp-card: #F8FAFC;
+    --erp-line: #C7D4E0;
+    --erp-line-strong: #AFC0D0;
+    --erp-text: #172033;
+    --erp-body: #263445;
+    --erp-muted: #58687A;
+    --erp-faint: #7A8797;
+    --layout-bg: #EAF0F5;
+    --layout-card: #F8FAFC;
+    --layout-card-soft: #EEF3F7;
+    --layout-body: #263445;
+    --layout-muted: #58687A;
+    --bg-main: #EAF0F5;
+    --bg-card: #F8FAFC;
+    --bg-card-secondary: #EEF3F7;
+    --border-main: #C7D4E0;
+    --border-strong: #AFC0D0;
+    --text-title: #172033;
+    --text-main: #263445;
+    --text-secondary: #58687A;
+    --text-muted: #7A8797;
+    --app-bg: #EAF0F5;
+    --app-card: #F8FAFC;
+    --app-border: #C7D4E0;
+    --app-primary: #6F879A;
+    --app-text: #172033;
+    --app-muted: #58687A;
+    --return-bg: #EAF0F5;
+    --return-card: #F8FAFC;
+    --return-card-soft: #EEF3F7;
+    --return-border: #C7D4E0;
+    --return-border-soft: #D8E1EA;
+    --return-title: #172033;
+    --return-text: #263445;
+    --return-muted: #58687A;
+    --return-faint: #7A8797;
+    --return-primary: #6F879A;
+    --return-primary-soft: #E4ECF5;
+    --active-bg: #E7E8F6;
+    --active-bg-strong: #DADDF2;
+    --active-border: #B9BEDD;
+    --active-ink: #3F467A;
+    --active-ink-blue: #2E4A64;
+}
+
+html,
+body,
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+.main,
+.block-container {
+    background: #EAF0F5 !important;
+    color: #263445 !important;
+}
+
+.stApp {
+    background:
+        radial-gradient(circle at 16% -4%, rgba(125, 120, 184, 0.16), transparent 30%),
+        radial-gradient(circle at 88% 8%, rgba(111, 135, 154, 0.16), transparent 28%),
+        linear-gradient(135deg, #EAF0F5 0%, #F3F2EF 48%, #EEF3F7 100%) !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] .block-container {
+    background: linear-gradient(180deg, #F8FAFC 0%, #EEF3F7 100%) !important;
+    border-right-color: #C7D4E0 !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand {
+    display: flex !important;
+    grid-template-columns: none !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    text-align: center !important;
+    padding: 0.82rem 0.4rem !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand-mark {
+    display: none !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand-title,
+[data-testid="stSidebar"] .sidebar-brand span:last-child {
+    display: block !important;
+    width: 100% !important;
+    text-align: center !important;
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+    font-size: 1.16rem !important;
+    font-weight: 950 !important;
+    letter-spacing: 0.08em !important;
+}
+
+.panel,
+.schedule-panel,
+.week-board,
+.kpi-tile,
+.chart-card,
+.donut-card,
+.table-panel,
+.order-panel,
+.warehouse-panel,
+.purchase-progress-panel,
+.core-task-panel,
+.notice-panel,
+.meeting-calendar,
+.meeting-table-wrap,
+.meeting-note-box,
+.meeting-kpi-card,
+.meeting-selected-event,
+.inventory-panel,
+.inventory-card,
+.purchase-panel,
+.purchase-card,
+.bom-panel,
+.bom-card,
+.warehouse3d-kpi,
+.placeholder-panel,
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stExpander"],
+[data-testid="stForm"],
+[data-testid="stPopover"],
+[data-testid="stDialog"],
+[data-testid="stDataFrame"],
+[data-testid="stDataEditor"],
+[data-testid="stTable"],
+div[class*="st-key-meeting_issue_"],
+div[class*="st-key-meeting_control_card"],
+div[class*="st-key-product_master_"][class*="_controls"],
+div[class*="st-key-product_master_"][class*="_editor_panel"] {
+    background: #F8FAFC !important;
+    border-color: #C7D4E0 !important;
+    box-shadow: 0 8px 20px rgba(38, 52, 69, 0.055) !important;
+    color: #263445 !important;
+}
+
+div[class*="st-key-product_master_"][class*="_controls"],
+.stock-guide,
+.rack-detail,
+.core-task-summary span,
+.meeting-event-chip,
+.chart-card,
+.svg-chart,
+.donut::after,
+.bar,
+.thin-bar {
+    background: #EEF3F7 !important;
+    border-color: #C7D4E0 !important;
+}
+
+input,
+textarea,
+select,
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stDateInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+[data-baseweb="input"] input,
+[data-baseweb="select"] input,
+[data-testid="stFileUploaderDropzone"] {
+    background: #F8FAFC !important;
+    border-color: #C1CEDA !important;
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+}
+
+.stButton > button,
+.stDownloadButton > button,
+.stFormSubmitButton > button,
+button[kind="secondary"],
+.ghost-link,
+.mini-badge,
+.chart-filter-links a,
+.panel-title-row a,
+.panel-title-row button {
+    background: #E7EDF3 !important;
+    border-color: #B8C7D4 !important;
+    color: #36556F !important;
+    -webkit-text-fill-color: #36556F !important;
+}
+
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+.stFormSubmitButton > button:hover,
+button[kind="secondary"]:hover,
+.ghost-link:hover,
+.chart-filter-links a:hover {
+    background: #DCE6EF !important;
+    border-color: #9EB2C4 !important;
+    color: #26384A !important;
+    -webkit-text-fill-color: #26384A !important;
+}
+
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"],
+.stFormSubmitButton > button[kind="primary"],
+button[kind="primary"] {
+    background: #6F879A !important;
+    border-color: #5F778A !important;
+    color: #F8FAFC !important;
+    -webkit-text-fill-color: #F8FAFC !important;
+}
+
+.week-cell,
+.meeting-calendar-day,
+.table-panel td,
+.order-panel td,
+.meeting-table-wrap td,
+[data-testid="stTable"] td,
+[data-testid="stDataFrame"] td {
+    background: #F8FAFC !important;
+    border-color: #D8E1EA !important;
+    color: #172033 !important;
+}
+
+.week-cell:nth-child(even),
+.meeting-calendar-day:nth-child(even),
+.table-panel tbody tr:nth-child(even) td,
+.order-panel tbody tr:nth-child(even) td,
+.meeting-table-wrap tbody tr:nth-child(even) td,
+[data-testid="stTable"] tbody tr:nth-child(even) td {
+    background: #EEF3F7 !important;
+}
+
+.warehouse-head,
+.purchase-progress-head,
+.inbound-head,
+.outbound-top-head,
+.meeting-calendar-head,
+.meeting-calendar-week,
+.meeting-table-wrap th,
+.table-panel th,
+.order-panel th,
+[data-testid="stTable"] th,
+[data-testid="stDataFrame"] th {
+    background: #E4ECF5 !important;
+    border-color: #C7D4E0 !important;
+    color: #2E4A64 !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+    background: #E4ECF5 !important;
+    color: #172033 !important;
+}
+
+[data-testid="stTabs"] [aria-selected="true"],
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"],
+.chart-filter-links a.active,
+.week-cell.active .week-date,
+.meeting-calendar-day.today,
+.schedule-week-chip,
+.week-range,
+div[class*="st-key-kpi_"] button[kind="primary"] {
+    background: #E7E8F6 !important;
+    border-color: #B9BEDD !important;
+    box-shadow: inset 4px 0 0 #7D78B8, 0 6px 14px rgba(38, 52, 69, 0.06) !important;
+    color: #3F467A !important;
+    -webkit-text-fill-color: #3F467A !important;
+}
+
+.status-badge,
+.stock-badge,
+.meeting-status-badge,
+.mini-badge {
+    filter: saturate(1.05) brightness(1) !important;
+}
