@@ -13326,3 +13326,90 @@ div[class*="st-key-kpi_"] button[kind="primary"] {
 [data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"]::after {
     background: #35473E !important;
 }
+
+/* Sidebar beige alignment: keep the nav integrated with the warm portal theme. */
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] .block-container {
+    background: linear-gradient(180deg, #EFE7DC 0%, #E4DACC 100%) !important;
+    border-right-color: #CDBFAA !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand {
+    background: #F4EFE7 !important;
+    border: 1px solid #D8CBB8 !important;
+    box-shadow: 0 8px 18px rgba(45, 38, 30, 0.045) !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand-title,
+[data-testid="stSidebar"] .sidebar-brand span:last-child {
+    color: #1F2933 !important;
+    -webkit-text-fill-color: #1F2933 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button {
+    background: #ECE5DA !important;
+    border-color: #CDBFAA !important;
+    color: #35473E !important;
+    -webkit-text-fill-color: #35473E !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button:hover {
+    background: #E1D8CA !important;
+    border-color: #B9A78E !important;
+}
+
+[data-testid="stSidebar"] .stButton > button {
+    background: #F4EFE7 !important;
+    border-color: #D8CBB8 !important;
+    color: #2E3740 !important;
+    -webkit-text-fill-color: #2E3740 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button::before {
+    background: #ECE5DA !important;
+    border-color: #D8CBB8 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: #E9E2D7 !important;
+    border-color: #BFAF97 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] {
+    background: #DED6C9 !important;
+    border-color: #B9A78E !important;
+    box-shadow: inset 4px 0 0 #748C79, 0 6px 14px rgba(45, 38, 30, 0.06) !important;
+    color: #35473E !important;
+    -webkit-text-fill-color: #35473E !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"]::before,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"]::before {
+    background: #E9E2D7 !important;
+    border-color: #C7B69D !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"]::after,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"]::after {
+    background: #35473E !important;
+}
+
+[data-testid="stSidebar"] .stButton > button p,
+[data-testid="stSidebar"] .stButton > button span,
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button p,
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button span {
+    color: #2E3740 !important;
+    -webkit-text-fill-color: #2E3740 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"] p,
+[data-testid="stSidebar"] .stButton > button[kind="primary"] span,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] p,
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] span {
+    color: #35473E !important;
+    -webkit-text-fill-color: #35473E !important;
+}
