@@ -63,6 +63,7 @@ PRODUCT_MASTER_MODEL_BY_SOURCE = {
 }
 
 PURCHASE_METRIC_SOURCE_ORDER = ["창고", "3PL", "오프라인"]
+STOCK_WARNING_RATIO = 0.2
 
 
 def product_master_model(source_type: str):
@@ -727,6 +728,11 @@ def normalize_product_master_row(row: dict) -> dict:
         barcode = sku
     product_name = clean_text(data.get("상품명") or data.get("품목") or data.get("product_name"))
     is_active = clean_text(data.get("사용여부") or data.get("is_active") or "사용")
+    if is_active == "사용 중":
+        is_active = "사용"
+    elif is_active == "비활성":
+        is_active = "미사용"
+    combined_box_qty, combined_pallet_qty = parse_box_pallet_unit(data.get("박스/파렛트 단위") or data.get("박스파렛트단위"))
     return {
         "sku": sku,
         "barcode": barcode,
@@ -743,8 +749,8 @@ def normalize_product_master_row(row: dict) -> dict:
         "small_category": "",
         "brand": clean_text(data.get("브랜드") or data.get("brand")),
         "supplier": clean_text(data.get("공급처") or data.get("업체명") or data.get("거래처") or data.get("supplier")),
-        "pack_qty": to_int(data.get("입수") or data.get("pack_qty")),
-        "box_qty": to_int(data.get("박스입수") or data.get("box_qty")) or to_box_unit_int(data.get("파렛트,박스단위")),
+        "pack_qty": combined_pallet_qty or to_int(data.get("입수") or data.get("pack_qty")),
+        "box_qty": combined_box_qty or to_int(data.get("박스입수") or data.get("box_qty")) or to_box_unit_int(data.get("파렛트,박스단위")),
         "default_lead_time": to_int(
             data.get("기본 리드타임")
             or data.get("리드타임")
@@ -984,14 +990,63 @@ def ensure_daily_for_product(db: Session, source_type: str, work_date: date, pro
     return row
 
 
-def stock_status_for_values(current_stock: int, safe_stock: int) -> str:
-    if current_stock < 0:
-        return "미출"
-    if current_stock == 0:
+def stock_warning_limit(safe_stock: int, warning_ratio: float = STOCK_WARNING_RATIO) -> int:
+    if safe_stock <= 0:
+        return 0
+    return safe_stock + ceil(safe_stock * warning_ratio)
+
+
+def stock_status_for_values(current_stock: int, safe_stock: int, warning_ratio: float = STOCK_WARNING_RATIO) -> str:
+    if current_stock <= 0:
         return "품절"
-    if safe_stock > 0 and current_stock < safe_stock:
-        return "입고필요"
+    if safe_stock > 0 and current_stock <= safe_stock:
+        return "부족"
+    if safe_stock > 0 and current_stock <= stock_warning_limit(safe_stock, warning_ratio):
+        return "주의"
     return "정상"
+
+
+def format_box_pallet_unit(box_qty: int | None, pallet_qty: int | None) -> str:
+    parts = []
+    if int(box_qty or 0):
+        parts.append(f"박스당 {int(box_qty or 0)}EA")
+    if int(pallet_qty or 0):
+        parts.append(f"파렛트당 {int(pallet_qty or 0)}BOX")
+    return " / ".join(parts)
+
+
+def parse_box_pallet_unit(value) -> tuple[int, int]:
+    text = clean_text(value).upper().replace(",", "")
+    if not text:
+        return 0, 0
+    box_qty = 0
+    pallet_qty = 0
+    box_match = re.search(r"(?:박스당|박스|BOX)\s*(\d+)\s*EA", text) or re.search(r"(\d+)\s*EA", text)
+    pallet_match = re.search(r"(?:파렛트당|파렛트|PALLET|PL)\D*(\d+)\s*BOX", text) or re.search(r"/[^/]*(\d+)\s*BOX", text)
+    if box_match:
+        box_qty = to_int(box_match.group(1))
+    if pallet_match:
+        pallet_qty = to_int(pallet_match.group(1))
+    if not box_qty or not pallet_qty:
+        numbers = [to_int(number) for number in re.findall(r"\d+", text)]
+        if numbers and not box_qty:
+            box_qty = numbers[0]
+        if len(numbers) > 1 and not pallet_qty:
+            pallet_qty = numbers[-1]
+    return box_qty, pallet_qty
+
+
+def pending_inbound_qty_for_product(db: Session, source_type: str, work_date: date, product) -> int:
+    value = db.execute(
+        select(func.sum(InventoryInbound.inbound_qty)).where(
+            InventoryInbound.source_type == source_type,
+            InventoryInbound.inbound_date >= work_date,
+            InventoryInbound.is_applied == False,  # noqa: E712
+            InventoryInbound.product_name == product.product_name,
+            InventoryInbound.barcode == product.barcode,
+        )
+    ).scalar()
+    return int(value or 0)
 
 
 def master_based_inventory_rows(db: Session, source_type: str, work_date: date, active_only: bool = False) -> list[dict]:
@@ -1012,6 +1067,9 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         inbound_metric = inbound_metrics.get((source_type, product.sku), {})
         measured_lead_time = int(purchase_metric.get("avg_lead_time") or 0)
         box_qty = int(product.box_qty or product.pack_qty or 0)
+        pending_inbound_qty = pending_inbound_qty_for_product(db, source_type, work_date, product)
+        pending_outbound_qty = int(daily.outbound_qty or 0) if daily else 0
+        available_stock = current_stock + pending_inbound_qty - pending_outbound_qty
         shortage_qty = max(safe_stock - current_stock, 0)
         rows.append(
             {
@@ -1020,13 +1078,19 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "category": product.large_category,
                 "product_code": product.sku,
                 "product_name": product.product_name,
+                "supplier": product.supplier,
+                "manager": product.memo,
                 "current_stock": current_stock,
-                "available_stock": current_stock,
+                "available_stock": available_stock,
                 "safe_stock": safe_stock,
+                "pending_inbound_qty": pending_inbound_qty,
+                "pending_outbound_qty": pending_outbound_qty,
                 "stock_status": status,
                 "barcode": product.barcode,
                 "inbound_cycle": measured_lead_time or product.default_lead_time or 0,
                 "box_qty": box_qty,
+                "pack_qty": int(product.pack_qty or 0),
+                "box_pallet_unit": format_box_pallet_unit(product.box_qty, product.pack_qty),
                 "recommended_boxes": ceil(shortage_qty / box_qty) if box_qty and shortage_qty > 0 else 0,
                 "measured_lead_time": measured_lead_time,
                 "last_purchase_order_date": purchase_metric.get("last_order_date"),
@@ -1831,9 +1895,9 @@ def dashboard_summary(db: Session, work_date: date, source_type: str | None = No
         "sku_count": len(rows),
         "current_stock": sum(row.current_stock for row in rows),
         "available_stock": sum(row.available_stock for row in rows),
-        "need_inbound_count": sum(1 for row in rows if row.stock_status == "입고필요"),
+        "need_inbound_count": sum(1 for row in rows if row.stock_status in {"부족", "주의", "입고필요"}),
         "soldout_count": sum(1 for row in rows if row.stock_status == "품절"),
-        "short_count": sum(1 for row in rows if row.stock_status == "미출"),
+        "short_count": sum(1 for row in rows if row.stock_status in {"부족", "품절", "미출"}),
         "outbound_qty": sum(row.outbound_qty for row in rows),
         "inbound_qty": sum(row.inbound_qty for row in rows),
     }
@@ -1872,7 +1936,7 @@ def dashboard_chart(db: Session, work_date: date, source_type: str | None = None
 
     top_rows = db.execute(
         select(InventoryDaily.product_name, InventoryDaily.current_stock, InventoryDaily.safe_stock)
-        .where(*base_filters, InventoryDaily.stock_status == "입고필요")
+        .where(*base_filters, InventoryDaily.stock_status.in_(["부족", "주의", "입고필요"]))
         .order_by((InventoryDaily.safe_stock - InventoryDaily.current_stock).desc())
         .limit(10)
     ).all()

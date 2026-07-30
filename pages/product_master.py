@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from io import BytesIO
+from math import ceil
+import re
 
 import pandas as pd
 import streamlit as st
@@ -51,8 +53,7 @@ THREEPL_MASTER_COLUMNS = [
     "바코드",
     "상품명",
     "업체명",
-    "박스단위",
-    "파렛트 적재수량",
+    "박스/파렛트 단위",
     "담당자",
     "리드타임",
 ]
@@ -88,6 +89,10 @@ def render_product_master_page() -> None:
 def render_master_tab(source_type: str, title: str) -> None:
     key = source_key(source_type)
     st.markdown(f'<div class="product-master-subtitle">{title}</div>', unsafe_allow_html=True)
+
+    if uses_threepl_master_form(source_type):
+        render_threepl_master_tab(source_type, title, key)
+        return
 
     with st.container(key=f"product_master_{key}_controls"):
         st.markdown('<div class="product-master-control-title">마스터 기준 관리</div>', unsafe_allow_html=True)
@@ -228,6 +233,118 @@ def render_master_tab(source_type: str, title: str) -> None:
             st.empty()
 
 
+def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
+    all_rows = fetch_master(source_type, "", "전체")
+    all_df = threepl_master_to_editor(all_rows)
+    filters = render_threepl_master_filters(key, all_df)
+    filtered_df = apply_threepl_master_filters(all_df, filters)
+    sorted_df = sort_threepl_master(filtered_df, filters)
+    page_df, page, total_pages = paginate_dataframe(sorted_df, filters["page_size"], filters["page"])
+
+    with st.container(key=f"product_master_{key}_controls"):
+        st.markdown('<div class="product-master-control-title">마스터 기준 관리</div>', unsafe_allow_html=True)
+        upload_col, import_col, template_col, download_col, count_col = st.columns(
+            [1.35, 0.82, 0.95, 0.95, 1.15],
+            gap="small",
+        )
+        with upload_col:
+            uploaded = st.file_uploader(
+                "엑셀 업로드",
+                type=["xlsx", "xls", "html"],
+                key=f"product_master_{key}_upload",
+                help="3PL 마스터 기준정보를 업로드할 수 있습니다.",
+            )
+        with import_col:
+            st.write("")
+            if st.button("엑셀 반영", key=f"product_master_{key}_import_btn", use_container_width=True):
+                if uploaded is None:
+                    st.warning(f"먼저 {title} 엑셀을 업로드하세요.")
+                else:
+                    outcome = with_db(lambda db: services.import_product_master_excel(db, source_type, uploaded.getvalue()))
+                    if outcome and outcome.get("ok", True):
+                        clear_master_editor_buffer(key)
+                    show_result(outcome)
+        with template_col:
+            st.write("")
+            st.download_button(
+                "양식 다운로드",
+                data=master_excel(threepl_master_template_df(), title),
+                file_name=f"{title}_양식.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"product_master_{key}_template_download",
+            )
+        with download_col:
+            st.write("")
+            download_df = sorted_df[THREEPL_MASTER_COLUMNS] if not sorted_df.empty else threepl_master_template_df()
+            st.download_button(
+                "마스터 다운로드",
+                data=master_excel(download_df, title),
+                file_name=f"{title}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"product_master_{key}_download",
+            )
+        with count_col:
+            st.write("")
+            st.caption(f"검색 결과 {len(sorted_df):,}개 / 전체 {len(all_df):,}개")
+
+    with st.container(key=f"product_master_{key}_editor_panel"):
+        st.markdown('<div class="product-master-form-title">마스터 작성 폼</div>', unsafe_allow_html=True)
+        st.caption("평상시 관리 품목의 기준정보만 관리합니다. 현재고, 안전재고, 재고상태는 재고관리 화면에서 확인하세요.")
+
+        if sorted_df.empty:
+            st.info("조건에 맞는 품목이 없습니다. 필터를 초기화하거나 새 품목을 표 하단에 추가하세요.")
+            if st.button("필터 전체 초기화", key=f"product_master_{key}_empty_reset", use_container_width=True):
+                reset_threepl_master_filters(key)
+                st.rerun()
+
+        with st.form(key=f"product_master_{key}_editor_form", clear_on_submit=False):
+            edited = st.data_editor(
+                page_df,
+                hide_index=True,
+                use_container_width=True,
+                num_rows="dynamic",
+                height=470,
+                key=f"product_master_{key}_editor_{page}_{len(sorted_df)}",
+                column_order=THREEPL_MASTER_COLUMNS,
+                column_config=threepl_master_column_config(),
+                disabled=[],
+            )
+            submitted = st.form_submit_button("저장", type="primary", use_container_width=True)
+        if submitted:
+            payload = threepl_editor_to_payload(edited)
+            outcome = with_db(lambda db: services.bulk_save_product_master(db, source_type, payload))
+            if outcome and outcome.get("ok", True):
+                clear_master_editor_buffer(key)
+            show_result(outcome)
+
+        nav_prev, nav_info, nav_next, sync_col, spacer = st.columns([0.8, 1.0, 0.8, 1.15, 3.55], gap="small")
+        with nav_prev:
+            if st.button("이전", key=f"product_master_{key}_page_prev", disabled=page <= 1, use_container_width=True):
+                st.session_state[f"product_master_{key}_page"] = max(page - 1, 1)
+                st.rerun()
+        with nav_info:
+            st.caption(f"{page:,} / {total_pages:,} 페이지")
+        with nav_next:
+            if st.button("다음", key=f"product_master_{key}_page_next", disabled=page >= total_pages, use_container_width=True):
+                st.session_state[f"product_master_{key}_page"] = min(page + 1, total_pages)
+                st.rerun()
+        with sync_col:
+            if st.button("재고 데이터 동기화", key=f"product_master_{key}_sync", use_container_width=True):
+                show_result(
+                    with_db(
+                        lambda db: {
+                            "ok": True,
+                            "message": f"{title} 기준 재고 데이터 동기화 완료",
+                            "count": services.sync_inventory_from_product_master(db, source_type),
+                        }
+                    )
+                )
+        with spacer:
+            st.empty()
+
+
 def render_single_product_form(source_type: str, key: str) -> None:
     with st.expander("단품 상품 추가", expanded=False):
         with st.form(key=f"product_master_{key}_single_form", clear_on_submit=True):
@@ -302,6 +419,227 @@ def uses_threepl_master_form(source_type: str) -> bool:
     return source_type == "3PL"
 
 
+def format_box_pallet_unit(box_qty, pallet_qty) -> str:
+    box_value = to_int_value(box_qty)
+    pallet_value = to_int_value(pallet_qty)
+    parts = []
+    if box_value:
+        parts.append(f"박스당 {box_value}EA")
+    if pallet_value:
+        parts.append(f"파렛트당 {pallet_value}BOX")
+    return " / ".join(parts)
+
+
+def parse_box_pallet_unit(value) -> tuple[int, int]:
+    text = clean_value(value)
+    if not text:
+        return 0, 0
+    normalized = text.upper().replace(",", "")
+    box_qty = 0
+    pallet_qty = 0
+
+    box_patterns = [
+        r"(?:박스당|박스|BOX)\s*(\d+)\s*EA",
+        r"(\d+)\s*EA",
+    ]
+    pallet_patterns = [
+        r"(?:파렛트당|파렛트|PALLET|PL)\D*(\d+)\s*BOX",
+        r"/[^/]*(\d+)\s*BOX",
+    ]
+    for pattern in box_patterns:
+        match = re.search(pattern, normalized)
+        if match:
+            box_qty = to_int_value(match.group(1))
+            break
+    for pattern in pallet_patterns:
+        match = re.search(pattern, normalized)
+        if match:
+            pallet_qty = to_int_value(match.group(1))
+            break
+    if not box_qty or not pallet_qty:
+        numbers = [to_int_value(number) for number in re.findall(r"\d+", normalized)]
+        if numbers and not box_qty:
+            box_qty = numbers[0]
+        if len(numbers) > 1 and not pallet_qty:
+            pallet_qty = numbers[-1]
+    return box_qty, pallet_qty
+
+
+def render_threepl_master_filters(key: str, df: pd.DataFrame) -> dict:
+    defaults = {
+        "keyword": "",
+        "categories": [],
+        "suppliers": [],
+        "managers": [],
+        "lead_times": [],
+        "active": "전체",
+        "sort_column": "카테고리",
+        "sort_order": "오름차순",
+        "page_size": 30,
+        "page": 1,
+    }
+    for name, value in defaults.items():
+        st.session_state.setdefault(f"product_master_{key}_{name}", value)
+
+    category_options = sorted(clean_value(value) for value in df.get("카테고리", pd.Series(dtype=str)).dropna().unique() if clean_value(value))
+    supplier_options = sorted(clean_value(value) for value in df.get("업체명", pd.Series(dtype=str)).dropna().unique() if clean_value(value))
+    manager_options = sorted(clean_value(value) for value in df.get("담당자", pd.Series(dtype=str)).dropna().unique() if clean_value(value))
+    lead_time_options = sorted({to_int_value(value) for value in df.get("리드타임", pd.Series(dtype=int)).dropna().unique() if to_int_value(value) > 0})
+
+    with st.expander("검색 및 필터", expanded=True):
+        row1 = st.columns([1.5, 1.0, 1.0, 1.0], gap="small")
+        keyword = row1[0].text_input(
+            "통합 검색",
+            placeholder="바코드 / 상품명 / 업체명 / 담당자",
+            key=f"product_master_{key}_keyword",
+        )
+        categories = row1[1].multiselect("카테고리", category_options, key=f"product_master_{key}_categories")
+        suppliers = row1[2].multiselect("업체명", supplier_options, key=f"product_master_{key}_suppliers")
+        managers = row1[3].multiselect("담당자", manager_options, key=f"product_master_{key}_managers")
+
+        row2 = st.columns([1.0, 1.0, 1.0, 0.8, 0.7, 0.9], gap="small")
+        lead_times = row2[0].multiselect("리드타임", lead_time_options, key=f"product_master_{key}_lead_times")
+        active = row2[1].selectbox("사용상태", ["전체", "사용 중", "비활성"], key=f"product_master_{key}_active")
+        sort_column = row2[2].selectbox("정렬 컬럼", THREEPL_MASTER_COLUMNS, key=f"product_master_{key}_sort_column")
+        sort_order = row2[3].selectbox("정렬", ["오름차순", "내림차순"], key=f"product_master_{key}_sort_order")
+        page_size = row2[4].selectbox("표시 개수", [15, 30, 50, 100], key=f"product_master_{key}_page_size")
+        with row2[5]:
+            st.write("")
+            if st.button("전체 초기화", key=f"product_master_{key}_filter_reset", use_container_width=True):
+                reset_threepl_master_filters(key)
+                st.rerun()
+
+        badges = active_threepl_master_filter_badges(
+            keyword,
+            categories,
+            suppliers,
+            managers,
+            lead_times,
+            active,
+        )
+        render_clearable_filter_badges(f"product_master_{key}", badges)
+
+    page_key = f"product_master_{key}_page"
+    if page_key not in st.session_state or st.session_state.get(f"product_master_{key}_last_page_size") != page_size:
+        st.session_state[page_key] = 1
+    st.session_state[f"product_master_{key}_last_page_size"] = page_size
+
+    return {
+        "keyword": keyword,
+        "categories": categories,
+        "suppliers": suppliers,
+        "managers": managers,
+        "lead_times": lead_times,
+        "active": active,
+        "sort_column": sort_column,
+        "sort_order": sort_order,
+        "page_size": int(page_size),
+        "page": int(st.session_state.get(page_key, 1)),
+    }
+
+
+def active_threepl_master_filter_badges(keyword, categories, suppliers, managers, lead_times, active) -> list[tuple[str, str]]:
+    badges: list[tuple[str, str]] = []
+    if clean_value(keyword):
+        badges.append(("keyword", f"검색: {keyword}"))
+    for code, values, label in [
+        ("categories", categories, "카테고리"),
+        ("suppliers", suppliers, "업체명"),
+        ("managers", managers, "담당자"),
+        ("lead_times", lead_times, "리드타임"),
+    ]:
+        for value in values or []:
+            badges.append((code, f"{label}: {value}"))
+    if active != "전체":
+        badges.append(("active", f"사용상태: {active}"))
+    return badges
+
+
+def render_clearable_filter_badges(prefix: str, badges: list[tuple[str, str]]) -> None:
+    if not badges:
+        return
+    st.caption("적용 중인 필터")
+    cols = st.columns(min(len(badges), 6), gap="small")
+    for idx, (code, label) in enumerate(badges):
+        with cols[idx % len(cols)]:
+            if st.button(f"× {label}", key=f"{prefix}_clear_{code}_{idx}", use_container_width=True):
+                clear_filter_key(prefix, code)
+                st.rerun()
+
+
+def clear_filter_key(prefix: str, code: str) -> None:
+    key_map = {
+        "keyword": "keyword",
+        "categories": "categories",
+        "suppliers": "suppliers",
+        "managers": "managers",
+        "lead_times": "lead_times",
+        "active": "active",
+    }
+    suffix = key_map.get(code)
+    if not suffix:
+        return
+    session_key = f"{prefix}_{suffix}"
+    st.session_state[session_key] = "" if suffix == "keyword" else "전체" if suffix == "active" else []
+
+
+def reset_threepl_master_filters(key: str) -> None:
+    for suffix in [
+        "keyword",
+        "categories",
+        "suppliers",
+        "managers",
+        "lead_times",
+        "active",
+        "sort_column",
+        "sort_order",
+        "page_size",
+        "page",
+        "last_page_size",
+    ]:
+        st.session_state.pop(f"product_master_{key}_{suffix}", None)
+
+
+def apply_threepl_master_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
+    if df.empty:
+        return df
+    filtered = df.copy()
+    keyword = clean_value(filters.get("keyword")).lower()
+    if keyword:
+        search_columns = ["바코드", "상품명", "업체명", "담당자"]
+        search_text = filtered[search_columns].astype(str).agg(" ".join, axis=1).str.lower()
+        filtered = filtered[search_text.str.contains(re.escape(keyword), na=False)]
+    if filters.get("categories"):
+        filtered = filtered[filtered["카테고리"].isin(filters["categories"])]
+    if filters.get("suppliers"):
+        filtered = filtered[filtered["업체명"].isin(filters["suppliers"])]
+    if filters.get("managers"):
+        filtered = filtered[filtered["담당자"].isin(filters["managers"])]
+    if filters.get("lead_times"):
+        filtered = filtered[filtered["리드타임"].apply(to_int_value).isin([to_int_value(value) for value in filters["lead_times"]])]
+    active = filters.get("active")
+    if active in {"사용 중", "비활성"}:
+        expected = "사용" if active == "사용 중" else "미사용"
+        filtered = filtered[filtered["사용여부"].fillna("사용").astype(str).eq(expected)]
+    return filtered.reset_index(drop=True)
+
+
+def sort_threepl_master(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
+    if df.empty:
+        return df
+    sort_column = filters.get("sort_column") if filters.get("sort_column") in df.columns else "카테고리"
+    ascending = filters.get("sort_order") != "내림차순"
+    return df.sort_values([sort_column, "상품명", "바코드"], ascending=[ascending, True, True], kind="stable").reset_index(drop=True)
+
+
+def paginate_dataframe(df: pd.DataFrame, page_size: int, page: int) -> tuple[pd.DataFrame, int, int]:
+    safe_page_size = max(int(page_size or 30), 1)
+    total_pages = max(ceil(len(df) / safe_page_size), 1)
+    safe_page = min(max(int(page or 1), 1), total_pages)
+    start = (safe_page - 1) * safe_page_size
+    return df.iloc[start : start + safe_page_size].reset_index(drop=True), safe_page, total_pages
+
+
 def product_master_available() -> bool:
     if init_db is None or SessionLocal is None or services is None:
         return False
@@ -329,15 +667,10 @@ def with_db(action):
 
 def fetch_master(source_type: str, keyword: str, active_filter: str) -> list[dict]:
     def action(db):
-        rows = [
+        return [
             services.product_master_to_dict(row)
             for row in services.list_product_master(db, source_type, keyword, active_filter)
         ]
-        if uses_threepl_master_form(source_type):
-            metrics = services.product_master_operational_metrics(db, source_type)
-            for row in rows:
-                row.update(metrics.get(row.get("sku", ""), {}))
-        return rows
 
     return with_db(action) or []
 
@@ -366,8 +699,7 @@ def threepl_master_column_config() -> dict:
         "바코드": st.column_config.TextColumn("바코드", width="medium"),
         "상품명": st.column_config.TextColumn("상품명", width="large"),
         "업체명": st.column_config.TextColumn("업체명", width="medium"),
-        "박스단위": st.column_config.NumberColumn("박스단위", min_value=0, step=1),
-        "파렛트 적재수량": st.column_config.NumberColumn("파렛트 적재수량", min_value=0, step=1),
+        "박스/파렛트 단위": st.column_config.TextColumn("박스/파렛트 단위", width="medium"),
         "담당자": st.column_config.TextColumn("담당자", width="medium"),
         "리드타임": st.column_config.NumberColumn("리드타임", min_value=0, step=1),
     }
@@ -440,10 +772,9 @@ def threepl_master_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
                 "업체명": row.get("supplier", ""),
-                "박스단위": row.get("box_qty", 0),
-                "파렛트 적재수량": row.get("pack_qty", 0),
+                "박스/파렛트 단위": row.get("box_pallet_unit") or format_box_pallet_unit(row.get("box_qty", 0), row.get("pack_qty", 0)),
                 "담당자": row.get("memo", ""),
-                "리드타임": row.get("avg_lead_time", 0) or row.get("default_lead_time", 0),
+                "리드타임": row.get("default_lead_time", 0),
                 "SKU": row.get("sku", ""),
                 "브랜드": row.get("brand", ""),
                 "안전재고": row.get("min_stock", 0),
@@ -532,6 +863,7 @@ def threepl_editor_to_payload(df: pd.DataFrame) -> list[dict]:
         sku = clean_value(row.get("SKU")) or barcode or product_name
         if not product_name and not barcode and not sku:
             continue
+        box_qty, pallet_qty = parse_box_pallet_unit(row.get("박스/파렛트 단위"))
         payload = {
             "SKU": sku,
             "바코드": barcode or sku,
@@ -539,8 +871,8 @@ def threepl_editor_to_payload(df: pd.DataFrame) -> list[dict]:
             "카테고리": clean_value(row.get("카테고리")),
             "브랜드": clean_value(row.get("브랜드")),
             "공급처": clean_value(row.get("업체명")),
-            "입수": to_int_value(row.get("파렛트 적재수량") or row.get("입수")),
-            "박스입수": to_int_value(row.get("박스단위") or row.get("박스입수")),
+            "입수": pallet_qty,
+            "박스입수": box_qty,
             "기본 리드타임": to_int_value(row.get("리드타임") or row.get("기본 리드타임")),
             "최소재고": to_int_value(row.get("안전재고")),
             "정렬순서": to_int_value(row.get("정렬순서")),
