@@ -50,7 +50,6 @@ MASTER_COLUMNS = [
 ]
 
 THREEPL_MASTER_COLUMNS = [
-    "SKU",
     "카테고리",
     "바코드",
     "상품명",
@@ -60,7 +59,7 @@ THREEPL_MASTER_COLUMNS = [
     "리드타임",
 ]
 
-THREEPL_MASTER_INTERNAL_COLUMNS = ["브랜드", "안전재고", "정렬순서", "사용여부"]
+THREEPL_MASTER_INTERNAL_COLUMNS = ["SKU", "브랜드", "안전재고", "정렬순서", "사용여부"]
 
 OFFLINE_MASTER_COLUMNS = [
     "미사용 처리",
@@ -421,7 +420,7 @@ def render_threepl_import_details(payload: dict) -> None:
     display_rows = [
         {
             "행 번호": detail.get("행 번호", ""),
-            "SKU": detail.get("SKU", ""),
+            "바코드": detail.get("바코드", detail.get("SKU", "")),
             "상품명": detail.get("상품명", ""),
             "처리 유형": detail.get("처리 유형", ""),
             "변경 항목": detail.get("변경 항목", ""),

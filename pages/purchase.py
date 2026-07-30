@@ -52,6 +52,24 @@ PO_INBOUND = ["입고대기", "부분입고", "입고완료"]
 CURRENCIES = ["KRW", "USD"]
 PRICE_DECIMAL_OPTIONS = [0, 1, 2, 3, 4, 5]
 PRICE_DECIMAL_COLUMNS = {"단가", "공급가액", "부가세", "총금액", "배송비", "발주금액", "총 구매비용", "구매금액"}
+PO_EDITOR_COLUMNS = [
+    "입고완료처리",
+    "삭제",
+    "발주번호",
+    "구매요청번호",
+    "업체",
+    "품목",
+    "규격",
+    "수량",
+    "단가",
+    "통화",
+    "발주일",
+    "납기예정일",
+    "입고상태",
+    "진행상태",
+    "발주금액",
+]
+PRICE_HISTORY_COLUMNS = ["날짜", "품목", "업체", "단가", "통화", "수량", "발주금액", "발주번호"]
 COMPANY_NAME = "SCM 물류운영포털"
 DEFAULT_DELIVERY_PLACE = "로긴 물류센터"
 PDF_MIME = "application/pdf"
@@ -413,11 +431,8 @@ def render_rfq_tab() -> None:
 
 def render_po_tab() -> None:
     rows = with_db(lambda db: [po_to_dict(row) for row in list_purchase_orders(db)]) or []
-    if not rows:
-        st.info("생성된 발주가 없습니다. RFQ 탭에서 승인 PR의 추천 견적으로 PO를 생성하세요.")
-        return
     supplier_names = with_db(lambda db: [row.supplier_name for row in list_suppliers(db) if row.supplier_name]) or []
-    supplier_options = sorted({clean_text(row.get("업체")) for row in rows if clean_text(row.get("업체"))} | set(supplier_names))
+    supplier_options = [""] + sorted({clean_text(row.get("업체")) for row in rows if clean_text(row.get("업체"))} | set(supplier_names))
 
     summary_cols = st.columns(4, gap="small")
     total_amounts = amount_totals_by_currency(rows, "발주금액", "통화")
@@ -428,55 +443,48 @@ def render_po_tab() -> None:
     summary_cols[2].metric("입고대기", f"{waiting:,}건")
     summary_cols[3].metric("지연건수", f"{delayed:,}건")
 
-    df = pd.DataFrame(rows)
-    df.insert(0, "삭제", False)
-    df.insert(0, "입고완료처리", False)
+    st.markdown('<div class="purchase-section-title">PO 확인 리스트</div>', unsafe_allow_html=True)
+    if rows:
+        df = pd.DataFrame(rows)
+        df.insert(0, "삭제", False)
+        df.insert(0, "입고완료처리", False)
+        df = df.reindex(columns=PO_EDITOR_COLUMNS)
+    else:
+        st.caption("아직 생성된 발주는 없지만, PO 생성 후 확인/상태변경/입고처리가 이 목록에서 진행됩니다.")
+        df = pd.DataFrame(columns=PO_EDITOR_COLUMNS)
     edited = st.data_editor(
         df,
         hide_index=True,
         use_container_width=True,
-        column_order=[
-            "입고완료처리",
-            "삭제",
-            "발주번호",
-            "구매요청번호",
-            "업체",
-            "품목",
-            "규격",
-            "수량",
-            "단가",
-            "통화",
-            "발주일",
-            "납기예정일",
-            "입고상태",
-            "진행상태",
-            "발주금액",
-        ],
+        column_order=PO_EDITOR_COLUMNS,
         column_config={
             "입고완료처리": st.column_config.CheckboxColumn("입고완료처리", default=False),
             "삭제": st.column_config.CheckboxColumn("삭제", default=False),
             "업체": st.column_config.SelectboxColumn("업체", options=supplier_options),
             "단가": st.column_config.NumberColumn("단가", min_value=0.0, step=price_step(), format=price_input_format()),
             "통화": st.column_config.SelectboxColumn("통화", options=CURRENCIES),
+            "입고상태": st.column_config.SelectboxColumn("입고상태", options=PO_INBOUND),
+            "진행상태": st.column_config.SelectboxColumn("진행상태", options=PO_PROGRESS),
             "발주금액": st.column_config.NumberColumn("발주금액", min_value=0.0, format=price_input_format()),
         },
         disabled=["발주번호", "구매요청번호", "발주금액"],
         key="purchase_po_editor",
+        height=340,
     )
     cols = st.columns([1.0, 1.0, 1.0, 3.2], gap="small")
     with cols[0]:
-        if st.button("PO 상태 저장", use_container_width=True, key="purchase_po_save"):
+        if st.button("PO 상태 저장", use_container_width=True, key="purchase_po_save", disabled=not rows):
             count = with_db(lambda db: save_po_editor(db, edited))
             st.success(f"PO 변경사항 저장 완료: {count or 0}건")
             st.rerun()
     with cols[1]:
-        if st.button("선택 입고 완료", type="primary", use_container_width=True, key="purchase_po_receive"):
+        if st.button("선택 입고 완료", type="primary", use_container_width=True, key="purchase_po_receive", disabled=not rows):
             count = with_db(lambda db: receive_selected_po(db, selected_numbers(edited, "발주번호")))
             if count:
                 st.success(f"입고 완료 및 창고 현재고 반영: {count}건")
                 st.rerun()
     with cols[2]:
-        if st.button("선택 삭제", use_container_width=True, key="purchase_po_delete"):
+        if st.button("선택 삭제", use_container_width=True, key="purchase_po_delete", disabled=not rows):
             count = with_db(lambda db: delete_selected_pos(db, selected_by_flag(edited, "발주번호", "삭제")))
             if count:
                 st.success(f"발주 삭제 완료: {count}건")
@@ -616,19 +624,27 @@ def render_supplier_tab() -> None:
 
 def render_price_history_tab() -> None:
     item_options = with_db(lambda db: list_price_history_items(db)) or []
-    if not item_options:
-        st.info("발주 이력이 없어 단가이력을 표시할 수 없습니다.")
-        return
-    selected_item = st.selectbox("품목", item_options, key="purchase_price_item")
-    rows = with_db(lambda db: price_history_rows(db, selected_item)) or []
-    df = pd.DataFrame(rows)
+    st.markdown('<div class="purchase-section-title">단가이력 조회</div>', unsafe_allow_html=True)
+    if item_options:
+        selected_item = st.selectbox("품목", item_options, key="purchase_price_item")
+        rows = with_db(lambda db: price_history_rows(db, selected_item)) or []
+    else:
+        st.text_input("품목", value="데이터 없음", disabled=True, key="purchase_price_item_empty")
+        rows = []
+
+    df = pd.DataFrame(rows, columns=PRICE_HISTORY_COLUMNS)
+    st.markdown('<div class="purchase-section-title">단가 추이</div>', unsafe_allow_html=True)
     if df.empty:
-        st.info("선택 품목의 단가 이력이 없습니다.")
-        return
-    chart_df = df.copy()
-    chart_df["날짜"] = pd.to_datetime(chart_df["날짜"], errors="coerce")
-    st.line_chart(chart_df.dropna(subset=["날짜"]).set_index("날짜")["단가"])
-    st.dataframe(center_aligned_dataframe(df), hide_index=True, use_container_width=True)
+        st.markdown('<div class="purchase-empty-chart">발주 이력이 생성되면 품목별 단가 추이가 표시됩니다.</div>', unsafe_allow_html=True)
+    else:
+        chart_df = df.copy()
+        chart_df["날짜"] = pd.to_datetime(chart_df["날짜"], errors="coerce")
+        st.line_chart(chart_df.dropna(subset=["날짜"]).set_index("날짜")["단가"])
+
+    st.markdown('<div class="purchase-section-title">단가이력 상세</div>', unsafe_allow_html=True)
+    if df.empty:
+        st.caption("아직 표시할 단가 이력이 없습니다.")
+    st.dataframe(center_aligned_dataframe(df), hide_index=True, use_container_width=True, height=330)
 
 
 def center_aligned_dataframe(df: pd.DataFrame):
@@ -682,13 +698,13 @@ def render_kpi_tab() -> None:
     with chart_cols[0]:
         st.markdown("#### 월별 구매금액")
         if monthly.empty:
-            st.info("표시할 데이터가 없습니다.")
+            st.markdown('<div class="purchase-empty-chart">발주 데이터가 생성되면 월별 구매금액이 표시됩니다.</div>', unsafe_allow_html=True)
         else:
             st.bar_chart(monthly.set_index("월")["구매금액"])
     with chart_cols[1]:
         st.markdown("#### 협력사별 구매금액")
         if supplier.empty:
-            st.info("표시할 데이터가 없습니다.")
+            st.markdown('<div class="purchase-empty-chart">발주 데이터가 생성되면 협력사별 구매금액이 표시됩니다.</div>', unsafe_allow_html=True)
         else:
             st.bar_chart(supplier.set_index("업체")["구매금액"])
 
@@ -2325,6 +2341,18 @@ def inject_purchase_css() -> None:
         .stDownloadButton > button,
         .stFormSubmitButton > button {
             filter: saturate(0.82) brightness(0.97);
+        }
+        .purchase-empty-chart {
+            min-height: 220px;
+            border: 1px solid #d7d0c5;
+            border-radius: 8px;
+            background: #f1eee8;
+            color: #6a7480;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.32);
         }
         </style>
         """,

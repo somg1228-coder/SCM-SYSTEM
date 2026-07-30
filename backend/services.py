@@ -892,12 +892,26 @@ def describe_threepl_master_changes(product, row: dict) -> list[str]:
     return changes
 
 
+def threepl_master_identity(row: dict) -> str:
+    return clean_text(row.get("sku")) or clean_text(row.get("barcode")) or clean_text(row.get("product_name"))
+
+
+def find_threepl_master_for_import(existing_by_sku: dict[str, object], existing_by_barcode: dict[str, object], row: dict):
+    sku = clean_text(row.get("sku"))
+    barcode = clean_text(row.get("barcode"))
+    if sku and sku in existing_by_sku:
+        return existing_by_sku[sku]
+    if barcode and barcode in existing_by_barcode:
+        return existing_by_barcode[barcode]
+    return None
+
+
 def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dict:
     df = read_excel(file_bytes)
     total_rows = len(df)
     parsed_rows: list[dict] = []
     details: list[dict] = []
-    sku_row_numbers: dict[str, list[int]] = {}
+    identity_row_numbers: dict[str, list[int]] = {}
     warnings = 0
     failures = 0
 
@@ -906,29 +920,32 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
         row_number = index
         if not row["sku"] and not row["barcode"] and not row["product_name"]:
             continue
-        if not row["sku"]:
+        identity = threepl_master_identity(row)
+        if not identity:
             failures += 1
             details.append(
                 {
                     "행 번호": row_number,
-                    "SKU": "",
+                    "바코드": row["barcode"],
                     "상품명": row["product_name"],
                     "처리 유형": "확인 필요",
-                    "변경 항목": "SKU 누락",
+                    "변경 항목": "바코드/상품명 누락",
                     "처리 결과": "실패",
                     "_apply": False,
                     "_data": row,
                 }
             )
             continue
+        row["sku"] = clean_text(row.get("sku")) or identity
         parsed_rows.append({"row_number": row_number, "data": row})
-        sku_row_numbers.setdefault(row["sku"], []).append(row_number)
+        identity_row_numbers.setdefault(identity, []).append(row_number)
 
-    duplicate_skus = {sku: rows for sku, rows in sku_row_numbers.items() if len(rows) > 1}
-    duplicate_row_count = sum(len(rows) - 1 for rows in duplicate_skus.values())
-    last_row_by_sku = {item["data"]["sku"]: item for item in parsed_rows}
+    duplicate_identities = {identity: rows for identity, rows in identity_row_numbers.items() if len(rows) > 1}
+    duplicate_row_count = sum(len(rows) - 1 for rows in duplicate_identities.values())
+    last_row_by_identity = {threepl_master_identity(item["data"]): item for item in parsed_rows}
     model = product_master_model("3PL")
     existing_by_sku = {row.sku: row for row in db.execute(select(model)).scalars()}
+    existing_by_barcode = {row.barcode: row for row in existing_by_sku.values() if row.barcode}
     barcode_to_skus: dict[str, set[str]] = {}
     for product in existing_by_sku.values():
         if product.barcode:
@@ -940,16 +957,17 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
     for item in parsed_rows:
         row = item["data"]
         sku = row["sku"]
+        identity = threepl_master_identity(row)
         row_number = item["row_number"]
-        if last_row_by_sku.get(sku) is not item:
+        if last_row_by_identity.get(identity) is not item:
             warnings += 1
             details.append(
                 {
                     "행 번호": row_number,
-                    "SKU": sku,
+                    "바코드": row["barcode"],
                     "상품명": row["product_name"],
                     "처리 유형": "확인 필요",
-                    "변경 항목": f"파일 내부 중복 SKU: {', '.join(map(str, duplicate_skus.get(sku, [])))}",
+                    "변경 항목": f"파일 내부 중복 바코드/상품명: {', '.join(map(str, duplicate_identities.get(identity, [])))}",
                     "처리 결과": "제외 - 마지막 행 정보 적용",
                     "_apply": False,
                     "_data": row,
@@ -957,14 +975,17 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
             )
             continue
 
-        product = existing_by_sku.get(sku)
+        product = find_threepl_master_for_import(existing_by_sku, existing_by_barcode, row)
+        if product is not None:
+            row["sku"] = product.sku
+            sku = row["sku"]
         row_warnings = []
         if row.get("barcode"):
             other_skus = sorted(s for s in barcode_to_skus.get(row["barcode"], set()) if s != sku)
             if other_skus:
                 row_warnings.append(f"바코드 중복 SKU: {', '.join(other_skus)}")
-        if sku in duplicate_skus:
-            row_warnings.append(f"파일 내부 중복 - 마지막 행 적용: {', '.join(map(str, duplicate_skus[sku]))}")
+        if identity in duplicate_identities:
+            row_warnings.append(f"파일 내부 중복 - 마지막 행 적용: {', '.join(map(str, duplicate_identities[identity]))}")
         if row_warnings:
             warnings += len(row_warnings)
 
@@ -998,7 +1019,7 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
         details.append(
             {
                 "행 번호": row_number,
-                "SKU": sku,
+                "바코드": row["barcode"],
                 "상품명": row["product_name"],
                 "처리 유형": action,
                 "변경 항목": "\n".join(changes) if changes else "-",
@@ -1030,6 +1051,9 @@ def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
     details = preview.get("details") or []
     result_details = []
     count = 0
+    existing_products = list(db.execute(select(model)).scalars())
+    existing_by_sku = {row.sku: row for row in existing_products}
+    existing_by_barcode = {row.barcode: row for row in existing_products if row.barcode}
     for detail in details:
         if not detail.get("_apply"):
             result_details.append(detail)
@@ -1038,9 +1062,11 @@ def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
         data = threepl_master_basis_data(row)
         sku = data.pop("sku")
         if not sku:
+            sku = clean_text(data.get("barcode")) or clean_text(data.get("product_name"))
+        if not sku:
             result_details.append(detail)
             continue
-        product = db.execute(select(model).where(model.sku == sku)).scalar_one_or_none()
+        product = find_threepl_master_for_import(existing_by_sku, existing_by_barcode, {"sku": sku, **data})
         if product is None:
             product = model(
                 sku=sku,
@@ -1050,9 +1076,14 @@ def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
                 **data,
             )
             db.add(product)
+            existing_by_sku[sku] = product
+            if data.get("barcode"):
+                existing_by_barcode[data["barcode"]] = product
         else:
             for key, value in data.items():
                 setattr(product, key, value)
+            if data.get("barcode"):
+                existing_by_barcode[data["barcode"]] = product
         count += 1
         result_detail = dict(detail)
         result_text = clean_text(result_detail.get("처리 결과"))

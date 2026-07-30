@@ -12911,6 +12911,111 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     background-color: var(--editor-cell) !important;
 }
 
+/* Compact inventory filters: ERP/WMS style with the current warm neutral palette. */
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] {
+    background: #F1EEE8 !important;
+    border: 1px solid #D8D0C4 !important;
+    border-radius: 8px !important;
+    padding: 12px 14px 10px !important;
+    margin: 4px 0 12px !important;
+    box-shadow: 0 6px 16px rgba(72, 63, 52, 0.04) !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stVerticalBlock"] {
+    gap: 0.45rem !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stHorizontalBlock"] {
+    gap: 0.45rem !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] label,
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stWidgetLabel"] p {
+    color: #314154 !important;
+    -webkit-text-fill-color: #314154 !important;
+    font-size: 0.82rem !important;
+    font-weight: 700 !important;
+    margin-bottom: 0.18rem !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] input,
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-baseweb="select"] > div,
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-baseweb="input"] {
+    min-height: 34px !important;
+    height: 34px !important;
+    background: #F8F5EF !important;
+    border-color: #CEC5B7 !important;
+    color: #24384E !important;
+    -webkit-text-fill-color: #24384E !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stButton"] button {
+    min-height: 34px !important;
+    height: 34px !important;
+    border-radius: 999px !important;
+    font-size: 0.82rem !important;
+    font-weight: 700 !important;
+    padding: 0 12px !important;
+    background: #E7E1D8 !important;
+    border-color: #CFC5B7 !important;
+    color: #304257 !important;
+    -webkit-text-fill-color: #304257 !important;
+    box-shadow: none !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stButton"] button[kind="primary"] {
+    background: #516D86 !important;
+    border-color: #435D73 !important;
+    color: #FAF8F5 !important;
+    -webkit-text-fill-color: #FAF8F5 !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stButton"] button[kind="primary"] * {
+    color: #FAF8F5 !important;
+    -webkit-text-fill-color: #FAF8F5 !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stExpander"] {
+    background: transparent !important;
+    border: 1px solid #CFC5B7 !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stExpander"] summary {
+    min-height: 34px !important;
+    padding: 0 12px !important;
+    color: #304257 !important;
+    -webkit-text-fill-color: #304257 !important;
+    font-weight: 800 !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stExpanderDetails"] {
+    padding-top: 8px !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stCaptionContainer"] {
+    color: #6C655D !important;
+    -webkit-text-fill-color: #6C655D !important;
+    margin-top: 0.1rem !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stCaptionContainer"] + div [data-testid="stButton"] button {
+    height: 30px !important;
+    min-height: 30px !important;
+    background: #EFEAE2 !important;
+    border-color: #D1C7BA !important;
+    color: #405064 !important;
+    -webkit-text-fill-color: #405064 !important;
+    font-size: 0.78rem !important;
+}
+
+@media (max-width: 900px) {
+    .stApp div[class*="st-key-inventory_filter_"][class*="_panel"] {
+        padding: 10px !important;
+    }
+}
+
 .stApp :where(
     [role="columnheader"],
     [data-testid="stDataFrame"] th,

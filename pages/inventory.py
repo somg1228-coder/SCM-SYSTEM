@@ -1059,6 +1059,14 @@ def fetch_master_inventory(source_type: str, work_date: date) -> list[dict]:
     return with_db(lambda db: services.master_based_inventory_rows(db, source_type, work_date)) or []
 
 
+def inventory_filter_multiselect(container, label: str, options: list[str], key: str) -> list[str]:
+    if not options:
+        st.session_state[key] = []
+        container.text_input(label, value="데이터 없음", disabled=True, key=f"{key}_empty")
+        return []
+    return container.multiselect(label, options, key=key, placeholder="선택하세요")
+
+
 def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
     category_options = sorted([value for value in df.get("카테고리", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
     supplier_options = sorted([value for value in df.get("업체명", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
@@ -1085,53 +1093,61 @@ def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
     for suffix, value in defaults.items():
         st.session_state.setdefault(f"{filter_key}_{suffix}", value)
 
-    quick_cols = st.columns(8, gap="small")
-    quick_actions = [
-        ("전체", {}),
-        ("정상", {"status_filter": ["정상"]}),
-        ("주의", {"status_filter": ["주의"]}),
-        ("부족", {"status_filter": ["부족"]}),
-        ("품절", {"status_filter": ["품절"]}),
-        ("안전재고 이하", {"below_safe": True}),
-        ("입고예정", {"inbound_expected": True}),
-        ("출고예정", {"outbound_expected": True}),
-    ]
-    for col, (label, updates) in zip(quick_cols, quick_actions, strict=True):
-        if col.button(label, key=f"{filter_key}_quick_{label}", use_container_width=True):
-            if label == "전체":
-                reset_inventory_filters(filter_key)
-            else:
-                st.session_state[f"{filter_key}_status_filter"] = updates.get("status_filter", [])
-                for suffix in ["below_safe", "inbound_expected", "outbound_expected"]:
-                    st.session_state[f"{filter_key}_{suffix}"] = bool(updates.get(suffix, False))
-            st.session_state[f"{filter_key}_page"] = 1
-            st.rerun()
+    with st.container(key=f"inventory_filter_{filter_key}_panel"):
+        quick_cols = st.columns(8, gap="small")
+        quick_actions = [
+            ("전체", {}),
+            ("정상", {"status_filter": ["정상"]}),
+            ("주의", {"status_filter": ["주의"]}),
+            ("부족", {"status_filter": ["부족"]}),
+            ("품절", {"status_filter": ["품절"]}),
+            ("안전재고 이하", {"below_safe": True}),
+            ("입고예정", {"inbound_expected": True}),
+            ("출고예정", {"outbound_expected": True}),
+        ]
+        for col, (label, updates) in zip(quick_cols, quick_actions, strict=True):
+            if col.button(label, key=f"{filter_key}_quick_{label}", use_container_width=True):
+                if label == "전체":
+                    reset_inventory_filters(filter_key)
+                else:
+                    st.session_state[f"{filter_key}_status_filter"] = updates.get("status_filter", [])
+                    for suffix in ["below_safe", "inbound_expected", "outbound_expected"]:
+                        st.session_state[f"{filter_key}_{suffix}"] = bool(updates.get(suffix, False))
+                st.session_state[f"{filter_key}_page"] = 1
+                st.rerun()
 
-    with st.expander("검색 및 필터", expanded=True):
-        cols = st.columns([1.35, 1.0, 1.0, 1.0, 1.0], gap="small")
-        search = cols[0].text_input("통합 검색", placeholder="바코드 / 상품명 / 업체명 / 담당자", key=f"{filter_key}_search")
-        categories = cols[1].multiselect("카테고리", category_options, key=f"{filter_key}_category_filter")
-        suppliers = cols[2].multiselect("업체명", supplier_options, key=f"{filter_key}_supplier_filter")
-        managers = cols[3].multiselect("담당자", manager_options, key=f"{filter_key}_manager_filter")
-        statuses = cols[4].multiselect("재고상태", status_options, key=f"{filter_key}_status_filter")
-
-        row2 = st.columns([1.0, 0.95, 0.95, 0.95, 0.85, 0.85, 0.9], gap="small")
-        stock_presence = row2[0].selectbox("현재고 보유 여부", ["전체", "보유", "미보유"], key=f"{filter_key}_stock_presence")
-        inbound_expected = row2[1].checkbox("입고예정 있음", key=f"{filter_key}_inbound_expected")
-        outbound_expected = row2[2].checkbox("출고예정 있음", key=f"{filter_key}_outbound_expected")
-        below_safe = row2[3].checkbox("안전재고 이하만", key=f"{filter_key}_below_safe")
-        lead_min = row2[4].number_input("리드타임 시작", min_value=0, step=1, key=f"{filter_key}_lead_min")
-        lead_max = row2[5].number_input("리드타임 끝", min_value=0, step=1, key=f"{filter_key}_lead_max")
-        with row2[6]:
+        basic_cols = st.columns([1.6, 1.05, 1.05, 1.05, 0.72, 0.72], gap="small")
+        search = basic_cols[0].text_input("통합검색", placeholder="바코드 / 상품명 / 업체명 / 담당자", key=f"{filter_key}_search")
+        categories = inventory_filter_multiselect(basic_cols[1], "카테고리", category_options, key=f"{filter_key}_category_filter")
+        suppliers = inventory_filter_multiselect(basic_cols[2], "업체명", supplier_options, key=f"{filter_key}_supplier_filter")
+        statuses = inventory_filter_multiselect(basic_cols[3], "재고상태", status_options, key=f"{filter_key}_status_filter")
+        with basic_cols[4]:
             st.write("")
-            if st.button("필터 전체 초기화", key=f"{filter_key}_filter_reset", use_container_width=True):
+            if st.button("검색", key=f"{filter_key}_search_button", type="primary", use_container_width=True):
+                st.session_state[f"{filter_key}_page"] = 1
+                st.rerun()
+        with basic_cols[5]:
+            st.write("")
+            if st.button("초기화", key=f"{filter_key}_filter_reset", use_container_width=True):
                 reset_inventory_filters(filter_key)
                 st.rerun()
 
-        row3 = st.columns([1.0, 0.8, 0.8, 3.2], gap="small")
-        sort_column = row3[0].selectbox("정렬 컬럼", [column for column in DAILY_COLUMNS if column != "선택"], key=f"{filter_key}_sort_column")
-        sort_order = row3[1].selectbox("정렬", ["오름차순", "내림차순"], key=f"{filter_key}_sort_order")
-        page_size = row3[2].selectbox("페이지당 표시", [15, 30, 50, 100], key=f"{filter_key}_page_size")
+        with st.expander("고급 필터 ▼", expanded=False):
+            adv_cols = st.columns(4, gap="small")
+            managers = inventory_filter_multiselect(adv_cols[0], "담당자", manager_options, key=f"{filter_key}_manager_filter")
+            stock_presence = adv_cols[1].selectbox("현재고 보유 여부", ["전체", "보유", "미보유"], key=f"{filter_key}_stock_presence")
+            inbound_expected = adv_cols[2].checkbox("입고예정", key=f"{filter_key}_inbound_expected")
+            outbound_expected = adv_cols[3].checkbox("출고예정", key=f"{filter_key}_outbound_expected")
+
+            adv_cols2 = st.columns(4, gap="small")
+            below_safe = adv_cols2[0].checkbox("안전재고 이하", key=f"{filter_key}_below_safe")
+            lead_min = adv_cols2[1].number_input("리드타임 최소", min_value=0, step=1, key=f"{filter_key}_lead_min")
+            lead_max = adv_cols2[2].number_input("리드타임 최대", min_value=0, step=1, key=f"{filter_key}_lead_max")
+            sort_column = adv_cols2[3].selectbox("정렬 컬럼", [column for column in DAILY_COLUMNS if column != "선택"], key=f"{filter_key}_sort_column")
+
+            adv_cols3 = st.columns([1, 1, 2, 2], gap="small")
+            sort_order = adv_cols3[0].selectbox("정렬", ["오름차순", "내림차순"], key=f"{filter_key}_sort_order")
+            page_size = adv_cols3[1].selectbox("페이지당 표시", [15, 30, 50, 100], key=f"{filter_key}_page_size")
 
         badges = active_inventory_filter_badges(
             search,
@@ -1234,10 +1250,10 @@ def reset_inventory_filters(filter_key: str) -> None:
         st.session_state.pop(f"{filter_key}_{suffix}", None)
 
 
-def active_inventory_filter_badges(search, categories, suppliers, managers, statuses, stock_presence, inbound_expected, outbound_expected, below_safe, lead_min, lead_max) -> list[tuple[str, str]]:
-    badges: list[tuple[str, str]] = []
+def active_inventory_filter_badges(search, categories, suppliers, managers, statuses, stock_presence, inbound_expected, outbound_expected, below_safe, lead_min, lead_max) -> list[tuple[str, str, str | None]]:
+    badges: list[tuple[str, str, str | None]] = []
     if clean_cell(search):
-        badges.append(("search", f"검색: {search}"))
+        badges.append(("search", f"검색 : {search}", None))
     for code, values, label in [
         ("category_filter", categories, "카테고리"),
         ("supplier_filter", suppliers, "업체명"),
@@ -1245,35 +1261,35 @@ def active_inventory_filter_badges(search, categories, suppliers, managers, stat
         ("status_filter", statuses, "재고상태"),
     ]:
         for value in values or []:
-            badges.append((code, f"{label}: {value}"))
+            badges.append((code, f"{label} : {value}", value))
     if stock_presence != "전체":
-        badges.append(("stock_presence", f"현재고: {stock_presence}"))
+        badges.append(("stock_presence", f"현재고 : {stock_presence}", None))
     if inbound_expected:
-        badges.append(("inbound_expected", "입고예정 있음"))
+        badges.append(("inbound_expected", "입고예정 있음", None))
     if outbound_expected:
-        badges.append(("outbound_expected", "출고예정 있음"))
+        badges.append(("outbound_expected", "출고예정 있음", None))
     if below_safe:
-        badges.append(("below_safe", "안전재고 이하"))
+        badges.append(("below_safe", "안전재고 이하", None))
     if int(lead_min or 0):
-        badges.append(("lead_min", f"리드타임 {int(lead_min)}일 이상"))
+        badges.append(("lead_min", f"리드타임 {int(lead_min)}일 이상", None))
     if int(lead_max or 0):
-        badges.append(("lead_max", f"리드타임 {int(lead_max)}일 이하"))
+        badges.append(("lead_max", f"리드타임 {int(lead_max)}일 이하", None))
     return badges
 
 
-def render_inventory_filter_badges(filter_key: str, badges: list[tuple[str, str]]) -> None:
+def render_inventory_filter_badges(filter_key: str, badges: list[tuple[str, str, str | None]]) -> None:
     if not badges:
         return
     st.caption("적용 중인 필터")
     cols = st.columns(min(len(badges), 6), gap="small")
-    for idx, (suffix, label) in enumerate(badges):
+    for idx, (suffix, label, value) in enumerate(badges):
         with cols[idx % len(cols)]:
-            if st.button(f"× {label}", key=f"{filter_key}_clear_{suffix}_{idx}", use_container_width=True):
-                clear_inventory_filter(filter_key, suffix)
+            if st.button(f"{label} ✕", key=f"{filter_key}_clear_{suffix}_{idx}", use_container_width=True):
+                clear_inventory_filter(filter_key, suffix, value)
                 st.rerun()
 
 
-def clear_inventory_filter(filter_key: str, suffix: str) -> None:
+def clear_inventory_filter(filter_key: str, suffix: str, value: str | None = None) -> None:
     if suffix in {"search"}:
         st.session_state[f"{filter_key}_{suffix}"] = ""
     elif suffix in {"stock_presence"}:
@@ -1282,8 +1298,13 @@ def clear_inventory_filter(filter_key: str, suffix: str) -> None:
         st.session_state[f"{filter_key}_{suffix}"] = False
     elif suffix in {"lead_min", "lead_max"}:
         st.session_state[f"{filter_key}_{suffix}"] = 0
+    elif value is not None and isinstance(st.session_state.get(f"{filter_key}_{suffix}"), list):
+        st.session_state[f"{filter_key}_{suffix}"] = [
+            item for item in st.session_state[f"{filter_key}_{suffix}"] if item != value
+        ]
     else:
         st.session_state[f"{filter_key}_{suffix}"] = []
+    st.session_state[f"{filter_key}_page"] = 1
 
 
 def paginate_inventory_df(df: pd.DataFrame, filters: dict) -> tuple[pd.DataFrame, int, int]:
