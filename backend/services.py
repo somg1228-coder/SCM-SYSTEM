@@ -30,9 +30,13 @@ HTML_TABLE_FALLBACK_MESSAGE = "엑셀 형식이 HTML 기반이라 read_html로 �
 KNOWN_IMPORT_HEADERS = {
     "상품명",
     "상품코드",
+    "SKU",
     "바코드",
     "88바코드",
     "카테고리",
+    "업체명",
+    "박스/파렛트 단위",
+    "담당자",
     "현재고",
     "가용재고",
     "안전재고",
@@ -823,7 +827,7 @@ def validate_product_master_rows(db: Session, source_type: str, rows: list[dict]
         if row["sku"] in seen_skus:
             errors.append(f"{index}행: 중복 SKU입니다. ({row['sku']})")
         barcode_product_key = (row["barcode"], row["product_name"])
-        if barcode_product_key in seen_barcode_products:
+        if source_type != "3PL" and barcode_product_key in seen_barcode_products:
             errors.append(f"{index}행: 중복 바코드/상품명입니다. ({row['barcode']} / {row['product_name']})")
         seen_skus.add(row["sku"])
         seen_barcode_products.add(barcode_product_key)
@@ -833,12 +837,243 @@ def validate_product_master_rows(db: Session, source_type: str, rows: list[dict]
     existing_barcode_product_to_sku = {(barcode, product_name): sku for sku, barcode, product_name in sku_rows}
     for index, row in enumerate(normalized, start=1):
         existing_other_sku = existing_barcode_product_to_sku.get((row["barcode"], row["product_name"]))
-        if existing_other_sku and existing_other_sku != row["sku"]:
+        if source_type != "3PL" and existing_other_sku and existing_other_sku != row["sku"]:
             errors.append(f"{index}행: 같은 바코드/상품명이 다른 SKU에 이미 등록되어 있습니다. ({row['barcode']} / {row['product_name']})")
         existing_other_barcode = existing_sku_to_barcode.get(row["sku"])
-        if existing_other_barcode and existing_other_barcode != row["barcode"]:
+        if source_type != "3PL" and existing_other_barcode and existing_other_barcode != row["barcode"]:
             errors.append(f"{index}행: 기존 SKU의 바코드와 다릅니다. ({row['sku']})")
     return normalized, errors
+
+
+THREEPL_MASTER_IMPORT_FIELDS = [
+    ("large_category", "카테고리"),
+    ("barcode", "바코드"),
+    ("product_name", "상품명"),
+    ("supplier", "업체명"),
+    ("box_pallet_unit", "박스/파렛트 단위"),
+    ("memo", "담당자"),
+    ("default_lead_time", "리드타임"),
+]
+
+
+def threepl_master_basis_data(row: dict) -> dict:
+    return {
+        "sku": clean_text(row.get("sku")),
+        "barcode": clean_text(row.get("barcode")),
+        "product_name": clean_text(row.get("product_name")),
+        "large_category": clean_text(row.get("large_category")),
+        "medium_category": "",
+        "small_category": "",
+        "brand": clean_text(row.get("brand")),
+        "supplier": clean_text(row.get("supplier")),
+        "pack_qty": to_int(row.get("pack_qty")),
+        "box_qty": to_int(row.get("box_qty")),
+        "default_lead_time": to_int(row.get("default_lead_time")),
+        "memo": clean_text(row.get("memo")),
+    }
+
+
+def threepl_master_display_value(row: dict | object, field: str) -> str:
+    if field == "box_pallet_unit":
+        if isinstance(row, dict):
+            return format_box_pallet_unit(row.get("box_qty"), row.get("pack_qty"))
+        return format_box_pallet_unit(getattr(row, "box_qty", 0), getattr(row, "pack_qty", 0))
+    value = row.get(field) if isinstance(row, dict) else getattr(row, field, "")
+    return str(to_int(value)) if field == "default_lead_time" else clean_text(value)
+
+
+def describe_threepl_master_changes(product, row: dict) -> list[str]:
+    changes = []
+    for field, label in THREEPL_MASTER_IMPORT_FIELDS:
+        before = threepl_master_display_value(product, field)
+        after = threepl_master_display_value(row, field)
+        if before != after:
+            changes.append(f"{label}: {before or '-'} → {after or '-'}")
+    return changes
+
+
+def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dict:
+    df = read_excel(file_bytes)
+    total_rows = len(df)
+    parsed_rows: list[dict] = []
+    details: list[dict] = []
+    sku_row_numbers: dict[str, list[int]] = {}
+    warnings = 0
+    failures = 0
+
+    for index, record in enumerate(df.fillna("").to_dict("records"), start=2):
+        row = normalize_product_master_row(record)
+        row_number = index
+        if not row["sku"] and not row["barcode"] and not row["product_name"]:
+            continue
+        if not row["sku"]:
+            failures += 1
+            details.append(
+                {
+                    "행 번호": row_number,
+                    "SKU": "",
+                    "상품명": row["product_name"],
+                    "처리 유형": "확인 필요",
+                    "변경 항목": "SKU 누락",
+                    "처리 결과": "실패",
+                    "_apply": False,
+                    "_data": row,
+                }
+            )
+            continue
+        parsed_rows.append({"row_number": row_number, "data": row})
+        sku_row_numbers.setdefault(row["sku"], []).append(row_number)
+
+    duplicate_skus = {sku: rows for sku, rows in sku_row_numbers.items() if len(rows) > 1}
+    duplicate_row_count = sum(len(rows) - 1 for rows in duplicate_skus.values())
+    last_row_by_sku = {item["data"]["sku"]: item for item in parsed_rows}
+    model = product_master_model("3PL")
+    existing_by_sku = {row.sku: row for row in db.execute(select(model)).scalars()}
+    barcode_to_skus: dict[str, set[str]] = {}
+    for product in existing_by_sku.values():
+        if product.barcode:
+            barcode_to_skus.setdefault(product.barcode, set()).add(product.sku)
+
+    new_count = 0
+    update_count = 0
+    unchanged_count = 0
+    for item in parsed_rows:
+        row = item["data"]
+        sku = row["sku"]
+        row_number = item["row_number"]
+        if last_row_by_sku.get(sku) is not item:
+            warnings += 1
+            details.append(
+                {
+                    "행 번호": row_number,
+                    "SKU": sku,
+                    "상품명": row["product_name"],
+                    "처리 유형": "확인 필요",
+                    "변경 항목": f"파일 내부 중복 SKU: {', '.join(map(str, duplicate_skus.get(sku, [])))}",
+                    "처리 결과": "제외 - 마지막 행 정보 적용",
+                    "_apply": False,
+                    "_data": row,
+                }
+            )
+            continue
+
+        product = existing_by_sku.get(sku)
+        row_warnings = []
+        if row.get("barcode"):
+            other_skus = sorted(s for s in barcode_to_skus.get(row["barcode"], set()) if s != sku)
+            if other_skus:
+                row_warnings.append(f"바코드 중복 SKU: {', '.join(other_skus)}")
+        if sku in duplicate_skus:
+            row_warnings.append(f"파일 내부 중복 - 마지막 행 적용: {', '.join(map(str, duplicate_skus[sku]))}")
+        if row_warnings:
+            warnings += len(row_warnings)
+
+        if product is None:
+            if not row["product_name"]:
+                failures += 1
+                action = "확인 필요"
+                changes = ["신규 등록 상품명 누락"]
+                result = "실패"
+                apply_row = False
+            else:
+                new_count += 1
+                action = "신규 등록"
+                changes = [label for _field, label in THREEPL_MASTER_IMPORT_FIELDS]
+                result = "등록 예정"
+                apply_row = True
+        else:
+            changes = describe_threepl_master_changes(product, row)
+            if changes:
+                update_count += 1
+                action = "기존 정보 변경"
+                result = "업데이트 예정"
+            else:
+                unchanged_count += 1
+                action = "변경 없음"
+                result = "유지"
+            apply_row = True
+
+        if row_warnings:
+            result = f"{result} / 경고: {'; '.join(row_warnings)}"
+        details.append(
+            {
+                "행 번호": row_number,
+                "SKU": sku,
+                "상품명": row["product_name"],
+                "처리 유형": action,
+                "변경 항목": "\n".join(changes) if changes else "-",
+                "처리 결과": result,
+                "_apply": apply_row,
+                "_data": row,
+            }
+        )
+
+    return {
+        "ok": True,
+        "message": "3PL 마스터 업로드 미리보기 생성 완료",
+        "summary": {
+            "전체 엑셀 행 수": total_rows,
+            "신규 등록 수": new_count,
+            "기존 품목 업데이트 수": update_count,
+            "변경 없음 수": unchanged_count,
+            "파일 내부 중복 수": duplicate_row_count,
+            "경고 수": warnings,
+            "실패 수": failures,
+        },
+        "details": details,
+        "used_html": df.attrs.get("read_method") == "html",
+    }
+
+
+def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
+    model = product_master_model("3PL")
+    details = preview.get("details") or []
+    result_details = []
+    count = 0
+    for detail in details:
+        if not detail.get("_apply"):
+            result_details.append(detail)
+            continue
+        row = detail.get("_data") or {}
+        data = threepl_master_basis_data(row)
+        sku = data.pop("sku")
+        if not sku:
+            result_details.append(detail)
+            continue
+        product = db.execute(select(model).where(model.sku == sku)).scalar_one_or_none()
+        if product is None:
+            product = model(
+                sku=sku,
+                min_stock=0,
+                sort_order=0,
+                is_active="사용",
+                **data,
+            )
+            db.add(product)
+        else:
+            for key, value in data.items():
+                setattr(product, key, value)
+        count += 1
+        result_detail = dict(detail)
+        result_text = clean_text(result_detail.get("처리 결과"))
+        if result_detail.get("처리 유형") == "신규 등록":
+            result_text = result_text.replace("등록 예정", "등록 완료")
+        elif result_detail.get("처리 유형") == "기존 정보 변경":
+            result_text = result_text.replace("업데이트 예정", "업데이트 완료")
+        elif result_detail.get("처리 유형") == "변경 없음":
+            result_text = "변경 없음"
+        result_detail["처리 결과"] = result_text
+        result_details.append(result_detail)
+    db.commit()
+    sync_inventory_from_product_master(db, "3PL")
+    summary = dict(preview.get("summary") or {})
+    return {
+        "ok": True,
+        "message": "3PL 마스터 기준정보 일괄 등록/업데이트 완료",
+        "count": count,
+        "summary": summary,
+        "details": result_details,
+    }
 
 
 def bulk_save_product_master(db: Session, source_type: str, rows: list[dict]) -> dict:
@@ -871,11 +1106,12 @@ def add_product_master(db: Session, source_type: str, row: dict) -> dict:
     existing_by_sku = db.execute(select(model).where(model.sku == data["sku"])).scalar_one_or_none()
     if existing_by_sku:
         return {"ok": False, "message": f"이미 등록된 SKU입니다. ({data['sku']})", "count": 0}
-    existing_by_barcode_product = db.execute(
-        select(model).where(model.barcode == data["barcode"], model.product_name == data["product_name"])
-    ).scalar_one_or_none()
-    if existing_by_barcode_product:
-        return {"ok": False, "message": f"이미 등록된 바코드/상품명입니다. ({data['barcode']} / {data['product_name']})", "count": 0}
+    if source_type != "3PL":
+        existing_by_barcode_product = db.execute(
+            select(model).where(model.barcode == data["barcode"], model.product_name == data["product_name"])
+        ).scalar_one_or_none()
+        if existing_by_barcode_product:
+            return {"ok": False, "message": f"이미 등록된 바코드/상품명입니다. ({data['barcode']} / {data['product_name']})", "count": 0}
 
     db.add(model(**data))
     db.commit()
@@ -884,6 +1120,13 @@ def add_product_master(db: Session, source_type: str, row: dict) -> dict:
 
 
 def import_product_master_excel(db: Session, source_type: str, file_bytes: bytes) -> dict:
+    if source_type == "3PL":
+        preview = prepare_threepl_master_import_preview(db, file_bytes)
+        if preview.get("summary", {}).get("실패 수", 0) and not any(detail.get("_apply") for detail in preview.get("details", [])):
+            preview.update({"ok": False, "message": "반영 가능한 3PL 마스터 행이 없습니다.", "count": 0})
+            return preview
+        return apply_threepl_master_import_preview(db, preview)
+
     df = read_excel(file_bytes)
     rename_map = {}
     for column in df.columns:

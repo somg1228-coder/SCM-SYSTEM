@@ -49,6 +49,7 @@ MASTER_COLUMNS = [
 ]
 
 THREEPL_MASTER_COLUMNS = [
+    "SKU",
     "카테고리",
     "바코드",
     "상품명",
@@ -58,7 +59,7 @@ THREEPL_MASTER_COLUMNS = [
     "리드타임",
 ]
 
-THREEPL_MASTER_INTERNAL_COLUMNS = ["SKU", "브랜드", "안전재고", "정렬순서", "사용여부"]
+THREEPL_MASTER_INTERNAL_COLUMNS = ["브랜드", "안전재고", "정렬순서", "사용여부"]
 
 OFFLINE_MASTER_COLUMNS = [
     "미사용 처리",
@@ -240,6 +241,8 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
     filtered_df = apply_threepl_master_filters(all_df, filters)
     sorted_df = sort_threepl_master(filtered_df, filters)
     page_df, page, total_pages = paginate_dataframe(sorted_df, filters["page_size"], filters["page"])
+    preview_key = f"product_master_{key}_import_preview"
+    result_key = f"product_master_{key}_import_result"
 
     with st.container(key=f"product_master_{key}_controls"):
         st.markdown('<div class="product-master-control-title">마스터 기준 관리</div>', unsafe_allow_html=True)
@@ -256,14 +259,17 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
             )
         with import_col:
             st.write("")
-            if st.button("엑셀 반영", key=f"product_master_{key}_import_btn", use_container_width=True):
+            if st.button("미리보기", key=f"product_master_{key}_import_preview_btn", use_container_width=True):
                 if uploaded is None:
                     st.warning(f"먼저 {title} 엑셀을 업로드하세요.")
                 else:
-                    outcome = with_db(lambda db: services.import_product_master_excel(db, source_type, uploaded.getvalue()))
-                    if outcome and outcome.get("ok", True):
-                        clear_master_editor_buffer(key)
-                    show_result(outcome)
+                    preview = with_db(lambda db: services.prepare_threepl_master_import_preview(db, uploaded.getvalue()))
+                    if preview and preview.get("ok", True):
+                        st.session_state[preview_key] = preview
+                        st.session_state.pop(result_key, None)
+                    else:
+                        st.session_state[result_key] = preview
+                    st.rerun()
         with template_col:
             st.write("")
             st.download_button(
@@ -288,6 +294,9 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
         with count_col:
             st.write("")
             st.caption(f"검색 결과 {len(sorted_df):,}개 / 전체 {len(all_df):,}개")
+
+    render_threepl_import_result(result_key)
+    render_threepl_import_preview(source_type, key, preview_key, result_key)
 
     with st.container(key=f"product_master_{key}_editor_panel"):
         st.markdown('<div class="product-master-form-title">마스터 작성 폼</div>', unsafe_allow_html=True)
@@ -343,6 +352,81 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                 )
         with spacer:
             st.empty()
+
+
+def render_threepl_import_preview(source_type: str, key: str, preview_key: str, result_key: str) -> None:
+    preview = st.session_state.get(preview_key)
+    if not preview:
+        return
+    st.markdown("#### 3PL 마스터 업로드 미리보기")
+    render_threepl_import_summary(preview)
+    render_threepl_import_details(preview)
+    apply_col, cancel_col, spacer = st.columns([1.0, 1.0, 4.0], gap="small")
+    applyable_count = sum(1 for detail in preview.get("details", []) if detail.get("_apply"))
+    with apply_col:
+        if st.button("미리보기 내용 반영", type="primary", key=f"product_master_{key}_preview_apply", disabled=applyable_count == 0, use_container_width=True):
+            result = with_db(lambda db: services.apply_threepl_master_import_preview(db, preview))
+            st.session_state[result_key] = result
+            st.session_state.pop(preview_key, None)
+            clear_master_editor_buffer(key)
+            st.rerun()
+    with cancel_col:
+        if st.button("취소", key=f"product_master_{key}_preview_cancel", use_container_width=True):
+            st.session_state.pop(preview_key, None)
+            st.rerun()
+    with spacer:
+        st.caption("기준정보만 반영되며 현재고, 안전재고, 입출고 내역, 이력 데이터는 초기화하지 않습니다.")
+
+
+def render_threepl_import_result(result_key: str) -> None:
+    result = st.session_state.get(result_key)
+    if not result:
+        return
+    if result.get("ok", True):
+        st.success(f'{result.get("message", "처리 완료")} ({result.get("count", 0)}건)')
+    else:
+        st.warning(result.get("message", "처리하지 못했습니다."))
+    render_threepl_import_summary(result)
+    render_threepl_import_details(result)
+    if st.button("업로드 결과 닫기", key=f"{result_key}_close"):
+        st.session_state.pop(result_key, None)
+        st.rerun()
+
+
+def render_threepl_import_summary(payload: dict) -> None:
+    summary = payload.get("summary") or {}
+    if not summary:
+        return
+    labels = [
+        "전체 엑셀 행 수",
+        "신규 등록 수",
+        "기존 품목 업데이트 수",
+        "변경 없음 수",
+        "파일 내부 중복 수",
+        "경고 수",
+        "실패 수",
+    ]
+    cols = st.columns(len(labels), gap="small")
+    for col, label in zip(cols, labels, strict=True):
+        col.metric(label, f"{int(summary.get(label, 0) or 0):,}")
+
+
+def render_threepl_import_details(payload: dict) -> None:
+    details = payload.get("details") or []
+    if not details:
+        return
+    display_rows = [
+        {
+            "행 번호": detail.get("행 번호", ""),
+            "SKU": detail.get("SKU", ""),
+            "상품명": detail.get("상품명", ""),
+            "처리 유형": detail.get("처리 유형", ""),
+            "변경 항목": detail.get("변경 항목", ""),
+            "처리 결과": detail.get("처리 결과", ""),
+        }
+        for detail in details
+    ]
+    st.dataframe(pd.DataFrame(display_rows), hide_index=True, use_container_width=True, height=260)
 
 
 def render_single_product_form(source_type: str, key: str) -> None:

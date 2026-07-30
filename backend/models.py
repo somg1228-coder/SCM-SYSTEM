@@ -81,7 +81,6 @@ class ThirdpartyProductMaster(Base):
     __tablename__ = "thirdparty_product_master"
     __table_args__ = (
         UniqueConstraint("sku", name="uq_thirdparty_product_master_sku"),
-        UniqueConstraint("barcode", "product_name", name="uq_thirdparty_product_master_barcode_product_name"),
         CheckConstraint("is_active IN ('사용', '미사용')", name="ck_thirdparty_product_master_is_active"),
     )
 

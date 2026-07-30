@@ -144,21 +144,26 @@ def ensure_sqlite_columns() -> None:
 
 def ensure_product_master_barcode_constraints(conn) -> None:
     table_prefixes = {
-        "offline_product_master": "offline",
-        "thirdparty_product_master": "thirdparty",
-        "warehouse_product_master": "warehouse",
+        "offline_product_master": ("offline", True),
+        "thirdparty_product_master": ("thirdparty", False),
+        "warehouse_product_master": ("warehouse", True),
     }
-    for table_name, prefix in table_prefixes.items():
+    for table_name, (prefix, keep_barcode_product_unique) in table_prefixes.items():
         row = conn.exec_driver_sql(
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
             (table_name,),
         ).fetchone()
-        if not row or not row[0] or "UNIQUE (barcode)" not in row[0]:
+        if not row or not row[0]:
             continue
-        rebuild_product_master_table(conn, table_name, prefix)
+        table_sql = row[0]
+        if keep_barcode_product_unique and "UNIQUE (barcode)" not in table_sql:
+            continue
+        if not keep_barcode_product_unique and "UNIQUE (barcode, product_name)" not in table_sql:
+            continue
+        rebuild_product_master_table(conn, table_name, prefix, keep_barcode_product_unique)
 
 
-def rebuild_product_master_table(conn, table_name: str, prefix: str) -> None:
+def rebuild_product_master_table(conn, table_name: str, prefix: str, keep_barcode_product_unique: bool = True) -> None:
     old_table = f"{table_name}_old_barcode_unique"
     columns = [
         "id",
@@ -184,6 +189,11 @@ def rebuild_product_master_table(conn, table_name: str, prefix: str) -> None:
 
     conn.exec_driver_sql(f"DROP TABLE IF EXISTS {old_table}")
     conn.exec_driver_sql(f"ALTER TABLE {table_name} RENAME TO {old_table}")
+    barcode_constraint = (
+        f"CONSTRAINT uq_{prefix}_product_master_barcode_product_name UNIQUE (barcode, product_name),"
+        if keep_barcode_product_unique
+        else ""
+    )
     conn.exec_driver_sql(
         f"""
         CREATE TABLE {table_name} (
@@ -207,7 +217,7 @@ def rebuild_product_master_table(conn, table_name: str, prefix: str) -> None:
             updated_at DATETIME NOT NULL,
             PRIMARY KEY (id),
             CONSTRAINT uq_{prefix}_product_master_sku UNIQUE (sku),
-            CONSTRAINT uq_{prefix}_product_master_barcode_product_name UNIQUE (barcode, product_name),
+            {barcode_constraint}
             CONSTRAINT ck_{prefix}_product_master_is_active CHECK (is_active IN ('사용', '미사용'))
         )
         """
