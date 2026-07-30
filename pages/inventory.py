@@ -2087,14 +2087,14 @@ def inject_inventory_css() -> None:
         """
         <style>
         .inventory-tab-title {
-            color: white;
+            color: #24384E;
             font-size: 1.15rem;
             font-weight: 850;
             margin: 0.5rem 0 0.65rem;
         }
         div[class*="st-key-inventory_control_"] {
-            background: rgba(5, 38, 34, 0.22);
-            border: 1px solid rgba(87, 178, 165, 0.18);
+            background: #EEF1F3;
+            border: 1px solid #D3D9DE;
             border-radius: 7px;
             min-height: 190px;
             padding: 0.65rem 0.7rem 0.72rem;
@@ -2104,7 +2104,7 @@ def inject_inventory_css() -> None:
         }
         .inventory-control-label {
             align-items: center;
-            color: #f2fffb;
+            color: #3D5368;
             display: flex;
             font-size: 0.84rem;
             font-weight: 800;
@@ -2133,26 +2133,26 @@ def inject_inventory_css() -> None:
             min-height: 70px;
         }
         .st-key-inventory_dashboard_linked_panel {
-            background: rgba(7, 58, 52, 0.54);
-            border: 1px solid rgba(87, 178, 165, 0.24);
+            background: #EEF1F3;
+            border: 1px solid #D3D9DE;
             border-radius: 8px;
             margin: 0.15rem 0 1.15rem;
             padding: 0.72rem 0.78rem;
         }
         .st-key-inventory_outbound_linked_panel {
-            background: rgba(7, 58, 52, 0.54);
-            border: 1px solid rgba(87, 178, 165, 0.24);
+            background: #EEF1F3;
+            border: 1px solid #D3D9DE;
             border-radius: 8px;
             margin: 0.15rem 0 1.15rem;
             padding: 0.72rem 0.78rem;
         }
         .st-key-inventory_dashboard_linked_panel h3 {
-            color: #ffffff;
+            color: #24384E;
             font-size: 1.02rem;
             margin-bottom: 0.1rem;
         }
         .st-key-inventory_outbound_linked_panel h3 {
-            color: #ffffff;
+            color: #24384E;
             font-size: 1.02rem;
             margin-bottom: 0.1rem;
         }

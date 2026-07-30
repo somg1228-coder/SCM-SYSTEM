@@ -12699,3 +12699,162 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     color: #584B66 !important;
     -webkit-text-fill-color: #584B66 !important;
 }
+
+/* Inventory page polish: cooler low-saturation blue-gray over the beige base. */
+.inventory-tab-title {
+    color: #24384E !important;
+    -webkit-text-fill-color: #24384E !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"],
+    div[class*="st-key-material_inventory_"]
+) {
+    color: #334155 !important;
+    -webkit-text-fill-color: #334155 !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_dashboard_linked_panel"],
+    div[class*="st-key-inventory_outbound_linked_panel"],
+    div[class*="st-key-inventory_filter_"],
+    div[class*="st-key-inventory_control_"],
+    div[class*="st-key-material_inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"]
+) {
+    background: #EEF1F3 !important;
+    border-color: #D3D9DE !important;
+    color: #334155 !important;
+    -webkit-text-fill-color: #334155 !important;
+    box-shadow: 0 6px 16px rgba(36, 56, 78, 0.035) !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"],
+    div[class*="st-key-material_inventory_"]
+) :where(input, textarea, select, [data-baseweb="select"] > div, [data-baseweb="input"], [data-testid="stFileUploaderDropzone"]) {
+    background: #FAF8F5 !important;
+    border-color: #C9D0D6 !important;
+    color: #1F2933 !important;
+    -webkit-text-fill-color: #1F2933 !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"],
+    div[class*="st-key-material_inventory_"]
+) :where(button, .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button) {
+    background: #E3E8EC !important;
+    border-color: #C3CCD4 !important;
+    color: #24384E !important;
+    -webkit-text-fill-color: #24384E !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"],
+    div[class*="st-key-material_inventory_"]
+) :where(button:hover, .stButton > button:hover, .stDownloadButton > button:hover, .stFormSubmitButton > button:hover) {
+    background: #D9E1E7 !important;
+    border-color: #AEBBC7 !important;
+    color: #24384E !important;
+    -webkit-text-fill-color: #24384E !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"],
+    div[class*="st-key-material_inventory_"]
+) :where(button[kind="primary"], .stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"]) {
+    background: #516D86 !important;
+    border-color: #435D73 !important;
+    color: #FAF8F5 !important;
+    -webkit-text-fill-color: #FAF8F5 !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"],
+    div[class*="st-key-material_inventory_"]
+) :where(button[kind="primary"], .stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"]) * {
+    color: #FAF8F5 !important;
+    -webkit-text-fill-color: #FAF8F5 !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"],
+    div[class*="st-key-material_inventory_"]
+) :where([data-testid="stDataFrame"], [data-testid="stDataEditor"], [role="grid"]) {
+    background: #F5F3EF !important;
+    border-color: #D3D9DE !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"],
+    div[class*="st-key-material_inventory_"]
+) :where([role="columnheader"], [data-testid="stTable"] th) {
+    background: #E3E8EC !important;
+    border-color: #D3D9DE !important;
+    color: #24384E !important;
+    -webkit-text-fill-color: #24384E !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"],
+    div[class*="st-key-material_inventory_"]
+) :where([role="gridcell"], [data-testid="stTable"] td) {
+    background: #FAF8F5 !important;
+    border-color: #E3E0DA !important;
+    color: #1F2933 !important;
+    -webkit-text-fill-color: #1F2933 !important;
+}
+
+.stApp :where(
+    div[class*="st-key-inventory_"],
+    div[class*="st-key-safe_stock_"],
+    div[class*="st-key-stock_history_"],
+    div[class*="st-key-mrp_"],
+    div[class*="st-key-recommend_"],
+    div[class*="st-key-material_inventory_"]
+) :where([data-testid="stTabs"] [aria-selected="true"]) {
+    background: #E3E8EC !important;
+    border-color: #C3CCD4 !important;
+    color: #24384E !important;
+    -webkit-text-fill-color: #24384E !important;
+    box-shadow: inset 4px 0 0 #516D86, 0 6px 14px rgba(36, 56, 78, 0.04) !important;
+}
