@@ -32,21 +32,21 @@ from reportlab.platypus import (
 try:
     from backend import services
     from backend.database import SessionLocal, init_db
-    from backend.models import (
-        InventoryDaily,
-        InventoryInbound,
-        PurchaseDocument,
-        PurchaseOrder,
-        PurchaseRequest,
-        RfqQuote,
-        Supplier,
-        SupplierEvaluation,
-        SupplierEvaluationCriteria,
-        SupplierEvaluationHistory,
-        SupplierEvaluationItem,
-        SupplierGradeRule,
-    )
-except (ModuleNotFoundError, RuntimeError) as exc:
+    from backend import models as backend_models
+
+    InventoryDaily = backend_models.InventoryDaily
+    InventoryInbound = backend_models.InventoryInbound
+    PurchaseDocument = backend_models.PurchaseDocument
+    PurchaseOrder = backend_models.PurchaseOrder
+    PurchaseRequest = backend_models.PurchaseRequest
+    RfqQuote = backend_models.RfqQuote
+    Supplier = backend_models.Supplier
+    SupplierEvaluation = getattr(backend_models, "SupplierEvaluation", None)
+    SupplierEvaluationCriteria = getattr(backend_models, "SupplierEvaluationCriteria", None)
+    SupplierEvaluationHistory = getattr(backend_models, "SupplierEvaluationHistory", None)
+    SupplierEvaluationItem = getattr(backend_models, "SupplierEvaluationItem", None)
+    SupplierGradeRule = getattr(backend_models, "SupplierGradeRule", None)
+except (ModuleNotFoundError, ImportError, AttributeError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
     services = None
@@ -572,10 +572,19 @@ def render_supplier_tab() -> None:
     if selected_subtab == "협력사 목록":
         render_supplier_list_tab()
     elif selected_subtab == "협력사 평가":
+        if not supplier_evaluation_models_available():
+            st.error("협력사 평가 DB 모델이 아직 배포되지 않았습니다. backend/models.py 변경사항까지 배포한 뒤 다시 실행해주세요.")
+            return
         render_supplier_evaluation_tab()
     elif selected_subtab == "평가 기준 관리":
+        if not supplier_evaluation_models_available():
+            st.error("평가 기준 관리 DB 모델이 아직 배포되지 않았습니다. backend/models.py 변경사항까지 배포한 뒤 다시 실행해주세요.")
+            return
         render_supplier_criteria_tab()
     elif selected_subtab == "등급 이력":
+        if not supplier_evaluation_models_available():
+            st.error("등급 이력 DB 모델이 아직 배포되지 않았습니다. backend/models.py 변경사항까지 배포한 뒤 다시 실행해주세요.")
+            return
         render_supplier_history_tab()
 
 
@@ -1261,8 +1270,21 @@ def ensure_supplier_evaluation_setup() -> None:
     with_db(lambda db: seed_supplier_evaluation_defaults(db))
 
 
+def supplier_evaluation_models_available() -> bool:
+    return all(
+        model is not None
+        for model in (
+            SupplierEvaluation,
+            SupplierEvaluationCriteria,
+            SupplierEvaluationHistory,
+            SupplierEvaluationItem,
+            SupplierGradeRule,
+        )
+    )
+
+
 def seed_supplier_evaluation_defaults(db: Session) -> None:
-    if SupplierEvaluationCriteria is None or SupplierGradeRule is None:
+    if not supplier_evaluation_models_available():
         return
     if not db.execute(select(SupplierEvaluationCriteria.id)).first():
         for category_name, category_weight, items in DEFAULT_EVALUATION_CATEGORIES:
@@ -1292,6 +1314,8 @@ def seed_supplier_evaluation_defaults(db: Session) -> None:
 
 
 def active_supplier_criteria(db: Session) -> list[dict]:
+    if SupplierEvaluationCriteria is None:
+        return default_criteria_payload()
     rows = list(
         db.execute(
             select(SupplierEvaluationCriteria)
@@ -1333,6 +1357,8 @@ def default_criteria_payload() -> list[dict]:
 
 
 def list_grade_rules(db: Session) -> list[dict]:
+    if SupplierGradeRule is None:
+        return default_grade_rules_payload()
     rows = list(db.execute(select(SupplierGradeRule).where(SupplierGradeRule.is_active == True).order_by(SupplierGradeRule.minimum_score.desc())).scalars())  # noqa: E712
     if not rows:
         return default_grade_rules_payload()
@@ -1411,6 +1437,8 @@ def save_supplier_evaluation(
     item_comments: dict[str, str],
     score_payload: dict,
 ) -> SupplierEvaluation:
+    if not supplier_evaluation_models_available():
+        raise RuntimeError("협력사 평가 DB 모델이 준비되지 않았습니다.")
     supplier = db.get(Supplier, supplier_id)
     if supplier is None:
         raise ValueError("협력사를 찾을 수 없습니다.")
@@ -1480,6 +1508,8 @@ def save_supplier_evaluation(
 
 
 def refresh_supplier_current_grade(db: Session, supplier: Supplier) -> None:
+    if SupplierEvaluation is None:
+        return
     latest = db.execute(
         select(SupplierEvaluation)
         .where(
@@ -1506,6 +1536,8 @@ def refresh_supplier_current_grade(db: Session, supplier: Supplier) -> None:
 
 
 def supplier_detail_payload(db: Session, supplier_id: int) -> dict:
+    if SupplierEvaluation is None:
+        return {"latest": None, "history": []}
     latest = db.execute(
         select(SupplierEvaluation)
         .where(
@@ -1520,6 +1552,8 @@ def supplier_detail_payload(db: Session, supplier_id: int) -> dict:
 
 
 def supplier_history_rows(db: Session, supplier_id: int | None = None) -> list[dict]:
+    if SupplierEvaluation is None:
+        return []
     stmt = select(SupplierEvaluation, Supplier).join(Supplier, Supplier.id == SupplierEvaluation.supplier_id).where(SupplierEvaluation.is_deleted == False)  # noqa: E712
     if supplier_id:
         stmt = stmt.where(SupplierEvaluation.supplier_id == supplier_id)
@@ -2341,33 +2375,35 @@ def po_to_dict(row: PurchaseOrder) -> dict:
 
 
 def supplier_to_dict(row: Supplier) -> dict:
-    grade = row.current_grade or row.rating or "미평가"
-    latest_score = "" if not row.latest_score else f"{float(row.latest_score):.1f}"
-    special_reason = row.special_reason or ""
+    grade = getattr(row, "current_grade", "") or getattr(row, "rating", "") or "미평가"
+    latest_raw_score = getattr(row, "latest_score", 0)
+    latest_score = "" if not latest_raw_score else f"{float(latest_raw_score):.1f}"
+    special_reason = getattr(row, "special_reason", "") or ""
+    supplier_id = getattr(row, "id", 0)
     return {
         "삭제": False,
-        "ID": row.id,
-        "업체코드": row.supplier_code or next_supplier_code(None, row.id),
-        "업체명": row.supplier_name,
-        "협력사명": row.supplier_name,
-        "사업자등록번호": row.business_number,
-        "취급품목": row.handled_items,
-        "주요 품목": row.handled_items,
-        "MOQ 조건": row.moq_terms,
-        "담당자": row.manager,
-        "연락처": row.phone,
-        "이메일": row.email,
-        "거래 상태": row.transaction_status,
+        "ID": supplier_id,
+        "업체코드": getattr(row, "supplier_code", "") or next_supplier_code(None, supplier_id),
+        "업체명": getattr(row, "supplier_name", ""),
+        "협력사명": getattr(row, "supplier_name", ""),
+        "사업자등록번호": getattr(row, "business_number", ""),
+        "취급품목": getattr(row, "handled_items", ""),
+        "주요 품목": getattr(row, "handled_items", ""),
+        "MOQ 조건": getattr(row, "moq_terms", ""),
+        "담당자": getattr(row, "manager", ""),
+        "연락처": getattr(row, "phone", ""),
+        "이메일": getattr(row, "email", ""),
+        "거래 상태": getattr(row, "transaction_status", "거래중"),
         "현재 등급": grade,
         "최근 평가점수": latest_score,
-        "최근 평가일": row.latest_evaluation_date,
-        "다음 평가예정일": row.next_evaluation_date,
-        "특별관리 여부": f"⚠ {special_reason}" if row.special_management else "아니오",
+        "최근 평가일": getattr(row, "latest_evaluation_date", None),
+        "다음 평가예정일": getattr(row, "next_evaluation_date", None),
+        "특별관리 여부": f"⚠ {special_reason}" if getattr(row, "special_management", False) else "아니오",
         "관리": "상세/이력",
-        "평균납기": row.avg_lead_time_days,
-        "평균단가": format_compact_price(row.avg_unit_price, row.avg_unit_price_currency),
-        "결제조건": row.payment_terms,
-        "비고": row.memo,
+        "평균납기": getattr(row, "avg_lead_time_days", 0),
+        "평균단가": format_compact_price(getattr(row, "avg_unit_price", 0), getattr(row, "avg_unit_price_currency", "KRW")),
+        "결제조건": getattr(row, "payment_terms", ""),
+        "비고": getattr(row, "memo", ""),
     }
 
 
