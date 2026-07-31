@@ -511,25 +511,6 @@ def render_supplier_tab() -> None:
     st.caption("RFQ 등록 업체는 자동으로 협력사에 추가되며, 평균납기/평균단가는 발주 이력 기준으로 갱신됩니다.")
     st.caption(f"현재 등록 협력사 {len(rows)}개 / 검색 결과 {len(filtered_rows)}개")
 
-    st.markdown('<div class="purchase-section-title">협력사 목록</div>', unsafe_allow_html=True)
-    if not rows:
-        st.info("등록된 협력사가 없습니다.")
-    elif not filtered_rows:
-        st.info("검색 조건에 맞는 협력사가 없습니다.")
-    else:
-        render_supplier_table(filtered_rows)
-        if filtered_supplier_names:
-            delete_cols = st.columns([1.2, 1.0, 3.0], gap="small")
-            selected_supplier = delete_cols[0].selectbox("삭제할 협력사", filtered_supplier_names, key="purchase_supplier_delete_select")
-            with delete_cols[1]:
-                st.write("")
-                if st.button("선택 삭제", use_container_width=True, key="purchase_supplier_delete"):
-                    with_db(lambda db: delete_supplier(db, selected_supplier))
-                    st.success(f"{selected_supplier} 협력사를 삭제했습니다.")
-                    st.rerun()
-            with delete_cols[2]:
-                st.caption("목록에서 수정할 업체를 선택하면 아래 등록/수정 폼에 기존 정보가 자동으로 채워집니다.")
-
     st.markdown('<div class="purchase-section-title">협력사 등록/수정</div>', unsafe_allow_html=True)
     edit_options = ["신규 협력사 등록"] + filtered_supplier_names
     edit_target = st.selectbox("수정할 협력사", edit_options, key="purchase_supplier_edit_select")
@@ -622,6 +603,25 @@ def render_supplier_tab() -> None:
                 if result:
                     st.success(f"{supplier_name} 협력사를 저장했습니다.")
                     st.rerun()
+
+    st.markdown('<div class="purchase-section-title">협력사 목록</div>', unsafe_allow_html=True)
+    if not rows:
+        st.info("등록된 협력사가 없습니다.")
+    elif not filtered_rows:
+        st.info("검색 조건에 맞는 협력사가 없습니다.")
+    else:
+        render_supplier_table(filtered_rows)
+        if filtered_supplier_names:
+            delete_cols = st.columns([1.2, 1.0, 3.0], gap="small")
+            selected_supplier = delete_cols[0].selectbox("삭제할 협력사", filtered_supplier_names, key="purchase_supplier_delete_select")
+            with delete_cols[1]:
+                st.write("")
+                if st.button("선택 삭제", use_container_width=True, key="purchase_supplier_delete"):
+                    with_db(lambda db: delete_supplier(db, selected_supplier))
+                    st.success(f"{selected_supplier} 협력사를 삭제했습니다.")
+                    st.rerun()
+            with delete_cols[2]:
+                st.caption("목록에서 수정할 업체를 선택하면 위 등록/수정 폼에 기존 정보가 자동으로 채워집니다.")
 
 
 def render_supplier_table(rows: list[dict]) -> None:
