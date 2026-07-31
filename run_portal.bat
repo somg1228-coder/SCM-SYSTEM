@@ -16,7 +16,7 @@ echo   data\streamlit.err.log
 echo.
 
 "%PYTHON_EXE%" -m streamlit run app.py ^
-  --server.address localhost ^
+  --server.address 0.0.0.0 ^
   --server.port 8502 ^
   --server.headless true ^
   --server.fileWatcherType none ^

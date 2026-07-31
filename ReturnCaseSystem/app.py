@@ -1353,11 +1353,18 @@ def render_return_case_system():
 
     # ==========================
 
-    if not DB_PATH.exists():
-        st.error(f"기존 반품/AS DB 파일을 찾을 수 없습니다: {DB_PATH}")
+    try:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    except sqlite3.Error as exc:
+        st.error("반품/AS DB를 열 수 없습니다. 배포 환경의 파일 쓰기 권한을 확인해주세요.")
+        st.exception(exc)
+        return
+    except OSError as exc:
+        st.error("반품/AS DB 폴더를 준비할 수 없습니다. 배포 환경의 파일 경로를 확인해주세요.")
+        st.exception(exc)
         return
 
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     c = conn.cursor()
 
     c.execute("""

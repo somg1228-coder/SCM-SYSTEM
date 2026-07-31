@@ -1,15 +1,18 @@
-2026-07-31 10:37:58.487 No ASGI app assignments found in C:\Users\로긴-2021-12-09\OneDrive\바탕 화면\SCM_PORTAL\app.py
-2026-07-31 10:37:58.613 Filtered 62 packages down to 3 candidates for component scanning
-2026-07-31 10:37:58.613 Scanning 3 candidate packages for component manifests using 3 worker threads
-2026-07-31 10:37:58.732 Found 0 component manifests total
-2026-07-31 10:37:58.732 No asset roots to watch
-2026-07-31 10:37:58.732 File watching not started
-2026-07-31 10:37:58.732 Starting new event loop for server
-2026-07-31 10:37:58.733 Starting server...
-2026-07-31 10:37:58.802 Starting uvicorn server on localhost:8502
-2026-07-31 10:37:58.846 Runtime state: RuntimeState.INITIAL -> RuntimeState.NO_SESSIONS_CONNECTED
-2026-07-31 10:37:58.846 Uvicorn server started on localhost:8502
-2026-07-31 10:37:58.905 Setting up signal handler
-2026-07-31 10:37:59.375 AppSession initialized (id=1c92c002-5fe4-440e-a46e-24c09241896c)
-2026-07-31 10:37:59.376 Created new session for client 1508436252992. Session ID: 1c92c002-5fe4-440e-a46e-24c09241896c
-2026-07-31 10:37:59.376 Runtime state: RuntimeState.NO_SESSIONS_CONNECTED -> RuntimeState.ONE_OR_MORE_SESSIONS_CONNECTED
+2026-07-31 10:43:32.038 No ASGI app assignments found in C:\Users\로긴-2021-12-09\OneDrive\바탕 화면\SCM_PORTAL\app.py
+2026-07-31 10:43:32.184 Filtered 62 packages down to 3 candidates for component scanning
+2026-07-31 10:43:32.184 Scanning 3 candidate packages for component manifests using 3 worker threads
+2026-07-31 10:43:32.302 Found 0 component manifests total
+2026-07-31 10:43:32.302 No asset roots to watch
+2026-07-31 10:43:32.302 File watching not started
+2026-07-31 10:43:32.302 Starting new event loop for server
+2026-07-31 10:43:32.303 Starting server...
+2026-07-31 10:43:32.355 Starting uvicorn server on 0.0.0.0:8502
+2026-07-31 10:43:32.392 Runtime state: RuntimeState.INITIAL -> RuntimeState.NO_SESSIONS_CONNECTED
+2026-07-31 10:43:32.392 Uvicorn server started on 0.0.0.0:8502
+2026-07-31 10:43:32.770 Did not auto detect external IP.
+Please go to https://docs.streamlit.io/ for debugging hints.
+2026-07-31 10:43:32.771 Setting up signal handler
+2026-07-31 10:43:33.105 AppSession initialized (id=c6ee6e66-4780-42e8-8ffa-be85d8313f39)
+2026-07-31 10:43:33.105 Created new session for client 2099732311280. Session ID: c6ee6e66-4780-42e8-8ffa-be85d8313f39
+2026-07-31 10:43:33.105 Runtime state: RuntimeState.NO_SESSIONS_CONNECTED -> RuntimeState.ONE_OR_MORE_SESSIONS_CONNECTED
+2026-07-31 10:47:20.863 Change detected: C:\Users\로긴-2021-12-09\OneDrive\바탕 화면\SCM_PORTAL\.streamlit\config.toml

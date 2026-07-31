@@ -14,6 +14,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Image,
@@ -1820,11 +1821,46 @@ def comparison_pdf_bytes(pr: PurchaseRequest, quotes: list[RfqQuote], document_n
 
 
 def register_pdf_fonts() -> None:
+    global MALGUN_FONT, MALGUN_BOLD_FONT
     if MALGUN_FONT in pdfmetrics.getRegisteredFontNames():
         return
-    fonts_dir = Path("C:/Windows/Fonts")
-    pdfmetrics.registerFont(TTFont(MALGUN_FONT, str(fonts_dir / "malgun.ttf")))
-    pdfmetrics.registerFont(TTFont(MALGUN_BOLD_FONT, str(fonts_dir / "malgunbd.ttf")))
+    font_dirs = [
+        Path(r"C:\Windows\Fonts"),
+        Path.home() / "AppData" / "Local" / "Microsoft" / "Windows" / "Fonts",
+        Path("/usr/share/fonts"),
+        Path("/usr/local/share/fonts"),
+        Path(__file__).resolve().parents[1] / "assets" / "fonts",
+    ]
+    candidates = [
+        ("Malgun", "Malgun-Bold", "malgun.ttf", "malgunbd.ttf"),
+        ("NanumGothic", "NanumGothic-Bold", "NanumGothic.ttf", "NanumGothicBold.ttf"),
+        ("NanumGothic", "NanumGothic-Bold", "NanumGothic-Regular.ttf", "NanumGothic-Bold.ttf"),
+        ("NotoSansKR", "NotoSansKR-Bold", "NotoSansKR-Regular.ttf", "NotoSansKR-Bold.ttf"),
+        ("NotoSansCJKkr", "NotoSansCJKkr-Bold", "NotoSansCJKkr-Regular.otf", "NotoSansCJKkr-Bold.otf"),
+    ]
+    for regular_name, bold_name, regular_file, bold_file in candidates:
+        for font_dir in font_dirs:
+            regular_path = next(font_dir.rglob(regular_file), None) if font_dir.exists() else None
+            if regular_path is None:
+                continue
+            bold_path = next(font_dir.rglob(bold_file), None) if font_dir.exists() else regular_path
+            try:
+                if regular_name not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont(regular_name, str(regular_path)))
+                if bold_name not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont(bold_name, str(bold_path or regular_path)))
+                MALGUN_FONT = regular_name
+                MALGUN_BOLD_FONT = bold_name
+                return
+            except Exception:
+                continue
+    try:
+        pdfmetrics.registerFont(UnicodeCIDFont("HYGothic-Medium"))
+        MALGUN_FONT = "HYGothic-Medium"
+        MALGUN_BOLD_FONT = "HYGothic-Medium"
+    except Exception:
+        MALGUN_FONT = "Helvetica"
+        MALGUN_BOLD_FONT = "Helvetica-Bold"
 
 
 def pdf_styles() -> dict:

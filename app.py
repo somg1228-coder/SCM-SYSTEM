@@ -7,19 +7,21 @@ import streamlit as st
 
 from components.header import render_header
 from components import sidebar as sidebar_component
-from backend import services as backend_services
-from pages import dashboard as dashboard_page
-from pages import inventory as inventory_page
-from pages import bom as bom_page
-from pages import meeting as meeting_page
-from pages import purchase as purchase_page
-from pages import schedule as schedule_page
-from pages import warehouse3d as warehouse3d_page
-from ReturnCaseSystem.app import render_return_case_system
 
 
 BASE_DIR = Path(__file__).parent
 APP_ERROR_LOG_PATH = BASE_DIR / "data" / "app_error.log"
+
+
+def import_page_module(module_name: str, label: str):
+    try:
+        module = importlib.import_module(module_name)
+        return importlib.reload(module)
+    except Exception as exc:
+        log_app_exception(exc)
+        st.error(f"{label} 화면을 불러오지 못했습니다. 배포 로그와 아래 오류를 확인해주세요.")
+        st.exception(exc)
+        return None
 
 
 def log_app_exception(exc: BaseException) -> None:
@@ -59,36 +61,52 @@ def render_placeholder(active_menu: str) -> None:
 
 
 def render_home() -> None:
-    importlib.reload(dashboard_page).render_dashboard()
+    module = import_page_module("pages.dashboard", "대시보드")
+    if module is not None:
+        module.render_dashboard()
 
 
 def render_schedule() -> None:
-    importlib.reload(schedule_page).render_schedule_page()
+    module = import_page_module("pages.schedule", "일정관리")
+    if module is not None:
+        module.render_schedule_page()
 
 
 def render_meeting() -> None:
-    importlib.reload(meeting_page).render_meeting_page()
+    module = import_page_module("pages.meeting", "회의자료")
+    if module is not None:
+        module.render_meeting_page()
 
 
 def render_return_as() -> None:
-    render_return_case_system()
+    module = import_page_module("ReturnCaseSystem.app", "반품/AS 관리")
+    if module is not None:
+        module.render_return_case_system()
 
 
 def render_inventory() -> None:
-    importlib.reload(backend_services)
-    importlib.reload(inventory_page).render_inventory_page()
+    import_page_module("backend.services", "재고관리 서비스")
+    module = import_page_module("pages.inventory", "재고관리")
+    if module is not None:
+        module.render_inventory_page()
 
 
 def render_order() -> None:
-    importlib.reload(purchase_page).render_purchase_page()
+    module = import_page_module("pages.purchase", "구매관리")
+    if module is not None:
+        module.render_purchase_page()
 
 
 def render_bom() -> None:
-    importlib.reload(bom_page).render_bom_page()
+    module = import_page_module("pages.bom", "BOM 관리")
+    if module is not None:
+        module.render_bom_page()
 
 
 def render_warehouse_3d() -> None:
-    importlib.reload(warehouse3d_page).render_warehouse3d_page()
+    module = import_page_module("pages.warehouse3d", "3D 창고관리")
+    if module is not None:
+        module.render_warehouse3d_page()
 
 
 def render_guide() -> None:

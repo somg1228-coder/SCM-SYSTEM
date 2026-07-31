@@ -8,8 +8,6 @@ font = "sans serif"
 
 [server]
 headless = true
-port = 8502
-address = "localhost"
 fileWatcherType = "none"
 folderWatchBlacklist = ["data", "__pycache__", "pages/__pycache__", "backend/__pycache__"]
 
