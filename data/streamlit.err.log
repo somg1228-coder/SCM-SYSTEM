@@ -13083,3 +13083,48 @@ For `use_container_width=True`, use `width='stretch'`. For `use_container_width=
 2026-07-31 14:57:08.447 < PONG ed 66 82 ec [binary, 4 bytes]
 2026-07-31 14:57:38.452 > PING '^\rn#' [text, 4 bytes]
 2026-07-31 14:57:38.452 < PONG '^\rn#' [text, 4 bytes]
+2026-07-31 14:58:08.456 > PING 74 0d 6f f5 [binary, 4 bytes]
+2026-07-31 14:58:08.457 < PONG 74 0d 6f f5 [binary, 4 bytes]
+2026-07-31 14:58:38.463 > PING 83 04 1b ef [binary, 4 bytes]
+2026-07-31 14:58:38.464 < PONG 83 04 1b ef [binary, 4 bytes]
+2026-07-31 14:58:51.025 < CLOSE 1001 (going away) [2 bytes]
+2026-07-31 14:58:51.025 > CLOSE 1001 (going away) [2 bytes]
+2026-07-31 14:58:51.025 = connection is CLOSING
+2026-07-31 14:58:51.025 > EOF
+2026-07-31 14:58:51.026 Shutting down (id=2bc0d42e-94b5-4595-9562-4f32aa42215f)
+2026-07-31 14:58:51.026 Disconnecting files for session with ID 2bc0d42e-94b5-4595-9562-4f32aa42215f
+2026-07-31 14:58:51.027 Sessions still active: dict_keys(['e97dcf28-1292-45a7-820a-6691bf054433', '888fce7f-69ba-4ba1-adb1-8f731a34a89d', '42422702-0e87-4e6a-95b7-b972b5f0168a'])
+2026-07-31 14:58:51.027 Files: 37; Sessions with files: 3
+2026-07-31 14:58:51.027 Removing orphaned files...
+2026-07-31 14:58:51.027 Deleting File: 6f92eb0ceeab14f9d78417ac9c511c17
+2026-07-31 14:58:51.027 Removing orphaned deferred callables...
+2026-07-31 14:58:51.028 Shutting down (id=888fce7f-69ba-4ba1-adb1-8f731a34a89d)
+2026-07-31 14:58:51.028 Disconnecting files for session with ID 888fce7f-69ba-4ba1-adb1-8f731a34a89d
+2026-07-31 14:58:51.028 Sessions still active: dict_keys(['e97dcf28-1292-45a7-820a-6691bf054433', '42422702-0e87-4e6a-95b7-b972b5f0168a'])
+2026-07-31 14:58:51.028 Files: 36; Sessions with files: 2
+2026-07-31 14:58:51.028 Removing orphaned files...
+2026-07-31 14:58:51.028 Deleting File: 6d25f1b5fb65754cd05cd4d83eb83498
+2026-07-31 14:58:51.029 Deleting File: 5cd053c3125595b188e81fc18718ee99
+2026-07-31 14:58:51.029 Deleting File: e3aee3a410ccca6afc79506a88aeaba5
+2026-07-31 14:58:51.029 Deleting File: 71ac995f2da4bd538bfab263c8cdbabc
+2026-07-31 14:58:51.029 Deleting File: e1ab3d055dfb3134da42e21c1f28ed88
+2026-07-31 14:58:51.029 Deleting File: cf1014ff8b539dabb2306e8c7c6b6cd6
+2026-07-31 14:58:51.029 Deleting File: 2431e32869119fc98fb4850cd79e4fbd
+2026-07-31 14:58:51.029 Deleting File: 5c26bcd61e5d596deb872a1f83359f45
+2026-07-31 14:58:51.029 Deleting File: 7f78ef0a8b241fdb4204149ed386d8f1
+2026-07-31 14:58:51.029 Deleting File: ecba70c1c066034b2250bb0cd01cac7f
+2026-07-31 14:58:51.029 Deleting File: 0a1671f7f453ea2ba5878757f9bdeb3a
+2026-07-31 14:58:51.029 Deleting File: 25acd9a55ef5763bdbb8c5844a6ef732
+2026-07-31 14:58:51.029 Deleting File: 24bd7467c8c0d3810634cad28471e5ef
+2026-07-31 14:58:51.029 Deleting File: cff5768f39608182886ef709d98306be
+2026-07-31 14:58:51.029 Deleting File: 4e7d7675d761cdc59a9ad1956fa19978
+2026-07-31 14:58:51.029 Deleting File: 226ed11b8ee821a839ae35347e210d2a
+2026-07-31 14:58:51.029 Deleting File: 6a11bdd50e00abc1a8cec684af23cd7c
+2026-07-31 14:58:51.029 Removing orphaned deferred callables...
+2026-07-31 14:58:51.030 Shutting down (id=e97dcf28-1292-45a7-820a-6691bf054433)
+2026-07-31 14:58:51.031 Disconnecting files for session with ID e97dcf28-1292-45a7-820a-6691bf054433
+2026-07-31 14:58:51.031 Sessions still active: dict_keys(['42422702-0e87-4e6a-95b7-b972b5f0168a'])
+2026-07-31 14:58:51.031 Files: 19; Sessions with files: 1
+2026-07-31 14:58:51.031 Removing orphaned files...
+2026-07-31 14:58:51.031 Removing orphaned deferred callables...
+2026-07-31 14:58:51.033 Runtime state: RuntimeState.ONE_OR_MORE_SESSIONS_CONNECTED -> RuntimeState.NO_SESSIONS_CONNECTED
