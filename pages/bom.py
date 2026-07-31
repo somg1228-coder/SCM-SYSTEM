@@ -70,15 +70,25 @@ def render_category_controls(categories: list[str]) -> str:
         [1.1, 1.35, 1.1, 0.95, 0.95],
         gap="small",
     )
-    with select_col:
-        selected = st.selectbox("카테고리", options=options, key="bom_category_select")
     with input_col:
-        typed = st.text_input(
-            "새 카테고리명",
-            placeholder="예: 접시정리대 / 주방 선반 / 와이어 수납",
-            key="bom_category_input",
+        keyword = st.text_input(
+            "카테고리 검색",
+            placeholder="카테고리명 입력",
+            key="bom_category_search",
         )
-    category = typed.strip() or selected
+    filtered_options = [
+        option
+        for option in options
+        if not keyword.strip() or keyword.strip().lower() in option.lower()
+    ]
+    if not filtered_options:
+        st.warning("검색 조건에 맞는 카테고리가 없습니다. 전체 카테고리를 표시합니다.")
+        filtered_options = options
+    if st.session_state.get("bom_category_select") not in filtered_options:
+        st.session_state["bom_category_select"] = filtered_options[0]
+    with select_col:
+        selected = st.selectbox("카테고리", options=filtered_options, key="bom_category_select")
+    category = selected
 
     with upload_col:
         uploaded = st.file_uploader("BOM 엑셀 업로드", type=["xlsx", "xls"], key="bom_upload")
