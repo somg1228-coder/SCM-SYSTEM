@@ -11,5 +11,12 @@ headless = true
 port = 8502
 address = "localhost"
 
+[client]
+showErrorDetails = "full"
+showErrorLinks = "auto"
+
+[logger]
+level = "debug"
+
 [browser]
 gatherUsageStats = false

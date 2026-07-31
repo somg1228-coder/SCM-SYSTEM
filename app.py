@@ -1,5 +1,7 @@
 from pathlib import Path
 import importlib
+import logging
+import traceback
 
 import streamlit as st
 
@@ -17,6 +19,24 @@ from ReturnCaseSystem.app import render_return_case_system
 
 
 BASE_DIR = Path(__file__).parent
+APP_ERROR_LOG_PATH = BASE_DIR / "data" / "app_error.log"
+
+
+def log_app_exception(exc: BaseException) -> None:
+    try:
+        APP_ERROR_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(
+            filename=APP_ERROR_LOG_PATH,
+            level=logging.ERROR,
+            format="%(asctime)s %(levelname)s %(message)s",
+            encoding="utf-8",
+        )
+        logging.exception("Unhandled SCM Portal app error")
+        with APP_ERROR_LOG_PATH.open("a", encoding="utf-8") as handle:
+            handle.write("\n--- traceback ---\n")
+            handle.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+    except Exception:
+        pass
 
 
 def load_css() -> None:
@@ -171,4 +191,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        log_app_exception(exc)
+        try:
+            st.error("앱 실행 중 오류가 발생했습니다. 아래 상세 오류를 확인해주세요.")
+            st.exception(exc)
+        finally:
+            raise
