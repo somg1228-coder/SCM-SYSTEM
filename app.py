@@ -195,8 +195,5 @@ if __name__ == "__main__":
         main()
     except Exception as exc:
         log_app_exception(exc)
-        try:
-            st.error("앱 실행 중 오류가 발생했습니다. 아래 상세 오류를 확인해주세요.")
-            st.exception(exc)
-        finally:
-            raise
+        st.error("앱 실행 중 오류가 발생했습니다. 아래 상세 오류를 확인해주세요.")
+        st.exception(exc)
