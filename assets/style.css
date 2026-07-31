@@ -13165,3 +13165,270 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     color: #26384A !important;
     -webkit-text-fill-color: #26384A !important;
 }
+
+/* Responsive layout guard: keep sidebar and dashboard cards inside every viewport. */
+:root {
+    --responsive-sidebar-width: clamp(184px, 15vw, 232px);
+    --responsive-page-pad-x: clamp(12px, 1.6vw, 24px);
+    --responsive-page-pad-y: clamp(12px, 1.4vh, 18px);
+    --responsive-gap: clamp(10px, 1.1vw, 16px);
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body,
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+[data-testid="stAppViewBlockContainer"],
+.main,
+.block-container {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: clip !important;
+}
+
+.block-container,
+.main .block-container,
+[data-testid="stAppViewBlockContainer"],
+[data-testid="stMainBlockContainer"] {
+    margin: 0 auto !important;
+    padding: var(--responsive-page-pad-y) var(--responsive-page-pad-x) calc(var(--responsive-page-pad-y) * 1.5) !important;
+    width: 100% !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"][aria-expanded="true"] {
+    flex: 0 0 var(--responsive-sidebar-width) !important;
+    max-width: var(--responsive-sidebar-width) !important;
+    min-width: var(--responsive-sidebar-width) !important;
+    width: var(--responsive-sidebar-width) !important;
+}
+
+[data-testid="stSidebar"][aria-expanded="false"],
+[data-testid="stSidebar"][aria-hidden="true"] {
+    flex-basis: 0 !important;
+    max-width: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    width: 0 !important;
+}
+
+[data-testid="stSidebar"][aria-expanded="false"] > div,
+[data-testid="stSidebar"][aria-hidden="true"] > div,
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"][aria-hidden="true"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"][aria-expanded="false"] .block-container,
+[data-testid="stSidebar"][aria-hidden="true"] .block-container {
+    max-width: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    width: 0 !important;
+}
+
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] .block-container {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+}
+
+.topbar {
+    align-items: center !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px 14px !important;
+    min-height: unset !important;
+}
+
+.topbar .breadcrumb,
+.topbar-actions {
+    min-width: 0 !important;
+}
+
+.topbar-actions {
+    flex-wrap: wrap !important;
+    justify-content: flex-end !important;
+}
+
+.dashboard-shell {
+    align-content: start !important;
+    display: grid !important;
+    gap: var(--responsive-gap) !important;
+    grid-auto-rows: auto !important;
+    grid-template-rows: none !important;
+    margin: 0 auto !important;
+    max-width: min(1440px, 100%) !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+    width: 100% !important;
+}
+
+.dashboard-shell > *,
+.dashboard-shell .panel,
+.dashboard-shell .kpi-tile,
+.dashboard-middle-grid,
+.dashboard-bottom-grid,
+.status-grid,
+.dashboard-middle-grid > *,
+.dashboard-bottom-grid > * {
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+.dashboard-shell > .kpi-row {
+    display: grid !important;
+    gap: var(--responsive-gap) !important;
+    grid-auto-rows: minmax(82px, auto) !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)) !important;
+    grid-template-rows: none !important;
+}
+
+.dashboard-shell .kpi-tile {
+    height: auto !important;
+    min-height: 82px !important;
+    overflow: hidden !important;
+}
+
+.dashboard-middle-grid,
+.dashboard-bottom-grid,
+.status-grid {
+    display: grid !important;
+    gap: var(--responsive-gap) !important;
+    height: auto !important;
+    grid-template-rows: none !important;
+}
+
+.dashboard-middle-grid {
+    grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr) !important;
+}
+
+.status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.dashboard-bottom-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)) !important;
+}
+
+.dashboard-middle-grid > *,
+.dashboard-bottom-grid > *,
+.status-grid > *,
+.dashboard-bottom-grid > .warehouse-panel,
+.dashboard-bottom-grid > .purchase-progress-panel,
+.dashboard-bottom-grid > .core-task-panel {
+    height: auto !important;
+    min-height: 0 !important;
+}
+
+.schedule-panel,
+.week-board,
+.table-panel,
+.order-panel,
+.warehouse-panel,
+.purchase-progress-panel,
+.core-task-panel {
+    height: auto !important;
+}
+
+.week-board {
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    min-height: 0 !important;
+}
+
+.week-cell,
+.order-panel th,
+.order-panel td,
+.warehouse-row,
+.purchase-progress-row,
+.core-task-list li {
+    overflow-wrap: anywhere !important;
+}
+
+.order-panel,
+.table-panel {
+    overflow-x: auto !important;
+}
+
+.order-panel table,
+.table-panel table {
+    width: 100% !important;
+}
+
+@media (max-width: 1280px) {
+    :root {
+        --responsive-sidebar-width: clamp(176px, 16vw, 214px);
+    }
+
+    .dashboard-middle-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 900px) {
+    .dashboard-shell > .kpi-row,
+    .dashboard-middle-grid,
+    .dashboard-bottom-grid,
+    .status-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .core-task-panel {
+        grid-template-columns: 1fr !important;
+    }
+
+    .core-task-summary,
+    .core-task-list,
+    .core-task-panel .ghost-link {
+        grid-column: 1 !important;
+        grid-row: auto !important;
+    }
+}
+
+@media (max-width: 760px) {
+    :root {
+        --responsive-page-pad-x: 10px;
+        --responsive-sidebar-width: min(82vw, 240px);
+    }
+
+    [data-testid="stSidebar"],
+    [data-testid="stSidebar"][aria-expanded="true"] {
+        max-width: min(82vw, 240px) !important;
+        min-width: 0 !important;
+        width: min(82vw, 240px) !important;
+    }
+
+    [data-testid="stSidebar"][aria-expanded="false"],
+    [data-testid="stSidebar"][aria-hidden="true"],
+    [data-testid="stSidebar"][aria-expanded="false"] > div,
+    [data-testid="stSidebar"][aria-hidden="true"] > div,
+    [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+    [data-testid="stSidebar"][aria-hidden="true"] [data-testid="stSidebarContent"],
+    [data-testid="stSidebar"][aria-expanded="false"] .block-container,
+    [data-testid="stSidebar"][aria-hidden="true"] .block-container {
+        max-width: 0 !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+        width: 0 !important;
+    }
+
+    .topbar-actions {
+        justify-content: flex-start !important;
+    }
+
+    .week-board {
+        grid-template-columns: 1fr !important;
+    }
+
+    .week-cell {
+        min-height: auto !important;
+    }
+}
