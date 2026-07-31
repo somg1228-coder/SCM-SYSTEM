@@ -667,13 +667,14 @@ def render_daily_tab(source_type: str) -> None:
     filters = render_inventory_filters(source_type, base_df)
     filtered_df = apply_inventory_filters(base_df, filters)
     paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
-    summary_cols = st.columns(6, gap="small")
-    summary_cols[0].metric("필터 결과", f"{len(filtered_df):,}개")
-    summary_cols[1].metric("정상", f"{int((filtered_df.get('재고상태', pd.Series(dtype=str)) == '정상').sum()):,}개")
-    summary_cols[2].metric("주의", f"{int((filtered_df.get('재고상태', pd.Series(dtype=str)) == '주의').sum()):,}개")
-    summary_cols[3].metric("부족", f"{int((filtered_df.get('재고상태', pd.Series(dtype=str)) == '부족').sum()):,}개")
-    summary_cols[4].metric("품절", f"{int((filtered_df.get('재고상태', pd.Series(dtype=str)) == '품절').sum()):,}개")
-    summary_cols[5].metric("가용재고", f"{filtered_df.get('가용재고', pd.Series(dtype=int)).apply(to_int).sum():,}개")
+    with st.container(key=f"{source_key(source_type)}_daily_summary_metrics"):
+        summary_cols = st.columns(6, gap="small")
+        summary_cols[0].metric("필터 결과", f"{len(filtered_df):,}개")
+        summary_cols[1].metric("정상", f"{int((filtered_df.get('재고상태', pd.Series(dtype=str)) == '정상').sum()):,}개")
+        summary_cols[2].metric("주의", f"{int((filtered_df.get('재고상태', pd.Series(dtype=str)) == '주의').sum()):,}개")
+        summary_cols[3].metric("부족", f"{int((filtered_df.get('재고상태', pd.Series(dtype=str)) == '부족').sum()):,}개")
+        summary_cols[4].metric("품절", f"{int((filtered_df.get('재고상태', pd.Series(dtype=str)) == '품절').sum()):,}개")
+        summary_cols[5].metric("가용재고", f"{filtered_df.get('가용재고', pd.Series(dtype=int)).apply(to_int).sum():,}개")
 
     download_scope = st.radio(
         "다운로드 범위",
@@ -2549,6 +2550,30 @@ def inject_inventory_css() -> None:
         .inventory-upload-slot-empty {
             height: 118px;
             margin-top: 0.44rem;
+        }
+        div[class*="st-key-threepl_daily_summary_metrics"] [data-testid="stMetric"],
+        div[class*="st-key-offline_daily_summary_metrics"] [data-testid="stMetric"],
+        div[class*="st-key-warehouse_daily_summary_metrics"] [data-testid="stMetric"] {
+            text-align: center !important;
+        }
+        div[class*="st-key-threepl_daily_summary_metrics"] [data-testid="stMetric"] label,
+        div[class*="st-key-offline_daily_summary_metrics"] [data-testid="stMetric"] label,
+        div[class*="st-key-warehouse_daily_summary_metrics"] [data-testid="stMetric"] label,
+        div[class*="st-key-threepl_daily_summary_metrics"] [data-testid="stMetricLabel"],
+        div[class*="st-key-offline_daily_summary_metrics"] [data-testid="stMetricLabel"],
+        div[class*="st-key-warehouse_daily_summary_metrics"] [data-testid="stMetricLabel"],
+        div[class*="st-key-threepl_daily_summary_metrics"] [data-testid="stMetricValue"],
+        div[class*="st-key-offline_daily_summary_metrics"] [data-testid="stMetricValue"],
+        div[class*="st-key-warehouse_daily_summary_metrics"] [data-testid="stMetricValue"] {
+            justify-content: center !important;
+            text-align: center !important;
+            width: 100% !important;
+        }
+        div[class*="st-key-threepl_daily_summary_metrics"] [data-testid="stMetric"] [data-testid="stMetricValue"] > div,
+        div[class*="st-key-offline_daily_summary_metrics"] [data-testid="stMetric"] [data-testid="stMetricValue"] > div,
+        div[class*="st-key-warehouse_daily_summary_metrics"] [data-testid="stMetric"] [data-testid="stMetricValue"] > div {
+            justify-content: center !important;
+            text-align: center !important;
         }
         div[data-testid="stDataFrame"],
         div[data-testid="stDataEditor"] {
