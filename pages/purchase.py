@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from html import escape
 from io import BytesIO
 from pathlib import Path
 
@@ -516,8 +517,7 @@ def render_supplier_tab() -> None:
     elif not filtered_rows:
         st.info("검색 조건에 맞는 협력사가 없습니다.")
     else:
-        df = pd.DataFrame(filtered_rows).drop(columns=["삭제"], errors="ignore")
-        st.dataframe(center_aligned_dataframe(df), hide_index=True, use_container_width=True, height=330)
+        render_supplier_table(filtered_rows)
         if filtered_supplier_names:
             delete_cols = st.columns([1.2, 1.0, 3.0], gap="small")
             selected_supplier = delete_cols[0].selectbox("삭제할 협력사", filtered_supplier_names, key="purchase_supplier_delete_select")
@@ -622,6 +622,31 @@ def render_supplier_tab() -> None:
                 if result:
                     st.success(f"{supplier_name} 협력사를 저장했습니다.")
                     st.rerun()
+
+
+def render_supplier_table(rows: list[dict]) -> None:
+    columns = ["업체명", "취급품목", "MOQ 조건", "담당자", "연락처", "이메일", "평균납기", "평균단가", "결제조건", "비고"]
+    head = "".join(f"<th>{escape(column)}</th>" for column in columns)
+    body_rows = []
+    for row in rows:
+        cells = []
+        for column in columns:
+            value = row.get(column, "")
+            if value is None:
+                value = ""
+            cells.append(f"<td>{escape(str(value))}</td>")
+        body_rows.append(f"<tr>{''.join(cells)}</tr>")
+    st.markdown(
+        f"""
+        <div class="supplier-table-wrap">
+            <table class="supplier-table">
+                <thead><tr>{head}</tr></thead>
+                <tbody>{''.join(body_rows)}</tbody>
+            </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_price_history_tab() -> None:
@@ -2350,6 +2375,48 @@ def inject_purchase_css() -> None:
         }
         [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
             background-color: #536d84 !important;
+        }
+        .supplier-table-wrap {
+            width: 100%;
+            max-height: 330px;
+            overflow: auto;
+            background: #f1eee8;
+            border: 1px solid #d7d0c5;
+            border-radius: 8px;
+            box-shadow: 0 8px 22px rgba(34, 45, 56, 0.055);
+        }
+        .supplier-table {
+            width: 100%;
+            min-width: 980px;
+            border-collapse: collapse;
+            table-layout: fixed;
+            color: #24303c;
+            font-size: 0.84rem;
+        }
+        .supplier-table th,
+        .supplier-table td {
+            border-bottom: 1px solid #d7d0c5;
+            padding: 0.66rem 0.72rem;
+            text-align: center;
+            vertical-align: middle;
+            word-break: keep-all;
+            overflow-wrap: anywhere;
+            background: #f8f5ef;
+        }
+        .supplier-table th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #e7e1d8;
+            color: #304257;
+            font-weight: 800;
+        }
+        .supplier-table td {
+            color: #24303c;
+            font-weight: 650;
+        }
+        .supplier-table tbody tr:last-child td {
+            border-bottom: 0;
         }
         [data-testid="stForm"],
         [data-testid="stDataFrame"],
