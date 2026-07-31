@@ -24,6 +24,16 @@ try:
 except OSError as exc:
     LOGGER.warning("기본 data 폴더를 만들 수 없습니다. 쓰기 가능한 대체 SQLite 경로를 사용합니다: %s", exc)
 
+try:
+    LOG_PATH = DATA_DIR / "scm_database.log"
+    if not any(isinstance(handler, logging.FileHandler) and getattr(handler, "baseFilename", "") == str(LOG_PATH) for handler in LOGGER.handlers):
+        file_handler = logging.FileHandler(LOG_PATH, encoding="utf-8")
+        file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        LOGGER.addHandler(file_handler)
+    LOGGER.setLevel(logging.INFO)
+except OSError:
+    pass
+
 DEFAULT_DB_PATH = (DATA_DIR / "scm.db").resolve()
 RAW_DATABASE_URL = os.getenv("SCM_DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH.as_posix()}")
 
@@ -71,6 +81,27 @@ def sqlite_path_is_writable(db_path: Path) -> bool:
         return False
 
 
+def is_sqlite_lock_error(exc: BaseException) -> bool:
+    message = str(exc).lower()
+    return "locked" in message or "busy" in message
+
+
+def is_sqlite_recoverable_open_error(exc: BaseException) -> bool:
+    message = str(exc).lower()
+    recoverable_fragments = (
+        "readonly",
+        "read-only",
+        "attempt to write a readonly database",
+        "unable to open database file",
+        "database is locked",
+        "database table is locked",
+        "disk i/o error",
+        "file is not a database",
+        "database disk image is malformed",
+    )
+    return any(fragment in message for fragment in recoverable_fragments)
+
+
 def sqlite_write_probe(db_path: Path) -> bool:
     try:
         with sqlite3.connect(str(db_path), timeout=2) as conn:
@@ -111,8 +142,11 @@ def copy_sqlite_to_writable_path(source_path: Path) -> Path:
     target_path = (target_dir / source_path.name).resolve()
     if source_path.exists() and source_path.resolve() != target_path:
         if not target_path.exists() or source_path.stat().st_mtime > target_path.stat().st_mtime:
-            shutil.copy2(source_path, target_path)
-            LOGGER.warning("읽기 전용 SQLite DB를 쓰기 가능한 경로로 복사했습니다: %s -> %s", source_path, target_path)
+            try:
+                shutil.copy2(source_path, target_path)
+                LOGGER.warning("읽기 전용 SQLite DB를 쓰기 가능한 경로로 복사했습니다: %s -> %s", source_path, target_path)
+            except OSError as exc:
+                LOGGER.warning("SQLite DB 복사 실패. 쓰기 가능한 새 DB로 계속합니다: %s -> %s (%s)", source_path, target_path, exc)
     if not target_path.exists():
         target_path.touch()
     make_file_writable(target_path)
@@ -145,7 +179,7 @@ def normalize_database_url(raw_url: str) -> str:
 
 
 DATABASE_URL = normalize_database_url(RAW_DATABASE_URL)
-CONNECT_ARGS = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+CONNECT_ARGS = {"check_same_thread": False, "timeout": 15} if DATABASE_URL.startswith("sqlite") else {}
 
 
 def sqlite_database_path() -> Path | None:
@@ -202,17 +236,21 @@ def sqlite_writability_report() -> dict:
         "db_dir_writable": False,
         "sqlite_writeable": False,
         "readonly_url_option": "mode=ro" in RAW_DATABASE_URL.lower(),
+        "error": "",
     }
     if db_path is None:
         return report
-    ensure_path_writable(db_path)
-    assert_directory_writable(db_path.parent)
-    with db_path.open("ab"):
-        pass
-    report["db_exists"] = db_path.exists()
-    report["db_file_writable"] = os.access(db_path, os.W_OK)
-    report["db_dir_writable"] = os.access(db_path.parent, os.W_OK)
-    report["sqlite_writeable"] = sqlite_write_probe(db_path)
+    try:
+        ensure_path_writable(db_path)
+        assert_directory_writable(db_path.parent)
+        with db_path.open("ab"):
+            pass
+        report["db_exists"] = db_path.exists()
+        report["db_file_writable"] = os.access(db_path, os.W_OK)
+        report["db_dir_writable"] = os.access(db_path.parent, os.W_OK)
+        report["sqlite_writeable"] = sqlite_write_probe(db_path)
+    except OSError as exc:
+        report["error"] = str(exc)
     return report
 
 
@@ -232,7 +270,10 @@ def log_sqlite_writability(context: str = "") -> dict:
     return report
 
 
-log_sqlite_writability("module import")
+try:
+    log_sqlite_writability("module import")
+except Exception as exc:
+    LOGGER.warning("SQLite write check skipped during import: %s", exc)
 
 engine = create_engine(DATABASE_URL, connect_args=CONNECT_ARGS, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
@@ -242,9 +283,31 @@ Base = declarative_base()
 def init_db() -> None:
     from backend import models  # noqa: F401
 
-    repair_sqlite_schema()
-    Base.metadata.create_all(bind=engine)
-    ensure_sqlite_columns()
+    try:
+        repair_sqlite_schema()
+        Base.metadata.create_all(bind=engine)
+        ensure_sqlite_columns()
+    except Exception as exc:
+        LOGGER.exception("SQLite DB 초기화 실패: %s", exc)
+        if not DATABASE_URL.startswith("sqlite") or not is_sqlite_recoverable_open_error(exc):
+            raise
+        LOGGER.exception("SQLite DB 초기화 실패. 런타임 DB 경로로 전환해 재시도합니다: %s", exc)
+        switch_to_runtime_sqlite_copy()
+        repair_sqlite_schema()
+        Base.metadata.create_all(bind=engine)
+        ensure_sqlite_columns()
+
+
+def switch_to_runtime_sqlite_copy() -> None:
+    global DATABASE_URL, CONNECT_ARGS, engine, SessionLocal
+
+    db_path = sqlite_database_path() or DEFAULT_DB_PATH
+    runtime_path = copy_sqlite_to_writable_path(db_path)
+    DATABASE_URL = f"sqlite:///{runtime_path.as_posix()}"
+    CONNECT_ARGS = {"check_same_thread": False, "timeout": 15}
+    engine.dispose()
+    engine = create_engine(DATABASE_URL, connect_args=CONNECT_ARGS, future=True)
+    SessionLocal.configure(bind=engine)
 
 
 def repair_sqlite_schema() -> None:
@@ -376,10 +439,16 @@ def ensure_sqlite_columns() -> None:
 
     with engine.begin() as conn:
         for table_name, columns in column_specs.items():
-            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table_name})")}
+            if not sqlite_table_exists(conn, table_name):
+                LOGGER.warning("SQLite column migration skipped missing table: %s", table_name)
+                continue
+            quoted_table = quote_sqlite_identifier(table_name)
+            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({quoted_table})")}
             for column_name, ddl in columns.items():
                 if column_name not in existing:
-                    conn.exec_driver_sql(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}")
+                    conn.exec_driver_sql(
+                        f"ALTER TABLE {quoted_table} ADD COLUMN {quote_sqlite_identifier(column_name)} {ddl}"
+                    )
         ensure_product_master_barcode_constraints(conn)
 
 

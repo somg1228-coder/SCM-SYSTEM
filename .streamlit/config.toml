@@ -5,3 +5,11 @@ backgroundColor = "#F7F5F2"
 secondaryBackgroundColor = "#F1EEE8"
 textColor = "#1F2937"
 font = "sans serif"
+
+[server]
+headless = true
+port = 8502
+address = "localhost"
+
+[browser]
+gatherUsageStats = false

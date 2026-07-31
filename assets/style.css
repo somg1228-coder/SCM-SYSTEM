@@ -13432,3 +13432,103 @@ body,
         min-height: auto !important;
     }
 }
+
+/* Notebook baseline: preserve the desktop proportions without card/sidebar overlap. */
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+:root {
+    --portal-frame-max: 1366px;
+    --portal-frame-pad-x: clamp(12px, 1.25vw, 20px);
+    --portal-frame-gap: clamp(10px, 1vw, 14px);
+    --portal-sidebar-width: clamp(184px, 14.6vw, 214px);
+}
+
+.block-container,
+.main .block-container,
+[data-testid="stAppViewBlockContainer"],
+[data-testid="stMainBlockContainer"] {
+    padding-left: var(--portal-frame-pad-x) !important;
+    padding-right: var(--portal-frame-pad-x) !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"][aria-expanded="true"] {
+    flex: 0 0 var(--portal-sidebar-width) !important;
+    max-width: var(--portal-sidebar-width) !important;
+    min-width: var(--portal-sidebar-width) !important;
+    width: var(--portal-sidebar-width) !important;
+}
+
+.dashboard-shell {
+    gap: var(--portal-frame-gap) !important;
+    max-width: min(var(--portal-frame-max), 100%) !important;
+}
+
+@media (min-width: 1281px) {
+    .dashboard-shell > .kpi-row {
+        grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-middle-grid {
+        grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr) !important;
+    }
+
+    .status-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-bottom-grid {
+        grid-template-columns: minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.3fr) !important;
+    }
+}
+
+@media (max-width: 1280px) and (min-width: 981px) {
+    .dashboard-shell > .kpi-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-middle-grid,
+    .dashboard-bottom-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-middle-grid > .order-panel,
+    .dashboard-bottom-grid > .core-task-panel {
+        grid-column: 1 / -1 !important;
+    }
+
+    .status-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
+
+@media (max-width: 980px) and (min-width: 761px) {
+    .dashboard-shell > .kpi-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-middle-grid,
+    .dashboard-bottom-grid,
+    .status-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 760px) {
+    [data-testid="stSidebar"][aria-expanded="false"],
+    [data-testid="stSidebar"][aria-hidden="true"],
+    [data-testid="stSidebar"][aria-expanded="false"] > div,
+    [data-testid="stSidebar"][aria-hidden="true"] > div,
+    [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+    [data-testid="stSidebar"][aria-hidden="true"] [data-testid="stSidebarContent"],
+    [data-testid="stSidebar"][aria-expanded="false"] .block-container,
+    [data-testid="stSidebar"][aria-hidden="true"] .block-container {
+        flex-basis: 0 !important;
+        max-width: 0 !important;
+        min-width: 0 !important;
+        width: 0 !important;
+    }
+}
