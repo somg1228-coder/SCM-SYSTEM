@@ -282,10 +282,10 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
             input,
             select,
             button {{
-                background: #f8fafc;
-                border: 1px solid #cbd5e1;
+                background: #e7ebe6;
+                border: 1px solid #c5cec7;
                 border-radius: 9px;
-                color: #1f2937;
+                color: #303a42;
                 font-size: 0.78rem;
                 font-weight: 850;
                 min-height: 34px;
@@ -1617,7 +1617,7 @@ def warehouse_scene3d_html(
             * {{ box-sizing: border-box; letter-spacing: 0; }}
             body {{
                 background: transparent;
-                color: #f2fffb;
+                color: #d7ddd9;
                 font-family: "Pretendard", "Noto Sans KR", Arial, sans-serif;
                 margin: 0;
                 overflow: hidden;
@@ -1629,8 +1629,8 @@ def warehouse_scene3d_html(
                 height: 684px;
             }}
             .panel {{
-                background: #ffffff;
-                border: 1px solid #e2e8f0;
+                background: #edf0ec;
+                border: 1px solid #cfd6d0;
                 border-radius: 12px;
                 min-height: 0;
                 overflow: hidden;
@@ -1643,13 +1643,13 @@ def warehouse_scene3d_html(
             .building-panel h3,
             .model-panel h3,
             .detail-panel h3 {{
-                color: #1f2937;
+                color: #273038;
                 font-size: 0.96rem;
                 margin: 0 0 0.56rem;
             }}
             .building-name,
             .scene-head span {{
-                color: #64748b;
+                color: #6d7772;
                 font-size: 0.74rem;
                 font-weight: 850;
                 line-height: 1.45;
@@ -1678,20 +1678,20 @@ def warehouse_scene3d_html(
                 cursor: pointer;
             }}
             button:hover {{
-                background: #eef3f7;
-                border-color: #9fb1c3;
+                background: #dde4de;
+                border-color: #aebbb2;
             }}
             .floor-chip {{
-                color: #334155;
+                color: #3f4a50;
                 font-weight: 900;
                 padding: 0.52rem 0.6rem;
                 text-align: center;
             }}
             .floor-chip.active {{
-                background: #eef3f7;
-                border-color: #b9c8d6;
-                box-shadow: inset 3px 0 0 #58799a;
-                color: #36556f;
+                background: #dde4de;
+                border-color: #b6c0b8;
+                box-shadow: inset 3px 0 0 #657681;
+                color: #43515a;
             }}
             .zone-tags {{
                 display: flex;
@@ -1700,10 +1700,10 @@ def warehouse_scene3d_html(
                 margin-top: 0.8rem;
             }}
             .zone-tags span {{
-                background: #eef3f7;
-                border: 1px solid #dbe3ec;
+                background: #e0e5df;
+                border: 1px solid #cbd4cd;
                 border-radius: 999px;
-                color: #58708a;
+                color: #647068;
                 font-size: 0.68rem;
                 font-weight: 850;
                 padding: 0.24rem 0.42rem;
@@ -1749,10 +1749,10 @@ def warehouse_scene3d_html(
             }}
             .fixture-name-toggle {{
                 align-items: center;
-                background: #eef3f7;
-                border: 1px solid #dbe3ec;
+                background: #e0e5df;
+                border: 1px solid #cbd4cd;
                 border-radius: 9px;
-                color: #36556f;
+                color: #46545c;
                 display: inline-flex;
                 font-size: 0.76rem;
                 font-weight: 900;
@@ -1763,13 +1763,13 @@ def warehouse_scene3d_html(
                 white-space: nowrap;
             }}
             .fixture-name-toggle input {{
-                accent-color: #58799a;
+                accent-color: #657681;
                 margin: 0;
             }}
             .floor-size-tools {{
                 align-items: center;
-                background: rgba(255, 255, 255, 0.92);
-                border: 1px solid #dbe3ec;
+                background: rgba(236, 240, 235, 0.94);
+                border: 1px solid #c8d1ca;
                 border-radius: 10px;
                 display: grid;
                 gap: 0.34rem;
@@ -1781,7 +1781,7 @@ def warehouse_scene3d_html(
                 z-index: 3;
             }}
             .floor-size-tools span {{
-                color: #475569;
+                color: #59645f;
                 font-size: 0.68rem;
                 font-weight: 900;
                 white-space: nowrap;
@@ -1797,8 +1797,8 @@ def warehouse_scene3d_html(
             }}
             .zoom-tools {{
                 align-items: center;
-                background: rgba(255, 255, 255, 0.92);
-                border: 1px solid #dbe3ec;
+                background: rgba(236, 240, 235, 0.94);
+                border: 1px solid #c8d1ca;
                 border-radius: 10px;
                 display: flex;
                 gap: 0.36rem;
@@ -1809,7 +1809,7 @@ def warehouse_scene3d_html(
                 z-index: 3;
             }}
             .zoom-tools span {{
-                color: #475569;
+                color: #59645f;
                 font-size: 0.68rem;
                 font-weight: 900;
                 margin-right: 0.1rem;
@@ -1819,13 +1819,13 @@ def warehouse_scene3d_html(
                 padding: 0 0.42rem;
             }}
             .zoom-tools button.active {{
-                background: #58799a;
-                border-color: #58799a;
-                color: #ffffff;
+                background: #657681;
+                border-color: #657681;
+                color: #f2f4f1;
             }}
             .nav-tools {{
-                background: rgba(255, 255, 255, 0.92);
-                border: 1px solid #dbe3ec;
+                background: rgba(236, 240, 235, 0.94);
+                border: 1px solid #c8d1ca;
                 border-radius: 10px;
                 display: grid;
                 gap: 0.28rem;
@@ -1846,9 +1846,9 @@ def warehouse_scene3d_html(
             }}
             .model-viewport {{
                 background:
-                    radial-gradient(circle at 50% 15%, rgba(238, 243, 247, 0.82), transparent 34%),
-                    linear-gradient(180deg, #f8fafc, #eef3f7);
-                border: 1px solid #dbe3ec;
+                    radial-gradient(circle at 50% 15%, rgba(214, 221, 215, 0.48), transparent 34%),
+                    linear-gradient(180deg, #e7ece6, #d8dfd8);
+                border: 1px solid #c8d1ca;
                 border-radius: 12px;
                 min-height: 0;
                 overflow: hidden;
@@ -1860,10 +1860,10 @@ def warehouse_scene3d_html(
                 width: 100%;
             }}
             .model-label {{
-                background: rgba(255, 255, 255, 0.9);
-                border: 1px solid #dbe3ec;
+                background: rgba(236, 240, 235, 0.92);
+                border: 1px solid #c8d1ca;
                 border-radius: 9px;
-                color: #36556f;
+                color: #46545c;
                 font-size: 0.68rem;
                 font-weight: 900;
                 left: 1rem;
@@ -1873,11 +1873,11 @@ def warehouse_scene3d_html(
                 z-index: 3;
             }}
             .model-help {{
-                background: rgba(255, 255, 255, 0.9);
-                border: 1px solid #dbe3ec;
+                background: rgba(236, 240, 235, 0.92);
+                border: 1px solid #c8d1ca;
                 border-radius: 9px;
                 bottom: 1rem;
-                color: #64748b;
+                color: #6b756f;
                 font-size: 0.68rem;
                 font-weight: 900;
                 left: 1rem;
@@ -2358,8 +2358,8 @@ def warehouse_scene3d_html(
             const placementScale = 1.45;
 
             const scene = new THREE.Scene();
-            const screenSceneBackground = new THREE.Color(0xdce4df);
-            const screenSceneFog = new THREE.Fog(0xdce4df, 42, 96);
+            const screenSceneBackground = new THREE.Color(0xcfd6cf);
+            const screenSceneFog = new THREE.Fog(0xcfd6cf, 34, 82);
             scene.background = screenSceneBackground;
             scene.fog = screenSceneFog;
 
@@ -2421,12 +2421,12 @@ def warehouse_scene3d_html(
                 controls.update();
             }}
 
-            const ambient = new THREE.HemisphereLight(0xffffff, 0xd9e2ea, 1.55);
+            const ambient = new THREE.HemisphereLight(0xe2e6e0, 0xb8c0b8, 1.12);
             scene.add(ambient);
-            const keyLight = new THREE.DirectionalLight(0xffffff, 2.05);
+            const keyLight = new THREE.DirectionalLight(0xe8ebe5, 1.42);
             keyLight.position.set(18, 28, 22);
             scene.add(keyLight);
-            const fillLight = new THREE.DirectionalLight(0xb9c8d6, 0.72);
+            const fillLight = new THREE.DirectionalLight(0xaeb8af, 0.48);
             fillLight.position.set(-20, 12, -18);
             scene.add(fillLight);
 
@@ -2457,19 +2457,19 @@ def warehouse_scene3d_html(
             let lastRackAddAt = 0;
             let dragOffset = new THREE.Vector3();
             const fixtureDefaults = {{
-                entrance: {{ label: "출입구", w: 4.2, d: 0.45, h: 0.34, color: 0x58799a }},
-                door: {{ label: "문", w: 2.2, d: 0.32, h: 1.55, color: 0x8aa0b4 }},
-                shutter: {{ label: "셔터", w: 4.8, d: 0.38, h: 1.8, color: 0xa8b3bf }},
-                dock: {{ label: "상차도크", w: 5.4, d: 1.6, h: 0.42, color: 0x6f879f }},
-                exit: {{ label: "비상구", w: 2.8, d: 0.38, h: 1.45, color: 0x6f927d }},
-                elevator: {{ label: "엘리베이터", w: 2.6, d: 2.4, h: 2.3, color: 0x8c99a6 }},
-                desk: {{ label: "책상", w: 2.4, d: 1.25, h: 0.82, color: 0xb8874f }},
-                wall: {{ label: "벽/칸막이", w: 6.8, d: 0.18, h: 1.35, color: 0x9fb7b2 }},
-                aisle: {{ label: "통로", w: 8.0, d: 2.0, h: 0.08, color: 0x9fb1c3 }},
-                zone: {{ label: "작업구역", w: 6.2, d: 4.0, h: 0.08, color: 0xb78b5a }},
-                box: {{ label: "박스", w: 1.2, d: 1.0, h: 0.72, color: 0xb78b5a }},
-                pallet: {{ label: "파렛트", w: 1.55, d: 1.55, h: 1.35, color: 0xa88661 }},
-                wrapped_pallet: {{ label: "랩핑 파렛트", w: 1.55, d: 1.55, h: 1.45, color: 0x8da3b8 }},
+                entrance: {{ label: "출입구", w: 4.2, d: 0.45, h: 0.34, color: 0x64747c }},
+                door: {{ label: "문", w: 2.2, d: 0.32, h: 1.55, color: 0x7f8b92 }},
+                shutter: {{ label: "셔터", w: 4.8, d: 0.38, h: 1.8, color: 0x9aa2a8 }},
+                dock: {{ label: "상차도크", w: 5.4, d: 1.6, h: 0.42, color: 0x6f7c85 }},
+                exit: {{ label: "비상구", w: 2.8, d: 0.38, h: 1.45, color: 0x6d7f70 }},
+                elevator: {{ label: "엘리베이터", w: 2.6, d: 2.4, h: 2.3, color: 0x858d91 }},
+                desk: {{ label: "책상", w: 2.4, d: 1.25, h: 0.82, color: 0x8d7658 }},
+                wall: {{ label: "벽/칸막이", w: 6.8, d: 0.18, h: 1.35, color: 0x8f9a95 }},
+                aisle: {{ label: "통로", w: 8.0, d: 2.0, h: 0.08, color: 0x929da4 }},
+                zone: {{ label: "작업구역", w: 6.2, d: 4.0, h: 0.08, color: 0x998667 }},
+                box: {{ label: "박스", w: 1.2, d: 1.0, h: 0.72, color: 0x927b5a }},
+                pallet: {{ label: "파렛트", w: 1.55, d: 1.55, h: 1.35, color: 0x85735e }},
+                wrapped_pallet: {{ label: "랩핑 파렛트", w: 1.55, d: 1.55, h: 1.45, color: 0x82909a }},
             }};
             const outsideFixtureTypes = new Set(["entrance", "door", "shutter", "dock", "exit"]);
             const fixtureLabelStorageKey = `${{baseStorageKey}}fixtureLabels`;
@@ -2480,34 +2480,34 @@ def warehouse_scene3d_html(
             }}
 
             const materials = {{
-                slab: new THREE.MeshStandardMaterial({{ color: 0xe7edf3, roughness: 0.88, metalness: 0.03, transparent: true, opacity: 0.72 }}),
-                activeSlab: new THREE.MeshStandardMaterial({{ color: 0xdbe5ee, roughness: 0.72, metalness: 0.04, transparent: true, opacity: 0.78 }}),
-                wall: new THREE.MeshStandardMaterial({{ color: 0xcbd5e1, roughness: 0.9, transparent: true, opacity: 0.34 }}),
-                rack: new THREE.MeshStandardMaterial({{ color: 0x58799a, roughness: 0.78, metalness: 0.05 }}),
-                rackEmpty: new THREE.MeshStandardMaterial({{ color: 0x94a3b8, roughness: 0.9, transparent: true, opacity: 0.46 }}),
-                rackShort: new THREE.MeshStandardMaterial({{ color: 0xb66a6a, roughness: 0.75, metalness: 0.04 }}),
-                rackPost: new THREE.MeshStandardMaterial({{ color: 0xf4f7f3, roughness: 0.58, metalness: 0.28 }}),
-                rackShelf: new THREE.MeshStandardMaterial({{ color: 0xe7ece7, roughness: 0.62, metalness: 0.18 }}),
-                rackBrace: new THREE.MeshStandardMaterial({{ color: 0xbecac5, roughness: 0.7, metalness: 0.25 }}),
-                heavyPost: new THREE.MeshStandardMaterial({{ color: 0x58799a, roughness: 0.42, metalness: 0.24 }}),
-                heavyBeam: new THREE.MeshStandardMaterial({{ color: 0xb78b5a, roughness: 0.46, metalness: 0.18 }}),
-                heavyDeck: new THREE.MeshStandardMaterial({{ color: 0xf1e4d1, roughness: 0.7, metalness: 0.04 }}),
-                heavyBrace: new THREE.MeshStandardMaterial({{ color: 0x36556f, roughness: 0.5, metalness: 0.22 }}),
-                itemBox: new THREE.MeshStandardMaterial({{ color: 0x6f927d, roughness: 0.72, metalness: 0.04 }}),
-                itemBoxShort: new THREE.MeshStandardMaterial({{ color: 0xb66a6a, roughness: 0.72, metalness: 0.04 }}),
-                itemBoxSelected: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.68, metalness: 0.04 }}),
+                slab: new THREE.MeshStandardMaterial({{ color: 0xd2d9d3, roughness: 0.92, metalness: 0.02, transparent: true, opacity: 0.66 }}),
+                activeSlab: new THREE.MeshStandardMaterial({{ color: 0xc8d0ca, roughness: 0.82, metalness: 0.03, transparent: true, opacity: 0.72 }}),
+                wall: new THREE.MeshStandardMaterial({{ color: 0xb8c1bb, roughness: 0.92, transparent: true, opacity: 0.3 }}),
+                rack: new THREE.MeshStandardMaterial({{ color: 0x64747c, roughness: 0.82, metalness: 0.04 }}),
+                rackEmpty: new THREE.MeshStandardMaterial({{ color: 0x8b969d, roughness: 0.92, transparent: true, opacity: 0.42 }}),
+                rackShort: new THREE.MeshStandardMaterial({{ color: 0x9a6b68, roughness: 0.8, metalness: 0.03 }}),
+                rackPost: new THREE.MeshStandardMaterial({{ color: 0xd9ddd7, roughness: 0.66, metalness: 0.18 }}),
+                rackShelf: new THREE.MeshStandardMaterial({{ color: 0xd0d6d0, roughness: 0.72, metalness: 0.12 }}),
+                rackBrace: new THREE.MeshStandardMaterial({{ color: 0xaab4ae, roughness: 0.76, metalness: 0.18 }}),
+                heavyPost: new THREE.MeshStandardMaterial({{ color: 0x5f6d75, roughness: 0.5, metalness: 0.18 }}),
+                heavyBeam: new THREE.MeshStandardMaterial({{ color: 0x8d7658, roughness: 0.56, metalness: 0.12 }}),
+                heavyDeck: new THREE.MeshStandardMaterial({{ color: 0xd5cbbb, roughness: 0.78, metalness: 0.03 }}),
+                heavyBrace: new THREE.MeshStandardMaterial({{ color: 0x46535b, roughness: 0.58, metalness: 0.16 }}),
+                itemBox: new THREE.MeshStandardMaterial({{ color: 0x6d7f70, roughness: 0.78, metalness: 0.03 }}),
+                itemBoxShort: new THREE.MeshStandardMaterial({{ color: 0x9a6b68, roughness: 0.78, metalness: 0.03 }}),
+                itemBoxSelected: new THREE.MeshStandardMaterial({{ color: 0x64747c, emissive: 0x172027, roughness: 0.72, metalness: 0.03 }}),
                 hitbox: new THREE.MeshBasicMaterial({{ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }}),
-                room: new THREE.MeshStandardMaterial({{ color: 0xdbe3ec, roughness: 0.85, transparent: true, opacity: 0.36 }}),
-                column: new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.72, metalness: 0.14, transparent: true, opacity: 0.82 }}),
-                entrance: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.5 }}),
-                locked: new THREE.MeshStandardMaterial({{ color: 0xb78b5a, emissive: 0x4a3720, roughness: 0.45 }}),
-                resizeHandle: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.36, metalness: 0.1 }}),
-                roofGarden: new THREE.MeshStandardMaterial({{ color: 0x6f927d, roughness: 0.86, metalness: 0.02, transparent: true, opacity: 0.72 }}),
-                roofEquip: new THREE.MeshStandardMaterial({{ color: 0xa7c3c0, roughness: 0.68, metalness: 0.32, transparent: true, opacity: 0.88 }}),
-                roofDetail: new THREE.MeshStandardMaterial({{ color: 0xd8c88c, roughness: 0.82, metalness: 0.05, transparent: true, opacity: 0.5 }}),
-                selected: new THREE.LineBasicMaterial({{ color: 0x36556f }}),
-                edge: new THREE.LineBasicMaterial({{ color: 0x9fb1c3, transparent: true, opacity: 0.48 }}),
-                floorEdge: new THREE.LineBasicMaterial({{ color: 0x94a3b8, transparent: true, opacity: 0.36 }}),
+                room: new THREE.MeshStandardMaterial({{ color: 0xcbd2ce, roughness: 0.88, transparent: true, opacity: 0.32 }}),
+                column: new THREE.MeshStandardMaterial({{ color: 0xd9ddd7, roughness: 0.76, metalness: 0.1, transparent: true, opacity: 0.76 }}),
+                entrance: new THREE.MeshStandardMaterial({{ color: 0x64747c, emissive: 0x172027, roughness: 0.58 }}),
+                locked: new THREE.MeshStandardMaterial({{ color: 0x8d7658, emissive: 0x2b2419, roughness: 0.52 }}),
+                resizeHandle: new THREE.MeshStandardMaterial({{ color: 0x657681, emissive: 0x172027, roughness: 0.44, metalness: 0.08 }}),
+                roofGarden: new THREE.MeshStandardMaterial({{ color: 0x6d7f70, roughness: 0.88, metalness: 0.02, transparent: true, opacity: 0.66 }}),
+                roofEquip: new THREE.MeshStandardMaterial({{ color: 0x8fa09a, roughness: 0.72, metalness: 0.22, transparent: true, opacity: 0.78 }}),
+                roofDetail: new THREE.MeshStandardMaterial({{ color: 0xb8aa78, roughness: 0.84, metalness: 0.04, transparent: true, opacity: 0.42 }}),
+                selected: new THREE.LineBasicMaterial({{ color: 0x46535b }}),
+                edge: new THREE.LineBasicMaterial({{ color: 0x8d999f, transparent: true, opacity: 0.42 }}),
+                floorEdge: new THREE.LineBasicMaterial({{ color: 0x858f95, transparent: true, opacity: 0.32 }}),
             }};
 
             function escapeHtml(value) {{
