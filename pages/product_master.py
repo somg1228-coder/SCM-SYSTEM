@@ -197,26 +197,31 @@ def render_master_tab(source_type: str, title: str) -> None:
         elif uses_threepl_master_form(source_type) and any(column not in st.session_state[editor_buffer_key].columns for column in THREEPL_MASTER_COLUMNS):
             st.session_state[editor_buffer_key] = df
         editor_df = st.session_state[editor_buffer_key]
-        with st.form(key=f"product_master_{key}_editor_form", clear_on_submit=False):
-            edited = st.data_editor(
-                editor_df,
-                hide_index=True,
-                use_container_width=True,
-                num_rows="dynamic",
-                height=470 if uses_simple_master_form(source_type) or uses_threepl_master_form(source_type) else 360,
-                key=f"product_master_{key}_editor",
-                column_order=master_column_order(source_type),
-                column_config=master_column_config_for_source(source_type),
-                disabled=master_disabled_columns(source_type),
-            )
-            if st.form_submit_button("저장", type="primary", use_container_width=True):
-                payload = editor_payload_for_source(source_type, edited)
-                outcome = with_db(lambda db: services.bulk_save_product_master(db, source_type, payload))
-                if outcome and outcome.get("ok", True):
-                    clear_master_editor_buffer(key)
-                else:
-                    st.session_state[editor_buffer_key] = edited
-                show_result(outcome)
+        render_product_master_visible_table(
+            editor_df.drop(columns=["미사용 처리"], errors="ignore"),
+            height=470 if uses_simple_master_form(source_type) or uses_threepl_master_form(source_type) else 360,
+        )
+        with st.expander("편집", expanded=False):
+            with st.form(key=f"product_master_{key}_editor_form", clear_on_submit=False):
+                edited = st.data_editor(
+                    editor_df,
+                    hide_index=True,
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    height=470 if uses_simple_master_form(source_type) or uses_threepl_master_form(source_type) else 360,
+                    key=f"product_master_{key}_editor",
+                    column_order=master_column_order(source_type),
+                    column_config=master_column_config_for_source(source_type),
+                    disabled=master_disabled_columns(source_type),
+                )
+                if st.form_submit_button("저장", type="primary", use_container_width=True):
+                    payload = editor_payload_for_source(source_type, edited)
+                    outcome = with_db(lambda db: services.bulk_save_product_master(db, source_type, payload))
+                    if outcome and outcome.get("ok", True):
+                        clear_master_editor_buffer(key)
+                    else:
+                        st.session_state[editor_buffer_key] = edited
+                    show_result(outcome)
 
         sync_col, spacer = st.columns([1.05, 6.1], gap="small")
         with sync_col:
@@ -309,19 +314,21 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                 reset_threepl_master_filters(key)
                 st.rerun()
 
-        with st.form(key=f"product_master_{key}_editor_form", clear_on_submit=False):
-            edited = st.data_editor(
-                page_df,
-                hide_index=True,
-                use_container_width=True,
-                num_rows="dynamic",
-                height=470,
-                key=f"product_master_{key}_editor_{page}_{len(sorted_df)}",
-                column_order=THREEPL_MASTER_COLUMNS,
-                column_config=threepl_master_column_config(),
-                disabled=[],
-            )
-            submitted = st.form_submit_button("저장", type="primary", use_container_width=True)
+        render_product_master_visible_table(page_df[THREEPL_MASTER_COLUMNS], height=470)
+        with st.expander("편집", expanded=False):
+            with st.form(key=f"product_master_{key}_editor_form", clear_on_submit=False):
+                edited = st.data_editor(
+                    page_df,
+                    hide_index=True,
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    height=470,
+                    key=f"product_master_{key}_editor_{page}_{len(sorted_df)}",
+                    column_order=THREEPL_MASTER_COLUMNS,
+                    column_config=threepl_master_column_config(),
+                    disabled=[],
+                )
+                submitted = st.form_submit_button("저장", type="primary", use_container_width=True)
         if submitted:
             payload = threepl_editor_to_payload(edited)
             outcome = with_db(lambda db: services.bulk_save_product_master(db, source_type, payload))
@@ -428,7 +435,25 @@ def render_threepl_import_details(payload: dict) -> None:
         }
         for detail in details
     ]
-    st.dataframe(pd.DataFrame(display_rows), hide_index=True, use_container_width=True, height=260)
+    render_product_master_visible_table(pd.DataFrame(display_rows), height=260)
+
+
+def render_product_master_visible_table(df: pd.DataFrame, height: int = 470) -> None:
+    if df is None or df.empty:
+        st.info("표시할 마스터 데이터가 없습니다.")
+        return
+    safe_df = df.copy()
+    for column in safe_df.columns:
+        safe_df[column] = safe_df[column].map(clean_value)
+    html = safe_df.to_html(index=False, escape=True, classes="product-master-visible-table")
+    st.markdown(
+        f"""
+        <div class="product-master-visible-table-wrap" style="max-height:{int(height)}px;">
+            {html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_single_product_form(source_type: str, key: str) -> None:
@@ -1279,6 +1304,47 @@ def inject_product_master_css() -> None:
             display: block !important;
             opacity: 1 !important;
             visibility: visible !important;
+        }
+        .product-master-visible-table-wrap {
+            width: 100%;
+            overflow: auto;
+            background: #F1EEE8;
+            border: 1px solid #D8D0C4;
+            border-radius: 8px;
+            margin: 0.35rem 0 0.75rem;
+        }
+        .product-master-visible-table {
+            width: 100%;
+            min-width: 980px;
+            border-collapse: collapse;
+            color: #24384E;
+            font-size: 0.82rem;
+            table-layout: auto;
+        }
+        .product-master-visible-table th,
+        .product-master-visible-table td {
+            border-bottom: 1px solid #D8D0C4;
+            border-right: 1px solid #E2DCD4;
+            padding: 0.52rem 0.58rem;
+            text-align: center;
+            vertical-align: middle;
+            white-space: nowrap;
+            background: #FAF8F5;
+        }
+        .product-master-visible-table th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #E6E0D7;
+            color: #26384A;
+            font-weight: 850;
+        }
+        .product-master-visible-table tr:nth-child(even) td {
+            background: #F4F1EB;
+        }
+        .product-master-visible-table td:last-child,
+        .product-master-visible-table th:last-child {
+            border-right: 0;
         }
         </style>
         """,
