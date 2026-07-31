@@ -1,12 +1,15 @@
-2026-07-31 10:26:07.169 No ASGI app assignments found in C:\Users\로긴-2021-12-09\OneDrive\바탕 화면\SCM_PORTAL\app.py
-2026-07-31 10:26:07.295 Filtered 62 packages down to 3 candidates for component scanning
-2026-07-31 10:26:07.295 Scanning 3 candidate packages for component manifests using 3 worker threads
-2026-07-31 10:26:07.408 Found 0 component manifests total
-2026-07-31 10:26:07.409 No asset roots to watch
-2026-07-31 10:26:07.409 File watching not started
-2026-07-31 10:26:07.409 Starting new event loop for server
-2026-07-31 10:26:07.410 Starting server...
-2026-07-31 10:26:07.469 Starting uvicorn server on localhost:8502
-2026-07-31 10:26:07.510 Runtime state: RuntimeState.INITIAL -> RuntimeState.NO_SESSIONS_CONNECTED
-2026-07-31 10:26:07.511 Uvicorn server started on localhost:8502
-2026-07-31 10:26:07.564 Setting up signal handler
+2026-07-31 10:37:58.487 No ASGI app assignments found in C:\Users\로긴-2021-12-09\OneDrive\바탕 화면\SCM_PORTAL\app.py
+2026-07-31 10:37:58.613 Filtered 62 packages down to 3 candidates for component scanning
+2026-07-31 10:37:58.613 Scanning 3 candidate packages for component manifests using 3 worker threads
+2026-07-31 10:37:58.732 Found 0 component manifests total
+2026-07-31 10:37:58.732 No asset roots to watch
+2026-07-31 10:37:58.732 File watching not started
+2026-07-31 10:37:58.732 Starting new event loop for server
+2026-07-31 10:37:58.733 Starting server...
+2026-07-31 10:37:58.802 Starting uvicorn server on localhost:8502
+2026-07-31 10:37:58.846 Runtime state: RuntimeState.INITIAL -> RuntimeState.NO_SESSIONS_CONNECTED
+2026-07-31 10:37:58.846 Uvicorn server started on localhost:8502
+2026-07-31 10:37:58.905 Setting up signal handler
+2026-07-31 10:37:59.375 AppSession initialized (id=1c92c002-5fe4-440e-a46e-24c09241896c)
+2026-07-31 10:37:59.376 Created new session for client 1508436252992. Session ID: 1c92c002-5fe4-440e-a46e-24c09241896c
+2026-07-31 10:37:59.376 Runtime state: RuntimeState.NO_SESSIONS_CONNECTED -> RuntimeState.ONE_OR_MORE_SESSIONS_CONNECTED

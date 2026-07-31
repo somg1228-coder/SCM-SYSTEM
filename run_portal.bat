@@ -7,6 +7,7 @@ if not exist data mkdir data
 
 set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python314\python.exe"
 if not exist "%PYTHON_EXE%" set "PYTHON_EXE=python"
+set "PYTHONDONTWRITEBYTECODE=1"
 
 echo Starting SCM Portal on http://localhost:8502
 echo Logs:
@@ -18,6 +19,7 @@ echo.
   --server.address localhost ^
   --server.port 8502 ^
   --server.headless true ^
+  --server.fileWatcherType none ^
   --client.showErrorDetails full ^
   --logger.level debug ^
   1>data\streamlit.out.log ^
