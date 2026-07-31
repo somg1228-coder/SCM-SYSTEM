@@ -794,16 +794,11 @@ def render_daily_tab(source_type: str) -> None:
     applied_df = st.session_state.get(applied_inventory_df_key)
     if isinstance(applied_df, pd.DataFrame) and not applied_df.empty:
         st.markdown("#### 현재고 반영 결과")
-        st.dataframe(
-            applied_df,
-            hide_index=True,
-            use_container_width=True,
-            height=520,
-        )
+        render_inventory_visible_table(applied_df, height=520)
     excluded_df = st.session_state.get(excluded_inventory_df_key)
     if isinstance(excluded_df, pd.DataFrame) and not excluded_df.empty:
         with st.expander(f"반영 제외 {len(excluded_df):,}건 및 사유", expanded=False):
-            st.dataframe(excluded_df, hide_index=True, use_container_width=True, height=260)
+            render_inventory_visible_table(excluded_df, height=260)
 
     if filtered_df.empty:
         st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
@@ -812,12 +807,7 @@ def render_daily_tab(source_type: str) -> None:
             st.rerun()
     else:
         display_df = paged_df.drop(columns=["선택"], errors="ignore")
-        st.dataframe(
-            display_df,
-            hide_index=True,
-            use_container_width=True,
-            height=520,
-        )
+        render_inventory_visible_table(display_df, height=520)
         nav_prev, nav_info, nav_next, spacer = st.columns([0.8, 1.0, 0.8, 4.6], gap="small")
         filter_key = source_key(source_type)
         with nav_prev:
@@ -1370,6 +1360,24 @@ def style_inventory_dataframe(df: pd.DataFrame):
     return styler.applymap(cell_style, subset=["재고상태"])
 
 
+def render_inventory_visible_table(df: pd.DataFrame, height: int = 520) -> None:
+    if df is None or df.empty:
+        st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
+        return
+    safe_df = df.fillna("").copy()
+    for column in safe_df.columns:
+        safe_df[column] = safe_df[column].map(lambda value: value.isoformat() if hasattr(value, "isoformat") else value)
+    html = safe_df.to_html(index=False, escape=True, classes="inventory-visible-table")
+    st.markdown(
+        f"""
+        <div class="inventory-visible-table-wrap" style="max-height:{int(height)}px;">
+            {html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_stock_upload_preview(
     source_type: str,
     work_date: date,
@@ -1400,12 +1408,7 @@ def render_stock_upload_preview(
     if preview_df is None or preview_df.empty:
         st.warning("업로드한 엑셀에서 표시할 데이터를 찾지 못했습니다.")
     else:
-        st.dataframe(
-            preview_df,
-            hide_index=True,
-            use_container_width=True,
-            height=420,
-        )
+        render_inventory_visible_table(preview_df, height=420)
     apply_col, cancel_col, spacer = st.columns([1.0, 1.0, 4.2], gap="small")
     with apply_col:
         if st.button("현재고 반영", type="primary", key=f"{preview_key}_apply", use_container_width=True):
@@ -1431,15 +1434,10 @@ def render_stock_upload_preview(
                     f"제외 {max(int(preview.get('total_rows', 0) or 0) - int(outcome.get('count', 0) or 0), 0):,}건"
                 )
                 if not applied_df.empty:
-                    st.dataframe(
-                        applied_df,
-                        hide_index=True,
-                        use_container_width=True,
-                        height=520,
-                    )
+                    render_inventory_visible_table(applied_df, height=520)
                 if not excluded_df.empty:
                     with st.expander(f"반영 제외 {len(excluded_df):,}건 및 사유", expanded=False):
-                        st.dataframe(excluded_df, hide_index=True, use_container_width=True, height=260)
+                        render_inventory_visible_table(excluded_df, height=260)
             show_result(outcome)
     with cancel_col:
         if st.button("미리보기 취소", key=f"{preview_key}_cancel", use_container_width=True):
@@ -2555,6 +2553,47 @@ def inject_inventory_css() -> None:
         div[data-testid="stDataFrame"],
         div[data-testid="stDataEditor"] {
             width: 100% !important;
+        }
+        .inventory-visible-table-wrap {
+            width: 100%;
+            overflow: auto;
+            background: #F1EEE8;
+            border: 1px solid #D8D0C4;
+            border-radius: 8px;
+            margin: 0.2rem 0 0.75rem;
+        }
+        .inventory-visible-table {
+            width: 100%;
+            min-width: 1080px;
+            border-collapse: collapse;
+            color: #24384E;
+            font-size: 0.82rem;
+            table-layout: auto;
+        }
+        .inventory-visible-table th,
+        .inventory-visible-table td {
+            border-bottom: 1px solid #D8D0C4;
+            border-right: 1px solid #E2DCD4;
+            padding: 0.52rem 0.58rem;
+            text-align: center;
+            vertical-align: middle;
+            white-space: nowrap;
+            background: #FAF8F5;
+        }
+        .inventory-visible-table th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #E6E0D7;
+            color: #26384A;
+            font-weight: 850;
+        }
+        .inventory-visible-table tr:nth-child(even) td {
+            background: #F4F1EB;
+        }
+        .inventory-visible-table td:last-child,
+        .inventory-visible-table th:last-child {
+            border-right: 0;
         }
         </style>
         """,
