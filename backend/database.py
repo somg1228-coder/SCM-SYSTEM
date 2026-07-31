@@ -430,10 +430,23 @@ def ensure_sqlite_columns() -> None:
             "currency": "VARCHAR(10) NOT NULL DEFAULT 'KRW'",
         },
         "suppliers": {
+            "supplier_code": "VARCHAR(40) NOT NULL DEFAULT ''",
+            "business_number": "VARCHAR(80) NOT NULL DEFAULT ''",
             "handled_items": "VARCHAR(500) NOT NULL DEFAULT ''",
             "moq_terms": "VARCHAR(500) NOT NULL DEFAULT ''",
+            "transaction_status": "VARCHAR(40) NOT NULL DEFAULT '거래중'",
+            "current_grade": "VARCHAR(20) NOT NULL DEFAULT '미평가'",
+            "latest_score": "FLOAT NOT NULL DEFAULT 0",
+            "latest_evaluation_date": "DATE",
+            "next_evaluation_date": "DATE",
+            "special_management": "BOOLEAN NOT NULL DEFAULT 0",
+            "special_reason": "VARCHAR(500) NOT NULL DEFAULT ''",
             "avg_unit_price_currency": "VARCHAR(10) NOT NULL DEFAULT 'KRW'",
             "payment_terms": "VARCHAR(120) NOT NULL DEFAULT ''",
+        },
+        "supplier_evaluations": {
+            "special_warning": "BOOLEAN NOT NULL DEFAULT 0",
+            "is_deleted": "BOOLEAN NOT NULL DEFAULT 0",
         },
     }
 

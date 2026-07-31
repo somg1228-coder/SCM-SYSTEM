@@ -335,12 +335,21 @@ class Supplier(Base):
     __table_args__ = (UniqueConstraint("supplier_name", name="uq_suppliers_supplier_name"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    supplier_code: Mapped[str] = mapped_column(String(40), default="", index=True, nullable=False)
     supplier_name: Mapped[str] = mapped_column(String(160), index=True, nullable=False)
+    business_number: Mapped[str] = mapped_column(String(80), default="", nullable=False)
     handled_items: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     moq_terms: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     manager: Mapped[str] = mapped_column(String(120), default="", nullable=False)
     phone: Mapped[str] = mapped_column(String(80), default="", nullable=False)
     email: Mapped[str] = mapped_column(String(160), default="", nullable=False)
+    transaction_status: Mapped[str] = mapped_column(String(40), default="거래중", index=True, nullable=False)
+    current_grade: Mapped[str] = mapped_column(String(20), default="미평가", index=True, nullable=False)
+    latest_score: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    latest_evaluation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    next_evaluation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    special_management: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    special_reason: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     avg_lead_time_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     avg_unit_price: Mapped[float] = mapped_column(Float, default=0, nullable=False)
     avg_unit_price_currency: Mapped[str] = mapped_column(String(10), default="KRW", nullable=False)
@@ -354,6 +363,104 @@ class Supplier(Base):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+
+
+class SupplierEvaluation(Base):
+    __tablename__ = "supplier_evaluations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    supplier_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    evaluation_year: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    evaluation_quarter: Mapped[str] = mapped_column(String(10), default="Q1", index=True, nullable=False)
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    evaluation_date: Mapped[date] = mapped_column(Date, default=date.today, index=True, nullable=False)
+    evaluator: Mapped[str] = mapped_column(String(120), default="", index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="임시저장", index=True, nullable=False)
+    quality_score: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    delivery_score: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    price_score: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    service_score: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    stability_score: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    total_score: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    final_grade: Mapped[str] = mapped_column(String(20), default="미평가", index=True, nullable=False)
+    previous_grade: Mapped[str] = mapped_column(String(20), default="미평가", nullable=False)
+    special_flags: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    special_warning: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    overall_comment: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    improvement_request: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    improvement_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    criteria_version: Mapped[str] = mapped_column(String(40), default="v1", nullable=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+
+class SupplierEvaluationItem(Base):
+    __tablename__ = "supplier_evaluation_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    evaluation_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    category_id: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    item_id: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    category_name: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    item_name: Mapped[str] = mapped_column(String(160), default="", nullable=False)
+    selected_rating: Mapped[str] = mapped_column(String(40), default="보통", nullable=False)
+    item_score: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    item_weight: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    not_applicable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    comment: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+
+
+class SupplierEvaluationCriteria(Base):
+    __tablename__ = "supplier_evaluation_criteria"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    criteria_version: Mapped[str] = mapped_column(String(40), default="v1", index=True, nullable=False)
+    category_name: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
+    category_weight: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    item_name: Mapped[str] = mapped_column(String(160), index=True, nullable=False)
+    item_weight: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+
+class SupplierGradeRule(Base):
+    __tablename__ = "supplier_grade_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    grade: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    minimum_score: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    maximum_score: Mapped[float] = mapped_column(Float, default=100, nullable=False)
+    label: Mapped[str] = mapped_column(String(80), default="", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    auto_downgrade_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    major_quality_max_grade: Mapped[str] = mapped_column(String(20), default="C", nullable=False)
+    contract_violation_max_grade: Mapped[str] = mapped_column(String(20), default="D", nullable=False)
+
+
+class SupplierEvaluationHistory(Base):
+    __tablename__ = "supplier_evaluation_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    evaluation_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    supplier_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    action_type: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    before_data: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    after_data: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    changed_by: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True, nullable=False)
 
 
 class ProductionPlan(Base):

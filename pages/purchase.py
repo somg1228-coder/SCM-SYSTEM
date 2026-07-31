@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from html import escape
 from io import BytesIO
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -31,7 +32,20 @@ from reportlab.platypus import (
 try:
     from backend import services
     from backend.database import SessionLocal, init_db
-    from backend.models import InventoryDaily, InventoryInbound, PurchaseDocument, PurchaseOrder, PurchaseRequest, RfqQuote, Supplier
+    from backend.models import (
+        InventoryDaily,
+        InventoryInbound,
+        PurchaseDocument,
+        PurchaseOrder,
+        PurchaseRequest,
+        RfqQuote,
+        Supplier,
+        SupplierEvaluation,
+        SupplierEvaluationCriteria,
+        SupplierEvaluationHistory,
+        SupplierEvaluationItem,
+        SupplierGradeRule,
+    )
 except (ModuleNotFoundError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
@@ -43,6 +57,11 @@ except (ModuleNotFoundError, RuntimeError) as exc:
     PurchaseRequest = None
     RfqQuote = None
     Supplier = None
+    SupplierEvaluation = None
+    SupplierEvaluationCriteria = None
+    SupplierEvaluationHistory = None
+    SupplierEvaluationItem = None
+    SupplierGradeRule = None
     PURCHASE_IMPORT_ERROR = str(exc)
 else:
     PURCHASE_IMPORT_ERROR = ""
@@ -52,6 +71,45 @@ PR_STATUS = ["작성", "상신", "승인", "반려"]
 PO_PROGRESS = ["발주대기", "발주완료", "입고진행", "종결", "취소"]
 PO_INBOUND = ["입고대기", "부분입고", "입고완료"]
 CURRENCIES = ["KRW", "USD"]
+SUPPLIER_TRANSACTION_STATUSES = ["거래중", "거래중지", "신규", "휴면", "거래종료"]
+SUPPLIER_GRADES = ["S", "A", "B", "C", "D", "미평가"]
+SUPPLIER_GRADE_LABELS = {
+    "S": "최우수",
+    "A": "우수",
+    "B": "일반",
+    "C": "개선 필요",
+    "D": "거래 재검토",
+    "미평가": "미평가",
+}
+EVALUATION_STATUSES = ["임시저장", "평가완료", "승인대기", "최종승인", "반려"]
+CONFIRMED_EVALUATION_STATUSES = {"평가완료", "최종승인"}
+RATING_OPTIONS = ["매우 우수", "우수", "보통", "미흡", "매우 미흡", "해당 없음"]
+RATING_RATIO = {"매우 우수": 1.0, "우수": 0.8, "보통": 0.6, "미흡": 0.4, "매우 미흡": 0.2, "해당 없음": None}
+SPECIAL_FLAG_OPTIONS = [
+    "중대한 품질사고 발생",
+    "반복적인 납기지연",
+    "계약 위반",
+    "허위서류 제출",
+    "안전 또는 법규 위반",
+    "장기 미응답",
+    "거래중단 검토 대상",
+    "우수 협력사 추천 대상",
+]
+AUTO_WARNING_FLAGS = {"중대한 품질사고 발생", "반복적인 납기지연", "계약 위반", "안전 또는 법규 위반"}
+DEFAULT_EVALUATION_CATEGORIES = [
+    ("품질관리", 30.0, ["불량률", "반품 및 교환 발생률", "규격 및 사양 준수", "품질 개선 대응", "품질 관련 인증 보유 여부"]),
+    ("납기관리", 25.0, ["납기 준수율", "긴급 발주 대응", "납기 지연 횟수", "납품 수량 정확도", "입고 일정 협조도"]),
+    ("가격 및 거래조건", 20.0, ["가격 경쟁력", "견적 정확도", "결제조건", "원가절감 협조", "가격 변동의 합리성"]),
+    ("업무 대응 및 서비스", 15.0, ["문의 응답 속도", "문제 발생 시 대응력", "담당자 업무 협조도", "서류 제출 정확도", "클레임 처리 만족도"]),
+    ("경영 및 안정성", 10.0, ["공급 안정성", "재무 및 경영상태", "생산 또는 공급 능력", "법규 및 계약 준수", "지속 거래 가능성"]),
+]
+DEFAULT_GRADE_RULES = [
+    ("S", 95.0, 100.0, "최우수"),
+    ("A", 85.0, 94.9999, "우수"),
+    ("B", 75.0, 84.9999, "일반"),
+    ("C", 65.0, 74.9999, "개선 필요"),
+    ("D", 0.0, 64.9999, "거래 재검토"),
+]
 PRICE_DECIMAL_OPTIONS = [0, 1, 2, 3, 4, 5]
 PRICE_DECIMAL_COLUMNS = {"단가", "공급가액", "부가세", "총금액", "배송비", "발주금액", "총 구매비용", "구매금액"}
 PR_EDITOR_COLUMNS = [
@@ -499,10 +557,39 @@ def render_po_tab() -> None:
 
 
 def render_supplier_tab() -> None:
+    ensure_supplier_evaluation_setup()
+    subtab_options = ["협력사 목록", "협력사 평가", "평가 기준 관리", "등급 이력"]
+    query_subtab = query_value("supplier_subtab")
+    selected_subtab = st.radio(
+        "협력사관리 내부 하위 탭",
+        subtab_options,
+        horizontal=True,
+        index=safe_index(subtab_options, query_subtab, 0),
+        label_visibility="collapsed",
+        key="supplier_subtab_nav",
+    )
+    st.query_params["supplier_subtab"] = selected_subtab
+    if selected_subtab == "협력사 목록":
+        render_supplier_list_tab()
+    elif selected_subtab == "협력사 평가":
+        render_supplier_evaluation_tab()
+    elif selected_subtab == "평가 기준 관리":
+        render_supplier_criteria_tab()
+    elif selected_subtab == "등급 이력":
+        render_supplier_history_tab()
+
+
+def render_supplier_list_tab() -> None:
     rows = with_db(lambda db: [supplier_to_dict(row) for row in list_suppliers(db)]) or []
     supplier_by_name = {str(row.get("업체명", "")).strip(): row for row in rows if str(row.get("업체명", "")).strip()}
-    search_keyword = clean_text(st.text_input("협력사 검색", placeholder="업체명, 취급품목, MOQ, 담당자, 연락처, 이메일로 검색"))
-    filtered_rows = filter_supplier_rows(rows, search_keyword)
+    filter_cols = st.columns([1.2, 0.9, 0.8, 0.8, 0.8, 1.2], gap="small")
+    name_keyword = clean_text(filter_cols[0].text_input("협력사명 검색", placeholder="협력사명, 담당자, 연락처, 이메일"))
+    code_keyword = clean_text(filter_cols[1].text_input("업체코드 검색", placeholder="예: SUP-0001"))
+    status_filter = filter_cols[2].selectbox("거래 상태", ["전체"] + SUPPLIER_TRANSACTION_STATUSES, key="supplier_status_filter")
+    grade_filter = filter_cols[3].selectbox("현재 등급", ["전체"] + SUPPLIER_GRADES, key="supplier_grade_filter")
+    special_filter = filter_cols[4].selectbox("특별관리 여부", ["전체", "예", "아니오"], key="supplier_special_filter")
+    eval_period = filter_cols[5].date_input("최근 평가기간", value=(), key="supplier_eval_period_filter")
+    filtered_rows = filter_supplier_rows(rows, name_keyword, code_keyword, status_filter, grade_filter, special_filter, eval_period)
     filtered_supplier_names = [
         str(row.get("업체명", "")).strip()
         for row in filtered_rows
@@ -518,9 +605,32 @@ def render_supplier_tab() -> None:
     selected_supplier = supplier_by_name.get(selected_supplier_name, {})
     form_key_suffix = selected_supplier_name or "new"
     with st.form("purchase_supplier_form", clear_on_submit=True):
+        code_cols = st.columns([0.8, 1.2, 0.9, 0.9], gap="small")
+        supplier_code = code_cols[0].text_input(
+            "업체코드",
+            value=str(selected_supplier.get("업체코드", "")),
+            placeholder="자동 생성",
+            key=f"purchase_supplier_code_{form_key_suffix}",
+        )
+        business_number = code_cols[1].text_input(
+            "사업자등록번호",
+            value=str(selected_supplier.get("사업자등록번호", "")),
+            key=f"purchase_supplier_business_{form_key_suffix}",
+        )
+        transaction_status = code_cols[2].selectbox(
+            "거래 상태",
+            SUPPLIER_TRANSACTION_STATUSES,
+            index=safe_index(SUPPLIER_TRANSACTION_STATUSES, selected_supplier.get("거래 상태"), 0),
+            key=f"purchase_supplier_status_{form_key_suffix}",
+        )
+        next_evaluation_date = code_cols[3].date_input(
+            "다음 평가예정일",
+            value=parse_date(selected_supplier.get("다음 평가예정일")) or date.today(),
+            key=f"purchase_supplier_next_eval_{form_key_suffix}",
+        )
         cols = st.columns([1.2, 0.9, 1.0, 1.2], gap="small")
         supplier_name = cols[0].text_input(
-            "업체명",
+            "협력사명",
             value=str(selected_supplier.get("업체명", "")),
             placeholder="협력사명",
             key=f"purchase_supplier_name_{form_key_suffix}",
@@ -586,13 +696,17 @@ def render_supplier_tab() -> None:
                 result = with_db(
                     lambda db: upsert_supplier(
                         db,
+                        supplier_code=supplier_code,
                         supplier_name=supplier_name,
+                        business_number=business_number,
                         original_supplier_name=selected_supplier_name,
                         manager=manager,
                         phone=phone,
                         email=email,
                         handled_items=handled_items,
                         moq_terms=moq_terms,
+                        transaction_status=transaction_status,
+                        next_evaluation_date=next_evaluation_date,
                         avg_lead_time_days=int(avg_lead_time or 0),
                         avg_unit_price=parsed_avg_price,
                         avg_unit_price_currency=parsed_avg_currency,
@@ -611,6 +725,10 @@ def render_supplier_tab() -> None:
         st.info("검색 조건에 맞는 협력사가 없습니다.")
     else:
         render_supplier_table(filtered_rows)
+        detail_names = [str(row.get("업체명", "")).strip() for row in filtered_rows if str(row.get("업체명", "")).strip()]
+        if detail_names:
+            selected_detail = st.selectbox("상세보기 협력사", detail_names, key="supplier_detail_select")
+            render_supplier_detail_panel(next((row for row in filtered_rows if row.get("업체명") == selected_detail), {}))
         if filtered_supplier_names:
             delete_cols = st.columns([1.2, 1.0, 3.0], gap="small")
             selected_supplier = delete_cols[0].selectbox("삭제할 협력사", filtered_supplier_names, key="purchase_supplier_delete_select")
@@ -625,7 +743,22 @@ def render_supplier_tab() -> None:
 
 
 def render_supplier_table(rows: list[dict]) -> None:
-    columns = ["업체명", "취급품목", "MOQ 조건", "담당자", "연락처", "이메일", "평균납기", "평균단가", "결제조건", "비고"]
+    columns = [
+        "업체코드",
+        "협력사명",
+        "사업자등록번호",
+        "담당자",
+        "연락처",
+        "이메일",
+        "주요 품목",
+        "거래 상태",
+        "현재 등급",
+        "최근 평가점수",
+        "최근 평가일",
+        "다음 평가예정일",
+        "특별관리 여부",
+        "관리",
+    ]
     head = "".join(f"<th>{escape(column)}</th>" for column in columns)
     body_rows = []
     for row in rows:
@@ -634,6 +767,15 @@ def render_supplier_table(rows: list[dict]) -> None:
             value = row.get(column, "")
             if value is None:
                 value = ""
+            if column == "현재 등급":
+                grade = str(value or "미평가")
+                supplier_id = row.get("ID", "")
+                href = f"?page=%EA%B5%AC%EB%A7%A4%EA%B4%80%EB%A6%AC&supplier_subtab=%EB%93%B1%EA%B8%89%20%EC%9D%B4%EB%A0%A5&supplier_id={supplier_id}"
+                cells.append(
+                    f'<td><a class="supplier-grade-badge grade-{escape(grade)}" href="{href}" target="_self">'
+                    f"{escape(grade)} {escape(SUPPLIER_GRADE_LABELS.get(grade, grade))}</a></td>"
+                )
+                continue
             cells.append(f"<td>{escape(str(value))}</td>")
         body_rows.append(f"<tr>{''.join(cells)}</tr>")
     st.markdown(
@@ -647,6 +789,219 @@ def render_supplier_table(rows: list[dict]) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_supplier_detail_panel(row: dict) -> None:
+    supplier_id = to_int(row.get("ID"))
+    if not supplier_id:
+        return
+    detail = with_db(lambda db: supplier_detail_payload(db, supplier_id)) or {}
+    st.markdown('<div class="purchase-section-title">협력사 상세</div>', unsafe_allow_html=True)
+    cols = st.columns(4, gap="small")
+    cols[0].metric("현재 등급", f"{row.get('현재 등급', '미평가')} {SUPPLIER_GRADE_LABELS.get(row.get('현재 등급'), '')}")
+    cols[1].metric("최근 평가점수", str(row.get("최근 평가점수") or "-"))
+    cols[2].metric("최근 평가일", str(row.get("최근 평가일") or "-"))
+    cols[3].metric("특별관리", str(row.get("특별관리 여부") or "아니오"))
+    info_cols = st.columns(2, gap="small")
+    with info_cols[0]:
+        st.markdown(
+            f"""
+            <div class="supplier-detail-box">
+                <b>기본정보</b><br>
+                업체코드: {escape(str(row.get("업체코드", "")))}<br>
+                협력사명: {escape(str(row.get("협력사명", row.get("업체명", ""))))}<br>
+                사업자등록번호: {escape(str(row.get("사업자등록번호", "")))}<br>
+                담당자: {escape(str(row.get("담당자", "")))} / {escape(str(row.get("연락처", "")))}<br>
+                주요 품목: {escape(str(row.get("주요 품목", "")))}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with info_cols[1]:
+        latest = detail.get("latest")
+        if latest:
+            st.markdown(
+                f"""
+                <div class="supplier-detail-box">
+                    <b>최근 평가</b><br>
+                    품질 {latest.get("quality_score", 0):.1f} / 납기 {latest.get("delivery_score", 0):.1f} /
+                    가격 {latest.get("price_score", 0):.1f}<br>
+                    대응 {latest.get("service_score", 0):.1f} / 안정성 {latest.get("stability_score", 0):.1f}<br>
+                    의견: {escape(str(latest.get("overall_comment", "")) or "-")}<br>
+                    특별관리: {escape(", ".join(latest.get("special_flags", [])) or "-")}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("아직 확정 평가 결과가 없습니다.")
+    history_rows = detail.get("history", [])
+    if history_rows:
+        st.dataframe(pd.DataFrame(history_rows), hide_index=True, use_container_width=True, height=180)
+
+
+def render_supplier_evaluation_tab() -> None:
+    suppliers = with_db(lambda db: list_suppliers(db)) or []
+    if not suppliers:
+        st.info("평가할 협력사를 먼저 등록해주세요.")
+        return
+    supplier_options = {supplier_label(row): row.id for row in suppliers}
+    selected_label = st.selectbox("협력사 선택", list(supplier_options), key="supplier_eval_supplier")
+    supplier_id = supplier_options[selected_label]
+    supplier = next(row for row in suppliers if row.id == supplier_id)
+    criteria = with_db(lambda db: active_supplier_criteria(db)) or default_criteria_payload()
+
+    input_cols = st.columns([0.7, 0.7, 0.75, 0.75, 0.75, 0.75], gap="small")
+    eval_year = input_cols[0].number_input("평가연도", min_value=2020, max_value=2100, value=date.today().year, step=1)
+    eval_quarter = input_cols[1].selectbox("평가분기", ["Q1", "Q2", "Q3", "Q4"], index=(date.today().month - 1) // 3)
+    period_start = input_cols[2].date_input("평가 시작일", value=date.today().replace(month=((date.today().month - 1) // 3) * 3 + 1, day=1))
+    period_end = input_cols[3].date_input("평가 종료일", value=date.today())
+    evaluation_date = input_cols[4].date_input("평가일", value=date.today())
+    evaluator = input_cols[5].text_input("평가자", value="")
+    status_cols = st.columns([0.9, 1.6, 1.2], gap="small")
+    status = status_cols[0].selectbox("평가 상태", EVALUATION_STATUSES, index=0)
+    improvement_due_date = status_cols[1].date_input("개선 완료 예정일", value=date.today() + timedelta(days=30))
+    st.caption(f"업체코드: {supplier.supplier_code or next_supplier_code(None, supplier.id)} / 주요 품목: {supplier.handled_items or '-'}")
+
+    selected_ratings = {}
+    item_comments = {}
+    st.markdown('<div class="purchase-section-title">평가 항목</div>', unsafe_allow_html=True)
+    for category in criteria:
+        st.markdown(f"**{category['category_name']} {category['category_weight']:.0f}점**")
+        for item in category["items"]:
+            cols = st.columns([1.5, 0.8, 1.2], gap="small")
+            key = criteria_item_key(category["category_name"], item["item_name"])
+            cols[0].caption(item["item_name"])
+            selected_ratings[key] = cols[1].selectbox("평가값", RATING_OPTIONS, index=2, key=f"eval_rating_{key}", label_visibility="collapsed")
+            item_comments[key] = cols[2].text_input("의견", key=f"eval_comment_{key}", label_visibility="collapsed")
+
+    special_flags = st.multiselect("특별관리 항목", SPECIAL_FLAG_OPTIONS, key="supplier_eval_special_flags")
+    overall_comment = st.text_area("종합 의견", key="supplier_eval_overall_comment")
+    improvement_request = st.text_area("개선 요청사항", key="supplier_eval_improvement_request")
+
+    score_payload = calculate_supplier_scores(criteria, selected_ratings, special_flags)
+    summary_cols = st.columns(8, gap="small")
+    summary_cols[0].metric("품질", f"{score_payload['quality_score']:.1f}")
+    summary_cols[1].metric("납기", f"{score_payload['delivery_score']:.1f}")
+    summary_cols[2].metric("가격", f"{score_payload['price_score']:.1f}")
+    summary_cols[3].metric("대응", f"{score_payload['service_score']:.1f}")
+    summary_cols[4].metric("안정성", f"{score_payload['stability_score']:.1f}")
+    summary_cols[5].metric("총점", f"{score_payload['total_score']:.1f}")
+    summary_cols[6].metric("예상 등급", score_payload["final_grade"])
+    summary_cols[7].metric("특별관리", "예" if score_payload["special_warning"] else "아니오")
+
+    if st.button("평가 저장", type="primary", use_container_width=True, key="supplier_eval_save"):
+        missing = []
+        if not evaluator.strip():
+            missing.append("평가자")
+        if period_start > period_end:
+            missing.append("평가기간")
+        if missing:
+            st.warning("필수값을 확인해주세요: " + ", ".join(missing))
+        else:
+            saved = with_db(
+                lambda db: save_supplier_evaluation(
+                    db,
+                    supplier_id=supplier_id,
+                    evaluation_year=int(eval_year),
+                    evaluation_quarter=eval_quarter,
+                    period_start=period_start,
+                    period_end=period_end,
+                    evaluation_date=evaluation_date,
+                    evaluator=evaluator,
+                    status=status,
+                    overall_comment=overall_comment,
+                    improvement_request=improvement_request,
+                    improvement_due_date=improvement_due_date,
+                    special_flags=special_flags,
+                    criteria=criteria,
+                    selected_ratings=selected_ratings,
+                    item_comments=item_comments,
+                    score_payload=score_payload,
+                )
+            )
+            if saved:
+                st.success("협력사 평가를 저장했습니다.")
+                st.rerun()
+
+
+def render_supplier_criteria_tab() -> None:
+    criteria = with_db(lambda db: active_supplier_criteria(db)) or default_criteria_payload()
+    st.caption("평가기준 변경은 새 평가부터 적용되며, 과거 평가에는 저장 당시 기준 버전이 유지됩니다.")
+    rows = []
+    for category in criteria:
+        for item in category["items"]:
+            rows.append(
+                {
+                    "대분류": category["category_name"],
+                    "대분류 배점": category["category_weight"],
+                    "세부 평가항목": item["item_name"],
+                    "세부 배점": item["item_weight"],
+                    "사용": item.get("is_active", True),
+                }
+            )
+    edited = st.data_editor(pd.DataFrame(rows), hide_index=True, use_container_width=True, num_rows="dynamic", key="supplier_criteria_editor")
+    st.markdown('<div class="purchase-section-title">등급 기준</div>', unsafe_allow_html=True)
+    rules = with_db(lambda db: list_grade_rules(db)) or default_grade_rules_payload()
+    rules_df = st.data_editor(pd.DataFrame(rules), hide_index=True, use_container_width=True, key="supplier_grade_rules_editor")
+    auto_cols = st.columns([1.0, 1.0, 1.0], gap="small")
+    auto_enabled = auto_cols[0].checkbox("자동 강등 사용", value=True, key="supplier_auto_downgrade")
+    major_max = auto_cols[1].selectbox("중대한 품질사고 최고등급", ["S", "A", "B", "C", "D"], index=3)
+    contract_max = auto_cols[2].selectbox("계약/법규 위반 최고등급", ["S", "A", "B", "C", "D"], index=4)
+    if st.button("평가 기준 저장", type="primary", use_container_width=True, key="supplier_criteria_save"):
+        total_weight = edited.groupby("대분류", dropna=False)["대분류 배점"].first().astype(float).sum() if not edited.empty else 0
+        if round(total_weight, 4) != 100:
+            st.warning(f"대분류 배점 합계가 100%여야 합니다. 현재 {total_weight:.1f}%입니다.")
+        elif not validate_grade_rules_df(rules_df):
+            st.warning("등급 기준 점수 구간이 겹치지 않도록 확인해주세요.")
+        else:
+            with_db(lambda db: save_supplier_criteria(db, edited, rules_df, auto_enabled, major_max, contract_max))
+            st.success("평가 기준을 저장했습니다.")
+            st.rerun()
+
+
+def render_supplier_history_tab() -> None:
+    rows = with_db(lambda db: supplier_history_rows(db)) or []
+    if not rows:
+        st.info("저장된 평가 이력이 없습니다.")
+        return
+    df = pd.DataFrame(rows)
+    linked_supplier_id = to_int(query_value("supplier_id"))
+    linked_supplier_name = ""
+    if linked_supplier_id:
+        linked_supplier_name = with_db(lambda db: (db.get(Supplier, linked_supplier_id).supplier_name if db.get(Supplier, linked_supplier_id) else "")) or ""
+    cols = st.columns([1.1, 0.8, 0.7, 0.7, 0.7, 0.9, 0.9], gap="small")
+    name_kw = clean_text(cols[0].text_input("협력사명", value=linked_supplier_name, key="history_name_filter"))
+    code_kw = clean_text(cols[1].text_input("업체코드", key="history_code_filter"))
+    year_filter = cols[2].selectbox("평가연도", ["전체"] + sorted(df["평가연도"].dropna().astype(str).unique().tolist()), key="history_year_filter")
+    quarter_filter = cols[3].selectbox("평가분기", ["전체"] + sorted(df["평가분기"].dropna().astype(str).unique().tolist()), key="history_quarter_filter")
+    status_filter = cols[4].selectbox("평가 상태", ["전체"] + EVALUATION_STATUSES, key="history_status_filter")
+    grade_filter = cols[5].selectbox("등급", ["전체"] + SUPPLIER_GRADES, key="history_grade_filter")
+    evaluator_kw = clean_text(cols[6].text_input("평가자", key="history_evaluator_filter"))
+    filtered = df.copy()
+    if name_kw:
+        filtered = filtered[filtered["협력사명"].astype(str).str.contains(name_kw, case=False, na=False)]
+    if code_kw:
+        filtered = filtered[filtered["업체코드"].astype(str).str.contains(code_kw, case=False, na=False)]
+    if year_filter != "전체":
+        filtered = filtered[filtered["평가연도"].astype(str) == year_filter]
+    if quarter_filter != "전체":
+        filtered = filtered[filtered["평가분기"].astype(str) == quarter_filter]
+    if status_filter != "전체":
+        filtered = filtered[filtered["평가 상태"] == status_filter]
+    if grade_filter != "전체":
+        filtered = filtered[filtered["현재 등급"] == grade_filter]
+    if evaluator_kw:
+        filtered = filtered[filtered["평가자"].astype(str).str.contains(evaluator_kw, case=False, na=False)]
+    st.dataframe(filtered, hide_index=True, use_container_width=True, height=320)
+    supplier_names = sorted(filtered["협력사명"].dropna().astype(str).unique().tolist())
+    if supplier_names:
+        selected = st.selectbox("차트 협력사", supplier_names, key="history_chart_supplier")
+        chart_df = filtered[filtered["협력사명"] == selected].copy()
+        chart_df["평가일"] = pd.to_datetime(chart_df["평가일"], errors="coerce")
+        st.line_chart(chart_df.dropna(subset=["평가일"]).set_index("평가일")["총점"])
+        category_cols = ["품질점수", "납기점수", "가격점수", "대응점수", "안정성점수"]
+        st.bar_chart(chart_df.set_index("평가기간")[category_cols])
 
 
 def render_price_history_tab() -> None:
@@ -693,16 +1048,43 @@ def format_price_columns_for_display(df: pd.DataFrame) -> pd.DataFrame:
     return display_df
 
 
-def filter_supplier_rows(rows: list[dict], keyword: str) -> list[dict]:
-    keyword = clean_text(keyword).lower()
-    if not keyword:
-        return rows
-    search_columns = ["업체명", "취급품목", "MOQ 조건", "결제조건", "담당자", "연락처", "이메일", "비고"]
-    return [
-        row
-        for row in rows
-        if any(keyword in clean_text(row.get(column)).lower() for column in search_columns)
-    ]
+def filter_supplier_rows(
+    rows: list[dict],
+    name_keyword: str = "",
+    code_keyword: str = "",
+    status_filter: str = "전체",
+    grade_filter: str = "전체",
+    special_filter: str = "전체",
+    eval_period=(),
+) -> list[dict]:
+    name_keyword = clean_text(name_keyword).lower()
+    code_keyword = clean_text(code_keyword).lower()
+    period_values = list(eval_period) if isinstance(eval_period, tuple) else []
+    start_date = period_values[0] if len(period_values) >= 1 else None
+    end_date = period_values[1] if len(period_values) >= 2 else None
+    search_columns = ["업체명", "협력사명", "취급품목", "주요 품목", "MOQ 조건", "결제조건", "담당자", "연락처", "이메일", "비고"]
+    filtered = []
+    for row in rows:
+        if name_keyword and not any(name_keyword in clean_text(row.get(column)).lower() for column in search_columns):
+            continue
+        if code_keyword and code_keyword not in clean_text(row.get("업체코드")).lower():
+            continue
+        if status_filter != "전체" and row.get("거래 상태") != status_filter:
+            continue
+        if grade_filter != "전체" and row.get("현재 등급") != grade_filter:
+            continue
+        special_yes = str(row.get("특별관리 여부", "")).startswith("⚠")
+        if special_filter == "예" and not special_yes:
+            continue
+        if special_filter == "아니오" and special_yes:
+            continue
+        latest_date = parse_date(row.get("최근 평가일"))
+        if start_date and (latest_date is None or latest_date < start_date):
+            continue
+        if end_date and (latest_date is None or latest_date > end_date):
+            continue
+        filtered.append(row)
+    return filtered
 
 
 def render_kpi_tab() -> None:
@@ -873,6 +1255,494 @@ def list_purchase_orders(db: Session) -> list[PurchaseOrder]:
 
 def list_suppliers(db: Session) -> list[Supplier]:
     return list(db.execute(select(Supplier).order_by(Supplier.supplier_name)).scalars())
+
+
+def ensure_supplier_evaluation_setup() -> None:
+    with_db(lambda db: seed_supplier_evaluation_defaults(db))
+
+
+def seed_supplier_evaluation_defaults(db: Session) -> None:
+    if SupplierEvaluationCriteria is None or SupplierGradeRule is None:
+        return
+    if not db.execute(select(SupplierEvaluationCriteria.id)).first():
+        for category_name, category_weight, items in DEFAULT_EVALUATION_CATEGORIES:
+            item_weight = round(category_weight / max(len(items), 1), 4)
+            for item_name in items:
+                db.add(
+                    SupplierEvaluationCriteria(
+                        criteria_version="v1",
+                        category_name=category_name,
+                        category_weight=category_weight,
+                        item_name=item_name,
+                        item_weight=item_weight,
+                        is_active=True,
+                    )
+                )
+    if not db.execute(select(SupplierGradeRule.id)).first():
+        for grade, minimum, maximum, label in DEFAULT_GRADE_RULES:
+            db.add(SupplierGradeRule(grade=grade, minimum_score=minimum, maximum_score=maximum, label=label, is_active=True))
+    for supplier in db.execute(select(Supplier)).scalars():
+        if not supplier.supplier_code:
+            supplier.supplier_code = next_supplier_code(db, supplier.id)
+        if not supplier.current_grade:
+            supplier.current_grade = "미평가"
+        if not supplier.transaction_status:
+            supplier.transaction_status = "거래중"
+    db.commit()
+
+
+def active_supplier_criteria(db: Session) -> list[dict]:
+    rows = list(
+        db.execute(
+            select(SupplierEvaluationCriteria)
+            .where(SupplierEvaluationCriteria.is_active == True)  # noqa: E712
+            .order_by(SupplierEvaluationCriteria.id)
+        ).scalars()
+    )
+    if not rows:
+        return default_criteria_payload()
+    categories: dict[str, dict] = {}
+    for row in rows:
+        category = categories.setdefault(
+            row.category_name,
+            {"category_name": row.category_name, "category_weight": float(row.category_weight or 0), "items": []},
+        )
+        category["items"].append(
+            {
+                "id": row.id,
+                "item_name": row.item_name,
+                "item_weight": float(row.item_weight or 0),
+                "is_active": bool(row.is_active),
+            }
+        )
+    return list(categories.values())
+
+
+def default_criteria_payload() -> list[dict]:
+    return [
+        {
+            "category_name": category_name,
+            "category_weight": category_weight,
+            "items": [
+                {"id": index + 1, "item_name": item_name, "item_weight": round(category_weight / len(items), 4), "is_active": True}
+                for index, item_name in enumerate(items)
+            ],
+        }
+        for category_name, category_weight, items in DEFAULT_EVALUATION_CATEGORIES
+    ]
+
+
+def list_grade_rules(db: Session) -> list[dict]:
+    rows = list(db.execute(select(SupplierGradeRule).where(SupplierGradeRule.is_active == True).order_by(SupplierGradeRule.minimum_score.desc())).scalars())  # noqa: E712
+    if not rows:
+        return default_grade_rules_payload()
+    return [
+        {
+            "등급": row.grade,
+            "최소점수": float(row.minimum_score or 0),
+            "최대점수": float(row.maximum_score or 0),
+            "라벨": row.label or SUPPLIER_GRADE_LABELS.get(row.grade, row.grade),
+            "사용": bool(row.is_active),
+        }
+        for row in rows
+    ]
+
+
+def default_grade_rules_payload() -> list[dict]:
+    return [{"등급": grade, "최소점수": minimum, "최대점수": maximum, "라벨": label, "사용": True} for grade, minimum, maximum, label in DEFAULT_GRADE_RULES]
+
+
+def calculate_supplier_scores(criteria: list[dict], selected_ratings: dict[str, str], special_flags: list[str]) -> dict:
+    category_scores = {}
+    weighted_total = 0.0
+    applicable_weight = 0.0
+    for category in criteria:
+        category_weight = float(category.get("category_weight") or 0)
+        category_score_sum = 0.0
+        category_applicable = 0.0
+        for item in category.get("items", []):
+            item_weight = float(item.get("item_weight") or 0)
+            rating = selected_ratings.get(criteria_item_key(category["category_name"], item["item_name"]), "보통")
+            ratio = RATING_RATIO.get(rating)
+            if ratio is None:
+                continue
+            item_score = item_weight * ratio
+            category_score_sum += item_score
+            category_applicable += item_weight
+        if category_applicable:
+            category_score = category_score_sum / category_applicable * category_weight
+            weighted_total += category_score
+            applicable_weight += category_weight
+        else:
+            category_score = 0.0
+        category_scores[category["category_name"]] = round(category_score, 4)
+    total_score = round((weighted_total / applicable_weight * 100) if applicable_weight else 0.0, 2)
+    grade = grade_for_score(total_score)
+    special_warning = bool(AUTO_WARNING_FLAGS.intersection(set(special_flags)) or grade in {"C", "D"})
+    grade = apply_auto_downgrade(grade, special_flags)
+    return {
+        "quality_score": category_scores.get("품질관리", 0.0),
+        "delivery_score": category_scores.get("납기관리", 0.0),
+        "price_score": category_scores.get("가격 및 거래조건", 0.0),
+        "service_score": category_scores.get("업무 대응 및 서비스", 0.0),
+        "stability_score": category_scores.get("경영 및 안정성", 0.0),
+        "total_score": total_score,
+        "final_grade": grade,
+        "special_warning": special_warning,
+    }
+
+
+def save_supplier_evaluation(
+    db: Session,
+    supplier_id: int,
+    evaluation_year: int,
+    evaluation_quarter: str,
+    period_start: date,
+    period_end: date,
+    evaluation_date: date,
+    evaluator: str,
+    status: str,
+    overall_comment: str,
+    improvement_request: str,
+    improvement_due_date: date | None,
+    special_flags: list[str],
+    criteria: list[dict],
+    selected_ratings: dict[str, str],
+    item_comments: dict[str, str],
+    score_payload: dict,
+) -> SupplierEvaluation:
+    supplier = db.get(Supplier, supplier_id)
+    if supplier is None:
+        raise ValueError("협력사를 찾을 수 없습니다.")
+    before_payload = supplier_snapshot(supplier)
+    evaluation = SupplierEvaluation(
+        supplier_id=supplier_id,
+        evaluation_year=evaluation_year,
+        evaluation_quarter=evaluation_quarter,
+        period_start=period_start,
+        period_end=period_end,
+        evaluation_date=evaluation_date,
+        evaluator=clean_text(evaluator),
+        status=status if status in EVALUATION_STATUSES else "임시저장",
+        quality_score=score_payload["quality_score"],
+        delivery_score=score_payload["delivery_score"],
+        price_score=score_payload["price_score"],
+        service_score=score_payload["service_score"],
+        stability_score=score_payload["stability_score"],
+        total_score=score_payload["total_score"],
+        final_grade=score_payload["final_grade"],
+        previous_grade=supplier.current_grade or "미평가",
+        special_flags=json.dumps(special_flags, ensure_ascii=False),
+        special_warning=bool(score_payload["special_warning"]),
+        overall_comment=clean_text(overall_comment),
+        improvement_request=clean_text(improvement_request),
+        improvement_due_date=improvement_due_date,
+        criteria_version=current_criteria_version(criteria),
+    )
+    db.add(evaluation)
+    db.flush()
+    for category_index, category in enumerate(criteria, start=1):
+        for item_index, item in enumerate(category.get("items", []), start=1):
+            key = criteria_item_key(category["category_name"], item["item_name"])
+            rating = selected_ratings.get(key, "보통")
+            ratio = RATING_RATIO.get(rating)
+            item_weight = float(item.get("item_weight") or 0)
+            db.add(
+                SupplierEvaluationItem(
+                    evaluation_id=evaluation.id,
+                    category_id=category_index,
+                    item_id=to_int(item.get("id")) or item_index,
+                    category_name=category["category_name"],
+                    item_name=item["item_name"],
+                    selected_rating=rating,
+                    item_score=0.0 if ratio is None else round(item_weight * ratio, 4),
+                    item_weight=item_weight,
+                    not_applicable=ratio is None,
+                    comment=clean_text(item_comments.get(key)),
+                )
+            )
+    if evaluation.status in CONFIRMED_EVALUATION_STATUSES:
+        refresh_supplier_current_grade(db, supplier)
+    after_payload = supplier_snapshot(supplier)
+    db.add(
+        SupplierEvaluationHistory(
+            evaluation_id=evaluation.id,
+            supplier_id=supplier_id,
+            action_type="CREATE",
+            before_data=json.dumps(before_payload, ensure_ascii=False, default=str),
+            after_data=json.dumps(after_payload, ensure_ascii=False, default=str),
+            changed_by=clean_text(evaluator),
+        )
+    )
+    db.commit()
+    db.refresh(evaluation)
+    return evaluation
+
+
+def refresh_supplier_current_grade(db: Session, supplier: Supplier) -> None:
+    latest = db.execute(
+        select(SupplierEvaluation)
+        .where(
+            SupplierEvaluation.supplier_id == supplier.id,
+            SupplierEvaluation.status.in_(CONFIRMED_EVALUATION_STATUSES),
+            SupplierEvaluation.is_deleted == False,  # noqa: E712
+        )
+        .order_by(SupplierEvaluation.evaluation_date.desc(), SupplierEvaluation.id.desc())
+    ).scalars().first()
+    if latest is None:
+        supplier.current_grade = "미평가"
+        supplier.latest_score = 0
+        supplier.latest_evaluation_date = None
+        supplier.special_management = False
+        supplier.special_reason = ""
+        return
+    flags = parse_json_list(latest.special_flags)
+    supplier.current_grade = latest.final_grade or "미평가"
+    supplier.rating = supplier.current_grade
+    supplier.latest_score = float(latest.total_score or 0)
+    supplier.latest_evaluation_date = latest.evaluation_date
+    supplier.special_management = bool(latest.special_warning)
+    supplier.special_reason = ", ".join(warning_reasons(flags, latest.final_grade))
+
+
+def supplier_detail_payload(db: Session, supplier_id: int) -> dict:
+    latest = db.execute(
+        select(SupplierEvaluation)
+        .where(
+            SupplierEvaluation.supplier_id == supplier_id,
+            SupplierEvaluation.status.in_(CONFIRMED_EVALUATION_STATUSES),
+            SupplierEvaluation.is_deleted == False,  # noqa: E712
+        )
+        .order_by(SupplierEvaluation.evaluation_date.desc(), SupplierEvaluation.id.desc())
+    ).scalars().first()
+    history = supplier_history_rows(db, supplier_id=supplier_id)
+    return {"latest": evaluation_to_payload(latest) if latest else None, "history": history}
+
+
+def supplier_history_rows(db: Session, supplier_id: int | None = None) -> list[dict]:
+    stmt = select(SupplierEvaluation, Supplier).join(Supplier, Supplier.id == SupplierEvaluation.supplier_id).where(SupplierEvaluation.is_deleted == False)  # noqa: E712
+    if supplier_id:
+        stmt = stmt.where(SupplierEvaluation.supplier_id == supplier_id)
+    rows = list(db.execute(stmt.order_by(SupplierEvaluation.evaluation_date.desc(), SupplierEvaluation.id.desc())).all())
+    result = []
+    for evaluation, supplier in rows:
+        result.append(
+            {
+                "협력사명": supplier.supplier_name,
+                "업체코드": supplier.supplier_code or next_supplier_code(None, supplier.id),
+                "평가연도": evaluation.evaluation_year,
+                "평가분기": evaluation.evaluation_quarter,
+                "평가기간": f"{evaluation.period_start or '-'} ~ {evaluation.period_end or '-'}",
+                "품질점수": round(evaluation.quality_score or 0, 1),
+                "납기점수": round(evaluation.delivery_score or 0, 1),
+                "가격점수": round(evaluation.price_score or 0, 1),
+                "대응점수": round(evaluation.service_score or 0, 1),
+                "안정성점수": round(evaluation.stability_score or 0, 1),
+                "총점": round(evaluation.total_score or 0, 1),
+                "이전 등급": evaluation.previous_grade or "미평가",
+                "현재 등급": evaluation.final_grade or "미평가",
+                "등급 변화": grade_change_label(evaluation.previous_grade, evaluation.final_grade),
+                "평가 상태": evaluation.status,
+                "평가자": evaluation.evaluator,
+                "평가일": evaluation.evaluation_date,
+                "상세보기": "상세",
+            }
+        )
+    return result
+
+
+def save_supplier_criteria(db: Session, edited: pd.DataFrame, rules_df: pd.DataFrame, auto_enabled: bool, major_max: str, contract_max: str) -> None:
+    if SupplierEvaluationCriteria is None or SupplierGradeRule is None:
+        return
+    version = f"v{datetime.now():%Y%m%d%H%M%S}"
+    for criterion in db.execute(select(SupplierEvaluationCriteria)).scalars():
+        criterion.is_active = False
+    for record in edited.fillna("").to_dict("records"):
+        category_name = clean_text(record.get("대분류"))
+        item_name = clean_text(record.get("세부 평가항목"))
+        if not category_name or not item_name:
+            continue
+        db.add(
+            SupplierEvaluationCriteria(
+                criteria_version=version,
+                category_name=category_name,
+                category_weight=max(to_float(record.get("대분류 배점")), 0),
+                item_name=item_name,
+                item_weight=max(to_float(record.get("세부 배점")), 0),
+                is_active=truthy(record.get("사용")),
+            )
+        )
+    for rule in db.execute(select(SupplierGradeRule)).scalars():
+        rule.is_active = False
+    for record in rules_df.fillna("").to_dict("records"):
+        grade = clean_text(record.get("등급"))
+        if not grade:
+            continue
+        db.add(
+            SupplierGradeRule(
+                grade=grade,
+                minimum_score=max(to_float(record.get("최소점수")), 0),
+                maximum_score=min(max(to_float(record.get("최대점수")), 0), 100),
+                label=clean_text(record.get("라벨")) or SUPPLIER_GRADE_LABELS.get(grade, grade),
+                is_active=truthy(record.get("사용")),
+                auto_downgrade_enabled=auto_enabled,
+                major_quality_max_grade=major_max,
+                contract_violation_max_grade=contract_max,
+            )
+        )
+    db.commit()
+
+
+def validate_grade_rules_df(df: pd.DataFrame) -> bool:
+    intervals = []
+    for record in df.fillna("").to_dict("records"):
+        if not truthy(record.get("사용")):
+            continue
+        minimum = to_float(record.get("최소점수"))
+        maximum = to_float(record.get("최대점수"))
+        if minimum < 0 or maximum > 100 or minimum > maximum:
+            return False
+        intervals.append((minimum, maximum))
+    intervals.sort()
+    for previous, current in zip(intervals, intervals[1:]):
+        if current[0] <= previous[1] and abs(current[0] - previous[1]) > 0.0001:
+            return False
+    return bool(intervals)
+
+
+def grade_for_score(score: float) -> str:
+    if SupplierGradeRule is not None and SessionLocal is not None:
+        try:
+            db = SessionLocal()
+            rules = list(db.execute(select(SupplierGradeRule).where(SupplierGradeRule.is_active == True)).scalars())  # noqa: E712
+            db.close()
+            for rule in rules:
+                if float(rule.minimum_score or 0) <= score <= float(rule.maximum_score or 100):
+                    return rule.grade
+        except Exception:
+            pass
+    for grade, minimum, maximum, _label in DEFAULT_GRADE_RULES:
+        if minimum <= score <= maximum:
+            return grade
+    return "미평가"
+
+
+def apply_auto_downgrade(grade: str, special_flags: list[str]) -> str:
+    enabled = True
+    major_limit = "C"
+    contract_limit = "D"
+    if SupplierGradeRule is not None and SessionLocal is not None:
+        try:
+            db = SessionLocal()
+            rule = db.execute(select(SupplierGradeRule).where(SupplierGradeRule.is_active == True)).scalars().first()  # noqa: E712
+            if rule is not None:
+                enabled = bool(rule.auto_downgrade_enabled)
+                major_limit = rule.major_quality_max_grade or major_limit
+                contract_limit = rule.contract_violation_max_grade or contract_limit
+            db.close()
+        except Exception:
+            pass
+    if not enabled:
+        return grade
+    grade_order = ["D", "C", "B", "A", "S"]
+    max_grade = None
+    if "계약 위반" in special_flags or "안전 또는 법규 위반" in special_flags:
+        max_grade = contract_limit
+    elif "중대한 품질사고 발생" in special_flags:
+        max_grade = major_limit
+    if not max_grade:
+        return grade
+    return grade if grade_order.index(grade) <= grade_order.index(max_grade) else max_grade
+
+
+def warning_reasons(flags: list[str], grade: str) -> list[str]:
+    reasons = [flag for flag in flags if flag in AUTO_WARNING_FLAGS]
+    if grade in {"C", "D"}:
+        reasons.append(f"{grade}등급")
+    return reasons
+
+
+def parse_json_list(value: str) -> list[str]:
+    try:
+        parsed = json.loads(value or "[]")
+        return parsed if isinstance(parsed, list) else []
+    except Exception:
+        return []
+
+
+def evaluation_to_payload(evaluation: SupplierEvaluation) -> dict:
+    return {
+        "quality_score": float(evaluation.quality_score or 0),
+        "delivery_score": float(evaluation.delivery_score or 0),
+        "price_score": float(evaluation.price_score or 0),
+        "service_score": float(evaluation.service_score or 0),
+        "stability_score": float(evaluation.stability_score or 0),
+        "total_score": float(evaluation.total_score or 0),
+        "final_grade": evaluation.final_grade,
+        "special_flags": parse_json_list(evaluation.special_flags),
+        "overall_comment": evaluation.overall_comment,
+    }
+
+
+def supplier_snapshot(supplier: Supplier) -> dict:
+    return {
+        "supplier_id": supplier.id,
+        "current_grade": supplier.current_grade,
+        "latest_score": supplier.latest_score,
+        "latest_evaluation_date": supplier.latest_evaluation_date,
+        "special_management": supplier.special_management,
+        "special_reason": supplier.special_reason,
+    }
+
+
+def current_criteria_version(criteria: list[dict]) -> str:
+    ids = [str(item.get("id", "")) for category in criteria for item in category.get("items", []) if item.get("id")]
+    return "v1" if not ids else f"criteria-{min(ids)}-{max(ids)}-{len(ids)}"
+
+
+def criteria_item_key(category_name: str, item_name: str) -> str:
+    return f"{clean_text(category_name)}::{clean_text(item_name)}".replace(" ", "_")
+
+
+def grade_change_label(previous: str, current: str) -> str:
+    order = {"D": 1, "C": 2, "B": 3, "A": 4, "S": 5}
+    previous = previous or "미평가"
+    current = current or "미평가"
+    if previous == "미평가":
+        return "최초평가"
+    if order.get(current, 0) > order.get(previous, 0):
+        return "상승"
+    if order.get(current, 0) < order.get(previous, 0):
+        return "하락"
+    return "유지"
+
+
+def supplier_label(row: Supplier) -> str:
+    code = row.supplier_code or next_supplier_code(None, row.id)
+    return f"{row.supplier_name} ({code})"
+
+
+def next_supplier_code(db: Session | None, supplier_id: int | None = None) -> str:
+    if supplier_id:
+        return f"SUP-{int(supplier_id):04d}"
+    if db is None:
+        return "SUP-0000"
+    max_id = db.scalar(select(func.max(Supplier.id))) or 0
+    return f"SUP-{int(max_id) + 1:04d}"
+
+
+def safe_index(options: list, value, default: int = 0) -> int:
+    try:
+        return options.index(value)
+    except ValueError:
+        return default
+
+
+def query_value(name: str) -> str:
+    value = st.query_params.get(name)
+    if isinstance(value, list):
+        return value[0] if value else ""
+    return value or ""
 
 
 def create_purchase_request(
@@ -1146,12 +2016,16 @@ def delete_selected_pos(db: Session, po_numbers: list[str]) -> int:
 
 def upsert_supplier(
     db: Session,
+    supplier_code: str,
     supplier_name: str,
+    business_number: str,
     manager: str,
     phone: str,
     email: str,
     handled_items: str,
     moq_terms: str,
+    transaction_status: str,
+    next_evaluation_date: date | None,
     avg_lead_time_days: int,
     avg_unit_price: float,
     avg_unit_price_currency: str,
@@ -1168,16 +2042,21 @@ def upsert_supplier(
     if row is None:
         row = Supplier(supplier_name=clean_name)
         db.add(row)
+        db.flush()
     elif row.supplier_name != clean_name:
         duplicate = db.execute(select(Supplier).where(Supplier.supplier_name == clean_name)).scalar_one_or_none()
         if duplicate is not None and duplicate.id != row.id:
             raise ValueError(f"{clean_name} 협력사가 이미 등록되어 있습니다.")
         row.supplier_name = clean_name
+    row.supplier_code = clean_text(supplier_code) or row.supplier_code or next_supplier_code(db, row.id)
+    row.business_number = clean_text(business_number)
     row.manager = clean_text(manager)
     row.phone = clean_text(phone)
     row.email = clean_text(email)
     row.handled_items = normalize_item_list(handled_items)
     row.moq_terms = clean_text(moq_terms)
+    row.transaction_status = transaction_status if transaction_status in SUPPLIER_TRANSACTION_STATUSES else "거래중"
+    row.next_evaluation_date = next_evaluation_date
     row.avg_lead_time_days = max(int(avg_lead_time_days or 0), 0)
     row.avg_unit_price = max(to_float(avg_unit_price), 0.0)
     row.avg_unit_price_currency = normalize_currency(avg_unit_price_currency)
@@ -1193,7 +2072,14 @@ def delete_supplier(db: Session, supplier_name: str) -> bool:
     row = db.execute(select(Supplier).where(Supplier.supplier_name == clean_name)).scalar_one_or_none()
     if row is None:
         return False
-    db.delete(row)
+    has_history = False
+    if SupplierEvaluation is not None:
+        has_history = db.execute(select(SupplierEvaluation.id).where(SupplierEvaluation.supplier_id == row.id)).first() is not None
+    if has_history:
+        row.transaction_status = "거래종료"
+        row.memo = append_unique_items(row.memo, "평가이력 보존으로 삭제 대신 거래종료 처리")
+    else:
+        db.delete(row)
     db.commit()
     return True
 
@@ -1455,14 +2341,29 @@ def po_to_dict(row: PurchaseOrder) -> dict:
 
 
 def supplier_to_dict(row: Supplier) -> dict:
+    grade = row.current_grade or row.rating or "미평가"
+    latest_score = "" if not row.latest_score else f"{float(row.latest_score):.1f}"
+    special_reason = row.special_reason or ""
     return {
         "삭제": False,
+        "ID": row.id,
+        "업체코드": row.supplier_code or next_supplier_code(None, row.id),
         "업체명": row.supplier_name,
+        "협력사명": row.supplier_name,
+        "사업자등록번호": row.business_number,
         "취급품목": row.handled_items,
+        "주요 품목": row.handled_items,
         "MOQ 조건": row.moq_terms,
         "담당자": row.manager,
         "연락처": row.phone,
         "이메일": row.email,
+        "거래 상태": row.transaction_status,
+        "현재 등급": grade,
+        "최근 평가점수": latest_score,
+        "최근 평가일": row.latest_evaluation_date,
+        "다음 평가예정일": row.next_evaluation_date,
+        "특별관리 여부": f"⚠ {special_reason}" if row.special_management else "아니오",
+        "관리": "상세/이력",
         "평균납기": row.avg_lead_time_days,
         "평균단가": format_compact_price(row.avg_unit_price, row.avg_unit_price_currency),
         "결제조건": row.payment_terms,
@@ -2376,6 +3277,48 @@ def inject_purchase_css() -> None:
         [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
             background-color: #536d84 !important;
         }
+        div[role="radiogroup"][aria-label="협력사관리 내부 하위 탭"] {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 0.25rem;
+            overflow-x: auto;
+            background: #f1eee8;
+            border: 1px solid #d7d0c5;
+            border-radius: 8px;
+            padding: 0.25rem;
+            margin: 0.4rem 0 0.8rem;
+        }
+        div[role="radiogroup"][aria-label="협력사관리 내부 하위 탭"] label {
+            min-width: max-content;
+            background: transparent !important;
+            border-radius: 6px;
+            padding: 0.22rem 0.55rem;
+        }
+        div[role="radiogroup"][aria-label="협력사관리 내부 하위 탭"] label:has(input:checked) {
+            background: #e7e1d8 !important;
+            color: #304257 !important;
+            font-weight: 800 !important;
+        }
+        [data-testid="stTabs"] [data-testid="stTabs"] [data-baseweb="tab-list"] {
+            margin-top: 0.2rem !important;
+            background: #f1eee8 !important;
+            border: 1px solid #d7d0c5 !important;
+            border-radius: 8px !important;
+            padding: 0.22rem !important;
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
+        }
+        [data-testid="stTabs"] [data-testid="stTabs"] [data-baseweb="tab"] {
+            font-size: 0.88rem !important;
+            padding: 0.42rem 0.7rem !important;
+            color: #66727d !important;
+            border-radius: 6px !important;
+            white-space: nowrap !important;
+        }
+        [data-testid="stTabs"] [data-testid="stTabs"] [aria-selected="true"] {
+            background: #e7e1d8 !important;
+            color: #304257 !important;
+        }
         .supplier-table-wrap {
             width: 100%;
             max-height: 330px;
@@ -2417,6 +3360,35 @@ def inject_purchase_css() -> None:
         }
         .supplier-table tbody tr:last-child td {
             border-bottom: 0;
+        }
+        .supplier-grade-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 76px;
+            border-radius: 999px;
+            padding: 0.22rem 0.55rem;
+            border: 1px solid #cfc5b7;
+            background: #e7e1d8;
+            color: #304257 !important;
+            font-weight: 850;
+            text-decoration: none !important;
+        }
+        .supplier-grade-badge.grade-S { background: #dcebe2; border-color: #9dbda9; color: #1f5132 !important; }
+        .supplier-grade-badge.grade-A { background: #e3ebf4; border-color: #9fb4cf; color: #284b72 !important; }
+        .supplier-grade-badge.grade-B { background: #eee9d7; border-color: #cbbd80; color: #6a5719 !important; }
+        .supplier-grade-badge.grade-C { background: #f2e4d8; border-color: #d5aa84; color: #7c451e !important; }
+        .supplier-grade-badge.grade-D { background: #f0dcdd; border-color: #c88c91; color: #7f2d34 !important; }
+        .supplier-grade-badge.grade-미평가 { background: #e7e1d8; border-color: #cfc5b7; color: #5f6975 !important; }
+        .supplier-detail-box {
+            min-height: 138px;
+            background: #f1eee8;
+            border: 1px solid #d7d0c5;
+            border-radius: 8px;
+            padding: 0.9rem 1rem;
+            color: #24303c;
+            line-height: 1.65;
+            font-weight: 650;
         }
         [data-testid="stForm"],
         [data-testid="stDataFrame"],
