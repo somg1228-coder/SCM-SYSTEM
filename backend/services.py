@@ -274,16 +274,43 @@ def read_html_with_stdlib(file_bytes: bytes) -> pd.DataFrame:
 def read_excel(file_bytes: bytes) -> pd.DataFrame:
     uploaded_file = BytesIO(file_bytes)
     try:
-        df = normalize_import_headers(pd.read_excel(uploaded_file, engine="openpyxl"))
-        if not has_known_import_headers(df):
-            uploaded_file.seek(0)
-            sheets = pd.read_excel(uploaded_file, sheet_name=None, engine="openpyxl")
-            for sheet_df in sheets.values():
-                candidate = normalize_import_headers(sheet_df)
-                if has_known_import_headers(candidate):
-                    df = candidate
-                    break
+        sheets = pd.read_excel(uploaded_file, sheet_name=None, engine="openpyxl")
+        if not sheets:
+            raise ValueError("엑셀 시트를 찾지 못했습니다.")
+        selected_sheet = ""
+        selected_raw = pd.DataFrame()
+        selected_df = pd.DataFrame()
+        non_empty_sheets = []
+        fallback_raw = pd.DataFrame()
+        fallback_name = ""
+        for sheet_name, sheet_df in sheets.items():
+            if sheet_df is None or sheet_df.dropna(how="all").empty:
+                continue
+            non_empty_sheets.append(sheet_name)
+            if fallback_raw.empty:
+                fallback_name = sheet_name
+                fallback_raw = sheet_df
+            candidate = normalize_import_headers(sheet_df)
+            if has_known_import_headers(candidate):
+                selected_sheet = sheet_name
+                selected_raw = sheet_df
+                selected_df = candidate
+                break
+        if selected_df.empty:
+            selected_sheet = fallback_name or next(iter(sheets.keys()))
+            selected_raw = fallback_raw if not fallback_raw.empty else next(iter(sheets.values()))
+            selected_df = normalize_import_headers(selected_raw)
+        df = selected_df
         df.attrs["read_method"] = "excel"
+        df.attrs["sheet_names"] = list(sheets.keys())
+        df.attrs["non_empty_sheet_names"] = non_empty_sheets
+        df.attrs["selected_sheet"] = selected_sheet
+        df.attrs["raw_shape"] = tuple(selected_raw.shape)
+        df.attrs["raw_columns"] = [str(column) for column in selected_raw.columns]
+        df.attrs["raw_head"] = selected_raw.head(5).fillna("").astype(str).to_dict("records")
+        df.attrs["normalized_shape"] = tuple(df.shape)
+        df.attrs["normalized_columns"] = [str(column) for column in df.columns]
+        df.attrs["normalized_head"] = df.head(5).fillna("").astype(str).to_dict("records")
         return df
     except Exception as excel_error:
         uploaded_file.seek(0)
@@ -304,6 +331,13 @@ def read_excel(file_bytes: bytes) -> pd.DataFrame:
         df = normalize_import_headers(tables[0])
         df.attrs["read_method"] = "html"
         df.attrs["read_message"] = HTML_TABLE_FALLBACK_MESSAGE
+        df.attrs["selected_sheet"] = "HTML table"
+        df.attrs["raw_shape"] = tuple(tables[0].shape)
+        df.attrs["raw_columns"] = [str(column) for column in tables[0].columns]
+        df.attrs["raw_head"] = tables[0].head(5).fillna("").astype(str).to_dict("records")
+        df.attrs["normalized_shape"] = tuple(df.shape)
+        df.attrs["normalized_columns"] = [str(column) for column in df.columns]
+        df.attrs["normalized_head"] = df.head(5).fillna("").astype(str).to_dict("records")
         return df
 
 
@@ -1381,14 +1415,30 @@ def read_inventory_upload_file(file_bytes: bytes, file_name: str = "") -> pd.Dat
     if file_name.lower().endswith(".csv"):
         for encoding in ("utf-8-sig", "cp949", "utf-8"):
             try:
-                df = pd.read_csv(BytesIO(file_bytes), encoding=encoding)
+                raw_df = pd.read_csv(BytesIO(file_bytes), encoding=encoding)
+                df = normalize_import_headers(raw_df)
                 df.attrs["read_method"] = "csv"
-                return normalize_import_headers(df)
+                df.attrs["selected_sheet"] = f"CSV ({encoding})"
+                df.attrs["raw_shape"] = tuple(raw_df.shape)
+                df.attrs["raw_columns"] = [str(column) for column in raw_df.columns]
+                df.attrs["raw_head"] = raw_df.head(5).fillna("").astype(str).to_dict("records")
+                df.attrs["normalized_shape"] = tuple(df.shape)
+                df.attrs["normalized_columns"] = [str(column) for column in df.columns]
+                df.attrs["normalized_head"] = df.head(5).fillna("").astype(str).to_dict("records")
+                return df
             except UnicodeDecodeError:
                 continue
-        df = pd.read_csv(BytesIO(file_bytes))
+        raw_df = pd.read_csv(BytesIO(file_bytes))
+        df = normalize_import_headers(raw_df)
         df.attrs["read_method"] = "csv"
-        return normalize_import_headers(df)
+        df.attrs["selected_sheet"] = "CSV"
+        df.attrs["raw_shape"] = tuple(raw_df.shape)
+        df.attrs["raw_columns"] = [str(column) for column in raw_df.columns]
+        df.attrs["raw_head"] = raw_df.head(5).fillna("").astype(str).to_dict("records")
+        df.attrs["normalized_shape"] = tuple(df.shape)
+        df.attrs["normalized_columns"] = [str(column) for column in df.columns]
+        df.attrs["normalized_head"] = df.head(5).fillna("").astype(str).to_dict("records")
+        return df
     return read_excel(file_bytes)
 
 
@@ -1412,13 +1462,45 @@ def prepare_stock_upload_preview(
     upload_mode: str = "partial",
 ) -> dict:
     df = read_inventory_upload_file(file_bytes, file_name)
+    upload_debug = {
+        "read_method": df.attrs.get("read_method", ""),
+        "read_message": df.attrs.get("read_message", ""),
+        "sheet_names": df.attrs.get("sheet_names", []),
+        "non_empty_sheet_names": df.attrs.get("non_empty_sheet_names", []),
+        "selected_sheet": df.attrs.get("selected_sheet", ""),
+        "raw_shape": df.attrs.get("raw_shape", tuple(df.shape)),
+        "raw_columns": df.attrs.get("raw_columns", []),
+        "raw_head": df.attrs.get("raw_head", []),
+        "normalized_shape": df.attrs.get("normalized_shape", tuple(df.shape)),
+        "normalized_columns": df.attrs.get("normalized_columns", [str(column) for column in df.columns]),
+        "normalized_head": df.attrs.get("normalized_head", df.head(5).fillna("").astype(str).to_dict("records")),
+        "normalized_records": df.fillna("").to_dict("records"),
+    }
+    if df is None or df.empty:
+        return {
+            "ok": False,
+            "message": "업로드한 엑셀에서 표시할 데이터를 찾지 못했습니다.",
+            "file_name": file_name,
+            "upload_mode": upload_mode,
+            "total_rows": 0,
+            "matched_count": 0,
+            "failed_count": 0,
+            "duplicate_count": 0,
+            "empty_barcode_count": 0,
+            "invalid_stock_count": 0,
+            "negative_stock_count": 0,
+            "zeroed_count": 0,
+            "preview_rows": [],
+            "debug": upload_debug,
+            "missing_columns": ["현재고"],
+        }
     try:
         current_col = find_column(df, ["보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고"])
     except ValueError:
         try:
             current_col = find_column(df, ["가용재고", "판매가능재고"])
         except ValueError as exc:
-            raise ValueError("현재고를 찾지 못했습니다. 현재고/보유재고/재고수량 컬럼을 확인해주세요.") from exc
+            raise ValueError(f"필수 컬럼을 찾지 못했습니다: 현재고 / 인식된 컬럼: {', '.join(map(str, df.columns))}") from exc
     try:
         product_code_col = find_column(df, ["SKU", "상품코드", "품목코드", "상품번호"])
     except ValueError:
@@ -1535,6 +1617,7 @@ def prepare_stock_upload_preview(
         "ok": True,
         "file_name": file_name,
         "upload_mode": upload_mode,
+        "debug": upload_debug,
         "total_rows": len(df.index),
         "matched_count": matched_count,
         "failed_count": failed_count,

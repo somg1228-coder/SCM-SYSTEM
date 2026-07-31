@@ -13532,3 +13532,18 @@ html {
         width: 0 !important;
     }
 }
+
+/* Inventory upload tables use Streamlit's canvas-backed dataframe renderer.
+   Do not repaint the canvas itself; doing so can leave only an empty-looking box. */
+.stApp :where(
+    [data-testid="stDataFrame"] canvas,
+    [data-testid="stDataEditor"] canvas,
+    .glideDataEditor canvas,
+    .dvn-scroller canvas
+) {
+    background: transparent !important;
+    background-color: transparent !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: block !important;
+}

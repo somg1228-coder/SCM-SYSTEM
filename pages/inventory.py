@@ -685,6 +685,13 @@ def render_daily_tab(source_type: str) -> None:
     output_df = download_source_df.drop(columns=["선택"], errors="ignore")
     output_filters = filters if download_scope == "현재 필터 결과 다운로드" else {}
     upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
+    uploaded_inventory_key = f"{source_type}_uploaded_inventory_df_{work_date.isoformat()}"
+    inventory_preview_df_key = f"{source_type}_inventory_preview_df_{work_date.isoformat()}"
+    applied_inventory_df_key = f"{source_type}_applied_inventory_df_{work_date.isoformat()}"
+    excluded_inventory_df_key = f"{source_type}_excluded_inventory_df_{work_date.isoformat()}"
+    st.session_state.setdefault("uploaded_inventory_df", None)
+    st.session_state.setdefault("inventory_preview_df", None)
+    st.session_state.setdefault("applied_inventory_df", None)
 
     action_cols = st.columns([1.05, 1.05, 1.05, 1.05, 1.05, 1.7], gap="small")
     with action_cols[0]:
@@ -718,6 +725,14 @@ def render_daily_tab(source_type: str) -> None:
                 )
                 if preview:
                     st.session_state[upload_preview_key] = preview
+                    preview_df = stock_preview_display_dataframe(preview)
+                    uploaded_df = pd.DataFrame(preview.get("debug", {}).get("normalized_records", []))
+                    st.session_state[uploaded_inventory_key] = uploaded_df
+                    st.session_state[inventory_preview_df_key] = preview_df
+                    st.session_state["uploaded_inventory_df"] = uploaded_df
+                    st.session_state["inventory_preview_df"] = preview_df
+                    st.session_state["applied_inventory_df"] = None
+                    st.session_state["excluded_inventory_df"] = None
     with action_cols[1]:
         if st.button("안전재고 계산", key=f"{source_type}_safe", use_container_width=True):
             show_result(with_db(lambda db: result("안전재고 계산 완료", services.calculate_safe_stock(db, source_type, work_date))))
@@ -767,17 +782,38 @@ def render_daily_tab(source_type: str) -> None:
 
     preview = st.session_state.get(upload_preview_key)
     if preview:
-        render_stock_upload_preview(source_type, work_date, upload_preview_key, preview)
+        render_stock_upload_preview(
+            source_type,
+            work_date,
+            upload_preview_key,
+            preview,
+            inventory_preview_df_key,
+            applied_inventory_df_key,
+            excluded_inventory_df_key,
+        )
+    applied_df = st.session_state.get(applied_inventory_df_key)
+    if isinstance(applied_df, pd.DataFrame) and not applied_df.empty:
+        st.markdown("#### 현재고 반영 결과")
+        st.dataframe(
+            applied_df,
+            hide_index=True,
+            use_container_width=True,
+            height=520,
+        )
+    excluded_df = st.session_state.get(excluded_inventory_df_key)
+    if isinstance(excluded_df, pd.DataFrame) and not excluded_df.empty:
+        with st.expander(f"반영 제외 {len(excluded_df):,}건 및 사유", expanded=False):
+            st.dataframe(excluded_df, hide_index=True, use_container_width=True, height=260)
 
     if filtered_df.empty:
-        st.info("조건에 맞는 재고 품목이 없습니다. 필터를 초기화하면 전체 품목을 다시 볼 수 있습니다.")
+        st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
         if st.button("필터 전체 초기화", key=f"{source_type}_daily_empty_reset_{work_date}", use_container_width=True):
             reset_inventory_filters(source_key(source_type))
             st.rerun()
     else:
         display_df = paged_df.drop(columns=["선택"], errors="ignore")
         st.dataframe(
-            style_inventory_dataframe(display_df),
+            display_df,
             hide_index=True,
             use_container_width=True,
             height=520,
@@ -1334,7 +1370,15 @@ def style_inventory_dataframe(df: pd.DataFrame):
     return styler.applymap(cell_style, subset=["재고상태"])
 
 
-def render_stock_upload_preview(source_type: str, work_date: date, preview_key: str, preview: dict) -> None:
+def render_stock_upload_preview(
+    source_type: str,
+    work_date: date,
+    preview_key: str,
+    preview: dict,
+    preview_df_key: str,
+    applied_df_key: str,
+    excluded_df_key: str,
+) -> None:
     st.markdown("#### 재고 업로드 미리보기")
     metric_cols = st.columns(5, gap="small")
     metric_cols[0].metric("전체 행", f"{preview.get('total_rows', 0):,}")
@@ -1347,22 +1391,26 @@ def render_stock_upload_preview(source_type: str, work_date: date, preview_key: 
         f"숫자 오류 {preview.get('invalid_stock_count', 0):,}건 / "
         f"음수 재고 {preview.get('negative_stock_count', 0):,}건"
     )
-    preview_df = pd.DataFrame(preview.get("preview_rows", []))
-    if not preview_df.empty:
-        display_df = preview_df.rename(
-            columns={
-                "category": "카테고리",
-                "product_name": "상품명",
-                "barcode": "바코드",
-                "previous_stock": "기존 현재고",
-                "new_stock": "변경 현재고",
-                "status": "검증결과",
-            }
-        )[["카테고리", "상품명", "바코드", "기존 현재고", "변경 현재고", "검증결과"]]
-        st.dataframe(display_df.head(200), hide_index=True, use_container_width=True, height=220)
+    render_stock_upload_debug(preview)
+    preview_df = st.session_state.get(preview_df_key)
+    if not isinstance(preview_df, pd.DataFrame):
+        preview_df = stock_preview_display_dataframe(preview)
+        st.session_state[preview_df_key] = preview_df
+        st.session_state["inventory_preview_df"] = preview_df
+    if preview_df is None or preview_df.empty:
+        st.warning("업로드한 엑셀에서 표시할 데이터를 찾지 못했습니다.")
+    else:
+        st.dataframe(
+            preview_df,
+            hide_index=True,
+            use_container_width=True,
+            height=420,
+        )
     apply_col, cancel_col, spacer = st.columns([1.0, 1.0, 4.2], gap="small")
     with apply_col:
         if st.button("현재고 반영", type="primary", key=f"{preview_key}_apply", use_container_width=True):
+            applied_df = stock_applied_display_dataframe(preview)
+            excluded_df = stock_excluded_display_dataframe(preview)
             outcome = with_db(
                 lambda db: services.apply_stock_upload_preview(
                     db,
@@ -1373,14 +1421,103 @@ def render_stock_upload_preview(source_type: str, work_date: date, preview_key: 
                 )
             )
             if outcome and outcome.get("ok", True):
+                st.session_state[applied_df_key] = applied_df
+                st.session_state[excluded_df_key] = excluded_df
+                st.session_state["applied_inventory_df"] = applied_df
+                st.session_state["excluded_inventory_df"] = excluded_df
                 st.session_state.pop(preview_key, None)
+                st.success(
+                    f"현재고 반영 완료: {outcome.get('count', 0):,}건 / "
+                    f"제외 {max(int(preview.get('total_rows', 0) or 0) - int(outcome.get('count', 0) or 0), 0):,}건"
+                )
+                if not applied_df.empty:
+                    st.dataframe(
+                        applied_df,
+                        hide_index=True,
+                        use_container_width=True,
+                        height=520,
+                    )
+                if not excluded_df.empty:
+                    with st.expander(f"반영 제외 {len(excluded_df):,}건 및 사유", expanded=False):
+                        st.dataframe(excluded_df, hide_index=True, use_container_width=True, height=260)
             show_result(outcome)
     with cancel_col:
         if st.button("미리보기 취소", key=f"{preview_key}_cancel", use_container_width=True):
             st.session_state.pop(preview_key, None)
+            st.session_state.pop(preview_df_key, None)
+            st.session_state["uploaded_inventory_df"] = None
+            st.session_state["inventory_preview_df"] = None
             st.rerun()
     with spacer:
         st.empty()
+
+
+def stock_preview_display_dataframe(preview: dict) -> pd.DataFrame:
+    preview_df = pd.DataFrame(preview.get("preview_rows", []))
+    if preview_df.empty:
+        return pd.DataFrame()
+    columns = {
+        "row_no": "엑셀 행",
+        "product_code": "SKU",
+        "category": "카테고리",
+        "product_name": "상품명",
+        "barcode": "바코드",
+        "previous_stock": "기존 현재고",
+        "new_stock": "변경 현재고",
+        "status": "검증결과",
+        "matched": "반영대상",
+    }
+    display_df = preview_df.rename(columns=columns)
+    ordered = ["엑셀 행", "SKU", "카테고리", "상품명", "바코드", "기존 현재고", "변경 현재고", "검증결과", "반영대상"]
+    return display_df[[column for column in ordered if column in display_df.columns]]
+
+
+def stock_applied_display_dataframe(preview: dict) -> pd.DataFrame:
+    preview_df = stock_preview_display_dataframe(preview)
+    if preview_df.empty or "반영대상" not in preview_df.columns:
+        return pd.DataFrame()
+    applied = preview_df[preview_df["반영대상"].astype(bool)].copy()
+    if applied.empty:
+        return applied
+    applied["반영 결과"] = "반영 완료"
+    return applied
+
+
+def stock_excluded_display_dataframe(preview: dict) -> pd.DataFrame:
+    preview_df = stock_preview_display_dataframe(preview)
+    if preview_df.empty or "반영대상" not in preview_df.columns:
+        return pd.DataFrame()
+    excluded = preview_df[~preview_df["반영대상"].astype(bool)].copy()
+    if excluded.empty:
+        return excluded
+    excluded["제외 사유"] = excluded.get("검증결과", "제외")
+    return excluded
+
+
+def render_stock_upload_debug(preview: dict) -> None:
+    debug = preview.get("debug") or {}
+    if not debug:
+        return
+    raw_shape = debug.get("raw_shape") or (0, 0)
+    normalized_shape = debug.get("normalized_shape") or (0, 0)
+    with st.expander("엑셀 읽기 디버그 정보", expanded=False):
+        st.write(f"읽은 방식: {debug.get('read_method') or '-'}")
+        st.write(f"읽은 시트명: {debug.get('selected_sheet') or '-'}")
+        if debug.get("sheet_names"):
+            st.write("사용 가능한 시트:", ", ".join(map(str, debug.get("sheet_names", []))))
+        if debug.get("non_empty_sheet_names"):
+            st.write("데이터가 있는 시트:", ", ".join(map(str, debug.get("non_empty_sheet_names", []))))
+        st.write(f"원본 dataframe: {raw_shape[0] if len(raw_shape) > 0 else 0:,}행 × {raw_shape[1] if len(raw_shape) > 1 else 0:,}열")
+        st.write(f"정규화 dataframe: {normalized_shape[0] if len(normalized_shape) > 0 else 0:,}행 × {normalized_shape[1] if len(normalized_shape) > 1 else 0:,}열")
+        st.write("인식된 컬럼명:", list(debug.get("normalized_columns", [])))
+        raw_head = pd.DataFrame(debug.get("raw_head", []))
+        normalized_head = pd.DataFrame(debug.get("normalized_head", []))
+        if not raw_head.empty:
+            st.caption("원본 첫 5행")
+            st.dataframe(raw_head, hide_index=True, use_container_width=True, height=180)
+        if not normalized_head.empty:
+            st.caption("정규화 후 첫 5행")
+            st.dataframe(normalized_head, hide_index=True, use_container_width=True, height=180)
 
 
 def current_user_name() -> str:

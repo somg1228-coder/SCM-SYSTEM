@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -45,6 +45,10 @@ try:
     SupplierEvaluationCriteria = getattr(backend_models, "SupplierEvaluationCriteria", None)
     SupplierEvaluationHistory = getattr(backend_models, "SupplierEvaluationHistory", None)
     SupplierEvaluationItem = getattr(backend_models, "SupplierEvaluationItem", None)
+    SupplierEvaluationCriteriaVersion = getattr(backend_models, "SupplierEvaluationCriteriaVersion", None)
+    SupplierEvaluationCategory = getattr(backend_models, "SupplierEvaluationCategory", None)
+    SupplierSpecialRule = getattr(backend_models, "SupplierSpecialRule", None)
+    SupplierApprovalHistory = getattr(backend_models, "SupplierApprovalHistory", None)
     SupplierGradeRule = getattr(backend_models, "SupplierGradeRule", None)
 except (ModuleNotFoundError, ImportError, AttributeError, RuntimeError) as exc:
     SessionLocal = None
@@ -61,6 +65,10 @@ except (ModuleNotFoundError, ImportError, AttributeError, RuntimeError) as exc:
     SupplierEvaluationCriteria = None
     SupplierEvaluationHistory = None
     SupplierEvaluationItem = None
+    SupplierEvaluationCriteriaVersion = None
+    SupplierEvaluationCategory = None
+    SupplierSpecialRule = None
+    SupplierApprovalHistory = None
     SupplierGradeRule = None
     PURCHASE_IMPORT_ERROR = str(exc)
 else:
@@ -95,13 +103,20 @@ SPECIAL_FLAG_OPTIONS = [
     "거래중단 검토 대상",
     "우수 협력사 추천 대상",
 ]
-AUTO_WARNING_FLAGS = {"중대한 품질사고 발생", "반복적인 납기지연", "계약 위반", "안전 또는 법규 위반"}
+AUTO_WARNING_FLAGS = {
+    "중대한 품질사고 발생",
+    "반복적인 납기지연",
+    "계약 위반",
+    "허위서류 제출",
+    "안전 또는 법규 위반",
+    "거래중단 검토 대상",
+}
 DEFAULT_EVALUATION_CATEGORIES = [
-    ("품질관리", 30.0, ["불량률", "반품 및 교환 발생률", "규격 및 사양 준수", "품질 개선 대응", "품질 관련 인증 보유 여부"]),
-    ("납기관리", 25.0, ["납기 준수율", "긴급 발주 대응", "납기 지연 횟수", "납품 수량 정확도", "입고 일정 협조도"]),
-    ("가격 및 거래조건", 20.0, ["가격 경쟁력", "견적 정확도", "결제조건", "원가절감 협조", "가격 변동의 합리성"]),
-    ("업무 대응 및 서비스", 15.0, ["문의 응답 속도", "문제 발생 시 대응력", "담당자 업무 협조도", "서류 제출 정확도", "클레임 처리 만족도"]),
-    ("경영 및 안정성", 10.0, ["공급 안정성", "재무 및 경영상태", "생산 또는 공급 능력", "법규 및 계약 준수", "지속 거래 가능성"]),
+    ("품질관리", 30.0, ["불량률 관리", "반품 및 교환 발생", "규격 및 사양 준수", "품질 안정성", "품질 개선조치 대응", "품질 관련 인증 보유"]),
+    ("납기관리", 25.0, ["납기 준수율", "납기 지연 발생", "긴급 발주 대응", "납품 수량 정확도", "일정 변경 대응", "입고 일정 협조도"]),
+    ("가격 및 거래조건", 20.0, ["가격 경쟁력", "견적 정확도", "단가 변동의 합리성", "결제조건", "원가절감 협조", "추가 비용 발생 여부"]),
+    ("업무 대응 및 서비스", 15.0, ["문의 응답 속도", "담당자 업무 협조도", "문제 발생 시 대응력", "커뮤니케이션 정확성", "서류 제출 정확도", "클레임 처리 만족도"]),
+    ("공급 및 경영 안정성", 10.0, ["공급 안정성", "생산 또는 공급 능력", "재무 및 경영상태", "계약 준수", "법규 및 안전 준수", "지속 거래 가능성"]),
 ]
 DEFAULT_GRADE_RULES = [
     ("S", 95.0, 100.0, "최우수"),
@@ -110,6 +125,18 @@ DEFAULT_GRADE_RULES = [
     ("C", 65.0, 74.9999, "개선 필요"),
     ("D", 0.0, 64.9999, "거래 재검토"),
 ]
+IMPROVEMENT_STATUSES = ["해당 없음", "개선 요청", "개선 진행 중", "개선 완료", "미이행"]
+EVALUATION_CYCLES = ["매월", "분기별", "반기별", "연 1회", "직접 지정"]
+DEFAULT_SPECIAL_RULES = {
+    "중대한 품질사고 발생": ("C", True, True, True),
+    "반복적인 납기지연": ("C", True, True, True),
+    "계약 위반": ("D", True, True, True),
+    "허위서류 제출": ("D", True, True, True),
+    "안전 또는 법규 위반": ("D", True, True, True),
+    "장기 미응답": ("", True, True, False),
+    "거래중단 검토 대상": ("D", True, True, True),
+    "우수 협력사 추천 대상": ("", False, False, False),
+}
 PRICE_DECIMAL_OPTIONS = [0, 1, 2, 3, 4, 5]
 PRICE_DECIMAL_COLUMNS = {"단가", "공급가액", "부가세", "총금액", "배송비", "발주금액", "총 구매비용", "구매금액"}
 PR_EDITOR_COLUMNS = [
@@ -785,6 +812,13 @@ def render_supplier_table(rows: list[dict]) -> None:
                     f"{escape(grade)} {escape(SUPPLIER_GRADE_LABELS.get(grade, grade))}</a></td>"
                 )
                 continue
+            if column == "특별관리 여부":
+                reason = str(row.get("특별관리 사유", "") or value or "")
+                if str(value).startswith("⚠"):
+                    cells.append(f'<td><span class="supplier-warning-badge" title="{escape(reason)}">주의</span></td>')
+                else:
+                    cells.append("<td>아니오</td>")
+                continue
             cells.append(f"<td>{escape(str(value))}</td>")
         body_rows.append(f"<tr>{''.join(cells)}</tr>")
     st.markdown(
@@ -859,134 +893,290 @@ def render_supplier_evaluation_tab() -> None:
     supplier_id = supplier_options[selected_label]
     supplier = next(row for row in suppliers if row.id == supplier_id)
     criteria = with_db(lambda db: active_supplier_criteria(db)) or default_criteria_payload()
+    existing = with_db(lambda db: list_supplier_evaluations(db, supplier_id)) or []
+    eval_options = {"새 평가 작성": 0}
+    eval_options.update({evaluation_option_label(row): row.id for row in existing})
+    selected_eval_label = st.selectbox("불러올 평가", list(eval_options), key=f"supplier_eval_load_{supplier_id}")
+    evaluation_id = eval_options[selected_eval_label]
+    loaded = with_db(lambda db: supplier_evaluation_detail(db, evaluation_id)) if evaluation_id else {}
+    loaded_eval = loaded.get("evaluation", {}) if loaded else {}
+    loaded_items = loaded.get("items", {}) if loaded else {}
 
-    input_cols = st.columns([0.7, 0.7, 0.75, 0.75, 0.75, 0.75], gap="small")
-    eval_year = input_cols[0].number_input("평가연도", min_value=2020, max_value=2100, value=date.today().year, step=1)
-    eval_quarter = input_cols[1].selectbox("평가분기", ["Q1", "Q2", "Q3", "Q4"], index=(date.today().month - 1) // 3)
-    period_start = input_cols[2].date_input("평가 시작일", value=date.today().replace(month=((date.today().month - 1) // 3) * 3 + 1, day=1))
-    period_end = input_cols[3].date_input("평가 종료일", value=date.today())
-    evaluation_date = input_cols[4].date_input("평가일", value=date.today())
-    evaluator = input_cols[5].text_input("평가자", value="")
-    status_cols = st.columns([0.9, 1.6, 1.2], gap="small")
-    status = status_cols[0].selectbox("평가 상태", EVALUATION_STATUSES, index=0)
-    improvement_due_date = status_cols[1].date_input("개선 완료 예정일", value=date.today() + timedelta(days=30))
-    st.caption(f"업체코드: {supplier.supplier_code or next_supplier_code(None, supplier.id)} / 주요 품목: {supplier.handled_items or '-'}")
+    default_year = int(loaded_eval.get("evaluation_year") or date.today().year)
+    default_quarter = loaded_eval.get("evaluation_quarter") or f"Q{((date.today().month - 1) // 3) + 1}"
+    default_start = parse_date(loaded_eval.get("period_start")) or date.today().replace(month=((date.today().month - 1) // 3) * 3 + 1, day=1)
+    default_end = parse_date(loaded_eval.get("period_end")) or date.today()
+    default_eval_date = parse_date(loaded_eval.get("evaluation_date")) or date.today()
+    default_next_date = parse_date(loaded_eval.get("next_evaluation_date")) or calculate_next_evaluation_date(default_eval_date, "분기별")
+    key_suffix = evaluation_id or f"new_{supplier_id}"
+
+    st.markdown('<div class="purchase-section-title">평가 기본정보</div>', unsafe_allow_html=True)
+    st.caption(
+        f"업체코드: {supplier.supplier_code or next_supplier_code(None, supplier.id)} / "
+        f"주요 거래품목: {supplier.handled_items or '-'} / 담당자: {supplier.manager or '-'}"
+    )
+    input_cols = st.columns([0.7, 0.7, 0.78, 0.78, 0.78, 0.9], gap="small")
+    eval_year = input_cols[0].number_input("평가연도", min_value=2020, max_value=2100, value=default_year, step=1, key=f"eval_year_{key_suffix}")
+    eval_quarter = input_cols[1].selectbox("평가분기", ["Q1", "Q2", "Q3", "Q4"], index=safe_index(["Q1", "Q2", "Q3", "Q4"], default_quarter, 0), key=f"eval_quarter_{key_suffix}")
+    period_start = input_cols[2].date_input("평가기간 시작일", value=default_start, key=f"eval_start_{key_suffix}")
+    period_end = input_cols[3].date_input("평가기간 종료일", value=default_end, key=f"eval_end_{key_suffix}")
+    evaluation_date = input_cols[4].date_input("평가일", value=default_eval_date, key=f"eval_date_{key_suffix}")
+    evaluator = input_cols[5].text_input("평가자", value=str(loaded_eval.get("evaluator", "")), key=f"eval_evaluator_{key_suffix}")
+    status_cols = st.columns([0.9, 0.9, 0.9, 1.2], gap="small")
+    current_status = loaded_eval.get("status") or "임시저장"
+    status = status_cols[0].selectbox("평가 상태", EVALUATION_STATUSES, index=safe_index(EVALUATION_STATUSES, current_status, 0), key=f"eval_status_{key_suffix}")
+    cycle = status_cols[1].selectbox("평가주기", EVALUATION_CYCLES, index=1, key=f"eval_cycle_{key_suffix}")
+    next_evaluation_date = status_cols[2].date_input("다음 평가예정일", value=default_next_date, key=f"eval_next_{key_suffix}")
+    completion_placeholder = status_cols[3].empty()
 
     selected_ratings = {}
     item_comments = {}
     st.markdown('<div class="purchase-section-title">평가 항목</div>', unsafe_allow_html=True)
     for category in criteria:
-        st.markdown(f"**{category['category_name']} {category['category_weight']:.0f}점**")
-        for item in category["items"]:
-            cols = st.columns([1.5, 0.8, 1.2], gap="small")
-            key = criteria_item_key(category["category_name"], item["item_name"])
-            cols[0].caption(item["item_name"])
-            selected_ratings[key] = cols[1].selectbox("평가값", RATING_OPTIONS, index=2, key=f"eval_rating_{key}", label_visibility="collapsed")
-            item_comments[key] = cols[2].text_input("의견", key=f"eval_comment_{key}", label_visibility="collapsed")
+        with st.expander(f"{category['category_name']} / 기본 배점 {category['category_weight']:.0f}점", expanded=True):
+            for item in category["items"]:
+                cols = st.columns([1.45, 0.75, 1.35], gap="small")
+                key = criteria_item_key(category["category_name"], item["item_name"])
+                previous_item = loaded_items.get(key, {})
+                cols[0].caption(f"{item['item_name']} · {float(item.get('item_weight') or 0):.2f}점")
+                selected_ratings[key] = cols[1].selectbox(
+                    "평가값",
+                    RATING_OPTIONS,
+                    index=safe_index(RATING_OPTIONS, previous_item.get("selected_rating", "보통"), 2),
+                    key=f"eval_rating_{key_suffix}_{key}",
+                    label_visibility="collapsed",
+                )
+                item_comments[key] = cols[2].text_input(
+                    "의견",
+                    value=str(previous_item.get("comment", "")),
+                    key=f"eval_comment_{key_suffix}_{key}",
+                    label_visibility="collapsed",
+                )
 
-    special_flags = st.multiselect("특별관리 항목", SPECIAL_FLAG_OPTIONS, key="supplier_eval_special_flags")
-    overall_comment = st.text_area("종합 의견", key="supplier_eval_overall_comment")
-    improvement_request = st.text_area("개선 요청사항", key="supplier_eval_improvement_request")
+    completed_count = sum(1 for value in selected_ratings.values() if value)
+    total_count = max(len(selected_ratings), 1)
+    completion_placeholder.metric("입력 완료율", f"{completed_count / total_count * 100:.0f}%")
+
+    special_flags = st.multiselect(
+        "특별관리 항목",
+        SPECIAL_FLAG_OPTIONS,
+        default=[flag for flag in loaded_eval.get("special_flags", []) if flag in SPECIAL_FLAG_OPTIONS],
+        key=f"supplier_eval_special_flags_{key_suffix}",
+    )
+    loaded_special_reasons = loaded_eval.get("special_reasons", {}) or {}
+    special_reasons = {}
+    if special_flags:
+        st.caption("특별관리 항목을 선택하면 사유를 반드시 남겨야 합니다.")
+        for flag in special_flags:
+            special_reasons[flag] = st.text_input(
+                f"{flag} 사유",
+                value=str(loaded_special_reasons.get(flag, "")),
+                key=f"eval_special_reason_{key_suffix}_{criteria_item_key('special', flag)}",
+            )
+
+    st.markdown('<div class="purchase-section-title">종합의견 및 개선관리</div>', unsafe_allow_html=True)
+    comment_cols = st.columns(2, gap="small")
+    overall_comment = comment_cols[0].text_area("종합 평가의견", value=str(loaded_eval.get("overall_comment", "")), key=f"supplier_eval_overall_comment_{key_suffix}")
+    excellent_points = comment_cols[1].text_area("우수사항", value=str(loaded_eval.get("excellent_points", "")), key=f"supplier_eval_excellent_{key_suffix}")
+    issue_cols = st.columns(2, gap="small")
+    problem_points = issue_cols[0].text_area("문제점", value=str(loaded_eval.get("problem_points", "")), key=f"supplier_eval_problem_{key_suffix}")
+    improvement_request = issue_cols[1].text_area("개선 요청사항", value=str(loaded_eval.get("improvement_request", "")), key=f"supplier_eval_improvement_request_{key_suffix}")
+    improve_cols = st.columns([0.9, 0.9, 0.9, 1.2], gap="small")
+    improvement_owner = improve_cols[0].text_input("개선 담당자", value=str(loaded_eval.get("improvement_owner", "")), key=f"eval_improvement_owner_{key_suffix}")
+    improvement_due_date = improve_cols[1].date_input(
+        "개선 완료 예정일",
+        value=parse_date(loaded_eval.get("improvement_due_date")) or (date.today() + timedelta(days=30)),
+        key=f"eval_improvement_due_{key_suffix}",
+    )
+    improvement_status = improve_cols[2].selectbox(
+        "개선 진행상태",
+        IMPROVEMENT_STATUSES,
+        index=safe_index(IMPROVEMENT_STATUSES, loaded_eval.get("improvement_status"), 0),
+        key=f"eval_improvement_status_{key_suffix}",
+    )
+    attachment_ref = improve_cols[3].text_input("첨부파일 또는 관련 문서", value=str(loaded_eval.get("attachment_ref", "")), key=f"eval_attachment_{key_suffix}")
+    internal_memo = st.text_area("내부 비고", value=str(loaded_eval.get("internal_memo", "")), key=f"eval_internal_memo_{key_suffix}")
+    rejection_reason = st.text_input("반려 사유", value=str(loaded_eval.get("rejection_reason", "")), key=f"eval_rejection_reason_{key_suffix}")
 
     score_payload = calculate_supplier_scores(criteria, selected_ratings, special_flags)
-    summary_cols = st.columns(8, gap="small")
+    summary_cols = st.columns(10, gap="small")
     summary_cols[0].metric("품질", f"{score_payload['quality_score']:.1f}")
     summary_cols[1].metric("납기", f"{score_payload['delivery_score']:.1f}")
     summary_cols[2].metric("가격", f"{score_payload['price_score']:.1f}")
     summary_cols[3].metric("대응", f"{score_payload['service_score']:.1f}")
     summary_cols[4].metric("안정성", f"{score_payload['stability_score']:.1f}")
-    summary_cols[5].metric("총점", f"{score_payload['total_score']:.1f}")
-    summary_cols[6].metric("예상 등급", score_payload["final_grade"])
-    summary_cols[7].metric("특별관리", "예" if score_payload["special_warning"] else "아니오")
+    summary_cols[5].metric("평가대상 배점", f"{score_payload['applicable_weight']:.1f}")
+    summary_cols[6].metric("취득점수", f"{score_payload['earned_score']:.1f}")
+    summary_cols[7].metric("환산 총점", f"{score_payload['total_score']:.1f}")
+    summary_cols[8].metric("산출 등급", score_payload["base_grade"])
+    summary_cols[9].metric("최종 등급", score_payload["final_grade"])
+    if score_payload.get("grade_limit_reason"):
+        st.warning(f"특별관리 등급 제한 적용: {score_payload['grade_limit_reason']}")
 
-    if st.button("평가 저장", type="primary", use_container_width=True, key="supplier_eval_save"):
-        missing = []
-        if not evaluator.strip():
-            missing.append("평가자")
-        if period_start > period_end:
-            missing.append("평가기간")
-        if missing:
-            st.warning("필수값을 확인해주세요: " + ", ".join(missing))
-        else:
-            saved = with_db(
-                lambda db: save_supplier_evaluation(
-                    db,
-                    supplier_id=supplier_id,
-                    evaluation_year=int(eval_year),
-                    evaluation_quarter=eval_quarter,
-                    period_start=period_start,
-                    period_end=period_end,
-                    evaluation_date=evaluation_date,
-                    evaluator=evaluator,
-                    status=status,
-                    overall_comment=overall_comment,
-                    improvement_request=improvement_request,
-                    improvement_due_date=improvement_due_date,
-                    special_flags=special_flags,
-                    criteria=criteria,
-                    selected_ratings=selected_ratings,
-                    item_comments=item_comments,
-                    score_payload=score_payload,
-                )
-            )
-            if saved:
-                st.success("협력사 평가를 저장했습니다.")
-                st.rerun()
+    button_cols = st.columns(6, gap="small")
+    actions = [
+        ("임시저장", "임시저장"),
+        ("평가완료", "평가완료"),
+        ("승인요청", "승인대기"),
+        ("최종승인", "최종승인"),
+        ("반려", "반려"),
+        ("취소", "취소"),
+    ]
+    requested_status = ""
+    for index, (label, target_status) in enumerate(actions):
+        if button_cols[index].button(label, type="primary" if label in {"임시저장", "평가완료"} else "secondary", use_container_width=True, key=f"supplier_eval_action_{key_suffix}_{label}"):
+            requested_status = target_status
+    if requested_status == "":
+        return
+    if requested_status == "취소":
+        st.rerun()
+    validation_errors = validate_supplier_evaluation_input(
+        requested_status,
+        evaluator,
+        period_start,
+        period_end,
+        selected_ratings,
+        special_flags,
+        special_reasons,
+        score_payload,
+        improvement_request,
+        improvement_due_date,
+        rejection_reason,
+    )
+    if validation_errors:
+        st.warning("필수값을 확인해주세요: " + ", ".join(validation_errors))
+        return
+    if cycle != "직접 지정" and requested_status in CONFIRMED_EVALUATION_STATUSES:
+        next_evaluation_date = calculate_next_evaluation_date(evaluation_date, cycle)
+    saved = with_db(
+        lambda db: save_supplier_evaluation(
+            db,
+            supplier_id=supplier_id,
+            evaluation_id=evaluation_id or None,
+            evaluation_year=int(eval_year),
+            evaluation_quarter=eval_quarter,
+            period_start=period_start,
+            period_end=period_end,
+            evaluation_date=evaluation_date,
+            evaluator=evaluator,
+            next_evaluation_date=next_evaluation_date,
+            status=requested_status,
+            overall_comment=overall_comment,
+            excellent_points=excellent_points,
+            problem_points=problem_points,
+            improvement_request=improvement_request,
+            improvement_owner=improvement_owner,
+            improvement_due_date=improvement_due_date,
+            improvement_status=improvement_status,
+            attachment_ref=attachment_ref,
+            internal_memo=internal_memo,
+            rejection_reason=rejection_reason,
+            special_flags=special_flags,
+            special_reasons=special_reasons,
+            criteria=criteria,
+            selected_ratings=selected_ratings,
+            item_comments=item_comments,
+            score_payload=score_payload,
+        )
+    )
+    if saved:
+        st.success(f"협력사 평가를 {requested_status} 상태로 저장했습니다.")
+        st.rerun()
 
 
 def render_supplier_criteria_tab() -> None:
     criteria = with_db(lambda db: active_supplier_criteria(db)) or default_criteria_payload()
     st.caption("평가기준 변경은 새 평가부터 적용되며, 과거 평가에는 저장 당시 기준 버전이 유지됩니다.")
     rows = []
-    for category in criteria:
-        for item in category["items"]:
+    for category_index, category in enumerate(criteria, start=1):
+        for item_index, item in enumerate(category["items"], start=1):
             rows.append(
                 {
+                    "대분류 순서": category.get("category_order") or category_index,
                     "대분류": category["category_name"],
                     "대분류 배점": category["category_weight"],
+                    "세부 순서": item.get("item_order") or item_index,
                     "세부 평가항목": item["item_name"],
                     "세부 배점": item["item_weight"],
+                    "평가 설명": item.get("item_description", ""),
+                    "필수": item.get("is_required", True),
                     "사용": item.get("is_active", True),
                 }
             )
-    edited = st.data_editor(pd.DataFrame(rows), hide_index=True, use_container_width=True, num_rows="dynamic", key="supplier_criteria_editor")
+    left_cols = st.columns([1.0, 1.0, 1.0], gap="small")
+    active_category_total = sum(float(category.get("category_weight") or 0) for category in criteria)
+    left_cols[0].metric("사용 대분류 배점 합계", f"{active_category_total:.1f}")
+    left_cols[1].metric("기준 버전", current_criteria_version(criteria))
+    version_note = left_cols[2].text_input("새 버전 메모", value="", key="supplier_criteria_version_note")
+    edited = st.data_editor(
+        pd.DataFrame(rows),
+        hide_index=True,
+        use_container_width=True,
+        num_rows="dynamic",
+        key="supplier_criteria_editor",
+    )
     st.markdown('<div class="purchase-section-title">등급 기준</div>', unsafe_allow_html=True)
     rules = with_db(lambda db: list_grade_rules(db)) or default_grade_rules_payload()
     rules_df = st.data_editor(pd.DataFrame(rules), hide_index=True, use_container_width=True, key="supplier_grade_rules_editor")
-    auto_cols = st.columns([1.0, 1.0, 1.0], gap="small")
-    auto_enabled = auto_cols[0].checkbox("자동 강등 사용", value=True, key="supplier_auto_downgrade")
-    major_max = auto_cols[1].selectbox("중대한 품질사고 최고등급", ["S", "A", "B", "C", "D"], index=3)
-    contract_max = auto_cols[2].selectbox("계약/법규 위반 최고등급", ["S", "A", "B", "C", "D"], index=4)
+    st.markdown('<div class="purchase-section-title">특별관리 및 자동 등급 제한 설정</div>', unsafe_allow_html=True)
+    special_rules = with_db(lambda db: list_special_rules(db)) or default_special_rules_payload()
+    special_rules_df = st.data_editor(pd.DataFrame(special_rules), hide_index=True, use_container_width=True, key="supplier_special_rules_editor")
+    auto_enabled = st.checkbox("자동 등급 제한 전체 활성화", value=True, key="supplier_auto_downgrade")
     if st.button("평가 기준 저장", type="primary", use_container_width=True, key="supplier_criteria_save"):
-        total_weight = edited.groupby("대분류", dropna=False)["대분류 배점"].first().astype(float).sum() if not edited.empty else 0
+        total_weight = edited[edited["사용"].map(truthy)].groupby("대분류", dropna=False)["대분류 배점"].first().astype(float).sum() if not edited.empty else 0
+        item_errors = validate_criteria_item_weights(edited)
         if round(total_weight, 4) != 100:
             st.warning(f"대분류 배점 합계가 100%여야 합니다. 현재 {total_weight:.1f}%입니다.")
+        elif item_errors:
+            st.warning("세부항목 배점을 확인해주세요: " + " / ".join(item_errors))
         elif not validate_grade_rules_df(rules_df):
-            st.warning("등급 기준 점수 구간이 겹치지 않도록 확인해주세요.")
+            st.warning("등급 기준은 0점부터 100점까지 공백/중복 없이 연결되어야 합니다.")
+        elif not validate_special_rules_df(special_rules_df):
+            st.warning("특별관리 최고등급은 S/A/B/C/D 중 하나이거나 비워두어야 합니다.")
         else:
-            with_db(lambda db: save_supplier_criteria(db, edited, rules_df, auto_enabled, major_max, contract_max))
+            with_db(lambda db: save_supplier_criteria(db, edited, rules_df, special_rules_df, auto_enabled, version_note))
             st.success("평가 기준을 저장했습니다.")
             st.rerun()
 
 
 def render_supplier_history_tab() -> None:
     rows = with_db(lambda db: supplier_history_rows(db)) or []
+    suppliers = with_db(lambda db: [supplier_to_dict(row) for row in list_suppliers(db)]) or []
     if not rows:
         st.info("저장된 평가 이력이 없습니다.")
+        if suppliers:
+            st.metric("미평가 협력사 수", len([row for row in suppliers if row.get("현재 등급") == "미평가"]))
         return
     df = pd.DataFrame(rows)
+    today = date.today()
+    kpi_cols = st.columns(9, gap="small")
+    kpi_cols[0].metric("전체 평가 건수", len(df))
+    kpi_cols[1].metric("미평가 협력사", len([row for row in suppliers if row.get("현재 등급") == "미평가"]))
+    for index, grade in enumerate(["S", "A", "B", "C", "D"], start=2):
+        kpi_cols[index].metric(f"{grade}등급", len([row for row in suppliers if row.get("현재 등급") == grade]))
+    kpi_cols[7].metric("특별관리", len([row for row in suppliers if str(row.get("특별관리 여부", "")).startswith("⚠")]))
+    overdue_count = len([row for row in suppliers if parse_date(row.get("다음 평가예정일")) and parse_date(row.get("다음 평가예정일")) < today])
+    kpi_cols[8].metric("평가기한 초과", overdue_count)
     linked_supplier_id = to_int(query_value("supplier_id"))
     linked_supplier_name = ""
     if linked_supplier_id:
         linked_supplier_name = with_db(lambda db: (db.get(Supplier, linked_supplier_id).supplier_name if db.get(Supplier, linked_supplier_id) else "")) or ""
-    cols = st.columns([1.1, 0.8, 0.7, 0.7, 0.7, 0.9, 0.9], gap="small")
+    cols = st.columns([1.1, 0.8, 0.7, 0.7, 0.7, 0.75, 0.85, 0.8], gap="small")
     name_kw = clean_text(cols[0].text_input("협력사명", value=linked_supplier_name, key="history_name_filter"))
     code_kw = clean_text(cols[1].text_input("업체코드", key="history_code_filter"))
     year_filter = cols[2].selectbox("평가연도", ["전체"] + sorted(df["평가연도"].dropna().astype(str).unique().tolist()), key="history_year_filter")
     quarter_filter = cols[3].selectbox("평가분기", ["전체"] + sorted(df["평가분기"].dropna().astype(str).unique().tolist()), key="history_quarter_filter")
     status_filter = cols[4].selectbox("평가 상태", ["전체"] + EVALUATION_STATUSES, key="history_status_filter")
     grade_filter = cols[5].selectbox("등급", ["전체"] + SUPPLIER_GRADES, key="history_grade_filter")
-    evaluator_kw = clean_text(cols[6].text_input("평가자", key="history_evaluator_filter"))
+    special_filter = cols[6].selectbox("특별관리", ["전체", "예", "아니오"], key="history_special_filter")
+    evaluator_kw = clean_text(cols[7].text_input("평가자", key="history_evaluator_filter"))
+    extra_cols = st.columns([0.9, 0.9, 0.9, 0.9, 1.0], gap="small")
+    date_range = extra_cols[0].date_input("평가일 기간", value=(), key="history_date_filter")
+    change_filter = extra_cols[1].selectbox("등급 변화", ["전체", "최초평가", "상승", "유지", "하락"], key="history_change_filter")
+    version_filter = extra_cols[2].selectbox("평가기준 버전", ["전체"] + sorted(df["평가기준 버전"].dropna().astype(str).unique().tolist()), key="history_version_filter")
+    if extra_cols[3].button("필터 초기화", use_container_width=True, key="history_filter_reset"):
+        st.query_params["supplier_subtab"] = "등급 이력"
+        st.rerun()
     filtered = df.copy()
     if name_kw:
         filtered = filtered[filtered["협력사명"].astype(str).str.contains(name_kw, case=False, na=False)]
@@ -1000,9 +1190,45 @@ def render_supplier_history_tab() -> None:
         filtered = filtered[filtered["평가 상태"] == status_filter]
     if grade_filter != "전체":
         filtered = filtered[filtered["현재 등급"] == grade_filter]
+    if special_filter != "전체":
+        filtered = filtered[filtered["특별관리 여부"] == special_filter]
+    if change_filter != "전체":
+        filtered = filtered[filtered["등급 변화"] == change_filter]
+    if version_filter != "전체":
+        filtered = filtered[filtered["평가기준 버전"].astype(str) == version_filter]
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_date, end_date = date_range
+        filtered = filtered[(pd.to_datetime(filtered["평가일"]) >= pd.Timestamp(start_date)) & (pd.to_datetime(filtered["평가일"]) <= pd.Timestamp(end_date))]
     if evaluator_kw:
         filtered = filtered[filtered["평가자"].astype(str).str.contains(evaluator_kw, case=False, na=False)]
-    st.dataframe(filtered, hide_index=True, use_container_width=True, height=320)
+    display_columns = [
+        "평가번호", "업체코드", "협력사명", "평가기간", "평가일", "품질점수", "납기점수", "가격점수", "대응점수", "안정성점수",
+        "환산 총점", "점수 산출등급", "최종등급", "이전등급", "등급 변화", "특별관리 여부", "평가 상태", "평가자", "평가기준 버전", "상세보기", "수정", "비활성 처리",
+    ]
+    st.dataframe(filtered[[column for column in display_columns if column in filtered.columns]], hide_index=True, use_container_width=True, height=320)
+    export_cols = st.columns([1.0, 1.0, 2.0], gap="small")
+    export_cols[0].download_button(
+        "엑셀 다운로드",
+        data=dataframe_to_excel_bytes(filtered),
+        file_name=f"supplier_evaluation_history_{date.today():%Y%m%d}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+    selected_eval_id = None
+    if not filtered.empty:
+        selected_eval_id = export_cols[1].selectbox("상세보기", filtered["평가번호"].astype(int).tolist(), key="history_detail_eval_id")
+    if selected_eval_id:
+        render_supplier_evaluation_detail(selected_eval_id)
+        inactive_cols = st.columns([1.5, 0.9, 2.0], gap="small")
+        inactive_reason = inactive_cols[0].text_input("비활성 처리 사유", key=f"history_inactive_reason_{selected_eval_id}")
+        inactive_actor = inactive_cols[1].text_input("처리자", key=f"history_inactive_actor_{selected_eval_id}")
+        if inactive_cols[2].button("선택 평가 비활성 처리", use_container_width=True, key=f"history_inactive_{selected_eval_id}"):
+            if not clean_text(inactive_reason):
+                st.warning("비활성 처리 사유를 입력해주세요.")
+            else:
+                with_db(lambda db: deactivate_supplier_evaluation(db, selected_eval_id, inactive_reason, inactive_actor))
+                st.success("평가를 비활성 처리하고 협력사 현재 등급을 다시 계산했습니다.")
+                st.rerun()
     supplier_names = sorted(filtered["협력사명"].dropna().astype(str).unique().tolist())
     if supplier_names:
         selected = st.selectbox("차트 협력사", supplier_names, key="history_chart_supplier")
@@ -1266,6 +1492,38 @@ def list_suppliers(db: Session) -> list[Supplier]:
     return list(db.execute(select(Supplier).order_by(Supplier.supplier_name)).scalars())
 
 
+def list_supplier_evaluations(db: Session, supplier_id: int) -> list[SupplierEvaluation]:
+    if SupplierEvaluation is None:
+        return []
+    return list(
+        db.execute(
+            select(SupplierEvaluation)
+            .where(
+                SupplierEvaluation.supplier_id == supplier_id,
+                SupplierEvaluation.is_deleted == False,  # noqa: E712
+            )
+            .order_by(SupplierEvaluation.evaluation_date.desc(), SupplierEvaluation.id.desc())
+        ).scalars()
+    )
+
+
+def supplier_evaluation_detail(db: Session, evaluation_id: int) -> dict:
+    if SupplierEvaluation is None or SupplierEvaluationItem is None or not evaluation_id:
+        return {}
+    evaluation = db.get(SupplierEvaluation, evaluation_id)
+    if evaluation is None:
+        return {}
+    items = {}
+    for item in db.execute(select(SupplierEvaluationItem).where(SupplierEvaluationItem.evaluation_id == evaluation_id)).scalars():
+        items[criteria_item_key(item.category_name, item.item_name)] = {
+            "selected_rating": item.selected_rating,
+            "comment": item.comment,
+            "item_score": item.item_score,
+            "item_weight": item.item_weight,
+        }
+    return {"evaluation": evaluation_to_payload(evaluation), "items": items}
+
+
 def ensure_supplier_evaluation_setup() -> None:
     with_db(lambda db: seed_supplier_evaluation_defaults(db))
 
@@ -1279,6 +1537,10 @@ def supplier_evaluation_models_available() -> bool:
             SupplierEvaluationHistory,
             SupplierEvaluationItem,
             SupplierGradeRule,
+            SupplierEvaluationCriteriaVersion,
+            SupplierEvaluationCategory,
+            SupplierSpecialRule,
+            SupplierApprovalHistory,
         )
     )
 
@@ -1286,23 +1548,61 @@ def supplier_evaluation_models_available() -> bool:
 def seed_supplier_evaluation_defaults(db: Session) -> None:
     if not supplier_evaluation_models_available():
         return
+    if SupplierEvaluationCriteriaVersion is not None and not db.execute(select(SupplierEvaluationCriteriaVersion.id)).first():
+        db.add(
+            SupplierEvaluationCriteriaVersion(
+                version_code="v1",
+                version_name="V1: 최초 평가기준",
+                status="사용 중",
+                note="기본 협력사 평가 기준",
+                is_active=True,
+            )
+        )
     if not db.execute(select(SupplierEvaluationCriteria.id)).first():
-        for category_name, category_weight, items in DEFAULT_EVALUATION_CATEGORIES:
+        for category_order, (category_name, category_weight, items) in enumerate(DEFAULT_EVALUATION_CATEGORIES, start=1):
+            if SupplierEvaluationCategory is not None:
+                db.add(
+                    SupplierEvaluationCategory(
+                        criteria_version="v1",
+                        category_order=category_order,
+                        category_name=category_name,
+                        category_weight=category_weight,
+                        is_active=True,
+                    )
+                )
             item_weight = round(category_weight / max(len(items), 1), 4)
-            for item_name in items:
+            for item_order, item_name in enumerate(items, start=1):
                 db.add(
                     SupplierEvaluationCriteria(
                         criteria_version="v1",
+                        category_order=category_order,
                         category_name=category_name,
                         category_weight=category_weight,
+                        item_order=item_order,
                         item_name=item_name,
                         item_weight=item_weight,
+                        item_description="",
+                        is_required=True,
                         is_active=True,
                     )
                 )
     if not db.execute(select(SupplierGradeRule.id)).first():
         for grade, minimum, maximum, label in DEFAULT_GRADE_RULES:
             db.add(SupplierGradeRule(grade=grade, minimum_score=minimum, maximum_score=maximum, label=label, is_active=True))
+    if SupplierSpecialRule is not None and not db.execute(select(SupplierSpecialRule.id)).first():
+        for flag_name in SPECIAL_FLAG_OPTIONS:
+            max_grade, show_warning, reason_required, limit_enabled = DEFAULT_SPECIAL_RULES.get(flag_name, ("", False, False, False))
+            db.add(
+                SupplierSpecialRule(
+                    flag_name=flag_name,
+                    is_active=True,
+                    show_warning=show_warning,
+                    reason_required=reason_required,
+                    grade_limit_enabled=limit_enabled,
+                    max_grade=max_grade,
+                    reflect_to_supplier=True,
+                )
+            )
     for supplier in db.execute(select(Supplier)).scalars():
         if not supplier.supplier_code:
             supplier.supplier_code = next_supplier_code(db, supplier.id)
@@ -1320,7 +1620,7 @@ def active_supplier_criteria(db: Session) -> list[dict]:
         db.execute(
             select(SupplierEvaluationCriteria)
             .where(SupplierEvaluationCriteria.is_active == True)  # noqa: E712
-            .order_by(SupplierEvaluationCriteria.id)
+            .order_by(SupplierEvaluationCriteria.category_order, SupplierEvaluationCriteria.id, SupplierEvaluationCriteria.item_order)
         ).scalars()
     )
     if not rows:
@@ -1331,11 +1631,16 @@ def active_supplier_criteria(db: Session) -> list[dict]:
             row.category_name,
             {"category_name": row.category_name, "category_weight": float(row.category_weight or 0), "items": []},
         )
+        category["criteria_version"] = row.criteria_version or category.get("criteria_version") or "v1"
+        category["category_order"] = int(getattr(row, "category_order", 0) or 0)
         category["items"].append(
             {
                 "id": row.id,
                 "item_name": row.item_name,
                 "item_weight": float(row.item_weight or 0),
+                "item_description": getattr(row, "item_description", "") or "",
+                "is_required": bool(getattr(row, "is_required", True)),
+                "item_order": int(getattr(row, "item_order", 0) or 0),
                 "is_active": bool(row.is_active),
             }
         )
@@ -1347,13 +1652,61 @@ def default_criteria_payload() -> list[dict]:
         {
             "category_name": category_name,
             "category_weight": category_weight,
+            "criteria_version": "v1",
+            "category_order": category_index + 1,
             "items": [
-                {"id": index + 1, "item_name": item_name, "item_weight": round(category_weight / len(items), 4), "is_active": True}
+                {
+                    "id": index + 1,
+                    "item_name": item_name,
+                    "item_weight": round(category_weight / len(items), 4),
+                    "item_description": "",
+                    "is_required": True,
+                    "item_order": index + 1,
+                    "is_active": True,
+                }
                 for index, item_name in enumerate(items)
             ],
         }
-        for category_name, category_weight, items in DEFAULT_EVALUATION_CATEGORIES
+        for category_index, (category_name, category_weight, items) in enumerate(DEFAULT_EVALUATION_CATEGORIES)
     ]
+
+
+def list_special_rules(db: Session) -> list[dict]:
+    if SupplierSpecialRule is None:
+        return default_special_rules_payload()
+    rows = list(db.execute(select(SupplierSpecialRule).order_by(SupplierSpecialRule.id)).scalars())
+    if not rows:
+        return default_special_rules_payload()
+    return [
+        {
+            "항목": row.flag_name,
+            "사용": bool(row.is_active),
+            "경고 표시": bool(row.show_warning),
+            "사유 필수": bool(row.reason_required),
+            "등급 제한": bool(row.grade_limit_enabled),
+            "최고등급": row.max_grade or "",
+            "목록 반영": bool(row.reflect_to_supplier),
+        }
+        for row in rows
+    ]
+
+
+def default_special_rules_payload() -> list[dict]:
+    rows = []
+    for flag_name in SPECIAL_FLAG_OPTIONS:
+        max_grade, show_warning, reason_required, limit_enabled = DEFAULT_SPECIAL_RULES.get(flag_name, ("", False, False, False))
+        rows.append(
+            {
+                "항목": flag_name,
+                "사용": True,
+                "경고 표시": show_warning,
+                "사유 필수": reason_required,
+                "등급 제한": limit_enabled,
+                "최고등급": max_grade,
+                "목록 반영": True,
+            }
+        )
+    return rows
 
 
 def list_grade_rules(db: Session) -> list[dict]:
@@ -1380,10 +1733,9 @@ def default_grade_rules_payload() -> list[dict]:
 
 def calculate_supplier_scores(criteria: list[dict], selected_ratings: dict[str, str], special_flags: list[str]) -> dict:
     category_scores = {}
-    weighted_total = 0.0
+    earned_score = 0.0
     applicable_weight = 0.0
     for category in criteria:
-        category_weight = float(category.get("category_weight") or 0)
         category_score_sum = 0.0
         category_applicable = 0.0
         for item in category.get("items", []):
@@ -1395,25 +1747,27 @@ def calculate_supplier_scores(criteria: list[dict], selected_ratings: dict[str, 
             item_score = item_weight * ratio
             category_score_sum += item_score
             category_applicable += item_weight
-        if category_applicable:
-            category_score = category_score_sum / category_applicable * category_weight
-            weighted_total += category_score
-            applicable_weight += category_weight
-        else:
-            category_score = 0.0
+        earned_score += category_score_sum
+        applicable_weight += category_applicable
+        category_score = category_score_sum / category_applicable * float(category.get("category_weight") or 0) if category_applicable else 0.0
         category_scores[category["category_name"]] = round(category_score, 4)
-    total_score = round((weighted_total / applicable_weight * 100) if applicable_weight else 0.0, 2)
-    grade = grade_for_score(total_score)
-    special_warning = bool(AUTO_WARNING_FLAGS.intersection(set(special_flags)) or grade in {"C", "D"})
-    grade = apply_auto_downgrade(grade, special_flags)
+    total_score = round((earned_score / applicable_weight * 100) if applicable_weight else 0.0, 2)
+    base_grade = grade_for_score(total_score)
+    downgrade = apply_auto_downgrade(base_grade, special_flags)
+    final_grade = downgrade["grade"]
+    special_warning = bool(AUTO_WARNING_FLAGS.intersection(set(special_flags)) or final_grade in {"C", "D"})
     return {
         "quality_score": category_scores.get("품질관리", 0.0),
         "delivery_score": category_scores.get("납기관리", 0.0),
         "price_score": category_scores.get("가격 및 거래조건", 0.0),
         "service_score": category_scores.get("업무 대응 및 서비스", 0.0),
-        "stability_score": category_scores.get("경영 및 안정성", 0.0),
+        "stability_score": category_scores.get("공급 및 경영 안정성", 0.0),
+        "applicable_weight": round(applicable_weight, 4),
+        "earned_score": round(earned_score, 4),
         "total_score": total_score,
-        "final_grade": grade,
+        "base_grade": base_grade,
+        "final_grade": final_grade,
+        "grade_limit_reason": downgrade["reason"],
         "special_warning": special_warning,
     }
 
@@ -1421,17 +1775,27 @@ def calculate_supplier_scores(criteria: list[dict], selected_ratings: dict[str, 
 def save_supplier_evaluation(
     db: Session,
     supplier_id: int,
+    evaluation_id: int | None,
     evaluation_year: int,
     evaluation_quarter: str,
     period_start: date,
     period_end: date,
     evaluation_date: date,
     evaluator: str,
+    next_evaluation_date: date | None,
     status: str,
     overall_comment: str,
+    excellent_points: str,
+    problem_points: str,
     improvement_request: str,
+    improvement_owner: str,
     improvement_due_date: date | None,
+    improvement_status: str,
+    attachment_ref: str,
+    internal_memo: str,
+    rejection_reason: str,
     special_flags: list[str],
+    special_reasons: dict[str, str],
     criteria: list[dict],
     selected_ratings: dict[str, str],
     item_comments: dict[str, str],
@@ -1443,32 +1807,66 @@ def save_supplier_evaluation(
     if supplier is None:
         raise ValueError("협력사를 찾을 수 없습니다.")
     before_payload = supplier_snapshot(supplier)
-    evaluation = SupplierEvaluation(
-        supplier_id=supplier_id,
-        evaluation_year=evaluation_year,
-        evaluation_quarter=evaluation_quarter,
-        period_start=period_start,
-        period_end=period_end,
-        evaluation_date=evaluation_date,
-        evaluator=clean_text(evaluator),
-        status=status if status in EVALUATION_STATUSES else "임시저장",
-        quality_score=score_payload["quality_score"],
-        delivery_score=score_payload["delivery_score"],
-        price_score=score_payload["price_score"],
-        service_score=score_payload["service_score"],
-        stability_score=score_payload["stability_score"],
-        total_score=score_payload["total_score"],
-        final_grade=score_payload["final_grade"],
-        previous_grade=supplier.current_grade or "미평가",
-        special_flags=json.dumps(special_flags, ensure_ascii=False),
-        special_warning=bool(score_payload["special_warning"]),
-        overall_comment=clean_text(overall_comment),
-        improvement_request=clean_text(improvement_request),
-        improvement_due_date=improvement_due_date,
-        criteria_version=current_criteria_version(criteria),
-    )
-    db.add(evaluation)
+    previous_status = ""
+    evaluation = db.get(SupplierEvaluation, evaluation_id) if evaluation_id else None
+    if evaluation is None:
+        evaluation = db.execute(
+            select(SupplierEvaluation).where(
+                SupplierEvaluation.supplier_id == supplier_id,
+                SupplierEvaluation.evaluation_year == evaluation_year,
+                SupplierEvaluation.evaluation_quarter == evaluation_quarter,
+                SupplierEvaluation.period_start == period_start,
+                SupplierEvaluation.period_end == period_end,
+                SupplierEvaluation.status == "임시저장",
+                SupplierEvaluation.is_deleted == False,  # noqa: E712
+            )
+        ).scalars().first()
+    before_eval_payload = evaluation_to_payload(evaluation) if evaluation else {}
+    if evaluation is None:
+        evaluation = SupplierEvaluation(supplier_id=supplier_id, previous_grade=supplier.current_grade or "미평가")
+        db.add(evaluation)
+        action_type = "CREATE"
+    else:
+        previous_status = evaluation.status
+        action_type = "UPDATE"
+    evaluation.evaluation_year = evaluation_year
+    evaluation.evaluation_quarter = evaluation_quarter
+    evaluation.period_start = period_start
+    evaluation.period_end = period_end
+    evaluation.evaluation_date = evaluation_date
+    evaluation.evaluator = clean_text(evaluator)
+    evaluation.next_evaluation_date = next_evaluation_date
+    evaluation.status = status if status in EVALUATION_STATUSES else "임시저장"
+    evaluation.quality_score = score_payload["quality_score"]
+    evaluation.delivery_score = score_payload["delivery_score"]
+    evaluation.price_score = score_payload["price_score"]
+    evaluation.service_score = score_payload["service_score"]
+    evaluation.stability_score = score_payload["stability_score"]
+    evaluation.applicable_weight = score_payload.get("applicable_weight", 0)
+    evaluation.earned_score = score_payload.get("earned_score", 0)
+    evaluation.total_score = score_payload["total_score"]
+    evaluation.base_grade = score_payload.get("base_grade", score_payload["final_grade"])
+    evaluation.final_grade = score_payload["final_grade"]
+    evaluation.grade_limit_reason = clean_text(score_payload.get("grade_limit_reason"))
+    evaluation.special_flags = json.dumps(special_flags, ensure_ascii=False)
+    evaluation.special_reasons = json.dumps(special_reasons, ensure_ascii=False)
+    evaluation.special_warning = bool(score_payload["special_warning"])
+    evaluation.overall_comment = clean_text(overall_comment)
+    evaluation.excellent_points = clean_text(excellent_points)
+    evaluation.problem_points = clean_text(problem_points)
+    evaluation.improvement_request = clean_text(improvement_request)
+    evaluation.improvement_owner = clean_text(improvement_owner)
+    evaluation.improvement_due_date = improvement_due_date
+    evaluation.improvement_status = improvement_status if improvement_status in IMPROVEMENT_STATUSES else "해당 없음"
+    evaluation.attachment_ref = clean_text(attachment_ref)
+    evaluation.internal_memo = clean_text(internal_memo)
+    evaluation.rejection_reason = clean_text(rejection_reason)
+    evaluation.criteria_version = current_criteria_version(criteria)
+    evaluation.updated_by = clean_text(evaluator)
+    if not evaluation.created_by:
+        evaluation.created_by = clean_text(evaluator)
     db.flush()
+    db.execute(delete(SupplierEvaluationItem).where(SupplierEvaluationItem.evaluation_id == evaluation.id))
     for category_index, category in enumerate(criteria, start=1):
         for item_index, item in enumerate(category.get("items", []), start=1):
             key = criteria_item_key(category["category_name"], item["item_name"])
@@ -1491,17 +1889,32 @@ def save_supplier_evaluation(
             )
     if evaluation.status in CONFIRMED_EVALUATION_STATUSES:
         refresh_supplier_current_grade(db, supplier)
+    elif previous_status in CONFIRMED_EVALUATION_STATUSES:
+        refresh_supplier_current_grade(db, supplier)
     after_payload = supplier_snapshot(supplier)
     db.add(
         SupplierEvaluationHistory(
             evaluation_id=evaluation.id,
             supplier_id=supplier_id,
-            action_type="CREATE",
-            before_data=json.dumps(before_payload, ensure_ascii=False, default=str),
-            after_data=json.dumps(after_payload, ensure_ascii=False, default=str),
+            action_type=action_type,
+            before_data=json.dumps({"supplier": before_payload, "evaluation": before_eval_payload}, ensure_ascii=False, default=str),
+            after_data=json.dumps({"supplier": after_payload, "evaluation": evaluation_to_payload(evaluation)}, ensure_ascii=False, default=str),
             changed_by=clean_text(evaluator),
+            change_reason="평가 저장",
         )
     )
+    if SupplierApprovalHistory is not None and previous_status != evaluation.status:
+        db.add(
+            SupplierApprovalHistory(
+                evaluation_id=evaluation.id,
+                supplier_id=supplier_id,
+                action_type=evaluation.status,
+                status_from=previous_status,
+                status_to=evaluation.status,
+                reason=clean_text(rejection_reason),
+                actor=clean_text(evaluator),
+            )
+        )
     db.commit()
     db.refresh(evaluation)
     return evaluation
@@ -1531,6 +1944,7 @@ def refresh_supplier_current_grade(db: Session, supplier: Supplier) -> None:
     supplier.rating = supplier.current_grade
     supplier.latest_score = float(latest.total_score or 0)
     supplier.latest_evaluation_date = latest.evaluation_date
+    supplier.next_evaluation_date = getattr(latest, "next_evaluation_date", None)
     supplier.special_management = bool(latest.special_warning)
     supplier.special_reason = ", ".join(warning_reasons(flags, latest.final_grade))
 
@@ -1560,37 +1974,295 @@ def supplier_history_rows(db: Session, supplier_id: int | None = None) -> list[d
     rows = list(db.execute(stmt.order_by(SupplierEvaluation.evaluation_date.desc(), SupplierEvaluation.id.desc())).all())
     result = []
     for evaluation, supplier in rows:
+        flags = parse_json_list(evaluation.special_flags)
+        warning = bool(getattr(evaluation, "special_warning", False))
         result.append(
             {
+                "평가번호": evaluation.id,
                 "협력사명": supplier.supplier_name,
                 "업체코드": supplier.supplier_code or next_supplier_code(None, supplier.id),
                 "평가연도": evaluation.evaluation_year,
                 "평가분기": evaluation.evaluation_quarter,
                 "평가기간": f"{evaluation.period_start or '-'} ~ {evaluation.period_end or '-'}",
+                "평가 시작일": evaluation.period_start,
+                "평가 종료일": evaluation.period_end,
+                "평가일": evaluation.evaluation_date,
                 "품질점수": round(evaluation.quality_score or 0, 1),
                 "납기점수": round(evaluation.delivery_score or 0, 1),
                 "가격점수": round(evaluation.price_score or 0, 1),
                 "대응점수": round(evaluation.service_score or 0, 1),
                 "안정성점수": round(evaluation.stability_score or 0, 1),
+                "평가대상 배점": round(getattr(evaluation, "applicable_weight", 0) or 0, 1),
+                "취득점수": round(getattr(evaluation, "earned_score", 0) or 0, 1),
+                "환산 총점": round(evaluation.total_score or 0, 1),
                 "총점": round(evaluation.total_score or 0, 1),
+                "점수 산출등급": getattr(evaluation, "base_grade", "") or evaluation.final_grade or "미평가",
+                "최종등급": evaluation.final_grade or "미평가",
                 "이전 등급": evaluation.previous_grade or "미평가",
+                "이전등급": evaluation.previous_grade or "미평가",
                 "현재 등급": evaluation.final_grade or "미평가",
                 "등급 변화": grade_change_label(evaluation.previous_grade, evaluation.final_grade),
+                "특별관리 여부": "예" if warning else "아니오",
+                "특별관리 항목": ", ".join(flags),
                 "평가 상태": evaluation.status,
                 "평가자": evaluation.evaluator,
-                "평가일": evaluation.evaluation_date,
+                "평가기준 버전": evaluation.criteria_version,
+                "상세 평가ID": evaluation.id,
                 "상세보기": "상세",
+                "수정": "협력사 평가 탭에서 불러오기",
+                "비활성 처리": "가능",
             }
         )
     return result
 
 
-def save_supplier_criteria(db: Session, edited: pd.DataFrame, rules_df: pd.DataFrame, auto_enabled: bool, major_max: str, contract_max: str) -> None:
+def render_supplier_evaluation_detail(evaluation_id: int) -> None:
+    detail = with_db(lambda db: supplier_evaluation_full_detail(db, evaluation_id)) or {}
+    evaluation = detail.get("evaluation", {})
+    items = detail.get("items", [])
+    approvals = detail.get("approvals", [])
+    histories = detail.get("histories", [])
+    if not evaluation:
+        st.info("평가 상세정보를 찾을 수 없습니다.")
+        return
+    st.markdown('<div class="purchase-section-title">평가 상세보기</div>', unsafe_allow_html=True)
+    top_cols = st.columns(6, gap="small")
+    top_cols[0].metric("환산 총점", f"{evaluation.get('total_score', 0):.1f}")
+    top_cols[1].metric("산출등급", evaluation.get("base_grade", "미평가"))
+    top_cols[2].metric("최종등급", evaluation.get("final_grade", "미평가"))
+    top_cols[3].metric("평가대상 배점", f"{evaluation.get('applicable_weight', 0):.1f}")
+    top_cols[4].metric("취득점수", f"{evaluation.get('earned_score', 0):.1f}")
+    top_cols[5].metric("상태", evaluation.get("status", ""))
+    if evaluation.get("grade_limit_reason"):
+        st.warning(f"등급 제한 사유: {evaluation.get('grade_limit_reason')}")
+    info_df = pd.DataFrame(
+        [
+            {"항목": "협력사", "내용": evaluation.get("supplier_name", "")},
+            {"항목": "업체코드", "내용": evaluation.get("supplier_code", "")},
+            {"항목": "평가기간", "내용": f"{evaluation.get('period_start')} ~ {evaluation.get('period_end')}"},
+            {"항목": "평가일", "내용": evaluation.get("evaluation_date")},
+            {"항목": "평가자", "내용": evaluation.get("evaluator", "")},
+            {"항목": "평가기준 버전", "내용": evaluation.get("criteria_version", "")},
+            {"항목": "특별관리", "내용": ", ".join(evaluation.get("special_flags", [])) or "-"},
+            {"항목": "종합 평가의견", "내용": evaluation.get("overall_comment", "")},
+            {"항목": "우수사항", "내용": evaluation.get("excellent_points", "")},
+            {"항목": "문제점", "내용": evaluation.get("problem_points", "")},
+            {"항목": "개선 요청사항", "내용": evaluation.get("improvement_request", "")},
+            {"항목": "개선 진행상태", "내용": evaluation.get("improvement_status", "")},
+            {"항목": "첨부파일", "내용": evaluation.get("attachment_ref", "")},
+        ]
+    )
+    st.dataframe(info_df, hide_index=True, use_container_width=True, height=260)
+    if items:
+        st.dataframe(pd.DataFrame(items), hide_index=True, use_container_width=True, height=260)
+    history_cols = st.columns(2, gap="small")
+    with history_cols[0]:
+        st.caption("승인/반려 이력")
+        st.dataframe(pd.DataFrame(approvals), hide_index=True, use_container_width=True, height=180)
+    with history_cols[1]:
+        st.caption("변경 이력")
+        st.dataframe(pd.DataFrame(histories), hide_index=True, use_container_width=True, height=180)
+    download_cols = st.columns([1.0, 1.0, 2.0], gap="small")
+    download_cols[0].download_button(
+        "평가표 PDF",
+        data=supplier_evaluation_pdf_bytes(detail),
+        file_name=f"supplier_evaluation_{evaluation_id}.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+    )
+    detail_df = pd.DataFrame(items or [evaluation])
+    download_cols[1].download_button(
+        "상세 엑셀",
+        data=dataframe_to_excel_bytes(detail_df),
+        file_name=f"supplier_evaluation_{evaluation_id}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+
+
+def supplier_evaluation_full_detail(db: Session, evaluation_id: int) -> dict:
+    if SupplierEvaluation is None or SupplierEvaluationItem is None:
+        return {}
+    row = db.execute(
+        select(SupplierEvaluation, Supplier)
+        .join(Supplier, Supplier.id == SupplierEvaluation.supplier_id)
+        .where(SupplierEvaluation.id == evaluation_id)
+    ).first()
+    if not row:
+        return {}
+    evaluation, supplier = row
+    payload = evaluation_to_payload(evaluation)
+    payload.update(
+        {
+            "supplier_name": supplier.supplier_name,
+            "supplier_code": supplier.supplier_code or next_supplier_code(None, supplier.id),
+            "handled_items": supplier.handled_items,
+            "manager": supplier.manager,
+        }
+    )
+    items = [
+        {
+            "대분류": item.category_name,
+            "세부항목": item.item_name,
+            "선택값": item.selected_rating,
+            "항목 배점": item.item_weight,
+            "취득점수": item.item_score,
+            "해당 없음": "예" if item.not_applicable else "아니오",
+            "평가의견": item.comment,
+        }
+        for item in db.execute(select(SupplierEvaluationItem).where(SupplierEvaluationItem.evaluation_id == evaluation_id)).scalars()
+    ]
+    approvals = []
+    if SupplierApprovalHistory is not None:
+        approvals = [
+            {
+                "처리": row.action_type,
+                "이전상태": row.status_from,
+                "변경상태": row.status_to,
+                "사유": row.reason,
+                "처리자": row.actor,
+                "처리일시": row.acted_at,
+            }
+            for row in db.execute(select(SupplierApprovalHistory).where(SupplierApprovalHistory.evaluation_id == evaluation_id).order_by(SupplierApprovalHistory.acted_at.desc())).scalars()
+        ]
+    histories = [
+        {
+            "처리": row.action_type,
+            "변경자": row.changed_by,
+            "변경사유": getattr(row, "change_reason", ""),
+            "변경일시": row.changed_at,
+        }
+        for row in db.execute(select(SupplierEvaluationHistory).where(SupplierEvaluationHistory.evaluation_id == evaluation_id).order_by(SupplierEvaluationHistory.changed_at.desc())).scalars()
+    ]
+    return {"evaluation": payload, "items": items, "approvals": approvals, "histories": histories}
+
+
+def deactivate_supplier_evaluation(db: Session, evaluation_id: int, reason: str, actor: str) -> None:
+    if SupplierEvaluation is None:
+        return
+    evaluation = db.get(SupplierEvaluation, evaluation_id)
+    if evaluation is None:
+        raise ValueError("평가를 찾을 수 없습니다.")
+    supplier = db.get(Supplier, evaluation.supplier_id)
+    before_payload = evaluation_to_payload(evaluation)
+    evaluation.is_deleted = True
+    evaluation.inactive_reason = clean_text(reason)
+    evaluation.inactive_at = datetime.utcnow()
+    evaluation.updated_by = clean_text(actor)
+    if supplier is not None:
+        refresh_supplier_current_grade(db, supplier)
+    db.add(
+        SupplierEvaluationHistory(
+            evaluation_id=evaluation.id,
+            supplier_id=evaluation.supplier_id,
+            action_type="DEACTIVATE",
+            before_data=json.dumps(before_payload, ensure_ascii=False, default=str),
+            after_data=json.dumps(evaluation_to_payload(evaluation), ensure_ascii=False, default=str),
+            changed_by=clean_text(actor),
+            change_reason=clean_text(reason),
+        )
+    )
+    db.commit()
+
+
+def dataframe_to_excel_bytes(df: pd.DataFrame) -> bytes:
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="평가이력")
+    return output.getvalue()
+
+
+def supplier_evaluation_pdf_bytes(detail: dict) -> bytes:
+    register_pdf_fonts()
+    output = BytesIO()
+    evaluation = detail.get("evaluation", {})
+    items = detail.get("items", [])
+    doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=12 * mm, leftMargin=12 * mm, topMargin=12 * mm, bottomMargin=12 * mm)
+    styles = getSampleStyleSheet()
+    title = ParagraphStyle("EvalTitle", parent=styles["Title"], fontName=MALGUN_BOLD_FONT, fontSize=15, alignment=TA_CENTER)
+    normal = ParagraphStyle("EvalNormal", parent=styles["BodyText"], fontName=MALGUN_FONT, fontSize=9, leading=13)
+    story = [Paragraph("Supplier Evaluation Report", title), Spacer(1, 6 * mm)]
+    summary = [
+        ["협력사", evaluation.get("supplier_name", ""), "업체코드", evaluation.get("supplier_code", "")],
+        ["평가기간", f"{evaluation.get('period_start')} ~ {evaluation.get('period_end')}", "평가일", str(evaluation.get("evaluation_date", ""))],
+        ["총점", f"{evaluation.get('total_score', 0):.1f}", "최종등급", evaluation.get("final_grade", "")],
+        ["평가자", evaluation.get("evaluator", ""), "상태", evaluation.get("status", "")],
+    ]
+    story.append(Table(summary, colWidths=[28 * mm, 55 * mm, 28 * mm, 55 * mm], style=basic_pdf_table_style()))
+    story.append(Spacer(1, 5 * mm))
+    item_rows = [["대분류", "세부항목", "선택값", "배점", "취득", "의견"]]
+    for item in items:
+        item_rows.append([item.get("대분류", ""), item.get("세부항목", ""), item.get("선택값", ""), item.get("항목 배점", 0), item.get("취득점수", 0), item.get("평가의견", "")])
+    story.append(Table(item_rows, repeatRows=1, colWidths=[28 * mm, 42 * mm, 22 * mm, 18 * mm, 18 * mm, 42 * mm], style=basic_pdf_table_style()))
+    story.append(Spacer(1, 5 * mm))
+    story.append(Paragraph(f"종합의견: {evaluation.get('overall_comment', '') or '-'}", normal))
+    story.append(Paragraph(f"개선 요청사항: {evaluation.get('improvement_request', '') or '-'}", normal))
+    doc.build(story)
+    return output.getvalue()
+
+
+def basic_pdf_table_style() -> TableStyle:
+    return TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e7e1d8")),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cfc5b7")),
+            ("FONTNAME", (0, 0), (-1, -1), MALGUN_FONT),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]
+    )
+
+
+def save_supplier_criteria(
+    db: Session,
+    edited: pd.DataFrame,
+    rules_df: pd.DataFrame,
+    special_rules_df: pd.DataFrame,
+    auto_enabled: bool,
+    version_note: str,
+) -> None:
     if SupplierEvaluationCriteria is None or SupplierGradeRule is None:
         return
     version = f"v{datetime.now():%Y%m%d%H%M%S}"
+    if SupplierEvaluationCriteriaVersion is not None:
+        for row in db.execute(select(SupplierEvaluationCriteriaVersion).where(SupplierEvaluationCriteriaVersion.status == "사용 중")).scalars():
+            row.status = "사용 종료"
+            row.is_active = False
+        db.add(
+            SupplierEvaluationCriteriaVersion(
+                version_code=version,
+                version_name=f"{version}: 평가기준 변경",
+                status="사용 중",
+                note=clean_text(version_note),
+                is_active=True,
+            )
+        )
     for criterion in db.execute(select(SupplierEvaluationCriteria)).scalars():
         criterion.is_active = False
+    if SupplierEvaluationCategory is not None:
+        for category in db.execute(select(SupplierEvaluationCategory)).scalars():
+            category.is_active = False
+        category_rows = (
+            edited[edited["사용"].map(truthy)]
+            .fillna("")
+            .sort_values(["대분류 순서", "대분류"])
+            .groupby("대분류", dropna=False)
+            .first()
+            .reset_index()
+        )
+        for record in category_rows.to_dict("records"):
+            category_name = clean_text(record.get("대분류"))
+            if not category_name:
+                continue
+            db.add(
+                SupplierEvaluationCategory(
+                    criteria_version=version,
+                    category_order=to_int(record.get("대분류 순서")),
+                    category_name=category_name,
+                    category_weight=max(to_float(record.get("대분류 배점")), 0),
+                    is_active=True,
+                )
+            )
     for record in edited.fillna("").to_dict("records"):
         category_name = clean_text(record.get("대분류"))
         item_name = clean_text(record.get("세부 평가항목"))
@@ -1599,10 +2271,14 @@ def save_supplier_criteria(db: Session, edited: pd.DataFrame, rules_df: pd.DataF
         db.add(
             SupplierEvaluationCriteria(
                 criteria_version=version,
+                category_order=to_int(record.get("대분류 순서")),
                 category_name=category_name,
                 category_weight=max(to_float(record.get("대분류 배점")), 0),
+                item_order=to_int(record.get("세부 순서")),
                 item_name=item_name,
                 item_weight=max(to_float(record.get("세부 배점")), 0),
+                item_description=clean_text(record.get("평가 설명")),
+                is_required=truthy(record.get("필수")),
                 is_active=truthy(record.get("사용")),
             )
         )
@@ -1620,10 +2296,26 @@ def save_supplier_criteria(db: Session, edited: pd.DataFrame, rules_df: pd.DataF
                 label=clean_text(record.get("라벨")) or SUPPLIER_GRADE_LABELS.get(grade, grade),
                 is_active=truthy(record.get("사용")),
                 auto_downgrade_enabled=auto_enabled,
-                major_quality_max_grade=major_max,
-                contract_violation_max_grade=contract_max,
+                major_quality_max_grade=special_rule_limit(special_rules_df, "중대한 품질사고 발생", "C"),
+                contract_violation_max_grade=special_rule_limit(special_rules_df, "계약 위반", "D"),
             )
         )
+    if SupplierSpecialRule is not None:
+        existing = {row.flag_name: row for row in db.execute(select(SupplierSpecialRule)).scalars()}
+        for record in special_rules_df.fillna("").to_dict("records"):
+            flag_name = clean_text(record.get("항목"))
+            if not flag_name:
+                continue
+            row = existing.get(flag_name)
+            if row is None:
+                row = SupplierSpecialRule(flag_name=flag_name)
+                db.add(row)
+            row.is_active = truthy(record.get("사용"))
+            row.show_warning = truthy(record.get("경고 표시"))
+            row.reason_required = truthy(record.get("사유 필수"))
+            row.grade_limit_enabled = auto_enabled and truthy(record.get("등급 제한"))
+            row.max_grade = clean_text(record.get("최고등급"))
+            row.reflect_to_supplier = truthy(record.get("목록 반영"))
     db.commit()
 
 
@@ -1634,14 +2326,44 @@ def validate_grade_rules_df(df: pd.DataFrame) -> bool:
             continue
         minimum = to_float(record.get("최소점수"))
         maximum = to_float(record.get("최대점수"))
-        if minimum < 0 or maximum > 100 or minimum > maximum:
+        if minimum < 0 or maximum > 100 or minimum >= maximum:
             return False
         intervals.append((minimum, maximum))
-    intervals.sort()
+    intervals.sort(key=lambda row: row[0])
+    if not intervals or abs(intervals[0][0] - 0) > 0.0001 or abs(intervals[-1][1] - 100) > 0.0001:
+        return False
     for previous, current in zip(intervals, intervals[1:]):
-        if current[0] <= previous[1] and abs(current[0] - previous[1]) > 0.0001:
+        if abs(current[0] - previous[1]) > 0.01:
             return False
-    return bool(intervals)
+    return True
+
+
+def validate_criteria_item_weights(df: pd.DataFrame) -> list[str]:
+    if df.empty:
+        return ["평가항목 없음"]
+    errors = []
+    active = df[df["사용"].map(truthy)].fillna("")
+    for category_name, group in active.groupby("대분류", dropna=False):
+        category_weight = float(group["대분류 배점"].iloc[0] or 0)
+        item_total = sum(to_float(value) for value in group["세부 배점"])
+        if round(category_weight, 4) != round(item_total, 4):
+            errors.append(f"{category_name} 대분류 {category_weight:.1f}점 / 세부 {item_total:.1f}점")
+    return errors
+
+
+def validate_special_rules_df(df: pd.DataFrame) -> bool:
+    for record in df.fillna("").to_dict("records"):
+        grade = clean_text(record.get("최고등급"))
+        if grade and grade not in {"S", "A", "B", "C", "D"}:
+            return False
+    return True
+
+
+def special_rule_limit(df: pd.DataFrame, flag_name: str, fallback: str) -> str:
+    for record in df.fillna("").to_dict("records"):
+        if clean_text(record.get("항목")) == flag_name:
+            return clean_text(record.get("최고등급")) or fallback
+    return fallback
 
 
 def grade_for_score(score: float) -> str:
@@ -1661,32 +2383,52 @@ def grade_for_score(score: float) -> str:
     return "미평가"
 
 
-def apply_auto_downgrade(grade: str, special_flags: list[str]) -> str:
+def apply_auto_downgrade(grade: str, special_flags: list[str]) -> dict:
     enabled = True
-    major_limit = "C"
-    contract_limit = "D"
+    limits = {
+        "중대한 품질사고 발생": "C",
+        "반복적인 납기지연": "C",
+        "계약 위반": "D",
+        "허위서류 제출": "D",
+        "안전 또는 법규 위반": "D",
+        "거래중단 검토 대상": "D",
+    }
     if SupplierGradeRule is not None and SessionLocal is not None:
         try:
             db = SessionLocal()
             rule = db.execute(select(SupplierGradeRule).where(SupplierGradeRule.is_active == True)).scalars().first()  # noqa: E712
             if rule is not None:
                 enabled = bool(rule.auto_downgrade_enabled)
-                major_limit = rule.major_quality_max_grade or major_limit
-                contract_limit = rule.contract_violation_max_grade or contract_limit
+                limits["중대한 품질사고 발생"] = rule.major_quality_max_grade or limits["중대한 품질사고 발생"]
+                limits["반복적인 납기지연"] = rule.major_quality_max_grade or limits["반복적인 납기지연"]
+                limits["계약 위반"] = rule.contract_violation_max_grade or limits["계약 위반"]
+                limits["허위서류 제출"] = rule.contract_violation_max_grade or limits["허위서류 제출"]
+                limits["안전 또는 법규 위반"] = rule.contract_violation_max_grade or limits["안전 또는 법규 위반"]
+                limits["거래중단 검토 대상"] = rule.contract_violation_max_grade or limits["거래중단 검토 대상"]
+            if SupplierSpecialRule is not None:
+                for row in db.execute(select(SupplierSpecialRule).where(SupplierSpecialRule.is_active == True)).scalars():  # noqa: E712
+                    if row.grade_limit_enabled and row.max_grade:
+                        limits[row.flag_name] = row.max_grade
             db.close()
         except Exception:
             pass
     if not enabled:
-        return grade
+        return {"grade": grade, "reason": ""}
     grade_order = ["D", "C", "B", "A", "S"]
-    max_grade = None
-    if "계약 위반" in special_flags or "안전 또는 법규 위반" in special_flags:
-        max_grade = contract_limit
-    elif "중대한 품질사고 발생" in special_flags:
-        max_grade = major_limit
+    max_grade = ""
+    limit_flags = []
+    for flag in special_flags:
+        limit = limits.get(flag, "")
+        if not limit:
+            continue
+        if not max_grade or grade_order.index(limit) < grade_order.index(max_grade):
+            max_grade = limit
+        limit_flags.append(f"{flag}: 최고 {limit}등급")
     if not max_grade:
-        return grade
-    return grade if grade_order.index(grade) <= grade_order.index(max_grade) else max_grade
+        return {"grade": grade, "reason": ""}
+    final_grade = grade if grade_order.index(grade) <= grade_order.index(max_grade) else max_grade
+    reason = ", ".join(limit_flags) if final_grade != grade else ""
+    return {"grade": final_grade, "reason": reason}
 
 
 def warning_reasons(flags: list[str], grade: str) -> list[str]:
@@ -1704,17 +2446,52 @@ def parse_json_list(value: str) -> list[str]:
         return []
 
 
-def evaluation_to_payload(evaluation: SupplierEvaluation) -> dict:
+def parse_json_dict(value: str) -> dict:
+    try:
+        parsed = json.loads(value or "{}")
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+def evaluation_to_payload(evaluation: SupplierEvaluation | None) -> dict:
+    if evaluation is None:
+        return {}
     return {
+        "id": evaluation.id,
+        "supplier_id": evaluation.supplier_id,
+        "evaluation_year": evaluation.evaluation_year,
+        "evaluation_quarter": evaluation.evaluation_quarter,
+        "period_start": evaluation.period_start,
+        "period_end": evaluation.period_end,
+        "evaluation_date": evaluation.evaluation_date,
+        "next_evaluation_date": getattr(evaluation, "next_evaluation_date", None),
+        "evaluator": evaluation.evaluator,
+        "status": evaluation.status,
         "quality_score": float(evaluation.quality_score or 0),
         "delivery_score": float(evaluation.delivery_score or 0),
         "price_score": float(evaluation.price_score or 0),
         "service_score": float(evaluation.service_score or 0),
         "stability_score": float(evaluation.stability_score or 0),
+        "applicable_weight": float(getattr(evaluation, "applicable_weight", 0) or 0),
+        "earned_score": float(getattr(evaluation, "earned_score", 0) or 0),
         "total_score": float(evaluation.total_score or 0),
+        "base_grade": getattr(evaluation, "base_grade", "") or evaluation.final_grade,
         "final_grade": evaluation.final_grade,
+        "grade_limit_reason": getattr(evaluation, "grade_limit_reason", "") or "",
         "special_flags": parse_json_list(evaluation.special_flags),
+        "special_reasons": parse_json_dict(getattr(evaluation, "special_reasons", "")),
         "overall_comment": evaluation.overall_comment,
+        "excellent_points": getattr(evaluation, "excellent_points", "") or "",
+        "problem_points": getattr(evaluation, "problem_points", "") or "",
+        "improvement_request": evaluation.improvement_request,
+        "improvement_owner": getattr(evaluation, "improvement_owner", "") or "",
+        "improvement_due_date": evaluation.improvement_due_date,
+        "improvement_status": getattr(evaluation, "improvement_status", "") or "해당 없음",
+        "attachment_ref": getattr(evaluation, "attachment_ref", "") or "",
+        "internal_memo": getattr(evaluation, "internal_memo", "") or "",
+        "rejection_reason": getattr(evaluation, "rejection_reason", "") or "",
+        "criteria_version": evaluation.criteria_version,
     }
 
 
@@ -1730,12 +2507,78 @@ def supplier_snapshot(supplier: Supplier) -> dict:
 
 
 def current_criteria_version(criteria: list[dict]) -> str:
+    versions = [clean_text(category.get("criteria_version")) for category in criteria if clean_text(category.get("criteria_version"))]
+    if versions:
+        return versions[0]
     ids = [str(item.get("id", "")) for category in criteria for item in category.get("items", []) if item.get("id")]
     return "v1" if not ids else f"criteria-{min(ids)}-{max(ids)}-{len(ids)}"
 
 
 def criteria_item_key(category_name: str, item_name: str) -> str:
     return f"{clean_text(category_name)}::{clean_text(item_name)}".replace(" ", "_")
+
+
+def evaluation_option_label(row: SupplierEvaluation) -> str:
+    return f"#{row.id} {row.evaluation_year} {row.evaluation_quarter} · {row.evaluation_date} · {row.status} · {row.final_grade}"
+
+
+def calculate_next_evaluation_date(base_date: date, cycle: str) -> date:
+    if cycle == "매월":
+        return add_months(base_date, 1)
+    if cycle == "반기별":
+        return add_months(base_date, 6)
+    if cycle == "연 1회":
+        return add_months(base_date, 12)
+    return add_months(base_date, 3)
+
+
+def add_months(value: date, months: int) -> date:
+    month = value.month - 1 + months
+    year = value.year + month // 12
+    month = month % 12 + 1
+    day = min(value.day, days_in_month(year, month))
+    return date(year, month, day)
+
+
+def days_in_month(year: int, month: int) -> int:
+    if month == 12:
+        return 31
+    return (date(year, month + 1, 1) - timedelta(days=1)).day
+
+
+def validate_supplier_evaluation_input(
+    target_status: str,
+    evaluator: str,
+    period_start: date,
+    period_end: date,
+    selected_ratings: dict[str, str],
+    special_flags: list[str],
+    special_reasons: dict[str, str],
+    score_payload: dict,
+    improvement_request: str,
+    improvement_due_date: date | None,
+    rejection_reason: str,
+) -> list[str]:
+    errors = []
+    if not evaluator.strip():
+        errors.append("평가자")
+    if period_start > period_end:
+        errors.append("평가기간")
+    if target_status != "임시저장":
+        missing_items = [key for key, value in selected_ratings.items() if not value]
+        if missing_items:
+            errors.append(f"미입력 평가항목 {len(missing_items)}개")
+    for flag in special_flags:
+        if not clean_text(special_reasons.get(flag)):
+            errors.append(f"{flag} 사유")
+    if target_status in {"평가완료", "승인대기", "최종승인"} and score_payload.get("final_grade") in {"C", "D"}:
+        if not clean_text(improvement_request):
+            errors.append("C/D등급 개선 요청사항")
+        if improvement_due_date is None:
+            errors.append("C/D등급 개선 완료 예정일")
+    if target_status == "반려" and not clean_text(rejection_reason):
+        errors.append("반려 사유")
+    return errors
 
 
 def grade_change_label(previous: str, current: str) -> str:
@@ -2399,6 +3242,7 @@ def supplier_to_dict(row: Supplier) -> dict:
         "최근 평가일": getattr(row, "latest_evaluation_date", None),
         "다음 평가예정일": getattr(row, "next_evaluation_date", None),
         "특별관리 여부": f"⚠ {special_reason}" if getattr(row, "special_management", False) else "아니오",
+        "특별관리 사유": special_reason,
         "관리": "상세/이력",
         "평균납기": getattr(row, "avg_lead_time_days", 0),
         "평균단가": format_compact_price(getattr(row, "avg_unit_price", 0), getattr(row, "avg_unit_price_currency", "KRW")),
@@ -3416,6 +4260,19 @@ def inject_purchase_css() -> None:
         .supplier-grade-badge.grade-C { background: #f2e4d8; border-color: #d5aa84; color: #7c451e !important; }
         .supplier-grade-badge.grade-D { background: #f0dcdd; border-color: #c88c91; color: #7f2d34 !important; }
         .supplier-grade-badge.grade-미평가 { background: #e7e1d8; border-color: #cfc5b7; color: #5f6975 !important; }
+        .supplier-warning-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 52px;
+            border-radius: 999px;
+            padding: 0.2rem 0.5rem;
+            border: 1px solid #c88c91;
+            background: #f0dcdd;
+            color: #7f2d34;
+            font-weight: 850;
+            cursor: help;
+        }
         .supplier-detail-box {
             min-height: 138px;
             background: #f1eee8;

@@ -2210,7 +2210,7 @@ def warehouse_scene3d_html(
                         <button type="button" data-pan="right">→</button>
                         <button class="nav-reset" type="button" data-pan="reset">중앙</button>
                     </div>
-                    <div class="model-help">화면 드래그 회전 · Shift+드래그 배치 이동 · 모서리 핸들 크기 조절 · 방향키 이동</div>
+                    <div class="model-help">렉/박스 클릭 후 드래그 이동 · 빈 화면 드래그 회전 · 모서리 핸들 크기 조절 · 방향키 이동</div>
                     <div class="model-error" id="modelError">3D 라이브러리를 불러오지 못했습니다.<br>인터넷 연결 또는 CDN 차단 여부를 확인해주세요.</div>
                 </div>
             </section>
@@ -3614,7 +3614,7 @@ def warehouse_scene3d_html(
                 }} else {{
                     itemBody.innerHTML = isLoadFixture(fixture)
                         ? `<tr><td colspan="5">선택한 바닥 품목 · 바코드 ${{escapeHtml(fixture.barcode || "-")}}</td><td><button type="button" data-fixture-delete="1">삭제</button></td></tr><tr><td colspan="6" class="empty">이 품목은 이동할 랙과 단을 선택한 뒤 랙에 넣기로 적재할 수 있습니다.</td></tr>`
-                        : '<tr><td colspan="6" class="empty">시설물은 선택 후 Shift+드래그로 위치를 옮기고, 시설물 배치 도구에서 회전/삭제할 수 있습니다.</td></tr>';
+                        : '<tr><td colspan="6" class="empty">시설물은 선택 후 바로 드래그해서 위치를 옮기고, 시설물 배치 도구에서 회전/삭제할 수 있습니다.</td></tr>';
                     itemBody.querySelector("[data-fixture-delete]")?.addEventListener("click", () => {{
                         deleteSelectedFixture();
                     }});
@@ -4220,7 +4220,6 @@ def warehouse_scene3d_html(
                     selectRack(rack.id);
                     if (rack.parentRackId) return;
                     if (rack.locked) return;
-                    if (!event.shiftKey) return;
                     claimCanvasDrag(event);
                     draggingRack = rack;
                     const planeY = 0.18;
@@ -4245,7 +4244,6 @@ def warehouse_scene3d_html(
                 if (!fixture) return;
                 selectFixture(fixture.id);
                 if (fixture.locked) return;
-                if (!event.shiftKey) return;
                 claimCanvasDrag(event);
                 draggingFixture = fixture;
                 const planeY = 0.18;
@@ -4276,7 +4274,11 @@ def warehouse_scene3d_html(
                         canvas.style.cursor = floorHandle.userData.floorHandle?.cursor || "nwse-resize";
                         return;
                     }}
-                    canvas.style.cursor = pickRackItem(event) || pickRack(event) || pickFixture(event) ? (event.shiftKey ? "grab" : "pointer") : "default";
+                    if (pickRackItem(event)) {{
+                        canvas.style.cursor = "pointer";
+                        return;
+                    }}
+                    canvas.style.cursor = pickRack(event) || pickFixture(event) ? "grab" : "default";
                     return;
                 }}
                 event.preventDefault();
