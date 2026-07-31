@@ -12249,7 +12249,11 @@ select,
 
 [data-testid="stDataFrame"] canvas,
 [data-testid="stDataEditor"] canvas {
-    background: var(--beige-surface-3) !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: block !important;
 }
 
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
@@ -12580,7 +12584,11 @@ div[class*="selected_delete_btn"] button {
     [data-testid="stDataEditor"] canvas,
     .glideDataEditor canvas
 ) {
-    background: var(--beige-surface-3) !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: block !important;
 }
 
 .stApp :where(
@@ -12907,8 +12915,11 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     .glideDataEditor canvas,
     .dvn-scroller canvas
 ) {
-    background: var(--editor-cell) !important;
-    background-color: var(--editor-cell) !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: block !important;
 }
 
 /* Compact inventory filters: ERP/WMS style with the current warm neutral palette. */

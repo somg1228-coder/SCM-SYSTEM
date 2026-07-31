@@ -1262,6 +1262,24 @@ def inject_product_master_css() -> None:
             border-color: #C9D5DF;
             margin: 0.25rem 0 0.75rem;
         }
+        div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDataEditor"],
+        div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDataFrame"],
+        div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDataEditorResizable"],
+        div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stDataFrameResizable"],
+        div[class*="st-key-product_master_"][class*="_editor_panel"] .stDataEditor,
+        div[class*="st-key-product_master_"][class*="_editor_panel"] .stDataFrame,
+        div[class*="st-key-product_master_"][class*="_editor_panel"] .glideDataEditor,
+        div[class*="st-key-product_master_"][class*="_editor_panel"] .dvn-scroller {
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+        div[class*="st-key-product_master_"][class*="_editor_panel"] canvas {
+            background: transparent !important;
+            background-color: transparent !important;
+            display: block !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
