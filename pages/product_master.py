@@ -138,6 +138,7 @@ def render_master_tab(source_type: str, title: str) -> None:
                     )
                     if outcome and outcome.get("ok", True):
                         clear_master_editor_buffer(key)
+                        clear_inventory_view_state_for_source(key)
                     show_result(outcome)
         with template_col:
             st.write("")
@@ -340,7 +341,9 @@ def render_threepl_import_preview(source_type: str, key: str, preview_key: str, 
                 result = with_db(lambda db: services.apply_threepl_master_import_preview(db, preview))
                 st.session_state[result_key] = result
                 st.session_state.pop(preview_key, None)
-                clear_master_editor_buffer(key)
+                if result and result.get("ok", True):
+                    clear_master_editor_buffer(key)
+                    clear_inventory_view_state_for_source(key)
                 st.rerun()
     with cancel_col:
         if st.button("취소", key=f"product_master_{key}_preview_cancel", use_container_width=True):
@@ -571,6 +574,7 @@ def save_product_master_rows(source_type: str, key: str, payload: list[dict]) ->
     outcome = with_db(lambda db: services.bulk_save_product_master(db, source_type, payload))
     if outcome and outcome.get("ok", True):
         clear_master_editor_buffer(key)
+        clear_inventory_view_state_for_source(key)
     show_result(outcome)
 
 
@@ -629,11 +633,34 @@ def render_single_product_form(source_type: str, key: str) -> None:
                 outcome = with_db(lambda db: services.add_product_master(db, source_type, row))
                 if outcome and outcome.get("ok", True):
                     clear_master_editor_buffer(key)
+                    clear_inventory_view_state_for_source(key)
                 show_result(outcome)
 
 
 def clear_master_editor_buffer(key: str) -> None:
     st.session_state.pop(f"product_master_{key}_editor_buffer", None)
+
+
+def clear_inventory_view_state_for_source(key: str) -> None:
+    for suffix in [
+        "search",
+        "category_filter",
+        "supplier_filter",
+        "manager_filter",
+        "status_filter",
+        "stock_presence",
+        "inbound_expected",
+        "outbound_expected",
+        "below_safe",
+        "lead_min",
+        "lead_max",
+        "sort_column",
+        "sort_order",
+        "page_size",
+        "page",
+        "filters_open",
+    ]:
+        st.session_state.pop(f"{key}_{suffix}", None)
 
 
 def source_key(source_type: str) -> str:

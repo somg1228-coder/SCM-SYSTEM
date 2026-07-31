@@ -34,6 +34,13 @@ KNOWN_IMPORT_HEADERS = {
     "바코드",
     "88바코드",
     "카테고리",
+    "카테고리명",
+    "상품카테고리",
+    "상품 카테고리",
+    "대분류",
+    "대분류명",
+    "분류",
+    "상품분류",
     "업체명",
     "박스/파렛트 단위",
     "담당자",
@@ -777,11 +784,18 @@ def normalize_product_master_row(row: dict) -> dict:
         "product_name": product_name,
         "large_category": clean_text(
             data.get("카테고리")
+            or data.get("카테고리명")
+            or data.get("상품카테고리")
+            or data.get("상품 카테고리")
             or data.get("대분류")
+            or data.get("대분류명")
             or data.get("대 카테고리")
             or data.get("대카테고리")
+            or data.get("분류")
+            or data.get("상품분류")
             or data.get("category")
             or data.get("large_category")
+            or data.get("largeCategory")
         ),
         "medium_category": "",
         "small_category": "",
