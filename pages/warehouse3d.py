@@ -56,23 +56,6 @@ LOCATIONS = {
 
 
 WAREHOUSE_LAYOUT_STORE_NAME = "warehouse3d_layouts.json"
-WAREHOUSE3D_VENDOR_FILES = [
-    Path(__file__).resolve().parents[1] / "assets" / "vendor" / "three-r128.min.js",
-    Path(__file__).resolve().parents[1] / "assets" / "vendor" / "OrbitControls-r128.js",
-]
-
-
-@st.cache_data(show_spinner=False)
-def warehouse3d_vendor_script_tags() -> str:
-    tags = []
-    for path in WAREHOUSE3D_VENDOR_FILES:
-        try:
-            script = path.read_text(encoding="utf-8")
-        except OSError:
-            return ""
-        script = script.replace("</script", "<\\/script")
-        tags.append(f"<script>{script}</script>")
-    return "\n".join(tags)
 
 
 def warehouse_layout_store_path() -> Path:
@@ -998,6 +981,9 @@ def warehouse_scene_html(
     <html lang="ko">
     <head>
         <meta charset="utf-8">
+        <script type="importmap">
+            {{"imports": {{"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}}}
+        </script>
         <style>
             * {{ box-sizing: border-box; letter-spacing: 0; }}
             body {{
@@ -1756,7 +1742,6 @@ def warehouse_scene3d_html(
     floor_model_payload = json.dumps(FLOOR_MODELS, ensure_ascii=False)
     shared_layout_payload = json.dumps(shared_layout_store or empty_warehouse_layout_store(), ensure_ascii=False)
     location_floors_payload = json.dumps(warehouse_location_floor_options(), ensure_ascii=False)
-    vendor_script_tags = warehouse3d_vendor_script_tags()
     inventory_payload = json.dumps(
         [
             {
@@ -1784,6 +1769,9 @@ def warehouse_scene3d_html(
     <html lang="ko">
     <head>
         <meta charset="utf-8">
+        <script type="importmap">
+            {{"imports": {{"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}}}
+        </script>
         <style>
             * {{ box-sizing: border-box; letter-spacing: 0; }}
             body {{
@@ -2466,15 +2454,11 @@ def warehouse_scene3d_html(
                 </div>
             </aside>
         </main>
-        {vendor_script_tags}
-        <script>
-            (async () => {{
-            if (!window.THREE || !window.THREE.OrbitControls) {{
-                throw new Error("Bundled 3D library is missing");
-            }}
+        <script type="module">
+            import * as THREE from "three";
+            import {{ OrbitControls }} from "three/addons/controls/OrbitControls.js";
 
-            const THREE = window.THREE;
-            const OrbitControls = window.THREE.OrbitControls;
+            try {{
 
             const defaultRacks = {payload};
             const defaultRacksByFloor = {floor_payload};
@@ -5449,13 +5433,14 @@ def warehouse_scene3d_html(
             canvas.dataset.ready = "true";
             animate();
             window.addEventListener("resize", resizeRenderer);
-            }})().catch(error => {{
+            }} catch (error) {{
                 console.error("Warehouse 3D startup failed", error);
                 const modelError = document.getElementById("modelError");
                 if (modelError) {{
+                    modelError.innerHTML = `3D 초기화 오류<br><small>${{escapeHtml(error?.message || error)}}</small>`;
                     modelError.style.display = "flex";
                 }}
-            }});
+            }}
         </script>
         <script>
             setTimeout(() => {{
