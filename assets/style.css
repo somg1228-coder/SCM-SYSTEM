@@ -12690,6 +12690,26 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     border-color: #CABED8 !important;
 }
 
+/* Sidebar hover clipping fix: category/menu buttons must stay in place. */
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button,
+[data-testid="stSidebar"] .stButton > button {
+    transform: none !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button:hover,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button:hover,
+[data-testid="stSidebar"] .stButton > button:hover,
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button:focus,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button:focus,
+[data-testid="stSidebar"] .stButton > button:focus,
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button:active,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button:active,
+[data-testid="stSidebar"] .stButton > button:active {
+    box-shadow: inset 0 0 0 1px rgba(47, 70, 89, 0.08) !important;
+    transform: none !important;
+}
+
 [data-testid="stSidebar"] div[class*="sidebar_group_work"] button *,
 [data-testid="stSidebar"] div[class*="st-key-sidebar_group_work"] button * {
     color: #344B63 !important;
