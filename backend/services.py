@@ -1246,6 +1246,21 @@ def sync_inventory_from_product_master(db: Session, source_type: str | None = No
         if product:
             apply_product_master_to_inbound(item, product)
             count += 1
+
+    sync_sources = [source_type] if source_type else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
+    for product_source in sync_sources:
+        target_date = db.scalar(
+            select(func.max(InventoryDaily.work_date)).where(InventoryDaily.source_type == product_source)
+        ) or date.today()
+        model = product_master_model(product_source)
+        products = db.execute(
+            select(model).order_by(model.sort_order, model.large_category, model.product_name, model.sku)
+        ).scalars()
+        for product in products:
+            item = ensure_daily_for_product(db, product_source, target_date, product)
+            stock_value = int(item.available_stock if item.available_stock is not None else item.current_stock or 0)
+            item.stock_status = stock_status_for_values(stock_value, int(product.min_stock or 0))
+            count += 1
     db.commit()
     return count
 
