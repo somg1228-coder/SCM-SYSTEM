@@ -2,6 +2,7 @@
 
 import base64
 import json
+import tempfile
 from html import escape
 from pathlib import Path
 
@@ -9,11 +10,12 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 try:
-    from backend.database import SessionLocal, init_db
+    from backend.database import SessionLocal, init_db, writable_runtime_data_dir
     from backend import services
 except (ModuleNotFoundError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
+    writable_runtime_data_dir = None
     services = None
     WAREHOUSE_IMPORT_ERROR = str(exc)
 else:
@@ -51,6 +53,88 @@ LOCATIONS = {
         "default_drawing": None,
     },
 }
+
+
+WAREHOUSE_LAYOUT_STORE_NAME = "warehouse3d_layouts.json"
+
+
+def warehouse_layout_store_path() -> Path:
+    if writable_runtime_data_dir is not None:
+        try:
+            data_dir = writable_runtime_data_dir()
+        except Exception:
+            data_dir = Path(tempfile.gettempdir()) / "scm_portal_data"
+    else:
+        data_dir = Path(tempfile.gettempdir()) / "scm_portal_data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir / WAREHOUSE_LAYOUT_STORE_NAME
+
+
+def empty_warehouse_layout_store() -> dict:
+    return {"version": 1, "locations": {}}
+
+
+def load_warehouse_layout_store() -> dict:
+    path = warehouse_layout_store_path()
+    if not path.exists():
+        return empty_warehouse_layout_store()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return empty_warehouse_layout_store()
+    if not isinstance(payload, dict):
+        return empty_warehouse_layout_store()
+    locations = payload.get("locations")
+    if not isinstance(locations, dict):
+        payload["locations"] = {}
+    payload["version"] = int(payload.get("version") or 1)
+    return payload
+
+
+def save_warehouse_layout_store(payload: dict) -> Path:
+    store = empty_warehouse_layout_store()
+    if isinstance(payload, dict):
+        locations = payload.get("locations")
+        if isinstance(locations, dict):
+            store["locations"] = locations
+        else:
+            store["locations"] = {
+                key: value
+                for key, value in payload.items()
+                if key in LOCATIONS and isinstance(value, dict)
+            }
+    path = warehouse_layout_store_path()
+    path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def render_warehouse_layout_sync_tools() -> dict:
+    store = load_warehouse_layout_store()
+    with st.expander("3D 배치 공용 백업", expanded=False):
+        uploaded_layout = st.file_uploader(
+            "배치 백업 파일 가져오기",
+            type=["json"],
+            key="warehouse3d_layout_backup_upload",
+        )
+        if uploaded_layout is not None:
+            try:
+                payload = json.loads(uploaded_layout.getvalue().decode("utf-8-sig"))
+                save_warehouse_layout_store(payload)
+            except (UnicodeDecodeError, json.JSONDecodeError, OSError) as exc:
+                st.error(f"배치 백업 파일을 읽지 못했습니다. ({exc})")
+            else:
+                st.success("3D 창고 배치를 공용 백업으로 반영했습니다. 새로고침하면 다른 브라우저에서도 같은 배치를 읽습니다.")
+                store = load_warehouse_layout_store()
+
+        st.download_button(
+            "공용 배치 백업 다운로드",
+            data=json.dumps(store, ensure_ascii=False, indent=2).encode("utf-8"),
+            file_name=WAREHOUSE_LAYOUT_STORE_NAME,
+            mime="application/json",
+            use_container_width=True,
+            key="warehouse3d_layout_store_download",
+        )
+    return store
 
 FLOOR_ZONES = {
     "1층": ["회사 출입구", "피킹존", "검수존", "랙 배치"],
@@ -185,6 +269,7 @@ def render_warehouse3d_page() -> None:
         st.session_state["warehouse3d_building"] = building_options[0]
     with building_col:
         building = st.selectbox("위치 선택", building_options, key="warehouse3d_building")
+    shared_layout_store = render_warehouse_layout_sync_tools()
     default_floor = LOCATIONS[building]["default_floor"]
     floor = default_floor
     drawing_mode = "3D 배치"
@@ -204,13 +289,18 @@ def render_warehouse3d_page() -> None:
                 racks=racks,
                 zones=FLOOR_ZONES.get(floor, []),
                 inventory_rows=inventory_rows,
+                shared_layout_store=shared_layout_store,
             ),
             height=700,
             scrolling=False,
         )
     with stock_tab:
         components.html(
-            warehouse_stock_position_html(building=building, inventory_rows=inventory_rows),
+            warehouse_stock_position_html(
+                building=building,
+                inventory_rows=inventory_rows,
+                shared_layout_store=shared_layout_store,
+            ),
             height=700,
             scrolling=False,
         )
@@ -229,7 +319,7 @@ def warehouse_location_floor_options() -> list[dict]:
     ]
 
 
-def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> str:
+def warehouse_stock_position_html(building: str, inventory_rows: list[dict], shared_layout_store: dict | None = None) -> str:
     default_floor = LOCATIONS[building]["default_floor"]
     location_floors = warehouse_location_floor_options()
     default_location_key = f"{building}::{default_floor}"
@@ -239,6 +329,8 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
     )
     location_floors_payload = json.dumps(location_floors, ensure_ascii=False)
     legacy_location_map_payload = json.dumps({"밑창고1": "창고1", "옆창고2": "창고2"}, ensure_ascii=False)
+    shared_layout_payload = json.dumps(shared_layout_store or empty_warehouse_layout_store(), ensure_ascii=False)
+    location_floors_payload = json.dumps(warehouse_location_floor_options(), ensure_ascii=False)
 
     return f"""
     <!doctype html>
@@ -409,6 +501,7 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
             const activeBuilding = {json.dumps(building, ensure_ascii=False)};
             const locationFloors = {location_floors_payload};
             const defaultRacksByLocationFloor = {floor_payload};
+            const sharedLayoutStore = {shared_layout_payload};
             const legacyLocationMap = {legacy_location_map_payload};
             const stockBody = document.getElementById("stockBody");
             const stockFoot = document.getElementById("stockFoot");
@@ -442,10 +535,18 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
                 }}
             }}
 
+            function sharedFloorData(buildingName, floorName) {{
+                return sharedLayoutStore?.locations?.[buildingName]?.[floorName] || null;
+            }}
+
             function loadRacks(buildingName, floorName, optionKey) {{
                 let saved = loadJson(storageKeyFor(buildingName, floorName), null);
                 if (!Array.isArray(saved) && legacyLocationMap[buildingName]) {{
                     saved = loadJson(storageKeyFor(legacyLocationMap[buildingName], floorName), null);
+                }}
+                if (!Array.isArray(saved)) {{
+                    const shared = sharedFloorData(buildingName, floorName)?.racks;
+                    if (Array.isArray(shared)) saved = shared;
                 }}
                 return Array.isArray(saved) ? saved : (defaultRacksByLocationFloor[optionKey] || []);
             }}
@@ -454,6 +555,10 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
                 let saved = loadJson(fixtureStorageKeyFor(buildingName, floorName), null);
                 if (!Array.isArray(saved) && legacyLocationMap[buildingName]) {{
                     saved = loadJson(fixtureStorageKeyFor(legacyLocationMap[buildingName], floorName), null);
+                }}
+                if (!Array.isArray(saved)) {{
+                    const shared = sharedFloorData(buildingName, floorName)?.fixtures;
+                    if (Array.isArray(shared)) saved = shared;
                 }}
                 return Array.isArray(saved) ? saved : [];
             }}
@@ -1222,6 +1327,7 @@ def warehouse_scene_html(
             const defaultRacksByFloor = {floor_payload};
             const zonesByFloor = {zones_payload};
             const floorModels = {floor_model_payload};
+            const sharedLayoutStore = {json.dumps(empty_warehouse_layout_store(), ensure_ascii=False)};
             const inventory = {inventory_payload};
             const baseStorageKey = {json.dumps(base_storage_key, ensure_ascii=False)};
             const activeBuilding = {json.dumps(building, ensure_ascii=False)};
@@ -1255,15 +1361,31 @@ def warehouse_scene_html(
             }}
 
             function storageKeyFor(floorName) {{
-                return `${{baseStorageKey}}${{floorName}}`;
+                return storageKeyForLocation(activeBuilding, floorName);
             }}
 
             function fixtureStorageKeyFor(floorName) {{
-                return `${{baseStorageKey}}fixtures:${{floorName}}`;
+                return fixtureStorageKeyForLocation(activeBuilding, floorName);
             }}
 
             function floorSizeStorageKeyFor(floorName) {{
-                return `${{baseStorageKey}}floorSize:${{floorName}}`;
+                return floorSizeStorageKeyForLocation(activeBuilding, floorName);
+            }}
+
+            function storageKeyForLocation(buildingName, floorName) {{
+                return `warehouseRackLayout:${{buildingName}}:${{floorName}}`;
+            }}
+
+            function fixtureStorageKeyForLocation(buildingName, floorName) {{
+                return `warehouseRackLayout:${{buildingName}}:fixtures:${{floorName}}`;
+            }}
+
+            function floorSizeStorageKeyForLocation(buildingName, floorName) {{
+                return `warehouseRackLayout:${{buildingName}}:floorSize:${{floorName}}`;
+            }}
+
+            function sharedFloorData(buildingName, floorName) {{
+                return sharedLayoutStore?.locations?.[buildingName]?.[floorName] || null;
             }}
 
             function baseFloorSize(floorName) {{
@@ -1604,6 +1726,7 @@ def warehouse_scene3d_html(
     racks: list[dict],
     zones: list[str],
     inventory_rows: list[dict],
+    shared_layout_store: dict | None = None,
 ) -> str:
     payload = json.dumps(racks, ensure_ascii=False)
     floor_payload = json.dumps(
@@ -1615,6 +1738,7 @@ def warehouse_scene3d_html(
         ensure_ascii=False,
     )
     floor_model_payload = json.dumps(FLOOR_MODELS, ensure_ascii=False)
+    shared_layout_payload = json.dumps(shared_layout_store or empty_warehouse_layout_store(), ensure_ascii=False)
     inventory_payload = json.dumps(
         [
             {
@@ -2212,6 +2336,9 @@ def warehouse_scene3d_html(
                     <button type="button" id="resetRack">배치 초기화</button>
                     <button type="button" id="fitRack">기본배치</button>
                     <button type="button" id="printScene">모델 출력</button>
+                    <button type="button" id="exportLayout">배치 백업</button>
+                    <button type="button" id="importLayout">배치 복원</button>
+                    <input id="layoutImportFile" type="file" accept="application/json,.json" hidden>
                 </div>
                 <div class="model-viewport" id="modelViewport">
                     <canvas id="warehouseCanvas"></canvas>
@@ -2331,6 +2458,8 @@ def warehouse_scene3d_html(
             const defaultRacksByFloor = {floor_payload};
             const zonesByFloor = {zones_payload};
             const floorModels = {floor_model_payload};
+            const sharedLayoutStore = {shared_layout_payload};
+            const locationFloors = {location_floors_payload};
             const inventory = {inventory_payload};
             const baseStorageKey = {json.dumps(base_storage_key, ensure_ascii=False)};
             const activeBuilding = {json.dumps(building, ensure_ascii=False)};
@@ -2384,6 +2513,9 @@ def warehouse_scene3d_html(
             const applyFloorSizeButton = document.getElementById("applyFloorSize");
             const resetFloorSizeButton = document.getElementById("resetFloorSize");
             const printSceneButton = document.getElementById("printScene");
+            const exportLayoutButton = document.getElementById("exportLayout");
+            const importLayoutButton = document.getElementById("importLayout");
+            const layoutImportFile = document.getElementById("layoutImportFile");
             const placementScale = 1.45;
 
             const scene = new THREE.Scene();
@@ -2585,6 +2717,15 @@ def warehouse_scene3d_html(
                         }};
                     }}
                 }} catch (error) {{}}
+                const sharedSize = sharedFloorData(activeBuilding, floorName)?.floor_size;
+                if (sharedSize && Number.isFinite(Number(sharedSize.width)) && Number.isFinite(Number(sharedSize.depth))) {{
+                    return {{
+                        width: clamp(Number(sharedSize.width), base.width * 0.45, base.width * 2.6),
+                        depth: clamp(Number(sharedSize.depth), base.depth * 0.45, base.depth * 2.6),
+                        x: Number.isFinite(Number(sharedSize.x)) ? Number(sharedSize.x) : 0,
+                        z: Number.isFinite(Number(sharedSize.z)) ? Number(sharedSize.z) : 0,
+                    }};
+                }}
                 return {{ ...base, x: 0, z: 0 }};
             }}
 
@@ -2768,6 +2909,8 @@ def warehouse_scene3d_html(
                     const saved = JSON.parse(localStorage.getItem(storageKeyFor(floorName)) || "null");
                     if (Array.isArray(saved)) return normalizeRackIds(saved);
                 }} catch (error) {{}}
+                const shared = sharedFloorData(activeBuilding, floorName)?.racks;
+                if (Array.isArray(shared)) return normalizeRackIds(shared);
                 return normalizeRackIds(defaultLayout(floorName));
             }}
 
@@ -2782,9 +2925,11 @@ def warehouse_scene3d_html(
 
             function loadFixtures(floorName) {{
                 try {{
-                    const saved = JSON.parse(localStorage.getItem(fixtureStorageKeyFor(floorName)) || "[]");
+                    const saved = JSON.parse(localStorage.getItem(fixtureStorageKeyFor(floorName)) || "null");
                     if (Array.isArray(saved)) return saved.map(normalizeFixture);
                 }} catch (error) {{}}
+                const shared = sharedFloorData(activeBuilding, floorName)?.fixtures;
+                if (Array.isArray(shared)) return shared.map(normalizeFixture);
                 return [];
             }}
 
@@ -2794,6 +2939,97 @@ def warehouse_scene3d_html(
 
             function saveFixturesFor(floorName, floorFixtures) {{
                 localStorage.setItem(fixtureStorageKeyFor(floorName), JSON.stringify(floorFixtures));
+            }}
+
+            function readJsonFromLocalStorage(key, fallback = null) {{
+                try {{
+                    const value = JSON.parse(localStorage.getItem(key) || "null");
+                    return value ?? fallback;
+                }} catch (error) {{
+                    return fallback;
+                }}
+            }}
+
+            function collectWarehouseLayoutBackup() {{
+                saveLayout();
+                saveFixtures();
+                const locations = {{}};
+                locationFloors.forEach(option => {{
+                    const buildingName = option.building;
+                    const floorName = option.floor;
+                    const racksValue = readJsonFromLocalStorage(storageKeyForLocation(buildingName, floorName), null);
+                    const fixturesValue = readJsonFromLocalStorage(fixtureStorageKeyForLocation(buildingName, floorName), null);
+                    const floorSizeValue = readJsonFromLocalStorage(floorSizeStorageKeyForLocation(buildingName, floorName), null);
+                    const shared = sharedFloorData(buildingName, floorName) || {{}};
+                    const floorData = {{}};
+                    if (Array.isArray(racksValue)) {{
+                        floorData.racks = normalizeRackIds(racksValue);
+                    }} else if (Array.isArray(shared.racks)) {{
+                        floorData.racks = normalizeRackIds(shared.racks);
+                    }}
+                    if (Array.isArray(fixturesValue)) {{
+                        floorData.fixtures = fixturesValue;
+                    }} else if (Array.isArray(shared.fixtures)) {{
+                        floorData.fixtures = shared.fixtures;
+                    }}
+                    if (floorSizeValue && Number.isFinite(Number(floorSizeValue.width)) && Number.isFinite(Number(floorSizeValue.depth))) {{
+                        floorData.floor_size = floorSizeValue;
+                    }} else if (shared.floor_size && Number.isFinite(Number(shared.floor_size.width)) && Number.isFinite(Number(shared.floor_size.depth))) {{
+                        floorData.floor_size = shared.floor_size;
+                    }}
+                    if (Object.keys(floorData).length) {{
+                        locations[buildingName] = locations[buildingName] || {{}};
+                        locations[buildingName][floorName] = floorData;
+                    }}
+                }});
+                return {{
+                    version: 1,
+                    exported_at: new Date().toISOString(),
+                    locations,
+                }};
+            }}
+
+            function downloadWarehouseLayoutBackup() {{
+                const payload = collectWarehouseLayoutBackup();
+                const blob = new Blob([JSON.stringify(payload, null, 2)], {{ type: "application/json;charset=utf-8" }});
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "").replace("T", "_");
+                link.href = url;
+                link.download = `warehouse3d_layouts_${{stamp}}.json`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            }}
+
+            function applyWarehouseLayoutBackup(payload) {{
+                const locations = payload?.locations;
+                if (!locations || typeof locations !== "object") {{
+                    alert("배치 백업 파일 형식이 올바르지 않습니다.");
+                    return;
+                }}
+                Object.entries(locations).forEach(([buildingName, floorsPayload]) => {{
+                    if (!floorsPayload || typeof floorsPayload !== "object") return;
+                    Object.entries(floorsPayload).forEach(([floorName, floorData]) => {{
+                        if (!floorData || typeof floorData !== "object") return;
+                        if (Array.isArray(floorData.racks)) {{
+                            localStorage.setItem(storageKeyForLocation(buildingName, floorName), JSON.stringify(normalizeRackIds(floorData.racks)));
+                        }}
+                        if (Array.isArray(floorData.fixtures)) {{
+                            localStorage.setItem(fixtureStorageKeyForLocation(buildingName, floorName), JSON.stringify(floorData.fixtures));
+                        }}
+                        if (floorData.floor_size && Number.isFinite(Number(floorData.floor_size.width)) && Number.isFinite(Number(floorData.floor_size.depth))) {{
+                            localStorage.setItem(floorSizeStorageKeyForLocation(buildingName, floorName), JSON.stringify(floorData.floor_size));
+                        }}
+                    }});
+                }});
+                racks = loadLayout(activeFloor);
+                fixtures = loadFixtures(activeFloor);
+                selectedRackId = racks[0]?.id || "";
+                selectedFixtureId = "";
+                selectedRackItemKey = "";
+                rebuildScene();
             }}
 
             function clamp(value, min, max) {{
@@ -5138,6 +5374,23 @@ def warehouse_scene3d_html(
             }}
 
             printSceneButton?.addEventListener("click", printWarehouseModel);
+            exportLayoutButton?.addEventListener("click", downloadWarehouseLayoutBackup);
+            importLayoutButton?.addEventListener("click", () => layoutImportFile?.click());
+            layoutImportFile?.addEventListener("change", () => {{
+                const file = layoutImportFile.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.addEventListener("load", () => {{
+                    try {{
+                        applyWarehouseLayoutBackup(JSON.parse(String(reader.result || "")));
+                    }} catch (error) {{
+                        alert("배치 백업 파일을 읽지 못했습니다.");
+                    }} finally {{
+                        layoutImportFile.value = "";
+                    }}
+                }});
+                reader.readAsText(file, "utf-8");
+            }});
 
             document.querySelectorAll(".floor-chip").forEach(button => {{
                 button.addEventListener("click", () => {{
