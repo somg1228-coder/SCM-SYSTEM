@@ -449,20 +449,66 @@ def render_product_master_row_edit_form(source_type: str, key: str, df: pd.DataF
         return
 
     safe_df = df.reset_index(drop=True).fillna("")
+    search_keyword = st.text_input(
+        "수정 품목 검색",
+        placeholder="상품명 / 바코드 / 카테고리 / 업체명 / 담당자",
+        key=f"product_master_{key}_{form_suffix}_edit_search",
+    )
+    if clean_value(search_keyword):
+        mask = safe_df.apply(lambda row: product_master_row_matches_keyword(row, search_keyword), axis=1)
+        option_df = safe_df[mask].reset_index(drop=True)
+    else:
+        option_df = safe_df
+    if option_df.empty:
+        st.info("검색 조건에 맞는 수정 품목이 없습니다.")
+        return
+
+    select_key = f"product_master_{key}_{form_suffix}_row_select"
+    search_state_key = f"product_master_{key}_{form_suffix}_edit_search_last"
+    select_options = list(range(len(option_df)))
+    normalized_search = clean_value(search_keyword)
+    if st.session_state.get(search_state_key) != normalized_search or st.session_state.get(select_key) not in select_options:
+        st.session_state[select_key] = select_options[0]
+        st.session_state[search_state_key] = normalized_search
     selected_idx = st.selectbox(
         "수정할 품목",
-        list(range(len(safe_df))),
-        format_func=lambda idx: product_master_row_label(safe_df.iloc[idx], idx),
-        key=f"product_master_{key}_{form_suffix}_row_select",
+        select_options,
+        format_func=lambda idx: product_master_row_label(option_df.iloc[idx], idx),
+        key=select_key,
     )
-    row = safe_df.iloc[int(selected_idx)].to_dict()
+    row = option_df.iloc[int(selected_idx)].to_dict()
+    field_key_prefix = f"product_master_{key}_{form_suffix}_{safe_widget_key(product_master_row_identity(row, selected_idx))}"
 
     if uses_threepl_master_form(source_type):
-        render_threepl_row_edit_form(source_type, key, row, form_suffix)
+        render_threepl_row_edit_form(source_type, key, row, form_suffix, field_key_prefix)
     elif uses_simple_master_form(source_type):
-        render_simple_row_edit_form(source_type, key, row, form_suffix)
+        render_simple_row_edit_form(source_type, key, row, form_suffix, field_key_prefix)
     else:
-        render_standard_row_edit_form(source_type, key, row, form_suffix)
+        render_standard_row_edit_form(source_type, key, row, form_suffix, field_key_prefix)
+
+
+def product_master_row_matches_keyword(row: pd.Series, keyword: str) -> bool:
+    needle = clean_value(keyword).lower()
+    if not needle:
+        return True
+    fields = ["SKU", "바코드", "88바코드", "상품명", "카테고리", "업체명", "공급처", "담당자", "브랜드", "비고"]
+    haystack = " ".join(clean_value(row.get(field)) for field in fields).lower()
+    return needle in haystack
+
+
+def product_master_row_identity(row: dict | pd.Series, fallback) -> str:
+    parts = [
+        clean_value(row.get("SKU")),
+        clean_value(row.get("바코드")),
+        clean_value(row.get("88바코드")),
+        clean_value(row.get("상품명")),
+        clean_value(row.get("카테고리")),
+    ]
+    return "|".join(part for part in parts if part) or str(fallback)
+
+
+def safe_widget_key(value) -> str:
+    return re.sub(r"[^0-9A-Za-z가-힣_]+", "_", clean_value(value))[:120] or "row"
 
 
 def product_master_row_label(row: pd.Series, idx: int) -> str:
@@ -477,19 +523,19 @@ def product_master_row_label(row: pd.Series, idx: int) -> str:
     return " / ".join(parts)
 
 
-def render_threepl_row_edit_form(source_type: str, key: str, row: dict, form_suffix: str) -> None:
+def render_threepl_row_edit_form(source_type: str, key: str, row: dict, form_suffix: str, field_key_prefix: str) -> None:
     with st.form(key=f"product_master_{key}_{form_suffix}_row_form", clear_on_submit=False):
         top = st.columns([1.0, 1.15, 2.2, 1.35], gap="small")
-        category = top[0].text_input("카테고리", value=clean_value(row.get("카테고리")))
-        barcode = top[1].text_input("바코드", value=clean_value(row.get("바코드")))
-        product_name = top[2].text_input("상품명", value=clean_value(row.get("상품명")))
-        supplier = top[3].text_input("업체명", value=clean_value(row.get("업체명")))
+        category = top[0].text_input("카테고리", value=clean_value(row.get("카테고리")), key=f"{field_key_prefix}_category")
+        barcode = top[1].text_input("바코드", value=clean_value(row.get("바코드")), key=f"{field_key_prefix}_barcode")
+        product_name = top[2].text_input("상품명", value=clean_value(row.get("상품명")), key=f"{field_key_prefix}_product_name")
+        supplier = top[3].text_input("업체명", value=clean_value(row.get("업체명")), key=f"{field_key_prefix}_supplier")
 
         bottom = st.columns([1.45, 1.0, 0.75, 0.75], gap="small")
-        box_pallet_unit = bottom[0].text_input("박스/파렛트 단위", value=clean_value(row.get("박스/파렛트 단위")))
-        manager = bottom[1].text_input("담당자", value=clean_value(row.get("담당자")))
-        lead_time = bottom[2].number_input("리드타임", min_value=0, step=1, value=to_int_value(row.get("리드타임")))
-        is_active = bottom[3].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")))
+        box_pallet_unit = bottom[0].text_input("박스/파렛트 단위", value=clean_value(row.get("박스/파렛트 단위")), key=f"{field_key_prefix}_box_pallet_unit")
+        manager = bottom[1].text_input("담당자", value=clean_value(row.get("담당자")), key=f"{field_key_prefix}_manager")
+        lead_time = bottom[2].number_input("리드타임", min_value=0, step=1, value=to_int_value(row.get("리드타임")), key=f"{field_key_prefix}_lead_time")
+        is_active = bottom[3].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")), key=f"{field_key_prefix}_is_active")
 
         submitted = st.form_submit_button("선택 품목 저장", type="primary", use_container_width=True)
     if submitted:
@@ -509,19 +555,19 @@ def render_threepl_row_edit_form(source_type: str, key: str, row: dict, form_suf
         save_product_master_rows(source_type, key, threepl_editor_to_payload(pd.DataFrame([edited_row])))
 
 
-def render_simple_row_edit_form(source_type: str, key: str, row: dict, form_suffix: str) -> None:
+def render_simple_row_edit_form(source_type: str, key: str, row: dict, form_suffix: str, field_key_prefix: str) -> None:
     barcode_label = "88바코드" if "88바코드" in row else "바코드"
     with st.form(key=f"product_master_{key}_{form_suffix}_row_form", clear_on_submit=False):
         top = st.columns([1.0, 2.2, 1.15], gap="small")
-        category = top[0].text_input("카테고리", value=clean_value(row.get("카테고리")))
-        product_name = top[1].text_input("상품명", value=clean_value(row.get("상품명")))
-        barcode = top[2].text_input(barcode_label, value=clean_value(row.get(barcode_label)))
+        category = top[0].text_input("카테고리", value=clean_value(row.get("카테고리")), key=f"{field_key_prefix}_category")
+        product_name = top[1].text_input("상품명", value=clean_value(row.get("상품명")), key=f"{field_key_prefix}_product_name")
+        barcode = top[2].text_input(barcode_label, value=clean_value(row.get(barcode_label)), key=f"{field_key_prefix}_barcode")
 
         bottom = st.columns([0.85, 0.85, 0.85, 2.2], gap="small")
-        lead_time = bottom[0].number_input("리드타임", min_value=0, step=1, value=to_int_value(row.get("리드타임")))
-        sort_order = bottom[1].number_input("정렬순서", min_value=0, step=1, value=to_int_value(row.get("정렬순서")))
-        is_active = bottom[2].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")))
-        memo = bottom[3].text_input("비고", value=clean_value(row.get("비고")))
+        lead_time = bottom[0].number_input("리드타임", min_value=0, step=1, value=to_int_value(row.get("리드타임")), key=f"{field_key_prefix}_lead_time")
+        sort_order = bottom[1].number_input("정렬순서", min_value=0, step=1, value=to_int_value(row.get("정렬순서")), key=f"{field_key_prefix}_sort_order")
+        is_active = bottom[2].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")), key=f"{field_key_prefix}_is_active")
+        memo = bottom[3].text_input("비고", value=clean_value(row.get("비고")), key=f"{field_key_prefix}_memo")
 
         submitted = st.form_submit_button("선택 품목 저장", type="primary", use_container_width=True)
     if submitted:
@@ -540,26 +586,26 @@ def render_simple_row_edit_form(source_type: str, key: str, row: dict, form_suff
         save_product_master_rows(source_type, key, offline_editor_to_payload(pd.DataFrame([edited_row])))
 
 
-def render_standard_row_edit_form(source_type: str, key: str, row: dict, form_suffix: str) -> None:
+def render_standard_row_edit_form(source_type: str, key: str, row: dict, form_suffix: str, field_key_prefix: str) -> None:
     with st.form(key=f"product_master_{key}_{form_suffix}_row_form", clear_on_submit=False):
         row1 = st.columns([1.0, 1.15, 2.2, 1.0], gap="small")
-        sku = row1[0].text_input("SKU", value=clean_value(row.get("SKU")))
-        barcode = row1[1].text_input("바코드", value=clean_value(row.get("바코드")))
-        product_name = row1[2].text_input("상품명", value=clean_value(row.get("상품명")))
-        category = row1[3].text_input("카테고리", value=clean_value(row.get("카테고리")))
+        sku = row1[0].text_input("SKU", value=clean_value(row.get("SKU")), key=f"{field_key_prefix}_sku")
+        barcode = row1[1].text_input("바코드", value=clean_value(row.get("바코드")), key=f"{field_key_prefix}_barcode")
+        product_name = row1[2].text_input("상품명", value=clean_value(row.get("상품명")), key=f"{field_key_prefix}_product_name")
+        category = row1[3].text_input("카테고리", value=clean_value(row.get("카테고리")), key=f"{field_key_prefix}_category")
 
         row2 = st.columns([1.0, 1.0, 0.75, 0.75, 0.85, 0.85], gap="small")
-        brand = row2[0].text_input("브랜드", value=clean_value(row.get("브랜드")))
-        supplier = row2[1].text_input("공급처", value=clean_value(row.get("공급처")))
-        pack_qty = row2[2].number_input("입수", min_value=0, step=1, value=to_int_value(row.get("입수")))
-        box_qty = row2[3].number_input("박스입수", min_value=0, step=1, value=to_int_value(row.get("박스입수")))
-        lead_time = row2[4].number_input("기본 리드타임", min_value=0, step=1, value=to_int_value(row.get("기본 리드타임")))
-        min_stock = row2[5].number_input("최소재고", min_value=0, step=1, value=to_int_value(row.get("최소재고")))
+        brand = row2[0].text_input("브랜드", value=clean_value(row.get("브랜드")), key=f"{field_key_prefix}_brand")
+        supplier = row2[1].text_input("공급처", value=clean_value(row.get("공급처")), key=f"{field_key_prefix}_supplier")
+        pack_qty = row2[2].number_input("입수", min_value=0, step=1, value=to_int_value(row.get("입수")), key=f"{field_key_prefix}_pack_qty")
+        box_qty = row2[3].number_input("박스입수", min_value=0, step=1, value=to_int_value(row.get("박스입수")), key=f"{field_key_prefix}_box_qty")
+        lead_time = row2[4].number_input("기본 리드타임", min_value=0, step=1, value=to_int_value(row.get("기본 리드타임")), key=f"{field_key_prefix}_lead_time")
+        min_stock = row2[5].number_input("최소재고", min_value=0, step=1, value=to_int_value(row.get("최소재고")), key=f"{field_key_prefix}_min_stock")
 
         row3 = st.columns([0.8, 0.8, 2.4], gap="small")
-        sort_order = row3[0].number_input("정렬순서", min_value=0, step=1, value=to_int_value(row.get("정렬순서")))
-        is_active = row3[1].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")))
-        memo = row3[2].text_input("비고", value=clean_value(row.get("비고")))
+        sort_order = row3[0].number_input("정렬순서", min_value=0, step=1, value=to_int_value(row.get("정렬순서")), key=f"{field_key_prefix}_sort_order")
+        is_active = row3[1].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")), key=f"{field_key_prefix}_is_active")
+        memo = row3[2].text_input("비고", value=clean_value(row.get("비고")), key=f"{field_key_prefix}_memo")
 
         submitted = st.form_submit_button("선택 품목 저장", type="primary", use_container_width=True)
     if submitted:
@@ -1523,6 +1569,19 @@ def inject_product_master_css() -> None:
         .product-master-visible-table td:last-child,
         .product-master-visible-table th:last-child {
             border-right: 0;
+        }
+        div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stFormSubmitButton"] button,
+        div[class*="st-key-product_master_"][class*="_editor_panel"] button[kind="primary"],
+        div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="baseButton-primary"] {
+            background: #2F5D7C !important;
+            border: 1px solid #244C68 !important;
+            color: #FFFFFF !important;
+            font-weight: 850 !important;
+        }
+        div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stFormSubmitButton"] button *,
+        div[class*="st-key-product_master_"][class*="_editor_panel"] button[kind="primary"] *,
+        div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="baseButton-primary"] * {
+            color: #FFFFFF !important;
         }
         </style>
         """,

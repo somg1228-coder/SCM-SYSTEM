@@ -1506,11 +1506,12 @@ def stock_preview_display_dataframe(preview: dict) -> pd.DataFrame:
         "barcode": "바코드",
         "previous_stock": "기존 현재고",
         "new_stock": "변경 현재고",
+        "new_available_stock": "변경 가용재고",
         "status": "검증결과",
         "matched": "반영대상",
     }
     display_df = preview_df.rename(columns=columns)
-    ordered = ["엑셀 행", "SKU", "카테고리", "상품명", "바코드", "기존 현재고", "변경 현재고", "검증결과", "반영대상"]
+    ordered = ["엑셀 행", "SKU", "카테고리", "상품명", "바코드", "기존 현재고", "변경 현재고", "변경 가용재고", "검증결과", "반영대상"]
     return display_df[[column for column in ordered if column in display_df.columns]]
 
 

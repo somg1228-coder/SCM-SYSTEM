@@ -87,6 +87,8 @@ PRODUCT_MASTER_MODEL_BY_SOURCE = {
 
 PURCHASE_METRIC_SOURCE_ORDER = ["창고", "3PL", "오프라인"]
 STOCK_WARNING_RATIO = 0.2
+STOCK_CURRENT_COLUMN_CANDIDATES = ["보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고", "수량", "상품수량"]
+STOCK_AVAILABLE_COLUMN_CANDIDATES = ["가용재고", "판매가능재고", "판매 가능 재고", "수량", "상품수량"]
 
 
 def product_master_model(source_type: str):
@@ -451,9 +453,9 @@ def import_result(count: int, df: pd.DataFrame) -> dict:
 
 
 def find_column(df: pd.DataFrame, candidates: list[str]) -> str:
-    normalized = {str(column).strip().replace(" ", ""): column for column in df.columns}
+    normalized = {import_header_key(column): column for column in df.columns}
     for candidate in candidates:
-        key = candidate.strip().replace(" ", "")
+        key = import_header_key(candidate)
         if key in normalized:
             return normalized[key]
     raise ValueError(f"필수 컬럼을 찾지 못했습니다: {', '.join(candidates)}")
@@ -1552,7 +1554,7 @@ def to_int_strict(value) -> tuple[int, bool]:
         number = int(float(text))
     except ValueError:
         return 0, False
-    return number, number >= 0
+    return number, True
 
 
 def prepare_stock_upload_preview(
@@ -1597,12 +1599,16 @@ def prepare_stock_upload_preview(
             "missing_columns": ["현재고"],
         }
     try:
-        current_col = find_column(df, ["보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고"])
+        current_col = find_column(df, STOCK_CURRENT_COLUMN_CANDIDATES)
     except ValueError:
         try:
-            current_col = find_column(df, ["가용재고", "판매가능재고"])
+            current_col = find_column(df, STOCK_AVAILABLE_COLUMN_CANDIDATES)
         except ValueError as exc:
             raise ValueError(f"필수 컬럼을 찾지 못했습니다: 현재고 / 인식된 컬럼: {', '.join(map(str, df.columns))}") from exc
+    try:
+        available_col = find_column(df, STOCK_AVAILABLE_COLUMN_CANDIDATES)
+    except ValueError:
+        available_col = current_col
     try:
         product_code_col = find_column(df, ["SKU", "상품코드", "품목코드", "상품번호"])
     except ValueError:
@@ -1619,6 +1625,11 @@ def prepare_stock_upload_preview(
     products = list(db.execute(select(product_master_model(source_type))).scalars())
     by_sku = {product.sku: product for product in products if product.sku}
     by_name = {product.product_name: product for product in products if product.product_name}
+    by_name_barcode = {
+        (clean_text(product.product_name), clean_text(product.barcode)): product
+        for product in products
+        if clean_text(product.product_name) and clean_text(product.barcode)
+    }
     by_barcode: dict[str, object] = {}
     duplicate_master_barcodes: set[str] = set()
     for product in products:
@@ -1628,8 +1639,7 @@ def prepare_stock_upload_preview(
             duplicate_master_barcodes.add(product.barcode)
         by_barcode[product.barcode] = product
 
-    seen_barcodes: set[str] = set()
-    duplicate_barcodes: set[str] = set()
+    seen_upload_keys: set[tuple[str, str]] = set()
     preview_rows = []
     uploaded_product_keys: set[str] = set()
     matched_count = failed_count = duplicate_count = empty_barcode_count = invalid_stock_count = negative_stock_count = 0
@@ -1639,17 +1649,19 @@ def prepare_stock_upload_preview(
         product_code = clean_text(row.get(product_code_col)) if product_code_col else ""
         product_name = clean_text(row.get(name_col)) if name_col else ""
         current_stock, stock_ok = to_int_strict(row.get(current_col))
+        available_raw = row.get(available_col) if available_col else ""
+        available_stock, available_ok = (
+            to_int_strict(available_raw) if clean_text(available_raw) else (current_stock, stock_ok)
+        )
         errors = []
+        upload_key = (product_name, barcode) if product_name and barcode else (product_code or product_name, barcode)
         if not barcode:
             empty_barcode_count += 1
-        elif barcode in seen_barcodes:
-            duplicate_barcodes.add(barcode)
+        elif upload_key in seen_upload_keys:
             duplicate_count += 1
-            errors.append("중복 바코드")
+            errors.append("중복 상품명/바코드")
         else:
-            seen_barcodes.add(barcode)
-        if barcode in duplicate_master_barcodes:
-            errors.append("마스터 중복 바코드")
+            seen_upload_keys.add(upload_key)
         if not stock_ok:
             if clean_text(row.get(current_col)).replace(",", "").startswith("-"):
                 negative_stock_count += 1
@@ -1657,14 +1669,26 @@ def prepare_stock_upload_preview(
             else:
                 invalid_stock_count += 1
                 errors.append("숫자가 아닌 재고")
+        if not available_ok:
+            if clean_text(row.get(available_col)).replace(",", "").startswith("-"):
+                negative_stock_count += 1
+                errors.append("음수 가용재고")
+            else:
+                invalid_stock_count += 1
+                errors.append("숫자가 아닌 가용재고")
 
-        product = by_barcode.get(barcode) if barcode else None
+        product = by_name_barcode.get((product_name, barcode)) if product_name and barcode else None
+        matched_exact_name_barcode = product is not None
+        if product is None:
+            product = by_barcode.get(barcode) if barcode else None
         if product is None and product_code:
             product = by_sku.get(product_code)
         if product is None and product_name:
             product = by_name.get(product_name)
         if product is None:
             errors.append("매칭 실패")
+        elif barcode in duplicate_master_barcodes and not matched_exact_name_barcode:
+            errors.append("마스터 중복 바코드")
 
         previous_stock = 0
         if product:
@@ -1686,6 +1710,7 @@ def prepare_stock_upload_preview(
                 "barcode": product.barcode if product else barcode,
                 "previous_stock": previous_stock,
                 "new_stock": current_stock,
+                "new_available_stock": available_stock,
                 "status": "정상" if not errors else ", ".join(errors),
                 "matched": bool(product) and not errors,
             }
@@ -1709,6 +1734,7 @@ def prepare_stock_upload_preview(
                     "barcode": product.barcode,
                     "previous_stock": previous_stock,
                     "new_stock": 0,
+                    "new_available_stock": 0,
                     "status": "전체 파일 누락 0 처리",
                     "matched": True,
                     "zero_missing": True,
@@ -1763,6 +1789,7 @@ def apply_stock_upload_preview(
         item = ensure_daily_for_product(db, source_type, work_date, product)
         previous_stock = int(item.current_stock or 0)
         new_stock = to_int(row.get("new_stock"))
+        new_available_stock = to_int(row.get("new_available_stock")) if "new_available_stock" in row else new_stock
         db.add(
             InventoryUploadSnapshot(
                 upload_history_id=history.id,
@@ -1776,8 +1803,8 @@ def apply_stock_upload_preview(
             )
         )
         item.current_stock = new_stock
-        item.available_stock = new_stock
-        item.stock_status = stock_status_for_values(new_stock, product.min_stock or 0)
+        item.available_stock = new_available_stock
+        item.stock_status = stock_status_for_values(new_available_stock, product.min_stock or 0)
         count += 1
     db.commit()
     return {"ok": True, "message": "재고 업로드 반영 완료", "count": count, "history_id": history.id}
@@ -2007,11 +2034,11 @@ def import_stock(db: Session, source_type: str, work_date: date, file_bytes: byt
     df = read_excel(file_bytes)
     name_col = find_column(df, ["상품명", "품목"])
     try:
-        current_col = find_column(df, ["보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고"])
+        current_col = find_column(df, STOCK_CURRENT_COLUMN_CANDIDATES)
     except ValueError:
         current_col = None
     try:
-        available_col = find_column(df, ["가용재고", "판매가능재고"])
+        available_col = find_column(df, STOCK_AVAILABLE_COLUMN_CANDIDATES)
     except ValueError:
         available_col = current_col
     if current_col is None and available_col is None:
@@ -2044,15 +2071,18 @@ def import_stock(db: Session, source_type: str, work_date: date, file_bytes: byt
             continue
         barcode = clean_text(row.get(barcode_col)) if barcode_col else ""
         product_code = clean_text(row.get(product_code_col)) if product_code_col else ""
-        item = get_or_create_daily(db, source_type, work_date, product_name, barcode)
-        if product_code:
-            item.product_code = product_code
-        apply_product_master_to_daily(item, find_product_master(db, source_type, item.product_code, item.barcode, item.product_name))
+        product = find_product_master(db, source_type, product_code, barcode, product_name)
+        if product:
+            item = ensure_daily_for_product(db, source_type, work_date, product)
+        else:
+            item = get_or_create_daily(db, source_type, work_date, product_name, barcode)
+            if product_code:
+                item.product_code = product_code
         if current_col:
             item.current_stock = to_int(row.get(current_col))
         elif available_col:
             item.current_stock = to_int(row.get(available_col))
-        item.available_stock = to_int(row.get(available_col)) if available_col else item.current_stock
+        item.available_stock = to_int(row.get(available_col)) if available_col and clean_text(row.get(available_col)) else item.current_stock
         if safe_col:
             item.safe_stock = to_int(row.get(safe_col))
         if status_col:

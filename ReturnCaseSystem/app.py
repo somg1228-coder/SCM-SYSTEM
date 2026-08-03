@@ -3958,6 +3958,35 @@ def render_return_case_system():
         color: #ffffff !important;
     }
 
+    .st-key-kpi_all button[kind="primary"],
+    .st-key-kpi_month button[kind="primary"],
+    .st-key-kpi_broken button[kind="primary"],
+    .st-key-kpi_defect button[kind="primary"],
+    .st-key-kpi_wrong button[kind="primary"],
+    .st-key-kpi_shortage button[kind="primary"],
+    .st-key-kpi_missing button[kind="primary"],
+    .st-key-kpi_etc button[kind="primary"],
+    .st-key-kpi_horizontal button[kind="primary"],
+    .st-key-kpi_welding button[kind="primary"] {
+        background: #e7e1d8 !important;
+        border-color: var(--return-primary) !important;
+        color: var(--return-title) !important;
+        box-shadow: inset 4px 0 0 var(--return-primary) !important;
+    }
+
+    .st-key-kpi_all button[kind="primary"] *,
+    .st-key-kpi_month button[kind="primary"] *,
+    .st-key-kpi_broken button[kind="primary"] *,
+    .st-key-kpi_defect button[kind="primary"] *,
+    .st-key-kpi_wrong button[kind="primary"] *,
+    .st-key-kpi_shortage button[kind="primary"] *,
+    .st-key-kpi_missing button[kind="primary"] *,
+    .st-key-kpi_etc button[kind="primary"] *,
+    .st-key-kpi_horizontal button[kind="primary"] *,
+    .st-key-kpi_welding button[kind="primary"] * {
+        color: var(--return-title) !important;
+    }
+
     .st-key-detail_delete_btn button,
     div[class*="st-key-del_"] button {
         background: var(--return-danger-soft) !important;

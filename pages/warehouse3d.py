@@ -38,22 +38,16 @@ LOCATIONS = {
         "description": "포장부서 1층/2층 작업 및 포장재 랙 관리",
         "default_drawing": None,
     },
-    "창고1": {
+    "밑창고1": {
         "floors": ONE_FLOOR,
         "default_floor": "1층",
-        "description": "창고1 적재 및 피킹 랙 관리",
+        "description": "밑창고1 적재 및 피킹 랙 관리",
         "default_drawing": None,
     },
-    "창고2": {
-        "floors": TWO_FLOORS,
+    "옆창고2": {
+        "floors": ONE_FLOOR,
         "default_floor": "1층",
-        "description": "창고2 적재 및 예비 랙 관리",
-        "default_drawing": None,
-    },
-    "NC층": {
-        "floors": TWO_FLOORS,
-        "default_floor": "1층",
-        "description": "NC 1층/2층 랙 배치/적재 관리",
+        "description": "옆창고2 적재 및 예비 랙 관리",
         "default_drawing": None,
     },
 }
@@ -222,15 +216,29 @@ def render_warehouse3d_page() -> None:
         )
 
 
+def warehouse_location_floor_options() -> list[dict]:
+    return [
+        {
+            "building": building,
+            "floor": floor,
+            "key": f"{building}::{floor}",
+            "label": f"{building} {floor}",
+        }
+        for building, config in LOCATIONS.items()
+        for floor in config["floors"]
+    ]
+
+
 def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> str:
-    floors = LOCATIONS[building]["floors"]
     default_floor = LOCATIONS[building]["default_floor"]
+    location_floors = warehouse_location_floor_options()
+    default_location_key = f"{building}::{default_floor}"
     floor_payload = json.dumps(
-        {level: build_rack_layout(inventory_rows, level) for level in floors},
+        {option["key"]: build_rack_layout(inventory_rows, option["floor"]) for option in location_floors},
         ensure_ascii=False,
     )
-    floors_payload = json.dumps(floors, ensure_ascii=False)
-    base_storage_key = f"warehouseRackLayout:{building}:"
+    location_floors_payload = json.dumps(location_floors, ensure_ascii=False)
+    legacy_location_map_payload = json.dumps({"밑창고1": "창고1", "옆창고2": "창고2"}, ensure_ascii=False)
 
     return f"""
     <!doctype html>
@@ -399,15 +407,15 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
         </section>
         <script>
             const activeBuilding = {json.dumps(building, ensure_ascii=False)};
-            const floors = {floors_payload};
-            const defaultRacksByFloor = {floor_payload};
-            const baseStorageKey = {json.dumps(base_storage_key, ensure_ascii=False)};
+            const locationFloors = {location_floors_payload};
+            const defaultRacksByLocationFloor = {floor_payload};
+            const legacyLocationMap = {legacy_location_map_payload};
             const stockBody = document.getElementById("stockBody");
             const stockFoot = document.getElementById("stockFoot");
             const stockSearch = document.getElementById("stockSearch");
             const floorFilter = document.getElementById("floorFilter");
             const floorContext = document.getElementById("floorContext");
-            const defaultFloor = {json.dumps(default_floor, ensure_ascii=False)};
+            const defaultLocationKey = {json.dumps(default_location_key, ensure_ascii=False)};
 
             function escapeHtml(value) {{
                 return String(value ?? "")
@@ -417,12 +425,12 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
                     .replaceAll('"', "&quot;");
             }}
 
-            function storageKeyFor(floorName) {{
-                return `${{baseStorageKey}}${{floorName}}`;
+            function storageKeyFor(buildingName, floorName) {{
+                return `warehouseRackLayout:${{buildingName}}:${{floorName}}`;
             }}
 
-            function fixtureStorageKeyFor(floorName) {{
-                return `${{baseStorageKey}}fixtures:${{floorName}}`;
+            function fixtureStorageKeyFor(buildingName, floorName) {{
+                return `warehouseRackLayout:${{buildingName}}:fixtures:${{floorName}}`;
             }}
 
             function loadJson(key, fallback) {{
@@ -434,13 +442,19 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
                 }}
             }}
 
-            function loadRacks(floorName) {{
-                const saved = loadJson(storageKeyFor(floorName), null);
-                return Array.isArray(saved) ? saved : (defaultRacksByFloor[floorName] || []);
+            function loadRacks(buildingName, floorName, optionKey) {{
+                let saved = loadJson(storageKeyFor(buildingName, floorName), null);
+                if (!Array.isArray(saved) && legacyLocationMap[buildingName]) {{
+                    saved = loadJson(storageKeyFor(legacyLocationMap[buildingName], floorName), null);
+                }}
+                return Array.isArray(saved) ? saved : (defaultRacksByLocationFloor[optionKey] || []);
             }}
 
-            function loadFixtures(floorName) {{
-                const saved = loadJson(fixtureStorageKeyFor(floorName), []);
+            function loadFixtures(buildingName, floorName) {{
+                let saved = loadJson(fixtureStorageKeyFor(buildingName, floorName), null);
+                if (!Array.isArray(saved) && legacyLocationMap[buildingName]) {{
+                    saved = loadJson(fixtureStorageKeyFor(legacyLocationMap[buildingName], floorName), null);
+                }}
                 return Array.isArray(saved) ? saved : [];
             }}
 
@@ -471,21 +485,21 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
                 return Number(item?.qty || item?.stock || 0);
             }}
 
-            function addRow(rows, floorName, location, shape, name, barcode, qty, stack = 1) {{
+            function addRow(rows, buildingName, floorName, location, shape, name, barcode, qty, stack = 1) {{
                 const product = String(name || "").trim();
                 const itemBarcode = String(barcode || "").trim();
                 const count = Number(qty || 0);
                 if (!product || !count) return;
                 const type = shapeLabel(shape);
                 const typeText = type === "파렛트" ? `${{type}} ${{stackLabel(stack)}}` : type;
-                const key = `${{floorName}}::${{location}}::${{typeText}}::${{itemBarcode || product}}`;
+                const key = `${{buildingName}}::${{floorName}}::${{location}}::${{typeText}}::${{itemBarcode || product}}`;
                 const existing = rows.get(key);
                 if (existing) {{
                     existing.qty += count;
                     return;
                 }}
                 rows.set(key, {{
-                    building: activeBuilding,
+                    building: buildingName,
                     floor: floorName,
                     location,
                     type: typeText,
@@ -497,32 +511,35 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
 
             function collectRows() {{
                 const rows = new Map();
-                floors.forEach(floorName => {{
-                    loadRacks(floorName).forEach(rack => {{
+                locationFloors.forEach(option => {{
+                    const buildingName = option.building;
+                    const floorName = option.floor;
+                    loadRacks(buildingName, floorName, option.key).forEach(rack => {{
                         const parts = partOptionsFor(rack);
                         (rack.items || []).forEach((item, index) => {{
                             const part = item.part || parts[index % parts.length] || "1단";
                             const location = `${{rack.id || "랙"}} / ${{part}}`;
-                            addRow(rows, floorName, location, item.shape || "box", item.name, item.barcode, quantityOf(item), item.stack || 1);
+                            addRow(rows, buildingName, floorName, location, item.shape || "box", item.name, item.barcode, quantityOf(item), item.stack || 1);
                             if ((item.shape === "pallet" || item.shape === "wrapped_pallet") && Array.isArray(item.items)) {{
                                 item.items.forEach(innerItem => {{
-                                    addRow(rows, floorName, `${{location}} / 파렛트 내부`, innerItem.shape || "box", innerItem.name, innerItem.barcode, quantityOf(innerItem), innerItem.stack || 1);
+                                    addRow(rows, buildingName, floorName, `${{location}} / 파렛트 내부`, innerItem.shape || "box", innerItem.name, innerItem.barcode, quantityOf(innerItem), innerItem.stack || 1);
                                 }});
                             }}
                         }});
                     }});
-                    loadFixtures(floorName).forEach(fixture => {{
+                    loadFixtures(buildingName, floorName).forEach(fixture => {{
                         if (!["box", "pallet", "wrapped_pallet"].includes(fixture.type)) return;
                         const location = `바닥 X${{Number(fixture.x || 0).toFixed(0)}} Y${{Number(fixture.y || 0).toFixed(0)}}`;
-                        addRow(rows, floorName, location, fixture.type, fixture.label, fixture.barcode, Number(fixture.qty || 1), fixture.stack || 1);
+                        addRow(rows, buildingName, floorName, location, fixture.type, fixture.label, fixture.barcode, Number(fixture.qty || 1), fixture.stack || 1);
                         if (fixture.type === "pallet" && Array.isArray(fixture.items)) {{
                             fixture.items.forEach(innerItem => {{
-                                addRow(rows, floorName, `${{location}} / 파렛트 내부`, innerItem.shape || "box", innerItem.name, innerItem.barcode, quantityOf(innerItem), innerItem.stack || 1);
+                                addRow(rows, buildingName, floorName, `${{location}} / 파렛트 내부`, innerItem.shape || "box", innerItem.name, innerItem.barcode, quantityOf(innerItem), innerItem.stack || 1);
                             }});
                         }}
                     }});
                 }});
                 return Array.from(rows.values()).sort((a, b) =>
+                    a.building.localeCompare(b.building, "ko-KR") ||
                     a.floor.localeCompare(b.floor, "ko-KR") ||
                     a.location.localeCompare(b.location, "ko-KR") ||
                     a.name.localeCompare(b.name, "ko-KR")
@@ -530,17 +547,21 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
             }}
 
             function renderFloorFilter() {{
-                floorFilter.innerHTML = floors.map(floorName => `<option value="${{floorName}}">${{activeBuilding}} ${{floorName}}</option>`).join("");
-                floorFilter.value = floors.includes(defaultFloor) ? defaultFloor : floors[0] || "";
-                floorContext.textContent = floorFilter.value ? `${{activeBuilding}} ${{floorFilter.value}} 기준` : `${{activeBuilding}} 기준`;
+                floorFilter.innerHTML = '<option value="ALL">전체 위치</option>' + locationFloors.map(option =>
+                    `<option value="${{escapeHtml(option.key)}}">${{escapeHtml(option.label)}}</option>`
+                ).join("");
+                floorFilter.value = locationFloors.some(option => option.key === defaultLocationKey) ? defaultLocationKey : "ALL";
+                const selected = locationFloors.find(option => option.key === floorFilter.value);
+                floorContext.textContent = selected ? `${{selected.label}} 기준` : "전체 위치 기준";
             }}
 
             function renderRows() {{
                 const query = stockSearch.value.trim().toLowerCase();
-                const selectedFloor = floorFilter.value || floors[0] || "";
-                floorContext.textContent = selectedFloor ? `${{activeBuilding}} ${{selectedFloor}} 기준` : `${{activeBuilding}} 기준`;
+                const selectedKey = floorFilter.value || "ALL";
+                const selected = locationFloors.find(option => option.key === selectedKey);
+                floorContext.textContent = selected ? `${{selected.label}} 기준` : "전체 위치 기준";
                 const rows = collectRows().filter(row => {{
-                    if (row.floor !== selectedFloor) return false;
+                    if (selected && (row.building !== selected.building || row.floor !== selected.floor)) return false;
                     if (!query) return true;
                     return [row.building, row.floor, row.location, row.type, row.name, row.barcode].join(" ").toLowerCase().includes(query);
                 }});
@@ -1207,9 +1228,8 @@ def warehouse_scene_html(
             const locationFocus = {{
                 "로긴": ["제조", "출입", "옥상"],
                 "포장부서": ["포장", "작업", "부자재", "반제품"],
-                "창고1": ["피킹", "완제품", "랙 배치", "장기보관"],
-                "창고2": ["예비", "저회전", "임시 보관"],
-                "NC층": ["설비", "코어"],
+                "밑창고1": ["피킹", "완제품", "랙 배치", "장기보관"],
+                "옆창고2": ["예비", "저회전", "임시 보관"],
             }};
             const floors = {json.dumps(floors, ensure_ascii=False)};
             let activeFloor = {json.dumps(floor, ensure_ascii=False)};
@@ -2317,9 +2337,8 @@ def warehouse_scene3d_html(
             const locationFocus = {{
                 "로긴": ["제조", "출입", "옥상"],
                 "포장부서": ["포장", "작업", "부자재", "반제품"],
-                "창고1": ["피킹", "완제품", "랙 배치", "장기보관"],
-                "창고2": ["예비", "저회전", "임시 보관"],
-                "NC층": ["설비", "코어"],
+                "밑창고1": ["피킹", "완제품", "랙 배치", "장기보관"],
+                "옆창고2": ["예비", "저회전", "임시 보관"],
             }};
             const floors = {json.dumps(floors, ensure_ascii=False)};
             let activeFloor = {json.dumps(floor, ensure_ascii=False)};
