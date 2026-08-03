@@ -12942,6 +12942,38 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     display: block !important;
 }
 
+/* Keep the main sidebar stable during page widget reruns such as 3D location changes. */
+@media (min-width: 761px) {
+    [data-testid="stSidebar"],
+    [data-testid="stSidebar"][aria-expanded="true"],
+    [data-testid="stSidebar"][aria-expanded="false"],
+    [data-testid="stSidebar"][aria-hidden="true"] {
+        flex: 0 0 var(--portal-sidebar-width, var(--responsive-sidebar-width, 214px)) !important;
+        max-width: var(--portal-sidebar-width, var(--responsive-sidebar-width, 214px)) !important;
+        min-width: var(--portal-sidebar-width, var(--responsive-sidebar-width, 214px)) !important;
+        transform: none !important;
+        width: var(--portal-sidebar-width, var(--responsive-sidebar-width, 214px)) !important;
+    }
+
+    [data-testid="stSidebar"] > div,
+    [data-testid="stSidebar"][aria-expanded="false"] > div,
+    [data-testid="stSidebar"][aria-hidden="true"] > div,
+    [data-testid="stSidebar"] [data-testid="stSidebarContent"],
+    [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+    [data-testid="stSidebar"][aria-hidden="true"] [data-testid="stSidebarContent"],
+    [data-testid="stSidebar"] .block-container,
+    [data-testid="stSidebar"][aria-expanded="false"] .block-container,
+    [data-testid="stSidebar"][aria-hidden="true"] .block-container {
+        max-width: var(--portal-sidebar-width, var(--responsive-sidebar-width, 214px)) !important;
+        min-width: 0 !important;
+        opacity: 1 !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        visibility: visible !important;
+        width: 100% !important;
+    }
+}
+
 /* Compact inventory filters: ERP/WMS style with the current warm neutral palette. */
 .stApp div[class*="st-key-inventory_filter_"][class*="_panel"] {
     background: #F1EEE8 !important;

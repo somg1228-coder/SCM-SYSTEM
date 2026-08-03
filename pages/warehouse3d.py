@@ -2973,7 +2973,7 @@ def warehouse_scene3d_html(
                 return mesh;
             }}
 
-            function makeLabel(text, position, scale = 1) {{
+            function makeLabel(text, position, scale = 1, emphasis = false) {{
                 const rawText = String(text ?? "").trim();
                 if (!rawText) return new THREE.Group();
                 const wrapLabel = (value, maxChars = 18) => {{
@@ -2998,45 +2998,59 @@ def warehouse_scene3d_html(
                 const lines = wrapLabel(rawText);
                 const longestLine = lines.reduce((longest, line) => line.length > longest.length ? line : longest, "");
                 const labelCanvas = document.createElement("canvas");
-                labelCanvas.width = Math.min(980, Math.max(500, longestLine.length * 38 + 132));
-                labelCanvas.height = lines.length > 1 ? 190 : 142;
+                const pixelRatio = emphasis ? 3 : 2.2;
+                const logicalWidth = Math.min(980, Math.max(500, longestLine.length * 38 + 132));
+                const logicalHeight = lines.length > 1 ? 190 : 142;
+                labelCanvas.width = Math.round(logicalWidth * pixelRatio);
+                labelCanvas.height = Math.round(logicalHeight * pixelRatio);
                 const ctx = labelCanvas.getContext("2d");
-                ctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
-                ctx.fillStyle = "rgba(255, 255, 255, 0.98)";
-                ctx.strokeStyle = "rgba(31, 48, 64, 0.9)";
-                ctx.lineWidth = 7;
-                ctx.shadowColor = "rgba(15, 23, 42, 0.24)";
-                ctx.shadowBlur = 12;
-                ctx.shadowOffsetY = 5;
+                ctx.scale(pixelRatio, pixelRatio);
+                ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+                ctx.fillStyle = emphasis ? "rgba(22, 38, 52, 0.98)" : "rgba(250, 248, 244, 0.98)";
+                ctx.strokeStyle = emphasis ? "rgba(255, 255, 255, 0.98)" : "rgba(31, 48, 64, 0.92)";
+                ctx.lineWidth = emphasis ? 9 : 7;
+                ctx.shadowColor = emphasis ? "rgba(15, 23, 42, 0.38)" : "rgba(15, 23, 42, 0.24)";
+                ctx.shadowBlur = emphasis ? 16 : 12;
+                ctx.shadowOffsetY = emphasis ? 6 : 5;
                 if (ctx.roundRect) {{
-                    ctx.roundRect(14, 18, labelCanvas.width - 28, labelCanvas.height - 36, 16);
+                    ctx.roundRect(14, 18, logicalWidth - 28, logicalHeight - 36, 16);
                 }} else {{
-                    ctx.rect(14, 18, labelCanvas.width - 28, labelCanvas.height - 36);
+                    ctx.rect(14, 18, logicalWidth - 28, logicalHeight - 36);
                 }}
                 ctx.fill();
                 ctx.shadowColor = "transparent";
                 ctx.shadowBlur = 0;
                 ctx.shadowOffsetY = 0;
                 ctx.stroke();
-                ctx.fillStyle = "#0f172a";
+                ctx.fillStyle = emphasis ? "#ffffff" : "#0f172a";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 let fontSize = lines.length > 1 ? 34 : 42;
                 ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
-                while (fontSize > 24 && lines.some(line => ctx.measureText(line).width > labelCanvas.width - 86)) {{
+                while (fontSize > 24 && lines.some(line => ctx.measureText(line).width > logicalWidth - 86)) {{
                     fontSize -= 2;
                     ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
                 }}
                 const lineHeight = fontSize * 1.22;
-                const startY = labelCanvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
+                const startY = logicalHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
+                ctx.lineJoin = "round";
+                ctx.strokeStyle = emphasis ? "rgba(0, 0, 0, 0.68)" : "rgba(255, 255, 255, 0.82)";
+                ctx.lineWidth = emphasis ? 5 : 3;
                 lines.forEach((line, index) => {{
-                    ctx.fillText(line, labelCanvas.width / 2, startY + index * lineHeight);
+                    const textY = startY + index * lineHeight;
+                    ctx.strokeText(line, logicalWidth / 2, textY);
+                    ctx.fillText(line, logicalWidth / 2, textY);
                 }});
                 const texture = new THREE.CanvasTexture(labelCanvas);
+                texture.minFilter = THREE.LinearFilter;
+                texture.magFilter = THREE.LinearFilter;
+                texture.anisotropy = renderer?.capabilities?.getMaxAnisotropy?.() || 1;
+                texture.needsUpdate = true;
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({{ map: texture, transparent: true, depthTest: false }}));
-                sprite.renderOrder = 20;
+                sprite.renderOrder = emphasis ? 30 : 20;
                 sprite.position.copy(position);
-                sprite.scale.set(Math.max(5.8, labelCanvas.width / 68) * scale, Math.max(2.0, labelCanvas.height / 68) * scale, 1);
+                const emphasisScale = emphasis ? 1.14 : 1;
+                sprite.scale.set(Math.max(5.8, logicalWidth / 68) * scale * emphasisScale, Math.max(2.0, logicalHeight / 68) * scale * emphasisScale, 1);
                 return sprite;
             }}
 
@@ -3184,7 +3198,7 @@ def warehouse_scene3d_html(
                     : (fixture.label || "시설물");
                 const shouldShowFixtureLabel = showFixtureLabels || fixture.id === selectedFixtureId;
                 if (shouldShowFixtureLabel) {{
-                    group.add(makeLabel(labelText, new THREE.Vector3(0, visualHeight + 0.62, 0), 0.9));
+                    group.add(makeLabel(labelText, new THREE.Vector3(0, visualHeight + 0.62, 0), 0.9, fixture.id === selectedFixtureId));
                 }}
 
                 const hitHeight = Math.max(0.5, visualHeight);
@@ -3306,7 +3320,7 @@ def warehouse_scene3d_html(
                 }}
                 const shouldShowRackLabel = showFixtureLabels || (rack.id === selectedRackId && !selectedRackItemKey);
                 if (shouldShowRackLabel) {{
-                    group.add(makeLabel(rackLabelText(rack), new THREE.Vector3(0, rackHeight + 0.72, halfD + 0.08), 0.78));
+                    group.add(makeLabel(rackLabelText(rack), new THREE.Vector3(0, rackHeight + 0.72, halfD + 0.08), 0.78, rack.id === selectedRackId && !selectedRackItemKey));
                 }}
 
                 const itemsByPart = new Map(shelfLabels.map(part => [part, []]));
@@ -3360,7 +3374,7 @@ def warehouse_scene3d_html(
                             group.add(itemHitbox);
                             itemHitboxes.push(itemHitbox);
                             if (shouldShowItemLabel) {{
-                                group.add(makeLabel(shortLabel(item.name, 10), new THREE.Vector3(x, y + (stackCount - 1) * layerStep + 0.08 + layerBoxH * palletBoxLevels + 0.44, z), 0.42));
+                                group.add(makeLabel(shortLabel(item.name, 10), new THREE.Vector3(x, y + (stackCount - 1) * layerStep + 0.08 + layerBoxH * palletBoxLevels + 0.44, z), 0.42, itemKey === selectedRackItemKey));
                             }}
                         }} else {{
                             const boxMaterial = itemMaterialFor(itemIndex + shelfIndex, status);
@@ -3372,7 +3386,7 @@ def warehouse_scene3d_html(
                             group.add(boxMesh);
                             itemHitboxes.push(boxMesh);
                             if (shouldShowItemLabel) {{
-                                group.add(makeLabel(shortLabel(item.name, 10), new THREE.Vector3(x, y + boxH + 0.34, z), 0.34));
+                                group.add(makeLabel(shortLabel(item.name, 10), new THREE.Vector3(x, y + boxH + 0.34, z), 0.34, itemKey === selectedRackItemKey));
                             }}
                         }}
                     }});
