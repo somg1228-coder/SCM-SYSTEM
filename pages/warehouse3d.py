@@ -4886,8 +4886,33 @@ def warehouse_scene3d_html(
                         new THREE.Vector3(centerX + size.width / 2, 3, centerZ + size.depth / 2)
                     );
                 }}
-                bounds.expandByScalar(2.2);
+                bounds.expandByScalar(0.35);
                 return bounds;
+            }}
+
+            function projectedBoundsForPrint(bounds) {{
+                const corners = [
+                    new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
+                    new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.max.z),
+                    new THREE.Vector3(bounds.min.x, bounds.max.y, bounds.min.z),
+                    new THREE.Vector3(bounds.min.x, bounds.max.y, bounds.max.z),
+                    new THREE.Vector3(bounds.max.x, bounds.min.y, bounds.min.z),
+                    new THREE.Vector3(bounds.max.x, bounds.min.y, bounds.max.z),
+                    new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.min.z),
+                    new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
+                ];
+                camera.updateMatrixWorld(true);
+                camera.updateProjectionMatrix();
+                const projected = corners.map(point => point.clone().project(camera)).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+                if (!projected.length) return null;
+                const minX = Math.min(...projected.map(point => point.x));
+                const maxX = Math.max(...projected.map(point => point.x));
+                const minY = Math.min(...projected.map(point => point.y));
+                const maxY = Math.max(...projected.map(point => point.y));
+                return {{
+                    width: Math.max(0.01, maxX - minX),
+                    height: Math.max(0.01, maxY - minY),
+                }};
             }}
 
             function frameWarehouseForPrint(width, height) {{
@@ -4903,17 +4928,25 @@ def warehouse_scene3d_html(
 
                 const aspect = width / Math.max(1, height);
                 const fov = THREE.MathUtils.degToRad(camera.fov);
-                const fitDistance = sphere.radius / Math.sin(fov / 2);
-                const aspectPadding = aspect > 1 ? 1.08 : 1.18;
-                const distance = Math.max(42, fitDistance * aspectPadding);
+                const fitDistance = sphere.radius / Math.tan(fov / 2);
+                const distance = Math.max(26, fitDistance * 0.96);
 
                 controls.target.copy(center);
                 camera.position.copy(center).addScaledVector(viewDirection, distance);
                 camera.aspect = aspect;
-                camera.zoom = 0.92;
+                camera.zoom = 1;
                 camera.near = 0.1;
                 camera.far = Math.max(220, distance + sphere.radius * 4);
                 camera.updateProjectionMatrix();
+                camera.updateMatrixWorld(true);
+                const projected = projectedBoundsForPrint(bounds);
+                if (projected) {{
+                    const targetWidth = 1.92;
+                    const targetHeight = 1.84;
+                    const fitZoom = Math.min(targetWidth / projected.width, targetHeight / projected.height);
+                    camera.zoom = clamp(fitZoom, 1.0, 5.5);
+                    camera.updateProjectionMatrix();
+                }}
                 controls.update();
             }}
 
