@@ -56,6 +56,23 @@ LOCATIONS = {
 
 
 WAREHOUSE_LAYOUT_STORE_NAME = "warehouse3d_layouts.json"
+WAREHOUSE3D_VENDOR_FILES = [
+    Path(__file__).resolve().parents[1] / "assets" / "vendor" / "three-r128.min.js",
+    Path(__file__).resolve().parents[1] / "assets" / "vendor" / "OrbitControls-r128.js",
+]
+
+
+@st.cache_data(show_spinner=False)
+def warehouse3d_vendor_script_tags() -> str:
+    tags = []
+    for path in WAREHOUSE3D_VENDOR_FILES:
+        try:
+            script = path.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+        script = script.replace("</script", "<\\/script")
+        tags.append(f"<script>{script}</script>")
+    return "\n".join(tags)
 
 
 def warehouse_layout_store_path() -> Path:
@@ -1739,6 +1756,7 @@ def warehouse_scene3d_html(
     floor_model_payload = json.dumps(FLOOR_MODELS, ensure_ascii=False)
     shared_layout_payload = json.dumps(shared_layout_store or empty_warehouse_layout_store(), ensure_ascii=False)
     location_floors_payload = json.dumps(warehouse_location_floor_options(), ensure_ascii=False)
+    vendor_script_tags = warehouse3d_vendor_script_tags()
     inventory_payload = json.dumps(
         [
             {
@@ -2007,6 +2025,7 @@ def warehouse_scene3d_html(
                 position: relative;
             }}
             #warehouseCanvas {{
+                background: #b9c4ba;
                 display: block;
                 height: 100%;
                 width: 100%;
@@ -2447,51 +2466,15 @@ def warehouse_scene3d_html(
                 </div>
             </aside>
         </main>
+        {vendor_script_tags}
         <script>
             (async () => {{
-            function loadWarehouseScript(src) {{
-                return new Promise((resolve, reject) => {{
-                    const script = document.createElement("script");
-                    script.src = src;
-                    script.async = true;
-                    script.crossOrigin = "anonymous";
-                    script.onload = resolve;
-                    script.onerror = () => reject(new Error(`failed to load ${{src}}`));
-                    document.head.appendChild(script);
-                }});
+            if (!window.THREE || !window.THREE.OrbitControls) {{
+                throw new Error("Bundled 3D library is missing");
             }}
 
-            async function loadWarehouse3dGlobals() {{
-                const cdnPairs = [
-                    [
-                        "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js",
-                        "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js",
-                    ],
-                    [
-                        "https://unpkg.com/three@0.128.0/build/three.min.js",
-                        "https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js",
-                    ],
-                    [
-                        "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
-                        "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js",
-                    ],
-                ];
-                let lastError = null;
-                for (const [threeUrl, controlsUrl] of cdnPairs) {{
-                    try {{
-                        if (!window.THREE) await loadWarehouseScript(threeUrl);
-                        if (!window.THREE) throw new Error("THREE global is missing");
-                        if (!window.THREE.OrbitControls) await loadWarehouseScript(controlsUrl);
-                        if (!window.THREE.OrbitControls) throw new Error("OrbitControls global is missing");
-                        return {{ THREE: window.THREE, OrbitControls: window.THREE.OrbitControls }};
-                    }} catch (error) {{
-                        lastError = error;
-                    }}
-                }}
-                throw lastError || new Error("3D library load failed");
-            }}
-
-            const {{ THREE, OrbitControls }} = await loadWarehouse3dGlobals();
+            const THREE = window.THREE;
+            const OrbitControls = window.THREE.OrbitControls;
 
             const defaultRacks = {payload};
             const defaultRacksByFloor = {floor_payload};
@@ -2566,6 +2549,7 @@ def warehouse_scene3d_html(
             const renderer = new THREE.WebGLRenderer({{ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true }});
             const screenPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
             renderer.setPixelRatio(screenPixelRatio);
+            renderer.setClearColor(screenSceneBackground, 1);
             if ("outputColorSpace" in renderer && THREE.SRGBColorSpace) {{
                 renderer.outputColorSpace = THREE.SRGBColorSpace;
             }} else if ("outputEncoding" in renderer && THREE.sRGBEncoding) {{
