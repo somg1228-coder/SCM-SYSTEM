@@ -7,6 +7,7 @@ import json
 from math import ceil
 import re
 from statistics import median
+import unicodedata
 
 import pandas as pd
 from sqlalchemy import delete, func, select
@@ -27,6 +28,7 @@ from backend.models import (
 
 
 HTML_TABLE_FALLBACK_MESSAGE = "엑셀 형식이 HTML 기반이라 read_html로 처리했습니다"
+ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\ufeff]")
 KNOWN_IMPORT_HEADERS = {
     "상품명",
     "상품코드",
@@ -50,6 +52,16 @@ KNOWN_IMPORT_HEADERS = {
     "재고상태",
     "리드타임",
     "기본창고-정상",
+}
+IMPORT_HEADER_ALIASES = {
+    "카테고리": ("카테고리", "카테고리명", "상품카테고리", "상품 카테고리", "대분류", "대분류명", "대 카테고리", "대카테고리", "분류", "상품분류", "category", "large_category", "largeCategory"),
+    "바코드": ("바코드", "88바코드", "옵션바코드", "barcode"),
+    "상품명": ("상품명", "품목", "품목명", "product_name"),
+    "업체명": ("업체명", "공급처", "거래처", "supplier"),
+    "박스/파렛트 단위": ("박스/파렛트 단위", "박스파렛트단위", "파렛트,박스단위"),
+    "담당자": ("담당자", "비고", "memo"),
+    "리드타임": ("리드타임", "기본 리드타임", "제조기간", "default_lead_time"),
+    "SKU": ("SKU", "sku", "상품코드", "품목코드", "상품번호", "대표상품코드"),
 }
 PRODUCT_MASTER_COLUMNS = [
     "SKU",
@@ -145,7 +157,25 @@ def clean_text(value) -> str:
             return ""
     except (TypeError, ValueError):
         pass
-    return str(value).strip()
+    text = unicodedata.normalize("NFKC", str(value))
+    text = ZERO_WIDTH_RE.sub("", text)
+    return text.strip()
+
+
+def import_header_key(value) -> str:
+    return re.sub(r"[\s_/\-·.,:()\[\]{}]+", "", clean_text(value)).lower()
+
+
+IMPORT_HEADER_ALIAS_MAP = {
+    import_header_key(alias): standard
+    for standard, aliases in IMPORT_HEADER_ALIASES.items()
+    for alias in aliases
+}
+
+
+def normalize_import_header_name(value) -> str:
+    text = normalize_html_cell(str(value))
+    return IMPORT_HEADER_ALIAS_MAP.get(import_header_key(text), text)
 
 
 def to_int(value) -> int:
@@ -194,7 +224,7 @@ def is_business_day(day: date, holidays: set[date] | None = None) -> bool:
 
 
 def normalize_html_cell(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip()
+    return re.sub(r"\s+", " ", clean_text(value)).strip()
 
 
 def decode_html_bytes(file_bytes: bytes) -> str:
@@ -210,7 +240,7 @@ def unique_headers(headers: list[str]) -> list[str]:
     seen: dict[str, int] = {}
     result = []
     for index, header in enumerate(headers, start=1):
-        name = normalize_html_cell(str(header)) or f"column_{index}"
+        name = normalize_import_header_name(str(header)) or f"column_{index}"
         seen[name] = seen.get(name, 0) + 1
         result.append(name if seen[name] == 1 else f"{name}_{seen[name]}")
     return result
@@ -240,7 +270,7 @@ def table_rows_to_dataframe(rows: list[list[str]]) -> pd.DataFrame:
 def normalize_import_headers(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
-    current_headers = {normalize_html_cell(str(column)) for column in df.columns}
+    current_headers = {normalize_import_header_name(str(column)) for column in df.columns}
     if KNOWN_IMPORT_HEADERS.intersection(current_headers):
         df.columns = unique_headers([normalize_html_cell(str(column)) for column in df.columns])
         return df
@@ -251,7 +281,8 @@ def normalize_import_headers(df: pd.DataFrame) -> pd.DataFrame:
             "" if pd.isna(value) else normalize_html_cell(str(value))
             for value in df.iloc[index].tolist()
         ]
-        if KNOWN_IMPORT_HEADERS.intersection(set(row_values)):
+        normalized_row_values = [normalize_import_header_name(value) for value in row_values]
+        if KNOWN_IMPORT_HEADERS.intersection(set(normalized_row_values)):
             normalized = df.iloc[index + 1 :].reset_index(drop=True).copy()
             normalized.columns = unique_headers(row_values)
             return normalized
@@ -259,7 +290,7 @@ def normalize_import_headers(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def has_known_import_headers(df: pd.DataFrame) -> bool:
-    headers = {normalize_html_cell(str(column)) for column in df.columns}
+    headers = {normalize_import_header_name(str(column)) for column in df.columns}
     return bool(KNOWN_IMPORT_HEADERS.intersection(headers))
 
 
@@ -822,6 +853,42 @@ def normalize_product_master_row(row: dict) -> dict:
     }
 
 
+def fill_down_threepl_master_categories(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    category_columns = [column for column in df.columns if normalize_import_header_name(str(column)) == "카테고리"]
+    if not category_columns:
+        return df
+    df = df.copy()
+    category_column = category_columns[0]
+    product_columns = [
+        column
+        for column in df.columns
+        if normalize_import_header_name(str(column)) in {"바코드", "상품명", "업체명", "박스/파렛트 단위", "담당자", "리드타임"}
+    ]
+    last_category = ""
+    for index in df.index:
+        current_category = clean_text(df.at[index, category_column])
+        if current_category:
+            last_category = current_category
+            continue
+        has_product_data = any(clean_text(df.at[index, column]) for column in product_columns)
+        if last_category and has_product_data:
+            df.at[index, category_column] = last_category
+    return df
+
+
+def keep_existing_threepl_category(product, row: dict) -> dict:
+    if product is None or clean_text(row.get("large_category")):
+        return row
+    existing_category = clean_text(getattr(product, "large_category", ""))
+    if not existing_category:
+        return row
+    row = dict(row)
+    row["large_category"] = existing_category
+    return row
+
+
 def prepare_product_master_import_rows(df: pd.DataFrame, source_type: str = "") -> tuple[list[dict], list[str]]:
     rows = []
     warnings = []
@@ -955,7 +1022,7 @@ def find_threepl_master_for_import(existing_by_sku: dict[str, object], existing_
 
 
 def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dict:
-    df = read_excel(file_bytes)
+    df = fill_down_threepl_master_categories(read_excel(file_bytes))
     total_rows = len(df)
     parsed_rows: list[dict] = []
     details: list[dict] = []
@@ -1027,6 +1094,8 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
         if product is not None:
             row["sku"] = product.sku
             sku = row["sku"]
+            row = keep_existing_threepl_category(product, row)
+            item["data"] = row
         row_warnings = []
         if row.get("barcode"):
             other_skus = sorted(s for s in barcode_to_skus.get(row["barcode"], set()) if s != sku)
@@ -1128,6 +1197,7 @@ def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
             if data.get("barcode"):
                 existing_by_barcode[data["barcode"]] = product
         else:
+            data["large_category"] = clean_text(data.get("large_category")) or clean_text(getattr(product, "large_category", ""))
             for key, value in data.items():
                 setattr(product, key, value)
             if data.get("barcode"):
