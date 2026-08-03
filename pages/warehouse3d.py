@@ -1846,8 +1846,7 @@ def warehouse_scene3d_html(
             }}
             .model-viewport {{
                 background:
-                    radial-gradient(circle at 50% 15%, rgba(214, 221, 215, 0.48), transparent 34%),
-                    linear-gradient(180deg, #e7ece6, #d8dfd8);
+                    linear-gradient(180deg, #edf2ed, #dfe7df);
                 border: 1px solid #c8d1ca;
                 border-radius: 12px;
                 min-height: 0;
@@ -2113,8 +2112,7 @@ def warehouse_scene3d_html(
             }}
             .model-viewport {{
                 background:
-                    radial-gradient(circle at 50% 15%, rgba(237, 233, 227, 0.76), transparent 34%),
-                    linear-gradient(180deg, #FAF8F5, #EDE9E3);
+                    linear-gradient(180deg, #FAF8F5, #F0EAE1);
                 border-color: #D8D2C8;
             }}
             .item-list {{
@@ -2358,14 +2356,17 @@ def warehouse_scene3d_html(
             const placementScale = 1.45;
 
             const scene = new THREE.Scene();
-            const screenSceneBackground = new THREE.Color(0xcfd6cf);
-            const screenSceneFog = new THREE.Fog(0xcfd6cf, 34, 82);
+            const screenSceneBackground = new THREE.Color(0xe2e8e0);
+            const screenSceneFog = new THREE.Fog(0xe2e8e0, 92, 190);
             scene.background = screenSceneBackground;
             scene.fog = screenSceneFog;
 
-            const renderer = new THREE.WebGLRenderer({{ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true }});
+            const renderer = new THREE.WebGLRenderer({{ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true }});
             const screenPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
             renderer.setPixelRatio(screenPixelRatio);
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.08;
 
             const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
             camera.position.set(26, 15, 30);
@@ -2480,11 +2481,11 @@ def warehouse_scene3d_html(
             }}
 
             const materials = {{
-                slab: new THREE.MeshStandardMaterial({{ color: 0xe7edf3, roughness: 0.88, metalness: 0.03, transparent: true, opacity: 0.72 }}),
-                activeSlab: new THREE.MeshStandardMaterial({{ color: 0xdbe5ee, roughness: 0.72, metalness: 0.04, transparent: true, opacity: 0.78 }}),
-                wall: new THREE.MeshStandardMaterial({{ color: 0xcbd5e1, roughness: 0.9, transparent: true, opacity: 0.34 }}),
+                slab: new THREE.MeshStandardMaterial({{ color: 0xe9eef3, roughness: 0.84, metalness: 0.02, transparent: true, opacity: 0.9 }}),
+                activeSlab: new THREE.MeshStandardMaterial({{ color: 0xe3ebf1, roughness: 0.68, metalness: 0.03, transparent: true, opacity: 0.94 }}),
+                wall: new THREE.MeshStandardMaterial({{ color: 0xcbd5e1, roughness: 0.86, transparent: true, opacity: 0.58 }}),
                 rack: new THREE.MeshStandardMaterial({{ color: 0x58799a, roughness: 0.78, metalness: 0.05 }}),
-                rackEmpty: new THREE.MeshStandardMaterial({{ color: 0x94a3b8, roughness: 0.9, transparent: true, opacity: 0.46 }}),
+                rackEmpty: new THREE.MeshStandardMaterial({{ color: 0x94a3b8, roughness: 0.82, transparent: true, opacity: 0.72 }}),
                 rackShort: new THREE.MeshStandardMaterial({{ color: 0xb66a6a, roughness: 0.75, metalness: 0.04 }}),
                 rackPost: new THREE.MeshStandardMaterial({{ color: 0xf4f7f3, roughness: 0.58, metalness: 0.28 }}),
                 rackShelf: new THREE.MeshStandardMaterial({{ color: 0xe7ece7, roughness: 0.62, metalness: 0.18 }}),
@@ -2497,8 +2498,8 @@ def warehouse_scene3d_html(
                 itemBoxShort: new THREE.MeshStandardMaterial({{ color: 0xb66a6a, roughness: 0.72, metalness: 0.04 }}),
                 itemBoxSelected: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.68, metalness: 0.04 }}),
                 hitbox: new THREE.MeshBasicMaterial({{ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }}),
-                room: new THREE.MeshStandardMaterial({{ color: 0xdbe3ec, roughness: 0.85, transparent: true, opacity: 0.36 }}),
-                column: new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.72, metalness: 0.14, transparent: true, opacity: 0.82 }}),
+                room: new THREE.MeshStandardMaterial({{ color: 0xdbe3ec, roughness: 0.82, transparent: true, opacity: 0.62 }}),
+                column: new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.66, metalness: 0.14, transparent: true, opacity: 0.94 }}),
                 entrance: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.5 }}),
                 locked: new THREE.MeshStandardMaterial({{ color: 0xb78b5a, emissive: 0x4a3720, roughness: 0.45 }}),
                 resizeHandle: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.36, metalness: 0.1 }}),
@@ -2506,8 +2507,8 @@ def warehouse_scene3d_html(
                 roofEquip: new THREE.MeshStandardMaterial({{ color: 0xa7c3c0, roughness: 0.68, metalness: 0.32, transparent: true, opacity: 0.88 }}),
                 roofDetail: new THREE.MeshStandardMaterial({{ color: 0xd8c88c, roughness: 0.82, metalness: 0.05, transparent: true, opacity: 0.5 }}),
                 selected: new THREE.LineBasicMaterial({{ color: 0x36556f }}),
-                edge: new THREE.LineBasicMaterial({{ color: 0x9fb1c3, transparent: true, opacity: 0.48 }}),
-                floorEdge: new THREE.LineBasicMaterial({{ color: 0x94a3b8, transparent: true, opacity: 0.36 }}),
+                edge: new THREE.LineBasicMaterial({{ color: 0x6f879f, transparent: true, opacity: 0.76 }}),
+                floorEdge: new THREE.LineBasicMaterial({{ color: 0x36556f, transparent: true, opacity: 0.9 }}),
             }};
 
             function escapeHtml(value) {{
@@ -2563,7 +2564,7 @@ def warehouse_scene3d_html(
             }}
 
             function layoutFloorSize() {{
-                return baseFloorSize(activeFloor);
+                return currentFloorSize();
             }}
 
             function syncFixtureLabelButton() {{
@@ -2823,8 +2824,8 @@ def warehouse_scene3d_html(
                 const size = layoutFloorSize();
                 const position = rackRenderPosition(rack);
                 return {{
-                    x: (Number(position.x || 0) - 50) * size.width / 100,
-                    z: (Number(position.y || 0) - 50) * size.depth / 100,
+                    x: Number(size.x || 0) + (Number(position.x || 0) - 50) * size.width / 100,
+                    z: Number(size.z || 0) + (Number(position.y || 0) - 50) * size.depth / 100,
                     w: Math.max(1.8, Number(rack.w || 10.8) * size.width / 100),
                     d: Math.max(1.4, Number(rack.h || 8.4) * size.depth / 100),
                 }};
@@ -2839,8 +2840,8 @@ def warehouse_scene3d_html(
                 const min = allowOutside ? -24 : 1;
                 const max = allowOutside ? 124 : 99;
                 return {{
-                    x: clamp(x / Math.max(1, size.width) * 100 + 50, min, max),
-                    y: clamp(z / Math.max(1, size.depth) * 100 + 50, min, max),
+                    x: clamp((x - Number(size.x || 0)) / Math.max(1, size.width) * 100 + 50, min, max),
+                    y: clamp((z - Number(size.z || 0)) / Math.max(1, size.depth) * 100 + 50, min, max),
                 }};
             }}
 
@@ -2859,11 +2860,55 @@ def warehouse_scene3d_html(
                 }};
             }}
 
+            function rackEdgeExtentsPercent(rack) {{
+                const rotation = Math.abs(Number(rack?.rotation || 0)) % 180;
+                const rawW = Math.max(1, Number(rack?.w || 10.8));
+                const rawH = Math.max(1, Number(rack?.h || 8.4));
+                return rotation === 90 ? {{ halfX: rawH / 2, halfY: rawW / 2 }} : {{ halfX: rawW / 2, halfY: rawH / 2 }};
+            }}
+
+            function fixtureEdgeExtentsPercent(fixture) {{
+                const size = layoutFloorSize();
+                const rotation = Math.abs(Number(fixture?.rotation || 0)) % 180;
+                const rawW = Math.max(0.1, Number(fixture?.w || fixtureDefaults[fixture?.type]?.w || 1));
+                const rawD = Math.max(0.1, Number(fixture?.d || fixtureDefaults[fixture?.type]?.d || 1));
+                const halfX = (rotation === 90 ? rawD : rawW) / Math.max(1, size.width) * 50;
+                const halfY = (rotation === 90 ? rawW : rawD) / Math.max(1, size.depth) * 50;
+                return {{ halfX, halfY }};
+            }}
+
+            function snapObjectEdges(position, extents, allowOutside = false) {{
+                const threshold = 2.8;
+                const minCenterX = allowOutside ? -24 : extents.halfX;
+                const maxCenterX = allowOutside ? 124 : 100 - extents.halfX;
+                const minCenterY = allowOutside ? -24 : extents.halfY;
+                const maxCenterY = allowOutside ? 124 : 100 - extents.halfY;
+                let x = clamp(position.x, minCenterX, maxCenterX);
+                let y = clamp(position.y, minCenterY, maxCenterY);
+                if (!allowOutside) {{
+                    if (Math.abs(x - extents.halfX) <= threshold) x = extents.halfX;
+                    if (Math.abs(x - (100 - extents.halfX)) <= threshold) x = 100 - extents.halfX;
+                    if (Math.abs(y - extents.halfY) <= threshold) y = extents.halfY;
+                    if (Math.abs(y - (100 - extents.halfY)) <= threshold) y = 100 - extents.halfY;
+                }}
+                x = snapValue(x, [minCenterX, 50, maxCenterX], threshold);
+                y = snapValue(y, [minCenterY, 50, maxCenterY], threshold);
+                return {{ x, y }};
+            }}
+
+            function snapRackPercentPosition(rack, position) {{
+                return snapObjectEdges(position, rackEdgeExtentsPercent(rack), false);
+            }}
+
+            function snapFixturePercentPosition(fixture, position, allowOutside = false) {{
+                return snapObjectEdges(position, fixtureEdgeExtentsPercent(fixture), allowOutside);
+            }}
+
             function fixtureToWorld(fixture) {{
                 const size = layoutFloorSize();
                 return {{
-                    x: (Number(fixture.x || 0) - 50) * size.width / 100,
-                    z: (Number(fixture.y || 0) - 50) * size.depth / 100,
+                    x: Number(size.x || 0) + (Number(fixture.x || 0) - 50) * size.width / 100,
+                    z: Number(size.z || 0) + (Number(fixture.y || 0) - 50) * size.depth / 100,
                     w: Number(fixture.w || fixtureDefaults.entrance.w),
                     d: Number(fixture.d || fixtureDefaults.entrance.d),
                     h: Number(fixture.h || fixtureDefaults.entrance.h),
@@ -3784,8 +3829,12 @@ def warehouse_scene3d_html(
                 const shiftWorldZ = -Math.sin(angle) * shiftLocalXWorld + Math.cos(angle) * shiftLocalZWorld;
                 resizingRack.w = nextW;
                 resizingRack.h = nextH;
-                resizingRack.x = clamp(resizeState.start.x + shiftWorldX / Math.max(1, size.width) * 100, 1, 99);
-                resizingRack.y = clamp(resizeState.start.y + shiftWorldZ / Math.max(1, size.depth) * 100, 1, 99);
+                const nextPosition = snapRackPercentPosition(resizingRack, {{
+                    x: resizeState.start.x + shiftWorldX / Math.max(1, size.width) * 100,
+                    y: resizeState.start.y + shiftWorldZ / Math.max(1, size.depth) * 100,
+                }});
+                resizingRack.x = nextPosition.x;
+                resizingRack.y = nextPosition.y;
                 buildRacks();
                 renderRack(resizingRack);
             }}
@@ -3810,7 +3859,11 @@ def warehouse_scene3d_html(
                 const shiftWorldX = Math.cos(angle) * shiftLocalXWorld + Math.sin(angle) * shiftLocalZWorld;
                 const shiftWorldZ = -Math.sin(angle) * shiftLocalXWorld + Math.cos(angle) * shiftLocalZWorld;
                 const allowOutside = fixtureAllowsOutside(resizingFixture.type);
-                const nextPosition = worldToPercent(resizeState.startWorld.x + shiftWorldX, resizeState.startWorld.z + shiftWorldZ, allowOutside);
+                const nextPosition = snapFixturePercentPosition(
+                    resizingFixture,
+                    worldToPercent(resizeState.startWorld.x + shiftWorldX, resizeState.startWorld.z + shiftWorldZ, allowOutside),
+                    allowOutside
+                );
                 resizingFixture.w = nextW;
                 resizingFixture.d = nextD;
                 resizingFixture.x = nextPosition.x;
@@ -4304,7 +4357,10 @@ def warehouse_scene3d_html(
                 }}
                 if (draggingRack) {{
                     canvas.style.cursor = "grabbing";
-                    const next = snapPercentPosition(worldToRack(dragPoint.x + dragOffset.x, dragPoint.z + dragOffset.z), false);
+                    const next = snapRackPercentPosition(
+                        draggingRack,
+                        worldToRack(dragPoint.x + dragOffset.x, dragPoint.z + dragOffset.z)
+                    );
                     draggingRack.x = next.x;
                     draggingRack.y = next.y;
                     const mesh = rackObjectById.get(draggingRack.id);
@@ -4318,7 +4374,8 @@ def warehouse_scene3d_html(
                 }}
                 if (draggingFixture) {{
                     const allowOutside = fixtureAllowsOutside(draggingFixture.type);
-                    const next = snapPercentPosition(
+                    const next = snapFixturePercentPosition(
+                        draggingFixture,
                         worldToPercent(dragPoint.x + dragOffset.x, dragPoint.z + dragOffset.z, allowOutside),
                         allowOutside
                     );
@@ -4538,6 +4595,10 @@ def warehouse_scene3d_html(
                 const fixture = selectedFixture();
                 if (!fixture || fixture.locked) return;
                 fixture.rotation = (Number(fixture.rotation || 0) + 90) % 360;
+                const allowOutside = fixtureAllowsOutside(fixture.type);
+                const next = snapFixturePercentPosition(fixture, {{ x: fixture.x, y: fixture.y }}, allowOutside);
+                fixture.x = next.x;
+                fixture.y = next.y;
                 saveFixtures();
                 buildFixtures();
                 renderFixture(fixture);
@@ -4560,6 +4621,9 @@ def warehouse_scene3d_html(
                 const rack = selectedRack();
                 if (!rack || rack.locked) return;
                 rack.rotation = (Number(rack.rotation || 0) + 90) % 180;
+                const next = snapRackPercentPosition(rack, {{ x: rack.x, y: rack.y }});
+                rack.x = next.x;
+                rack.y = next.y;
                 saveLayout();
                 buildRacks();
                 renderRack(rack);
@@ -4648,10 +4712,14 @@ def warehouse_scene3d_html(
             function nudgeSelectedRack(direction, step = 2.2) {{
                 const rack = selectedRack();
                 if (!rack || rack.locked) return false;
-                if (direction === "left") rack.x = clamp(Number(rack.x || 50) - step, 1, 96);
-                if (direction === "right") rack.x = clamp(Number(rack.x || 50) + step, 1, 96);
-                if (direction === "up") rack.y = clamp(Number(rack.y || 50) - step, 2, 94);
-                if (direction === "down") rack.y = clamp(Number(rack.y || 50) + step, 2, 94);
+                const current = {{ x: Number(rack.x || 50), y: Number(rack.y || 50) }};
+                if (direction === "left") current.x -= step;
+                if (direction === "right") current.x += step;
+                if (direction === "up") current.y -= step;
+                if (direction === "down") current.y += step;
+                const next = snapRackPercentPosition(rack, current);
+                rack.x = next.x;
+                rack.y = next.y;
                 saveLayout();
                 buildRacks();
                 renderRack(rack);
@@ -4667,10 +4735,9 @@ def warehouse_scene3d_html(
                 if (direction === "right") current.x += step;
                 if (direction === "up") current.y -= step;
                 if (direction === "down") current.y += step;
-                const min = allowOutside ? -24 : 1;
-                const max = allowOutside ? 124 : 99;
-                fixture.x = clamp(current.x, min, max);
-                fixture.y = clamp(current.y, min, max);
+                const next = snapFixturePercentPosition(fixture, current, allowOutside);
+                fixture.x = next.x;
+                fixture.y = next.y;
                 saveFixtures();
                 buildFixtures();
                 renderFixture(fixture);

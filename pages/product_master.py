@@ -233,8 +233,8 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
 
     with st.container(key=f"product_master_{key}_controls"):
         st.markdown('<div class="product-master-control-title">마스터 기준 관리</div>', unsafe_allow_html=True)
-        upload_col, import_col, template_col, download_col, count_col = st.columns(
-            [1.35, 0.82, 0.95, 0.95, 1.15],
+        upload_col, preview_col, import_col, template_col, download_col, count_col = st.columns(
+            [1.35, 0.82, 0.82, 0.95, 0.95, 1.15],
             gap="small",
         )
         with upload_col:
@@ -244,7 +244,7 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                 key=f"product_master_{key}_upload",
                 help="3PL 마스터 기준정보를 업로드할 수 있습니다.",
             )
-        with import_col:
+        with preview_col:
             st.write("")
             if st.button("미리보기", key=f"product_master_{key}_import_preview_btn", use_container_width=True):
                 if uploaded is None:
@@ -257,6 +257,26 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                             st.session_state.pop(result_key, None)
                         else:
                             st.session_state[result_key] = preview
+                        st.rerun()
+        with import_col:
+            st.write("")
+            if st.button("엑셀 반영", key=f"product_master_{key}_import_apply_btn", type="primary", use_container_width=True):
+                if uploaded is None:
+                    st.warning(f"먼저 {title} 엑셀을 업로드하세요.")
+                else:
+                    if show_sqlite_write_status("3PL 마스터 엑셀 반영"):
+                        result = with_db(
+                            lambda db: services.import_product_master_excel(
+                                db,
+                                source_type,
+                                uploaded.getvalue(),
+                            )
+                        )
+                        st.session_state[result_key] = result
+                        st.session_state.pop(preview_key, None)
+                        if result and result.get("ok", True):
+                            clear_master_editor_buffer(key)
+                            clear_inventory_view_state_for_source(key)
                         st.rerun()
         with template_col:
             st.write("")
