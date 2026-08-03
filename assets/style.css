@@ -13887,6 +13887,105 @@ html {
     }
 }
 
+.dashboard-shell .order-summary-table {
+    background: var(--home-card-bg-soft) !important;
+    border: 1px solid var(--home-card-border) !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    width: 100% !important;
+}
+
+.dashboard-shell .order-summary-head,
+.dashboard-shell .order-summary-row {
+    display: grid !important;
+    grid-template-columns: minmax(76px, 0.9fr) minmax(82px, 0.95fr) minmax(120px, 1.45fr) minmax(58px, 0.7fr) !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    width: 100% !important;
+}
+
+.dashboard-shell .order-summary-head {
+    background: var(--home-table-head) !important;
+    border-bottom: 1px solid var(--home-card-border) !important;
+    color: #26384A !important;
+    font-size: clamp(0.72rem, 0.7vw, 0.82rem) !important;
+    font-weight: 900 !important;
+    padding: 8px 10px !important;
+    text-align: center !important;
+}
+
+.dashboard-shell .order-summary-body {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+.dashboard-shell .order-summary-row {
+    align-items: center !important;
+    border-bottom: 1px solid #E1DBD2 !important;
+    color: #26384A !important;
+    font-size: clamp(0.72rem, 0.68vw, 0.82rem) !important;
+    min-height: 34px !important;
+    padding: 7px 10px !important;
+    text-decoration: none !important;
+}
+
+.dashboard-shell .order-summary-row:nth-child(even) {
+    background: var(--home-card-bg-alt) !important;
+}
+
+.dashboard-shell .order-summary-row:hover {
+    background: #E8E3DC !important;
+}
+
+.dashboard-shell .order-summary-head span,
+.dashboard-shell .order-summary-row span,
+.dashboard-shell .order-summary-row strong,
+.dashboard-shell .order-summary-row em {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-shell .order-summary-row strong {
+    font-weight: 850 !important;
+}
+
+.dashboard-shell .order-summary-empty {
+    align-items: center !important;
+    color: #64748B !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    font-size: clamp(0.86rem, 0.82vw, 0.98rem) !important;
+    font-weight: 760 !important;
+    justify-content: center !important;
+    line-height: 1.35 !important;
+    min-height: 112px !important;
+    padding: 16px !important;
+    text-align: center !important;
+    white-space: normal !important;
+    word-break: keep-all !important;
+}
+
+@media (max-width: 560px) {
+    .dashboard-shell .order-summary-head,
+    .dashboard-shell .order-summary-row {
+        grid-template-columns: minmax(68px, 0.9fr) minmax(0, 1.2fr) minmax(52px, 0.7fr) !important;
+    }
+
+    .dashboard-shell .order-summary-head span:nth-child(3),
+    .dashboard-shell .order-summary-row strong {
+        display: none !important;
+    }
+}
+
 /* Inventory upload tables use Streamlit's canvas-backed dataframe renderer.
    Do not repaint the canvas itself; doing so can leave only an empty-looking box. */
 .stApp :where(

@@ -3886,6 +3886,40 @@ def render_return_case_system():
         background: linear-gradient(180deg, #fbf8f3 0%, #f3eee7 100%) !important;
     }
 
+    .st-key-dashboard_card_recent,
+    .st-key-dashboard_card_top5,
+    div[class*="st-key-dashboard_card_recent"],
+    div[class*="st-key-dashboard_card_top5"] {
+        min-height: var(--app-list-card-h) !important;
+        height: var(--app-list-card-h) !important;
+        max-height: var(--app-list-card-h) !important;
+        overflow: hidden !important;
+    }
+
+    div[class*="st-key-dashboard_card_recent"] iframe {
+        min-height: var(--app-grid-h) !important;
+        height: var(--app-grid-h) !important;
+        max-height: var(--app-grid-h) !important;
+    }
+
+    .st-key-dashboard_card_top5,
+    div[class*="st-key-dashboard_card_top5"] {
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"],
+    div[class*="st-key-dashboard_card_top5"] div[data-testid="stVerticalBlock"] {
+        min-height: 0 !important;
+        gap: clamp(0.42rem, 0.72vh, 0.72rem) !important;
+    }
+
+    .st-key-dashboard_card_category [data-testid="stPlotlyChart"] svg text,
+    div[class*="st-key-dashboard_card_category"] [data-testid="stPlotlyChart"] svg text {
+        font-size: 14px !important;
+        font-weight: 760 !important;
+    }
+
     .st-key-search_results_scroll * {
         color: var(--return-text) !important;
     }
@@ -4025,7 +4059,7 @@ def render_return_case_system():
             st.session_state.dashboard_filter = None
 
     if query_return_case_filter and not query_return_case_id:
-        st.session_state.dashboard_filter = query_return_case_filter
+        st.session_state.dashboard_filter = None if str(query_return_case_filter) == "ALL" else query_return_case_filter
         st.session_state.selected_case = None
         st.session_state.edit_case = None
 
@@ -4034,6 +4068,8 @@ def render_return_case_system():
 
     if st.session_state.dashboard_filter == "변심":
         st.session_state.dashboard_filter = "누락"
+    if st.session_state.dashboard_filter == "ALL":
+        st.session_state.dashboard_filter = None
 
     if "register_form_version" not in st.session_state:
         st.session_state.register_form_version = 0
@@ -4365,10 +4401,13 @@ def render_return_case_system():
             key="search_keyword"
         )
 
-        st.markdown(
-            '<div class="search-result-title">검색 결과</div>',
-            unsafe_allow_html=True
-        )
+        active_result_filter = st.session_state.get("dashboard_filter")
+        show_search_results = bool(str(keyword or "").strip() or active_result_filter)
+        if show_search_results:
+            st.markdown(
+                '<div class="search-result-title">검색 결과</div>',
+                unsafe_allow_html=True
+            )
 
     results = []
 
@@ -4377,17 +4416,7 @@ def render_return_case_system():
         None
     )
 
-    if dashboard_filter == "ALL":
-
-        c.execute("""
-        SELECT case_id, category, product
-        FROM cases
-        ORDER BY id DESC
-        """)
-
-        results = c.fetchall()
-
-    elif dashboard_filter == "MONTH":
+    if dashboard_filter == "MONTH":
 
         current_month = st.session_state.get("dashboard_month") or datetime.now().strftime("%Y%m")
 
@@ -4599,11 +4628,11 @@ def render_return_case_system():
                 f"📄 전체 사례\u00a0\u00a0{total_count:,}건",
                 key="kpi_all",
                 use_container_width=True,
-                type="primary" if active_kpi_key == "kpi_all" else "secondary"
+                type="secondary"
             ):
 
                 st.session_state.selected_case = None
-                st.session_state.dashboard_filter = "ALL"
+                st.session_state.dashboard_filter = None
 
                 st.rerun()
 
@@ -4796,9 +4825,9 @@ def render_return_case_system():
                         plot_bgcolor="rgba(0,0,0,0)",
                         font_color="#111827",
                         legend=dict(
-                            font=dict(size=12),
+                            font=dict(size=15),
                             orientation="v",
-                            x=0.84,
+                            x=0.82,
                             y=0.5,
                             xanchor="left",
                             yanchor="middle"
@@ -4807,7 +4836,7 @@ def render_return_case_system():
 
                     fig.update_traces(
                         textinfo="percent",
-                        textfont_size=12,
+                        textfont_size=13,
                         domain=dict(
                             x=[0.03, 0.78],
                             y=[0.08, 0.92]

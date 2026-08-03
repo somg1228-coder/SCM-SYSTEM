@@ -1841,12 +1841,12 @@ def recent_orders_html(rows: list[dict]) -> str:
         rows = []
     body = "".join(
         f"""
-        <tr>
-            <td><a href="{po_href}" target="_self">{po_number}</a></td>
-            <td>{supplier}</td>
-            <td>{item}</td>
-            <td><span class="status-badge {tone}">{status}</span></td>
-        </tr>
+        <a class="order-summary-row" href="{po_href}" target="_self">
+            <span>{po_number}</span>
+            <span>{supplier}</span>
+            <strong title="{item}">{item}</strong>
+            <em class="status-badge {tone}">{status}</em>
+        </a>
         """
         for po_href, po_number, supplier, item, status, tone in [
             (
@@ -1859,21 +1859,19 @@ def recent_orders_html(rows: list[dict]) -> str:
             )
             for row in rows
         ]
-    ) or f'<tr><td colspan="4" class="empty-cell">구매관리 탭에 저장된 발주·입고 내역이 없습니다.</td></tr>'
+    ) or '<div class="order-summary-empty">저장된 발주·입고 내역이 없습니다.</div>'
     return f"""
     <article class="panel order-panel">
         <h2>최근 발주·입고 내역 <small>(구매관리)</small></h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>PO번호</th>
-                    <th>거래처</th>
-                    <th>품목</th>
-                    <th>상태</th>
-                </tr>
-            </thead>
-            <tbody>{body}</tbody>
-        </table>
+        <div class="order-summary-table">
+            <div class="order-summary-head">
+                <span>PO번호</span>
+                <span>거래처</span>
+                <span>품목</span>
+                <span>상태</span>
+            </div>
+            <div class="order-summary-body">{body}</div>
+        </div>
         <a class="ghost-link" href="{purchase_link("발주관리(PO)", "po_progress")}" target="_self">전체 발주내역 보기&nbsp;&nbsp;→</a>
     </article>
     """
