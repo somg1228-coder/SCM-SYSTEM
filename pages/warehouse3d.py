@@ -2521,6 +2521,8 @@ def warehouse_scene3d_html(
                 selected: new THREE.LineBasicMaterial({{ color: 0x36556f }}),
                 edge: new THREE.LineBasicMaterial({{ color: 0x6f879f, transparent: true, opacity: 0.76 }}),
                 floorEdge: new THREE.LineBasicMaterial({{ color: 0x36556f, transparent: true, opacity: 0.9 }}),
+                floorGridMinor: new THREE.LineBasicMaterial({{ color: 0x8fa4af, transparent: true, opacity: 0.62, depthWrite: false }}),
+                floorGridMajor: new THREE.LineBasicMaterial({{ color: 0x58799a, transparent: true, opacity: 0.88, depthWrite: false }}),
             }};
 
             function escapeHtml(value) {{
@@ -3402,23 +3404,62 @@ def warehouse_scene3d_html(
                 return group;
             }}
 
+            function makeFloorCellGrid(width, depth, centerX, centerZ) {{
+                const group = new THREE.Group();
+                const y = 0.105;
+                const left = centerX - width / 2;
+                const right = centerX + width / 2;
+                const top = centerZ - depth / 2;
+                const bottom = centerZ + depth / 2;
+                const minor = [];
+                const major = [];
+                const pushLine = (target, x1, z1, x2, z2) => {{
+                    target.push(x1, y, z1, x2, y, z2);
+                }};
+
+                for (let i = 0; i <= Math.floor(width); i += 1) {{
+                    const x = left + i;
+                    pushLine(i % 5 === 0 ? major : minor, x, top, x, bottom);
+                }}
+                if (right - (left + Math.floor(width)) > 0.04) {{
+                    pushLine(major, right, top, right, bottom);
+                }}
+
+                for (let i = 0; i <= Math.floor(depth); i += 1) {{
+                    const z = top + i;
+                    pushLine(i % 5 === 0 ? major : minor, left, z, right, z);
+                }}
+                if (bottom - (top + Math.floor(depth)) > 0.04) {{
+                    pushLine(major, left, bottom, right, bottom);
+                }}
+
+                const addLines = (positions, material, renderOrder) => {{
+                    if (!positions.length) return;
+                    const geometry = new THREE.BufferGeometry();
+                    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+                    const lines = new THREE.LineSegments(geometry, material);
+                    lines.renderOrder = renderOrder;
+                    group.add(lines);
+                }};
+
+                addLines(minor, materials.floorGridMinor, 4);
+                addLines(major, materials.floorGridMajor, 5);
+                return group;
+            }}
+
             function buildWarehouseModel() {{
                 clearGroup(buildingGroup);
                 floorResizeHandles.length = 0;
                 const size = currentFloorSize();
-                const gridSize = layoutFloorSize();
                 const length = size.width;
                 const depth = size.depth;
                 const centerX = Number(size.x || 0);
                 const centerZ = Number(size.z || 0);
                 const floorThickness = 0.16;
 
-                const grid = new THREE.GridHelper(Math.max(gridSize.width, gridSize.depth) + 10, 34, 0x9fb1c3, 0xd5dde6);
-                grid.position.y = -0.08;
-                buildingGroup.add(grid);
-
                 const slab = makeBox(length, floorThickness, depth, materials.activeSlab, new THREE.Vector3(centerX, 0, centerZ));
                 buildingGroup.add(slab);
+                buildingGroup.add(makeFloorCellGrid(length, depth, centerX, centerZ));
                 const outline = new THREE.LineSegments(new THREE.EdgesGeometry(slab.geometry), materials.floorEdge);
                 outline.position.copy(slab.position);
                 buildingGroup.add(outline);

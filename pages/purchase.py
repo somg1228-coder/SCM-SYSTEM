@@ -31,7 +31,7 @@ from reportlab.platypus import (
 
 try:
     from backend import services
-    from backend.database import SessionLocal, init_db
+    from backend.database import SessionLocal, init_db, reset_sqlite_engine_after_write_error
     from backend import models as backend_models
 
     InventoryDaily = backend_models.InventoryDaily
@@ -53,6 +53,7 @@ try:
 except (ModuleNotFoundError, ImportError, AttributeError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
+    reset_sqlite_engine_after_write_error = None
     services = None
     InventoryInbound = None
     InventoryDaily = None
@@ -233,6 +234,15 @@ def with_db(action):
         return action(db)
     except Exception as exc:
         db.rollback()
+        if reset_sqlite_engine_after_write_error is not None and reset_sqlite_engine_after_write_error(exc):
+            db.close()
+            db = SessionLocal()
+            try:
+                return action(db)
+            except Exception as retry_exc:
+                db.rollback()
+                st.error(f"처리 실패: {retry_exc}")
+                return None
         st.error(f"처리 실패: {exc}")
         return None
     finally:
