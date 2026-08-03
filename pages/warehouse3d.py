@@ -2447,26 +2447,43 @@ def warehouse_scene3d_html(
                 </div>
             </aside>
         </main>
-        <script type="module">
-            async function loadWarehouse3dModules() {{
+        <script>
+            (async () => {{
+            function loadWarehouseScript(src) {{
+                return new Promise((resolve, reject) => {{
+                    const script = document.createElement("script");
+                    script.src = src;
+                    script.async = true;
+                    script.crossOrigin = "anonymous";
+                    script.onload = resolve;
+                    script.onerror = () => reject(new Error(`failed to load ${{src}}`));
+                    document.head.appendChild(script);
+                }});
+            }}
+
+            async function loadWarehouse3dGlobals() {{
                 const cdnPairs = [
                     [
-                        "https://esm.sh/three@0.160.0",
-                        "https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js",
+                        "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js",
+                        "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js",
                     ],
                     [
-                        "https://cdn.skypack.dev/three@0.160.0",
-                        "https://cdn.skypack.dev/three@0.160.0/examples/jsm/controls/OrbitControls.js",
+                        "https://unpkg.com/three@0.128.0/build/three.min.js",
+                        "https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js",
+                    ],
+                    [
+                        "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
+                        "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js",
                     ],
                 ];
                 let lastError = null;
                 for (const [threeUrl, controlsUrl] of cdnPairs) {{
                     try {{
-                        const [threeModule, controlsModule] = await Promise.all([
-                            import(threeUrl),
-                            import(controlsUrl),
-                        ]);
-                        return {{ THREE: threeModule, OrbitControls: controlsModule.OrbitControls }};
+                        if (!window.THREE) await loadWarehouseScript(threeUrl);
+                        if (!window.THREE) throw new Error("THREE global is missing");
+                        if (!window.THREE.OrbitControls) await loadWarehouseScript(controlsUrl);
+                        if (!window.THREE.OrbitControls) throw new Error("OrbitControls global is missing");
+                        return {{ THREE: window.THREE, OrbitControls: window.THREE.OrbitControls }};
                     }} catch (error) {{
                         lastError = error;
                     }}
@@ -2474,7 +2491,7 @@ def warehouse_scene3d_html(
                 throw lastError || new Error("3D library load failed");
             }}
 
-            const {{ THREE, OrbitControls }} = await loadWarehouse3dModules();
+            const {{ THREE, OrbitControls }} = await loadWarehouse3dGlobals();
 
             const defaultRacks = {payload};
             const defaultRacksByFloor = {floor_payload};
@@ -2549,7 +2566,11 @@ def warehouse_scene3d_html(
             const renderer = new THREE.WebGLRenderer({{ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true }});
             const screenPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
             renderer.setPixelRatio(screenPixelRatio);
-            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            if ("outputColorSpace" in renderer && THREE.SRGBColorSpace) {{
+                renderer.outputColorSpace = THREE.SRGBColorSpace;
+            }} else if ("outputEncoding" in renderer && THREE.sRGBEncoding) {{
+                renderer.outputEncoding = THREE.sRGBEncoding;
+            }}
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             renderer.toneMappingExposure = 1.08;
 
@@ -5444,6 +5465,13 @@ def warehouse_scene3d_html(
             canvas.dataset.ready = "true";
             animate();
             window.addEventListener("resize", resizeRenderer);
+            }})().catch(error => {{
+                console.error("Warehouse 3D startup failed", error);
+                const modelError = document.getElementById("modelError");
+                if (modelError) {{
+                    modelError.style.display = "flex";
+                }}
+            }});
         </script>
         <script>
             setTimeout(() => {{
