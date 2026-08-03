@@ -4910,6 +4910,10 @@ def warehouse_scene3d_html(
                 const minY = Math.min(...projected.map(point => point.y));
                 const maxY = Math.max(...projected.map(point => point.y));
                 return {{
+                    minX,
+                    maxX,
+                    minY,
+                    maxY,
                     width: Math.max(0.01, maxX - minX),
                     height: Math.max(0.01, maxY - minY),
                 }};
@@ -4948,6 +4952,26 @@ def warehouse_scene3d_html(
                     camera.updateProjectionMatrix();
                 }}
                 controls.update();
+                return bounds;
+            }}
+
+            function croppedWarehousePrintImage(width, height, bounds) {{
+                const projected = projectedBoundsForPrint(bounds);
+                if (!projected) return canvas.toDataURL("image/png");
+                const padX = Math.round(width * 0.01);
+                const padY = Math.round(height * 0.012);
+                const left = Math.max(0, Math.floor(((Math.max(-1, projected.minX) + 1) / 2) * width) - padX);
+                const right = Math.min(width, Math.ceil(((Math.min(1, projected.maxX) + 1) / 2) * width) + padX);
+                const top = Math.max(0, Math.floor(((1 - Math.min(1, projected.maxY)) / 2) * height) - padY);
+                const bottom = Math.min(height, Math.ceil(((1 - Math.max(-1, projected.minY)) / 2) * height) + padY);
+                const cropWidth = Math.max(1, right - left);
+                const cropHeight = Math.max(1, bottom - top);
+                const output = document.createElement("canvas");
+                output.width = cropWidth;
+                output.height = cropHeight;
+                const context = output.getContext("2d");
+                context.drawImage(canvas, left, top, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+                return output.toDataURL("image/png");
             }}
 
             function captureWarehousePrintImage() {{
@@ -4965,11 +4989,11 @@ def warehouse_scene3d_html(
 
                 renderer.setPixelRatio(1);
                 renderer.setSize(width, height, false);
-                frameWarehouseForPrint(width, height);
+                const printBounds = frameWarehouseForPrint(width, height);
                 scene.background = new THREE.Color(0xffffff);
                 scene.fog = null;
                 renderer.render(scene, camera);
-                const imageUrl = canvas.toDataURL("image/png");
+                const imageUrl = croppedWarehousePrintImage(width, height, printBounds);
 
                 scene.background = previousBackground;
                 scene.fog = previousFog;
@@ -5002,23 +5026,23 @@ def warehouse_scene3d_html(
                         <meta charset="utf-8">
                         <title>${{activeBuilding}} ${{activeFloor}} 3D 창고 모델</title>
                         <style>
-                            @page {{ size: A4 landscape; margin: 8mm; }}
+                            @page {{ size: A4 landscape; margin: 4mm; }}
                             * {{ box-sizing: border-box; }}
                             html,
                             body {{
                                 background: #ffffff;
                                 color: #10201d;
                                 font-family: "Malgun Gothic", Arial, sans-serif;
-                                height: 194mm;
+                                height: 202mm;
                                 margin: 0;
                                 overflow: hidden;
-                                width: 281mm;
+                                width: 289mm;
                             }}
                             .print-shell {{
                                 display: grid;
-                                gap: 3mm;
+                                gap: 1.5mm;
                                 grid-template-rows: auto minmax(0, 1fr) auto;
-                                height: 194mm;
+                                height: 202mm;
                                 overflow: hidden;
                             }}
                             header {{
@@ -5026,7 +5050,7 @@ def warehouse_scene3d_html(
                                 border-bottom: 1px solid #9db5ae;
                                 display: flex;
                                 justify-content: space-between;
-                                padding-bottom: 2mm;
+                                padding-bottom: 1mm;
                             }}
                             h1 {{
                                 font-size: 16px;
@@ -5040,7 +5064,6 @@ def warehouse_scene3d_html(
                             img {{
                                 display: block;
                                 height: 100%;
-                                max-height: 165mm;
                                 object-fit: contain;
                                 width: 100%;
                             }}
