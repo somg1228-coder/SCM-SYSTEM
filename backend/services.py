@@ -1358,9 +1358,12 @@ def parse_box_pallet_unit(value) -> tuple[int, int]:
         return 0, 0
     box_qty = 0
     pallet_qty = 0
+    box_prefix_match = re.search(r"\d+\s*(?:박스|BOX)\s*(\d+)\s*(?:EA|개)?", text)
+    if box_prefix_match:
+        box_qty = to_int(box_prefix_match.group(1))
     box_match = re.search(r"(?:박스당|박스|BOX)\s*(\d+)\s*EA", text) or re.search(r"(\d+)\s*EA", text)
     pallet_match = re.search(r"(?:파렛트당|파렛트|PALLET|PL)\D*(\d+)\s*BOX", text) or re.search(r"/[^/]*(\d+)\s*BOX", text)
-    if box_match:
+    if box_match and not box_qty:
         box_qty = to_int(box_match.group(1))
     if pallet_match:
         pallet_qty = to_int(pallet_match.group(1))

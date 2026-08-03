@@ -21,7 +21,7 @@ else:
 
 
 DEFAULT_LOGIN_DRAWING_PATH = Path.home() / "Downloads" / "[FAC-001~005] 시설 도면_Rev. 1_260305.pdf"
-LOGIN_FLOORS = ["1층", "2층", "3층", "4층", "5층"]
+LOGIN_FLOORS = ["1층", "2층", "3층", "4층"]
 TWO_FLOORS = ["1층", "2층"]
 ONE_FLOOR = ["1층"]
 
@@ -29,7 +29,7 @@ LOCATIONS = {
     "로긴": {
         "floors": LOGIN_FLOORS,
         "default_floor": "1층",
-        "description": "1층부터 5층까지 랙 배치/적재 관리",
+        "description": "1층부터 4층까지 랙 배치/적재 관리",
         "default_drawing": DEFAULT_LOGIN_DRAWING_PATH,
     },
     "포장부서": {
@@ -51,9 +51,9 @@ LOCATIONS = {
         "default_drawing": None,
     },
     "NC층": {
-        "floors": ONE_FLOOR,
+        "floors": TWO_FLOORS,
         "default_floor": "1층",
-        "description": "NC 구역 랙 배치/적재 관리",
+        "description": "NC 1층/2층 랙 배치/적재 관리",
         "default_drawing": None,
     },
 }
@@ -224,6 +224,7 @@ def render_warehouse3d_page() -> None:
 
 def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> str:
     floors = LOCATIONS[building]["floors"]
+    default_floor = LOCATIONS[building]["default_floor"]
     floor_payload = json.dumps(
         {level: build_rack_layout(inventory_rows, level) for level in floors},
         ensure_ascii=False,
@@ -276,7 +277,7 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
             .stock-tools {{
                 display: grid;
                 gap: 0.45rem;
-                grid-template-columns: minmax(180px, 1fr) 130px 86px;
+                grid-template-columns: minmax(180px, 1fr) 170px 86px;
                 margin-bottom: 0.7rem;
             }}
             input,
@@ -330,6 +331,12 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
                 font-weight: 850;
                 margin-top: 0.62rem;
             }}
+            .floor-context {{
+                color: #64748b;
+                font-size: 0.74rem;
+                font-weight: 850;
+                white-space: nowrap;
+            }}
             body {{
                 color: #334155;
             }}
@@ -365,7 +372,7 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
         <section class="stock-board">
             <div class="stock-head">
                 <h3>재고 위치표</h3>
-                <span>{escape(building)} 전체 층 기준</span>
+                <span class="floor-context" id="floorContext"></span>
             </div>
             <div class="stock-tools">
                 <input id="stockSearch" type="search" placeholder="상품명, 바코드, 층, 랙, 위치 검색">
@@ -399,6 +406,8 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
             const stockFoot = document.getElementById("stockFoot");
             const stockSearch = document.getElementById("stockSearch");
             const floorFilter = document.getElementById("floorFilter");
+            const floorContext = document.getElementById("floorContext");
+            const defaultFloor = {json.dumps(default_floor, ensure_ascii=False)};
 
             function escapeHtml(value) {{
                 return String(value ?? "")
@@ -521,14 +530,17 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict]) -> 
             }}
 
             function renderFloorFilter() {{
-                floorFilter.innerHTML = '<option value="">전체 층</option>' + floors.map(floorName => `<option value="${{floorName}}">${{floorName}}</option>`).join("");
+                floorFilter.innerHTML = floors.map(floorName => `<option value="${{floorName}}">${{activeBuilding}} ${{floorName}}</option>`).join("");
+                floorFilter.value = floors.includes(defaultFloor) ? defaultFloor : floors[0] || "";
+                floorContext.textContent = floorFilter.value ? `${{activeBuilding}} ${{floorFilter.value}} 기준` : `${{activeBuilding}} 기준`;
             }}
 
             function renderRows() {{
                 const query = stockSearch.value.trim().toLowerCase();
-                const selectedFloor = floorFilter.value;
+                const selectedFloor = floorFilter.value || floors[0] || "";
+                floorContext.textContent = selectedFloor ? `${{activeBuilding}} ${{selectedFloor}} 기준` : `${{activeBuilding}} 기준`;
                 const rows = collectRows().filter(row => {{
-                    if (selectedFloor && row.floor !== selectedFloor) return false;
+                    if (row.floor !== selectedFloor) return false;
                     if (!query) return true;
                     return [row.building, row.floor, row.location, row.type, row.name, row.barcode].join(" ").toLowerCase().includes(query);
                 }});
@@ -2837,8 +2849,8 @@ def warehouse_scene3d_html(
 
             function worldToPercent(x, z, allowOutside = false) {{
                 const size = layoutFloorSize();
-                const min = allowOutside ? -24 : 1;
-                const max = allowOutside ? 124 : 99;
+                const min = allowOutside ? -24 : 0;
+                const max = allowOutside ? 124 : 100;
                 return {{
                     x: clamp((x - Number(size.x || 0)) / Math.max(1, size.width) * 100 + 50, min, max),
                     y: clamp((z - Number(size.z || 0)) / Math.max(1, size.depth) * 100 + 50, min, max),
@@ -2878,7 +2890,8 @@ def warehouse_scene3d_html(
             }}
 
             function snapObjectEdges(position, extents, allowOutside = false) {{
-                const threshold = 2.8;
+                const thresholdX = 2.8;
+                const thresholdY = 4.2;
                 const minCenterX = allowOutside ? -24 : extents.halfX;
                 const maxCenterX = allowOutside ? 124 : 100 - extents.halfX;
                 const minCenterY = allowOutside ? -24 : extents.halfY;
@@ -2886,13 +2899,13 @@ def warehouse_scene3d_html(
                 let x = clamp(position.x, minCenterX, maxCenterX);
                 let y = clamp(position.y, minCenterY, maxCenterY);
                 if (!allowOutside) {{
-                    if (Math.abs(x - extents.halfX) <= threshold) x = extents.halfX;
-                    if (Math.abs(x - (100 - extents.halfX)) <= threshold) x = 100 - extents.halfX;
-                    if (Math.abs(y - extents.halfY) <= threshold) y = extents.halfY;
-                    if (Math.abs(y - (100 - extents.halfY)) <= threshold) y = 100 - extents.halfY;
+                    if (Math.abs(x - extents.halfX) <= thresholdX) x = extents.halfX;
+                    if (Math.abs(x - (100 - extents.halfX)) <= thresholdX) x = 100 - extents.halfX;
+                    if (Math.abs(y - extents.halfY) <= thresholdY) y = extents.halfY;
+                    if (Math.abs(y - (100 - extents.halfY)) <= thresholdY) y = 100 - extents.halfY;
                 }}
-                x = snapValue(x, [minCenterX, 50, maxCenterX], threshold);
-                y = snapValue(y, [minCenterY, 50, maxCenterY], threshold);
+                x = snapValue(x, [minCenterX, 50, maxCenterX], thresholdX);
+                y = snapValue(y, [minCenterY, 50, maxCenterY], thresholdY);
                 return {{ x, y }};
             }}
 
@@ -2957,26 +2970,32 @@ def warehouse_scene3d_html(
                 const lines = wrapLabel(rawText);
                 const longestLine = lines.reduce((longest, line) => line.length > longest.length ? line : longest, "");
                 const labelCanvas = document.createElement("canvas");
-                labelCanvas.width = Math.min(920, Math.max(440, longestLine.length * 34 + 112));
-                labelCanvas.height = lines.length > 1 ? 176 : 132;
+                labelCanvas.width = Math.min(980, Math.max(500, longestLine.length * 38 + 132));
+                labelCanvas.height = lines.length > 1 ? 190 : 142;
                 const ctx = labelCanvas.getContext("2d");
                 ctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
-                ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
-                ctx.strokeStyle = "rgba(88, 121, 154, 0.62)";
-                ctx.lineWidth = 5;
+                ctx.fillStyle = "rgba(255, 255, 255, 0.98)";
+                ctx.strokeStyle = "rgba(31, 48, 64, 0.9)";
+                ctx.lineWidth = 7;
+                ctx.shadowColor = "rgba(15, 23, 42, 0.24)";
+                ctx.shadowBlur = 12;
+                ctx.shadowOffsetY = 5;
                 if (ctx.roundRect) {{
                     ctx.roundRect(14, 18, labelCanvas.width - 28, labelCanvas.height - 36, 16);
                 }} else {{
                     ctx.rect(14, 18, labelCanvas.width - 28, labelCanvas.height - 36);
                 }}
                 ctx.fill();
+                ctx.shadowColor = "transparent";
+                ctx.shadowBlur = 0;
+                ctx.shadowOffsetY = 0;
                 ctx.stroke();
-                ctx.fillStyle = "#1f2937";
+                ctx.fillStyle = "#0f172a";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                let fontSize = lines.length > 1 ? 30 : 36;
+                let fontSize = lines.length > 1 ? 34 : 42;
                 ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
-                while (fontSize > 20 && lines.some(line => ctx.measureText(line).width > labelCanvas.width - 74)) {{
+                while (fontSize > 24 && lines.some(line => ctx.measureText(line).width > labelCanvas.width - 86)) {{
                     fontSize -= 2;
                     ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
                 }}
@@ -2986,9 +3005,10 @@ def warehouse_scene3d_html(
                     ctx.fillText(line, labelCanvas.width / 2, startY + index * lineHeight);
                 }});
                 const texture = new THREE.CanvasTexture(labelCanvas);
-                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({{ map: texture, transparent: true }}));
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({{ map: texture, transparent: true, depthTest: false }}));
+                sprite.renderOrder = 20;
                 sprite.position.copy(position);
-                sprite.scale.set(Math.max(5.4, labelCanvas.width / 72) * scale, Math.max(1.8, labelCanvas.height / 72) * scale, 1);
+                sprite.scale.set(Math.max(5.8, labelCanvas.width / 68) * scale, Math.max(2.0, labelCanvas.height / 68) * scale, 1);
                 return sprite;
             }}
 
@@ -3258,7 +3278,7 @@ def warehouse_scene3d_html(
                 }}
                 const shouldShowRackLabel = showFixtureLabels || (rack.id === selectedRackId && !selectedRackItemKey);
                 if (shouldShowRackLabel) {{
-                    group.add(makeLabel(rackLabelText(rack), new THREE.Vector3(0, rackHeight + 0.48, halfD - 0.18), 0.62));
+                    group.add(makeLabel(rackLabelText(rack), new THREE.Vector3(0, rackHeight + 0.72, halfD + 0.08), 0.78));
                 }}
 
                 const itemsByPart = new Map(shelfLabels.map(part => [part, []]));

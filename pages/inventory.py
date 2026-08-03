@@ -13,6 +13,11 @@ from sqlalchemy import delete, func, select
 from pages import product_master as product_master_page
 
 try:
+    import plotly.express as px
+except ModuleNotFoundError:
+    px = None
+
+try:
     from backend.database import SessionLocal, init_db
     from backend.models import CategoryBomItem, InventoryDaily, MaterialInventoryItem, ProductionPlan, PurchaseRequest
     from backend import services
@@ -1069,7 +1074,45 @@ def render_inventory_bar_chart(rows: list[dict], label: str) -> None:
         st.info("표시할 데이터가 없습니다.")
         return
     df = df.rename(columns={"label": "구분", "value": label})
-    st.bar_chart(df.set_index("구분")[label])
+    df[label] = df[label].apply(to_int)
+    df["구분"] = df["구분"].replace("", "미분류").astype(str)
+    df = df.groupby("구분", as_index=False)[label].sum().sort_values(label, ascending=True)
+    df = df[df[label] > 0]
+    if df.empty:
+        st.info(f"표시할 {label} 데이터가 없습니다.")
+        return
+    if px is None:
+        st.bar_chart(df.set_index("구분")[label])
+        return
+
+    height = min(520, max(260, 34 * len(df) + 80))
+    fig = px.bar(
+        df,
+        x=label,
+        y="구분",
+        orientation="h",
+        text=label,
+        color_discrete_sequence=["#0B74C8"],
+    )
+    fig.update_traces(
+        texttemplate="%{text:,}",
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate="%{y}<br>" + label + ": %{x:,}<extra></extra>",
+    )
+    fig.update_layout(
+        height=height,
+        margin=dict(l=8, r=28, t=4, b=12),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        xaxis_title="",
+        yaxis_title="",
+        bargap=0.28,
+        font=dict(size=11, color="#26384A"),
+    )
+    fig.update_xaxes(showgrid=True, gridcolor="#E2DCD4", tickformat=",")
+    fig.update_yaxes(automargin=True)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 def fetch_work_dates(source_type: str) -> list[date]:

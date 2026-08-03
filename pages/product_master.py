@@ -318,7 +318,7 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
 
         render_product_master_visible_table(page_df[THREEPL_MASTER_COLUMNS], height=470)
         with st.expander("편집", expanded=True):
-            render_product_master_row_edit_form(source_type, key, page_df, f"editor_{page}_{len(sorted_df)}")
+            render_product_master_row_edit_form(source_type, key, sorted_df, f"editor_{len(sorted_df)}")
 
         nav_prev, nav_info, nav_next, sync_col, spacer = st.columns([0.8, 1.0, 0.8, 1.15, 3.55], gap="small")
         with nav_prev:
@@ -714,6 +714,10 @@ def parse_box_pallet_unit(value) -> tuple[int, int]:
     box_qty = 0
     pallet_qty = 0
 
+    box_prefix_match = re.search(r"\d+\s*(?:박스|BOX)\s*(\d+)\s*(?:EA|개)?", normalized)
+    if box_prefix_match:
+        box_qty = to_int_value(box_prefix_match.group(1))
+
     box_patterns = [
         r"(?:박스당|박스|BOX)\s*(\d+)\s*EA",
         r"(\d+)\s*EA",
@@ -724,7 +728,7 @@ def parse_box_pallet_unit(value) -> tuple[int, int]:
     ]
     for pattern in box_patterns:
         match = re.search(pattern, normalized)
-        if match:
+        if match and not box_qty:
             box_qty = to_int_value(match.group(1))
             break
     for pattern in pallet_patterns:
