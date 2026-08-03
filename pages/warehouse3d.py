@@ -4857,10 +4857,65 @@ def warehouse_scene3d_html(
 
             canvas.addEventListener("wheel", event => {{
                 event.preventDefault();
+                event.stopPropagation();
+                if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
                 if (draggingRack || draggingFixture || resizingRack || resizingFixture || resizingFloor) return;
                 const direction = event.deltaY < 0 ? 1 : -1;
-                setZoom(zoomLevel + direction * zoomStep);
-            }}, {{ passive: false }});
+                const wheelStep = event.shiftKey ? zoomStep * 2 : zoomStep;
+                setZoom(zoomLevel + direction * wheelStep);
+                controls.update();
+                renderer.render(scene, camera);
+            }}, {{ passive: false, capture: true }});
+
+            function warehousePrintBounds() {{
+                const bounds = new THREE.Box3();
+                const itemBounds = new THREE.Box3();
+                [buildingGroup, fixtureGroup, rackGroup].forEach(group => {{
+                    group.traverse(object => {{
+                        if (!(object.isMesh || object.isLine || object.isLineSegments)) return;
+                        itemBounds.setFromObject(object);
+                        if (!itemBounds.isEmpty()) bounds.union(itemBounds);
+                    }});
+                }});
+                if (bounds.isEmpty()) {{
+                    const size = currentFloorSize();
+                    const centerX = Number(size.x || 0);
+                    const centerZ = Number(size.z || 0);
+                    bounds.set(
+                        new THREE.Vector3(centerX - size.width / 2, 0, centerZ - size.depth / 2),
+                        new THREE.Vector3(centerX + size.width / 2, 3, centerZ + size.depth / 2)
+                    );
+                }}
+                bounds.expandByScalar(2.2);
+                return bounds;
+            }}
+
+            function frameWarehouseForPrint(width, height) {{
+                const bounds = warehousePrintBounds();
+                const center = new THREE.Vector3();
+                const sphere = new THREE.Sphere();
+                bounds.getCenter(center);
+                bounds.getBoundingSphere(sphere);
+
+                const viewDirection = new THREE.Vector3().subVectors(camera.position, controls.target);
+                if (viewDirection.lengthSq() < 0.0001) viewDirection.set(26, 15, 30);
+                viewDirection.normalize();
+
+                const aspect = width / Math.max(1, height);
+                const fov = THREE.MathUtils.degToRad(camera.fov);
+                const fitDistance = sphere.radius / Math.sin(fov / 2);
+                const aspectPadding = aspect > 1 ? 1.08 : 1.18;
+                const distance = Math.max(42, fitDistance * aspectPadding);
+
+                controls.target.copy(center);
+                camera.position.copy(center).addScaledVector(viewDirection, distance);
+                camera.aspect = aspect;
+                camera.zoom = 0.92;
+                camera.near = 0.1;
+                camera.far = Math.max(220, distance + sphere.radius * 4);
+                camera.updateProjectionMatrix();
+                controls.update();
+            }}
 
             function captureWarehousePrintImage() {{
                 const width = 3508;
@@ -4868,12 +4923,16 @@ def warehouse_scene3d_html(
                 const previousPixelRatio = renderer.getPixelRatio();
                 const previousBackground = scene.background;
                 const previousFog = scene.fog;
+                const previousCameraPosition = camera.position.clone();
+                const previousCameraAspect = camera.aspect;
+                const previousCameraZoom = camera.zoom;
+                const previousCameraNear = camera.near;
+                const previousCameraFar = camera.far;
+                const previousTarget = controls.target.clone();
 
-                controls.update();
                 renderer.setPixelRatio(1);
                 renderer.setSize(width, height, false);
-                camera.aspect = width / height;
-                camera.updateProjectionMatrix();
+                frameWarehouseForPrint(width, height);
                 scene.background = new THREE.Color(0xffffff);
                 scene.fog = null;
                 renderer.render(scene, camera);
@@ -4881,6 +4940,14 @@ def warehouse_scene3d_html(
 
                 scene.background = previousBackground;
                 scene.fog = previousFog;
+                camera.position.copy(previousCameraPosition);
+                camera.aspect = previousCameraAspect;
+                camera.zoom = previousCameraZoom;
+                camera.near = previousCameraNear;
+                camera.far = previousCameraFar;
+                camera.updateProjectionMatrix();
+                controls.target.copy(previousTarget);
+                controls.update();
                 renderer.setPixelRatio(previousPixelRatio);
                 resizeRenderer();
                 renderer.render(scene, camera);
