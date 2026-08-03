@@ -13623,6 +13623,10 @@ html {
     overflow: hidden !important;
 }
 
+.dashboard-shell .order-panel table {
+    table-layout: fixed !important;
+}
+
 .dashboard-shell .order-panel thead,
 .dashboard-shell .order-panel tbody,
 .dashboard-shell .order-panel tr {
@@ -13655,6 +13659,63 @@ html {
     background: var(--home-card-bg-soft) !important;
     color: #6B7280 !important;
     -webkit-text-fill-color: #6B7280 !important;
+    font-size: clamp(0.76rem, 0.72vw, 0.86rem) !important;
+    text-align: center !important;
+    white-space: normal !important;
+    word-break: keep-all !important;
+    overflow-wrap: anywhere !important;
+    padding: 18px 12px !important;
+}
+
+.dashboard-shell .order-panel th:nth-child(1),
+.dashboard-shell .order-panel td:nth-child(1) {
+    width: 23% !important;
+}
+
+.dashboard-shell .order-panel th:nth-child(2),
+.dashboard-shell .order-panel td:nth-child(2) {
+    width: 24% !important;
+}
+
+.dashboard-shell .order-panel th:nth-child(3),
+.dashboard-shell .order-panel td:nth-child(3) {
+    width: 36% !important;
+}
+
+.dashboard-shell .order-panel th:nth-child(4),
+.dashboard-shell .order-panel td:nth-child(4) {
+    width: 17% !important;
+}
+
+.dashboard-shell .order-panel td,
+.dashboard-shell .order-panel th {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-shell .occurrence-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+}
+
+.dashboard-shell .occurrence-list {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding-right: 4px !important;
+}
+
+.dashboard-shell .occurrence-list-head {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 2 !important;
+}
+
+.dashboard-shell .occurrence-row {
+    min-height: 34px !important;
 }
 
 .dashboard-shell .warehouse-panel {
@@ -13731,6 +13792,98 @@ html {
     .dashboard-shell .purchase-progress-panel,
     .dashboard-shell .core-task-panel {
         min-height: auto !important;
+    }
+}
+
+.dashboard-shell .core-task-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: clamp(8px, 0.75vw, 12px) !important;
+    overflow: hidden !important;
+}
+
+.dashboard-shell .core-task-panel .panel-title-row {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+}
+
+.dashboard-shell .core-task-summary {
+    display: grid !important;
+    flex: 0 0 auto !important;
+    gap: clamp(8px, 0.7vw, 10px) !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    width: 100% !important;
+}
+
+.dashboard-shell .core-task-summary span {
+    align-items: center !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    min-height: clamp(42px, 4.8vh, 54px) !important;
+    padding: 6px 8px !important;
+    text-align: center !important;
+}
+
+.dashboard-shell .core-task-summary strong {
+    font-size: clamp(1.1rem, 1.1vw, 1.45rem) !important;
+    line-height: 1.05 !important;
+}
+
+.dashboard-shell .core-task-list {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    list-style: none !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 0 4px 0 0 !important;
+    width: 100% !important;
+}
+
+.dashboard-shell .core-task-list li {
+    display: grid !important;
+    gap: 8px !important;
+    grid-template-columns: 26px minmax(0, 1fr) auto !important;
+    min-height: 34px !important;
+    padding: 6px 8px !important;
+    width: 100% !important;
+}
+
+.dashboard-shell .core-task-list span {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-shell .core-task-list b {
+    white-space: nowrap !important;
+}
+
+.dashboard-shell .core-task-panel .ghost-link {
+    align-self: center !important;
+    flex: 0 0 auto !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    margin: 2px auto 0 !important;
+    max-width: 100% !important;
+}
+
+@media (max-width: 560px) {
+    .dashboard-shell .core-task-summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    .dashboard-shell .core-task-list li {
+        grid-template-columns: 24px minmax(0, 1fr) auto !important;
     }
 }
 

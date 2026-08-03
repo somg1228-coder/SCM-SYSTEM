@@ -1845,29 +1845,21 @@ def recent_orders_html(rows: list[dict]) -> str:
             <td><a href="{po_href}" target="_self">{po_number}</a></td>
             <td>{supplier}</td>
             <td>{item}</td>
-            <td>{order_qty}</td>
-            <td>{inbound_qty}</td>
-            <td>{expected_date}</td>
-            <td>{actual_date}</td>
             <td><span class="status-badge {tone}">{status}</span></td>
         </tr>
         """
-        for po_href, po_number, supplier, item, order_qty, inbound_qty, expected_date, actual_date, status, tone in [
+        for po_href, po_number, supplier, item, status, tone in [
             (
                 purchase_po_link(str(row.get("po_number", ""))),
                 escape(str(row.get("po_number", "-"))),
                 escape(str(row.get("supplier_name", "-"))),
                 escape(str(row.get("item_name", "-"))),
-                format_metric(row.get("order_qty", 0)),
-                format_metric(row.get("inbound_qty", 0)),
-                format_date_label(row.get("expected_inbound_date")),
-                format_date_label(row.get("actual_inbound_date")),
                 escape(str(row.get("status", "-"))),
                 escape(str(row.get("tone", "pending"))),
             )
             for row in rows
         ]
-    ) or f'<tr><td colspan="8" class="empty-cell">구매관리 탭에 저장된 발주·입고 내역이 없습니다.</td></tr>'
+    ) or f'<tr><td colspan="4" class="empty-cell">구매관리 탭에 저장된 발주·입고 내역이 없습니다.</td></tr>'
     return f"""
     <article class="panel order-panel">
         <h2>최근 발주·입고 내역 <small>(구매관리)</small></h2>
@@ -1877,10 +1869,6 @@ def recent_orders_html(rows: list[dict]) -> str:
                     <th>PO번호</th>
                     <th>거래처</th>
                     <th>품목</th>
-                    <th>발주수량</th>
-                    <th>입고수량</th>
-                    <th>입고예정일</th>
-                    <th>실제입고일</th>
                     <th>상태</th>
                 </tr>
             </thead>
