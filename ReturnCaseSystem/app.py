@@ -2899,10 +2899,10 @@ def render_return_case_system():
         --app-page-y: clamp(2.55rem, 3.2vh, 3.1rem);
         --app-kpi-h: clamp(82px, 8.2vh, 96px);
         --app-chart-card-h: clamp(320px, 31vh, 350px);
-        --app-list-card-h: clamp(310px, 30vh, 338px);
+        --app-list-card-h: clamp(350px, 38vh, 450px);
         --app-dashboard-card-h: var(--app-list-card-h);
         --app-chart-h: calc(var(--app-chart-card-h) - 36px);
-        --app-grid-h: calc(var(--app-list-card-h) - 52px);
+        --app-grid-h: calc(var(--app-list-card-h) - 46px);
         --app-detail-photo-h: clamp(240px, 34vh, 312px);
         --app-search-h: clamp(236px, 28vh, 320px);
     }
@@ -3046,7 +3046,7 @@ def render_return_case_system():
             --app-page-y: 2.4rem;
             --app-kpi-h: 82px;
             --app-chart-card-h: 326px;
-            --app-list-card-h: 306px;
+            --app-list-card-h: clamp(300px, 34vh, 340px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-search-h: 240px;
         }
@@ -3057,7 +3057,7 @@ def render_return_case_system():
             --app-page-y: 2.1rem;
             --app-kpi-h: 78px;
             --app-chart-card-h: 310px;
-            --app-list-card-h: 286px;
+            --app-list-card-h: clamp(276px, 33vh, 310px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 250px;
             --app-search-h: 220px;
@@ -3088,7 +3088,7 @@ def render_return_case_system():
             --app-page-x: 0.85rem;
             --app-kpi-h: 92px;
             --app-chart-card-h: 330px;
-            --app-list-card-h: 318px;
+            --app-list-card-h: clamp(320px, 44vh, 430px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 260px;
             --app-search-h: 240px;
@@ -3695,8 +3695,11 @@ def render_return_case_system():
     /* Final Return/AS readability repair: keep legacy dark rules from hiding text. */
     :root {
         --return-bg: #f7f5f2;
-        --return-card: #ffffff;
-        --return-card-soft: #f8fafc;
+        --return-card: #faf8f4;
+        --return-card-soft: #f2eee8;
+        --return-table: #f6f2ec;
+        --return-table-alt: #efeae2;
+        --return-table-head: #e9e3da;
         --return-border: #cbd5e1;
         --return-border-soft: #e2e8f0;
         --return-title: #1f2937;
@@ -3877,6 +3880,10 @@ def render_return_case_system():
         border-color: var(--return-border-soft) !important;
         color: var(--return-text) !important;
         box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04) !important;
+    }
+
+    .st-key-dashboard_card_recent {
+        background: linear-gradient(180deg, #fbf8f3 0%, #f3eee7 100%) !important;
     }
 
     .st-key-search_results_scroll * {
@@ -5003,14 +5010,14 @@ def render_return_case_system():
                 gb.configure_default_column(
                     cellStyle={
                         "color": "#111827",
-                        "backgroundColor": "#ffffff",
+                        "backgroundColor": "#f6f2ec",
                         "textAlign": "center"
                     }
                 )
 
                 gb.configure_grid_options(
                     rowStyle={
-                        "backgroundColor": "#ffffff",
+                        "backgroundColor": "#f6f2ec",
                         "color": "#111827"
                     },
                     rowHeight=28,
@@ -5042,20 +5049,20 @@ def render_return_case_system():
                 grid_response = AgGrid(
                     recent_df,
                     gridOptions=grid_options,
-                    height=276,
+                    height=360,
                     theme="streamlit",
                     fit_columns_on_grid_load=True,
 
                     custom_css={
                         ".ag-root-wrapper": {
-                            "background-color": "#ffffff !important",
-                            "border": "1px solid #e5e7eb !important",
+                            "background-color": "#f6f2ec !important",
+                            "border": "1px solid #ded6ca !important",
                             "border-radius": "14px !important"
                         },
 
                         ".ag-header": {
-                            "background-color": "#f8fafc !important",
-                            "border-bottom": "1px solid #e5e7eb !important"
+                            "background-color": "#e9e3da !important",
+                            "border-bottom": "1px solid #d8d0c4 !important"
                         },
 
                         ".ag-header-cell-label": {
@@ -5065,27 +5072,27 @@ def render_return_case_system():
                         },
 
                         ".ag-cell": {
-                            "background-color": "#ffffff !important",
+                            "background-color": "#f6f2ec !important",
                             "color": "#111827 !important",
                             "font-size": "13px !important",
                             "line-height": "28px !important"
                         },
                         ".ag-row-even .ag-cell": {
-                            "background-color": "#ffffff !important"
+                            "background-color": "#f6f2ec !important"
                         },
                         ".ag-row-odd .ag-cell": {
-                            "background-color": "#f9fafb !important"
+                            "background-color": "#efeae2 !important"
                         },
                         ".ag-center-cols-container": {
-                            "background-color": "#ffffff !important"
+                            "background-color": "#f6f2ec !important"
                         },
 
                         ".ag-center-cols-viewport": {
-                            "background-color": "#ffffff !important"
+                            "background-color": "#f6f2ec !important"
                         },
 
                         ".ag-body-viewport": {
-                            "background-color": "#ffffff !important"
+                            "background-color": "#f6f2ec !important"
                         },
 
                         ".ag-body-horizontal-scroll": {
@@ -5101,16 +5108,16 @@ def render_return_case_system():
                         },
 
                         ".ag-row": {
-                            "background-color": "#ffffff !important",
+                            "background-color": "#f6f2ec !important",
                             "color": "#111827 !important",
-                            "border-bottom": "1px solid #eef2f7 !important"
+                            "border-bottom": "1px solid #e4ddd2 !important"
                         },
 
                         ".ag-row-hover": {
-                            "background-color": "#eff6ff !important"
+                            "background-color": "#e6edf2 !important"
                         },
                         ".ag-row-hover .ag-cell": {
-                            "background-color": "#eff6ff !important"
+                            "background-color": "#e6edf2 !important"
                         }
                     }
                 )

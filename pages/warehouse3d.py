@@ -2368,8 +2368,8 @@ def warehouse_scene3d_html(
             const placementScale = 1.45;
 
             const scene = new THREE.Scene();
-            const screenSceneBackground = new THREE.Color(0xcfd8cf);
-            const screenSceneFog = new THREE.Fog(0xcfd8cf, 86, 176);
+            const screenSceneBackground = new THREE.Color(0xb9c4ba);
+            const screenSceneFog = null;
             scene.background = screenSceneBackground;
             scene.fog = screenSceneFog;
 
@@ -2378,7 +2378,7 @@ def warehouse_scene3d_html(
             renderer.setPixelRatio(screenPixelRatio);
             renderer.outputColorSpace = THREE.SRGBColorSpace;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 0.9;
+            renderer.toneMappingExposure = 1.08;
 
             const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
             camera.position.set(26, 15, 30);
@@ -2434,12 +2434,12 @@ def warehouse_scene3d_html(
                 controls.update();
             }}
 
-            const ambient = new THREE.HemisphereLight(0xcfd8d0, 0x99a499, 0.86);
+            const ambient = new THREE.HemisphereLight(0xe2e6e0, 0xb8c0b8, 1.12);
             scene.add(ambient);
-            const keyLight = new THREE.DirectionalLight(0xd8ded6, 1.08);
+            const keyLight = new THREE.DirectionalLight(0xe8ebe5, 1.42);
             keyLight.position.set(18, 28, 22);
             scene.add(keyLight);
-            const fillLight = new THREE.DirectionalLight(0x9ca99f, 0.34);
+            const fillLight = new THREE.DirectionalLight(0xaeb8af, 0.48);
             fillLight.position.set(-20, 12, -18);
             scene.add(fillLight);
 
@@ -2493,25 +2493,25 @@ def warehouse_scene3d_html(
             }}
 
             const materials = {{
-                slab: new THREE.MeshStandardMaterial({{ color: 0xd4dde3, roughness: 0.88, metalness: 0.02, transparent: true, opacity: 0.92 }}),
-                activeSlab: new THREE.MeshStandardMaterial({{ color: 0xc7d2d9, roughness: 0.74, metalness: 0.03, transparent: true, opacity: 0.96 }}),
-                wall: new THREE.MeshStandardMaterial({{ color: 0xb5c2cc, roughness: 0.88, transparent: true, opacity: 0.62 }}),
+                slab: new THREE.MeshStandardMaterial({{ color: 0xe9eef3, roughness: 0.84, metalness: 0.02, transparent: true, opacity: 0.9 }}),
+                activeSlab: new THREE.MeshStandardMaterial({{ color: 0xe3ebf1, roughness: 0.68, metalness: 0.03, transparent: true, opacity: 0.94 }}),
+                wall: new THREE.MeshStandardMaterial({{ color: 0xcbd5e1, roughness: 0.86, transparent: true, opacity: 0.58 }}),
                 rack: new THREE.MeshStandardMaterial({{ color: 0x58799a, roughness: 0.78, metalness: 0.05 }}),
                 rackEmpty: new THREE.MeshStandardMaterial({{ color: 0x94a3b8, roughness: 0.82, transparent: true, opacity: 0.72 }}),
                 rackShort: new THREE.MeshStandardMaterial({{ color: 0xb66a6a, roughness: 0.75, metalness: 0.04 }}),
-                rackPost: new THREE.MeshStandardMaterial({{ color: 0xdce3dc, roughness: 0.62, metalness: 0.24 }}),
-                rackShelf: new THREE.MeshStandardMaterial({{ color: 0xd3ddd4, roughness: 0.66, metalness: 0.14 }}),
+                rackPost: new THREE.MeshStandardMaterial({{ color: 0xf4f7f3, roughness: 0.58, metalness: 0.28 }}),
+                rackShelf: new THREE.MeshStandardMaterial({{ color: 0xe7ece7, roughness: 0.62, metalness: 0.18 }}),
                 rackBrace: new THREE.MeshStandardMaterial({{ color: 0xbecac5, roughness: 0.7, metalness: 0.25 }}),
                 heavyPost: new THREE.MeshStandardMaterial({{ color: 0x58799a, roughness: 0.42, metalness: 0.24 }}),
                 heavyBeam: new THREE.MeshStandardMaterial({{ color: 0xb78b5a, roughness: 0.46, metalness: 0.18 }}),
-                heavyDeck: new THREE.MeshStandardMaterial({{ color: 0xd9cbb9, roughness: 0.74, metalness: 0.04 }}),
+                heavyDeck: new THREE.MeshStandardMaterial({{ color: 0xf1e4d1, roughness: 0.7, metalness: 0.04 }}),
                 heavyBrace: new THREE.MeshStandardMaterial({{ color: 0x36556f, roughness: 0.5, metalness: 0.22 }}),
                 itemBox: new THREE.MeshStandardMaterial({{ color: 0x6f927d, roughness: 0.72, metalness: 0.04 }}),
                 itemBoxShort: new THREE.MeshStandardMaterial({{ color: 0xb66a6a, roughness: 0.72, metalness: 0.04 }}),
                 itemBoxSelected: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.68, metalness: 0.04 }}),
                 hitbox: new THREE.MeshBasicMaterial({{ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }}),
                 room: new THREE.MeshStandardMaterial({{ color: 0xdbe3ec, roughness: 0.82, transparent: true, opacity: 0.62 }}),
-                column: new THREE.MeshStandardMaterial({{ color: 0xdce3e7, roughness: 0.7, metalness: 0.1, transparent: true, opacity: 0.94 }}),
+                column: new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.66, metalness: 0.14, transparent: true, opacity: 0.94 }}),
                 entrance: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.5 }}),
                 locked: new THREE.MeshStandardMaterial({{ color: 0xb78b5a, emissive: 0x4a3720, roughness: 0.45 }}),
                 resizeHandle: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.36, metalness: 0.1 }}),

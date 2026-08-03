@@ -8,12 +8,13 @@ import pandas as pd
 import streamlit as st
 
 try:
-    from backend.database import SessionLocal, init_db, log_sqlite_writability
+    from backend.database import SessionLocal, init_db, log_sqlite_writability, reset_sqlite_engine_after_write_error
     from backend import services
 except (ModuleNotFoundError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
     log_sqlite_writability = None
+    reset_sqlite_engine_after_write_error = None
     services = None
     PRODUCT_MASTER_IMPORT_ERROR = str(exc)
 else:
@@ -940,6 +941,14 @@ def with_db(action):
         return action(db)
     except Exception as exc:
         db.rollback()
+        if reset_sqlite_engine_after_write_error is not None and reset_sqlite_engine_after_write_error(exc):
+            db.close()
+            db = SessionLocal()
+            try:
+                return action(db)
+            except Exception as retry_exc:
+                db.rollback()
+                return {"ok": False, "message": f"처리 실패: {retry_exc}", "count": 0}
         return {"ok": False, "message": f"처리 실패: {exc}", "count": 0}
     finally:
         db.close()

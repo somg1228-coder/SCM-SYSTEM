@@ -310,6 +310,22 @@ def switch_to_runtime_sqlite_copy() -> None:
     SessionLocal.configure(bind=engine)
 
 
+def reset_sqlite_engine_after_write_error(exc: BaseException) -> bool:
+    if not DATABASE_URL.startswith("sqlite") or not is_sqlite_recoverable_open_error(exc):
+        return False
+    LOGGER.warning("SQLite 쓰기 오류 감지. 연결을 재설정하고 1회 재시도합니다: %s", exc)
+    try:
+        report = sqlite_writability_report()
+        if report.get("db_path") and not report.get("sqlite_writeable"):
+            switch_to_runtime_sqlite_copy()
+        else:
+            engine.dispose()
+    except Exception as reset_exc:
+        LOGGER.warning("SQLite 연결 재설정 중 추가 오류: %s", reset_exc)
+        engine.dispose()
+    return True
+
+
 def repair_sqlite_schema() -> None:
     if not DATABASE_URL.startswith("sqlite"):
         return
