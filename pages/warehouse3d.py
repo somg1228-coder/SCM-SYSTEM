@@ -327,7 +327,6 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
         {option["key"]: build_rack_layout(inventory_rows, option["floor"]) for option in location_floors},
         ensure_ascii=False,
     )
-    location_floors_payload = json.dumps(location_floors, ensure_ascii=False)
     legacy_location_map_payload = json.dumps({"밑창고1": "창고1", "옆창고2": "창고2"}, ensure_ascii=False)
     shared_layout_payload = json.dumps(shared_layout_store or empty_warehouse_layout_store(), ensure_ascii=False)
     location_floors_payload = json.dumps(warehouse_location_floor_options(), ensure_ascii=False)
@@ -1739,6 +1738,7 @@ def warehouse_scene3d_html(
     )
     floor_model_payload = json.dumps(FLOOR_MODELS, ensure_ascii=False)
     shared_layout_payload = json.dumps(shared_layout_store or empty_warehouse_layout_store(), ensure_ascii=False)
+    location_floors_payload = json.dumps(warehouse_location_floor_options(), ensure_ascii=False)
     inventory_payload = json.dumps(
         [
             {
