@@ -1766,9 +1766,6 @@ def warehouse_scene3d_html(
     <html lang="ko">
     <head>
         <meta charset="utf-8">
-        <script type="importmap">
-            {{"imports": {{"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}}}
-        </script>
         <style>
             * {{ box-sizing: border-box; letter-spacing: 0; }}
             body {{
@@ -2451,8 +2448,33 @@ def warehouse_scene3d_html(
             </aside>
         </main>
         <script type="module">
-            import * as THREE from "three";
-            import {{ OrbitControls }} from "three/addons/controls/OrbitControls.js";
+            async function loadWarehouse3dModules() {{
+                const cdnPairs = [
+                    [
+                        "https://esm.sh/three@0.160.0",
+                        "https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js",
+                    ],
+                    [
+                        "https://cdn.skypack.dev/three@0.160.0",
+                        "https://cdn.skypack.dev/three@0.160.0/examples/jsm/controls/OrbitControls.js",
+                    ],
+                ];
+                let lastError = null;
+                for (const [threeUrl, controlsUrl] of cdnPairs) {{
+                    try {{
+                        const [threeModule, controlsModule] = await Promise.all([
+                            import(threeUrl),
+                            import(controlsUrl),
+                        ]);
+                        return {{ THREE: threeModule, OrbitControls: controlsModule.OrbitControls }};
+                    }} catch (error) {{
+                        lastError = error;
+                    }}
+                }}
+                throw lastError || new Error("3D library load failed");
+            }}
+
+            const {{ THREE, OrbitControls }} = await loadWarehouse3dModules();
 
             const defaultRacks = {payload};
             const defaultRacksByFloor = {floor_payload};
