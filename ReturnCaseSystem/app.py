@@ -2707,8 +2707,8 @@ def render_return_case_system():
     .st-key-top5_3 button,
     .st-key-top5_4 button,
     .st-key-top5_5 button {
-        height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
-        min-height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
+        height: clamp(30px, calc(var(--app-dashboard-card-h) * 0.13), 36px) !important;
+        min-height: clamp(30px, calc(var(--app-dashboard-card-h) * 0.13), 36px) !important;
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
@@ -2729,8 +2729,8 @@ def render_return_case_system():
     }
 
     div[class*="st-key-top5_"] button {
-        height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
-        min-height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
+        height: clamp(30px, calc(var(--app-dashboard-card-h) * 0.13), 36px) !important;
+        min-height: clamp(30px, calc(var(--app-dashboard-card-h) * 0.13), 36px) !important;
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
@@ -2779,12 +2779,12 @@ def render_return_case_system():
 
     .top5-meter {
         width:100%;
-        margin: 8px 0 18px 0;
+        margin: 5px 0 11px 0;
     }
 
     .top5-track {
         width:100%;
-        height: clamp(6px, calc(var(--app-dashboard-card-h) * 0.02), 8px);
+        height: clamp(5px, calc(var(--app-dashboard-card-h) * 0.018), 7px);
         background:rgba(255,255,255,0.08);
         border-radius:10px;
         overflow:hidden;
@@ -2804,7 +2804,7 @@ def render_return_case_system():
     }
 
     .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
-        gap:0.36rem !important;
+        gap:0.22rem !important;
     }
 
     .st-key-dashboard_card_top5 {
@@ -2870,7 +2870,7 @@ def render_return_case_system():
         width: 100% !important;
         white-space: pre-line !important;
         text-align: center !important;
-        font-size: 17px !important;
+        font-size: clamp(18px, 1vw, 20px) !important;
         font-weight: 700 !important;
         line-height: 1.28 !important;
         word-break: keep-all !important;
@@ -2896,13 +2896,13 @@ def render_return_case_system():
     :root {
         --app-max-width: none;
         --app-page-x: clamp(0.8rem, 1vw, 1.2rem);
-        --app-page-y: clamp(2.55rem, 3.2vh, 3.1rem);
-        --app-kpi-h: clamp(82px, 8.2vh, 96px);
-        --app-chart-card-h: clamp(320px, 31vh, 350px);
-        --app-list-card-h: clamp(350px, 38vh, 450px);
+        --app-page-y: clamp(1.6rem, 2.3vh, 2.35rem);
+        --app-kpi-h: clamp(104px, 10.6vh, 126px);
+        --app-chart-card-h: clamp(292px, 29vh, 326px);
+        --app-list-card-h: clamp(238px, 25vh, 300px);
         --app-dashboard-card-h: var(--app-list-card-h);
         --app-chart-h: calc(var(--app-chart-card-h) - 36px);
-        --app-grid-h: calc(var(--app-list-card-h) - 46px);
+        --app-grid-h: calc(var(--app-list-card-h) - 50px);
         --app-detail-photo-h: clamp(240px, 34vh, 312px);
         --app-search-h: clamp(236px, 28vh, 320px);
     }
@@ -3043,10 +3043,10 @@ def render_return_case_system():
 
     @media (max-height: 850px) {
         :root {
-            --app-page-y: 2.4rem;
-            --app-kpi-h: 82px;
-            --app-chart-card-h: 326px;
-            --app-list-card-h: clamp(300px, 34vh, 340px);
+            --app-page-y: 1.45rem;
+            --app-kpi-h: 102px;
+            --app-chart-card-h: 286px;
+            --app-list-card-h: clamp(220px, 24vh, 260px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-search-h: 240px;
         }
@@ -3054,10 +3054,10 @@ def render_return_case_system():
 
     @media (max-height: 760px) {
         :root {
-            --app-page-y: 2.1rem;
-            --app-kpi-h: 78px;
-            --app-chart-card-h: 310px;
-            --app-list-card-h: clamp(276px, 33vh, 310px);
+            --app-page-y: 1.2rem;
+            --app-kpi-h: 94px;
+            --app-chart-card-h: 250px;
+            --app-list-card-h: clamp(194px, 23vh, 232px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 250px;
             --app-search-h: 220px;
@@ -3073,13 +3073,13 @@ def render_return_case_system():
         .st-key-kpi_etc button,
         .st-key-kpi_horizontal button,
         .st-key-kpi_welding button {
-            height: 62px !important;
-            min-height: 62px !important;
+            height: var(--app-kpi-h) !important;
+            min-height: var(--app-kpi-h) !important;
         }
 
         div[class*="st-key-top5_"] button {
-            height: 34px !important;
-            min-height: 34px !important;
+            height: 30px !important;
+            min-height: 30px !important;
         }
     }
 
@@ -3911,7 +3911,7 @@ def render_return_case_system():
     .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"],
     div[class*="st-key-dashboard_card_top5"] div[data-testid="stVerticalBlock"] {
         min-height: 0 !important;
-        gap: clamp(0.42rem, 0.72vh, 0.72rem) !important;
+        gap: clamp(0.22rem, 0.44vh, 0.42rem) !important;
     }
 
     .st-key-dashboard_card_category [data-testid="stPlotlyChart"] svg text,
@@ -4843,7 +4843,7 @@ def render_return_case_system():
                     )
 
                     fig.update_layout(
-                        height=315,
+                        height=250,
                         margin=dict(
                             l=10,
                             r=10,
@@ -4993,7 +4993,7 @@ def render_return_case_system():
                         )
 
                     fig.update_layout(
-                        height=315,
+                        height=250,
                         margin=dict(
                             l=12,
                             r=10,
@@ -5107,7 +5107,7 @@ def render_return_case_system():
                 grid_response = AgGrid(
                     recent_df,
                     gridOptions=grid_options,
-                    height=360,
+                    height=220,
                     theme="streamlit",
                     fit_columns_on_grid_load=True,
 

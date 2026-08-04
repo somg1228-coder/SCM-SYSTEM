@@ -12990,6 +12990,12 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
 
 .stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stHorizontalBlock"] {
     gap: 0.45rem !important;
+    min-width: 0 !important;
+    width: 100% !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stHorizontalBlock"] > div {
+    min-width: 0 !important;
 }
 
 .stApp div[class*="st-key-inventory_filter_"][class*="_panel"] label,
@@ -13010,6 +13016,21 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     border-color: #CEC5B7 !important;
     color: #24384E !important;
     -webkit-text-fill-color: #24384E !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-baseweb="select"] {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    width: 100% !important;
+}
+
+.stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-baseweb="select"] span {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
 }
 
 .stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stButton"] button {
@@ -14035,6 +14056,146 @@ html {
     .dashboard-shell .order-summary-head span:nth-child(3),
     .dashboard-shell .order-summary-row strong {
         display: none !important;
+    }
+}
+
+/* Meeting page data tables: keep data rows in the beige ERP tone instead of white. */
+.meeting-table-wrap {
+    background: var(--beige-surface) !important;
+    border: 1px solid var(--beige-line) !important;
+    border-radius: 14px !important;
+    overflow: hidden !important;
+}
+
+.meeting-table-wrap table {
+    background: var(--beige-surface) !important;
+    border-collapse: collapse !important;
+    color: var(--beige-body) !important;
+    -webkit-text-fill-color: var(--beige-body) !important;
+    width: 100% !important;
+}
+
+.meeting-table-wrap thead,
+.meeting-table-wrap th {
+    background: #E8E3DC !important;
+    border-bottom: 1px solid var(--beige-line-strong) !important;
+    color: var(--beige-ink) !important;
+    -webkit-text-fill-color: var(--beige-ink) !important;
+}
+
+.meeting-table-wrap tbody,
+.meeting-table-wrap tr {
+    background: var(--beige-surface-3) !important;
+}
+
+.meeting-table-wrap td {
+    background: var(--beige-surface-3) !important;
+    border-bottom: 1px solid #E1DBD2 !important;
+    color: var(--beige-body) !important;
+    -webkit-text-fill-color: var(--beige-body) !important;
+}
+
+.meeting-table-wrap tbody tr:nth-child(even) td {
+    background: var(--beige-surface) !important;
+}
+
+.meeting-table-wrap tbody tr:hover td {
+    background: var(--beige-surface-2) !important;
+}
+
+.meeting-table-wrap .empty-cell {
+    background: var(--beige-surface-3) !important;
+    color: var(--beige-muted) !important;
+    -webkit-text-fill-color: var(--beige-muted) !important;
+    display: table-cell !important;
+    text-align: center !important;
+    width: 100% !important;
+}
+
+div[class*="st-key-meeting_issue_"],
+div[class*="st-key-meeting_issue_"] textarea,
+.meeting-note-box,
+.meeting-selected-event {
+    background: var(--beige-surface) !important;
+    border-color: var(--beige-line) !important;
+    color: var(--beige-body) !important;
+    -webkit-text-fill-color: var(--beige-body) !important;
+}
+
+div[class*="st-key-meeting_issue_"] textarea {
+    background: var(--beige-surface-3) !important;
+    color: var(--beige-ink) !important;
+    -webkit-text-fill-color: var(--beige-ink) !important;
+}
+
+/* Dashboard purchase progress: keep all columns inside the card on laptop widths. */
+.dashboard-shell .purchase-progress-panel {
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+}
+
+.dashboard-shell .purchase-progress-head,
+.dashboard-shell .purchase-progress-row {
+    box-sizing: border-box !important;
+    display: grid !important;
+    gap: clamp(6px, 0.48vw, 9px) !important;
+    grid-template-columns: minmax(0, 1.15fr) minmax(42px, 0.42fr) minmax(0, 0.88fr) !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    width: 100% !important;
+}
+
+.dashboard-shell .purchase-progress-head {
+    min-height: 28px !important;
+    padding: 0 clamp(8px, 0.65vw, 12px) !important;
+}
+
+.dashboard-shell .purchase-progress-row {
+    flex: 0 0 auto !important;
+    min-height: clamp(30px, 3.15vh, 36px) !important;
+    padding: 0 clamp(8px, 0.65vw, 12px) !important;
+}
+
+.dashboard-shell .purchase-progress-head span,
+.dashboard-shell .purchase-progress-row strong,
+.dashboard-shell .purchase-progress-row em,
+.dashboard-shell .purchase-progress-row span {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-shell .purchase-progress-row strong {
+    text-align: left !important;
+}
+
+.dashboard-shell .purchase-progress-row em,
+.dashboard-shell .purchase-progress-row span,
+.dashboard-shell .purchase-progress-head span:nth-child(2),
+.dashboard-shell .purchase-progress-head span:nth-child(3) {
+    text-align: right !important;
+}
+
+.dashboard-shell .purchase-progress-panel .ghost-link {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+@media (max-width: 1280px) and (min-width: 981px) {
+    .dashboard-bottom-grid > .purchase-progress-panel {
+        padding: 12px 13px !important;
+    }
+
+    .dashboard-shell .purchase-progress-head,
+    .dashboard-shell .purchase-progress-row {
+        grid-template-columns: minmax(0, 1.08fr) minmax(38px, 0.38fr) minmax(0, 0.78fr) !important;
     }
 }
 
