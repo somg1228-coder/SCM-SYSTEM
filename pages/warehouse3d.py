@@ -56,6 +56,17 @@ LOCATIONS = {
 
 
 WAREHOUSE_LAYOUT_STORE_NAME = "warehouse3d_layouts.json"
+THREE_VENDOR_DIR = Path(__file__).resolve().parents[1] / "assets" / "vendor" / "three-0.160.0"
+
+
+@st.cache_data(show_spinner=False)
+def warehouse3d_vendor_sources() -> dict:
+    try:
+        three_source = (THREE_VENDOR_DIR / "three.module.js").read_text(encoding="utf-8")
+        controls_source = (THREE_VENDOR_DIR / "OrbitControls.js").read_text(encoding="utf-8")
+    except OSError:
+        return {"three": "", "controls": ""}
+    return {"three": three_source, "controls": controls_source}
 
 
 def warehouse_layout_store_path() -> Path:
@@ -981,9 +992,6 @@ def warehouse_scene_html(
     <html lang="ko">
     <head>
         <meta charset="utf-8">
-        <script type="importmap">
-            {{"imports": {{"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}}}
-        </script>
         <style>
             * {{ box-sizing: border-box; letter-spacing: 0; }}
             body {{
@@ -1742,6 +1750,9 @@ def warehouse_scene3d_html(
     floor_model_payload = json.dumps(FLOOR_MODELS, ensure_ascii=False)
     shared_layout_payload = json.dumps(shared_layout_store or empty_warehouse_layout_store(), ensure_ascii=False)
     location_floors_payload = json.dumps(warehouse_location_floor_options(), ensure_ascii=False)
+    vendor_sources = warehouse3d_vendor_sources()
+    three_source_payload = json.dumps(vendor_sources.get("three", ""))
+    controls_source_payload = json.dumps(vendor_sources.get("controls", ""))
     inventory_payload = json.dumps(
         [
             {
@@ -1769,9 +1780,6 @@ def warehouse_scene3d_html(
     <html lang="ko">
     <head>
         <meta charset="utf-8">
-        <script type="importmap">
-            {{"imports": {{"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}}}
-        </script>
         <style>
             * {{ box-sizing: border-box; letter-spacing: 0; }}
             body {{
@@ -2372,7 +2380,7 @@ def warehouse_scene3d_html(
                         <button class="nav-reset" type="button" data-pan="reset">중앙</button>
                     </div>
                     <div class="model-help">렉/박스 클릭 후 드래그 이동 · 빈 화면 드래그 회전 · 모서리 핸들 크기 조절 · 방향키 이동</div>
-                    <div class="model-error" id="modelError">3D 라이브러리를 불러오지 못했습니다.<br>인터넷 연결 또는 CDN 차단 여부를 확인해주세요.</div>
+                    <div class="model-error" id="modelError">3D 화면을 초기화하지 못했습니다.<br>잠시 후 새로고침하거나 관리자에게 오류 내용을 전달해주세요.</div>
                 </div>
             </section>
             <aside class="panel detail-panel">
@@ -2455,10 +2463,42 @@ def warehouse_scene3d_html(
             </aside>
         </main>
         <script type="module">
-            import * as THREE from "three";
-            import {{ OrbitControls }} from "three/addons/controls/OrbitControls.js";
+            const threeSource = {three_source_payload};
+            const controlsSource = {controls_source_payload};
+
+            function escapeWarehouse3dError(value) {{
+                return String(value ?? "")
+                    .replaceAll("&", "&amp;")
+                    .replaceAll("<", "&lt;")
+                    .replaceAll(">", "&gt;")
+                    .replaceAll('"', "&quot;")
+                    .replaceAll("'", "&#039;");
+            }}
+
+            async function loadLocalWarehouse3dModules() {{
+                if (!threeSource || !controlsSource) {{
+                    throw new Error("로컬 Three.js 파일을 찾지 못했습니다.");
+                }}
+                const threeUrl = URL.createObjectURL(new Blob([threeSource], {{ type: "text/javascript" }}));
+                const patchedControlsSource = controlsSource.replace(/from\\s+['"]three['"]\\s*;/g, `from ${{JSON.stringify(threeUrl)}};`);
+                if (patchedControlsSource === controlsSource && /from\\s+['"]three['"]/.test(controlsSource)) {{
+                    throw new Error("OrbitControls의 Three.js import 경로를 로컬 파일로 바꾸지 못했습니다.");
+                }}
+                const controlsUrl = URL.createObjectURL(new Blob([patchedControlsSource], {{ type: "text/javascript" }}));
+                try {{
+                    const threeModule = await import(threeUrl);
+                    const controlsModule = await import(controlsUrl);
+                    return {{ THREE: threeModule, OrbitControls: controlsModule.OrbitControls }};
+                }} finally {{
+                    setTimeout(() => {{
+                        URL.revokeObjectURL(threeUrl);
+                        URL.revokeObjectURL(controlsUrl);
+                    }}, 1000);
+                }}
+            }}
 
             try {{
+            const {{ THREE, OrbitControls }} = await loadLocalWarehouse3dModules();
 
             const defaultRacks = {payload};
             const defaultRacksByFloor = {floor_payload};
@@ -5437,7 +5477,7 @@ def warehouse_scene3d_html(
                 console.error("Warehouse 3D startup failed", error);
                 const modelError = document.getElementById("modelError");
                 if (modelError) {{
-                    modelError.innerHTML = `3D 초기화 오류<br><small>${{escapeHtml(error?.message || error)}}</small>`;
+                    modelError.innerHTML = `3D 초기화 오류<br><small>${{escapeWarehouse3dError(error?.message || error)}}</small>`;
                     modelError.style.display = "flex";
                 }}
             }}
