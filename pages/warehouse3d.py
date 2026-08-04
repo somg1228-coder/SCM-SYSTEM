@@ -5533,6 +5533,7 @@ def warehouse_scene3d_html(
             setZoom(100);
             rebuildScene();
             canvas.dataset.ready = "true";
+            scheduleServerLayoutSave(900);
             animate();
             window.addEventListener("resize", resizeRenderer);
             }} catch (error) {{
