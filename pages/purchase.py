@@ -183,6 +183,13 @@ PDF_MIME = "application/pdf"
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 MALGUN_FONT = "Malgun"
 MALGUN_BOLD_FONT = "Malgun-Bold"
+PURCHASE_BUDGET_STORE_NAME = "purchase_budgets.json"
+BUDGET_SUBTABS = ["연간 예산", "분기 예산", "월별 예산", "예산 사용현황", "예산 승인"]
+BUDGET_CATEGORIES = ["포장재", "소모품", "설비", "기타"]
+BUDGET_FORM_CATEGORIES = ["전체"] + BUDGET_CATEGORIES
+BUDGET_STATUSES = ["작성", "승인요청", "승인", "반려", "마감"]
+BUDGET_APPROVAL_STATUSES = ["요청", "승인대기", "승인", "반려"]
+BUDGET_APPROVED_PO_PROGRESS = {"발주완료", "입고진행", "종결"}
 
 
 def render_purchase_page() -> None:
@@ -194,8 +201,8 @@ def render_purchase_page() -> None:
         st.error(PURCHASE_IMPORT_ERROR or "구매관리 DB를 초기화하지 못했습니다.")
         return
 
-    pr_tab, rfq_tab, po_tab, supplier_tab, price_tab, kpi_tab, doc_tab = st.tabs(
-        ["구매요청(PR)", "견적관리(RFQ)", "발주관리(PO)", "협력사관리", "단가이력", "구매 KPI", "문서/다운로드"]
+    pr_tab, rfq_tab, po_tab, supplier_tab, budget_tab, price_tab, kpi_tab, doc_tab = st.tabs(
+        ["구매요청(PR)", "견적관리(RFQ)", "발주관리(PO)", "협력사관리", "예산관리", "단가이력", "구매 KPI", "문서/다운로드"]
     )
     with pr_tab:
         render_pr_tab()
@@ -205,6 +212,8 @@ def render_purchase_page() -> None:
         render_po_tab()
     with supplier_tab:
         render_supplier_tab()
+    with budget_tab:
+        render_budget_tab()
     with price_tab:
         render_price_history_tab()
     with kpi_tab:
@@ -623,6 +632,335 @@ def render_supplier_tab() -> None:
             st.error("등급 이력 DB 모델이 아직 배포되지 않았습니다. backend/models.py 변경사항까지 배포한 뒤 다시 실행해주세요.")
             return
         render_supplier_history_tab()
+
+
+def render_budget_tab() -> None:
+    selected_subtab = st.radio(
+        "예산관리 내부 하위 탭",
+        BUDGET_SUBTABS,
+        horizontal=True,
+        index=safe_index(BUDGET_SUBTABS, query_value("budget_subtab"), 0),
+        label_visibility="collapsed",
+        key="budget_subtab_nav",
+    )
+    st.query_params["budget_subtab"] = selected_subtab
+    store = load_purchase_budget_store()
+    usage_rows = with_db(lambda db: purchase_budget_usage_rows(db)) or []
+    if selected_subtab == "연간 예산":
+        render_annual_budget_tab(store, usage_rows)
+    elif selected_subtab == "분기 예산":
+        render_quarter_budget_tab(store, usage_rows)
+    elif selected_subtab == "월별 예산":
+        render_monthly_budget_tab(store, usage_rows)
+    elif selected_subtab == "예산 사용현황":
+        render_budget_usage_tab(store, usage_rows)
+    elif selected_subtab == "예산 승인":
+        render_budget_approval_tab(store)
+
+
+def purchase_budget_store_path() -> Path:
+    path = Path(__file__).resolve().parents[1] / "data"
+    path.mkdir(parents=True, exist_ok=True)
+    return path / PURCHASE_BUDGET_STORE_NAME
+
+
+def empty_purchase_budget_store() -> dict:
+    return {"version": 1, "budgets": [], "approvals": []}
+
+
+def load_purchase_budget_store() -> dict:
+    path = purchase_budget_store_path()
+    if not path.exists():
+        return empty_purchase_budget_store()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return empty_purchase_budget_store()
+    if not isinstance(payload, dict):
+        return empty_purchase_budget_store()
+    payload.setdefault("version", 1)
+    if not isinstance(payload.get("budgets"), list):
+        payload["budgets"] = []
+    if not isinstance(payload.get("approvals"), list):
+        payload["approvals"] = []
+    return payload
+
+
+def save_purchase_budget_store(store: dict) -> None:
+    payload = empty_purchase_budget_store()
+    if isinstance(store, dict):
+        payload["budgets"] = [row for row in store.get("budgets", []) if isinstance(row, dict)]
+        payload["approvals"] = [row for row in store.get("approvals", []) if isinstance(row, dict)]
+    purchase_budget_store_path().write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def budget_record_id(year: int, department: str, category: str) -> str:
+    return f"{int(year)}::{clean_text(department) or '공통'}::{clean_text(category) or '전체'}"
+
+
+def default_budget_record() -> dict:
+    today = date.today().isoformat()
+    return {
+        "id": budget_record_id(date.today().year, "공통", "전체"),
+        "year": date.today().year,
+        "department": "공통",
+        "category": "전체",
+        "manager": "",
+        "registered_at": today,
+        "updated_at": today,
+        "status": "작성",
+        "details": {
+            category: {"budget_amount": 0.0, "memo": ""}
+            for category in BUDGET_CATEGORIES
+        },
+        "quarterly": {f"Q{index}": 0.0 for index in range(1, 5)},
+        "monthly": {f"{index}월": 0.0 for index in range(1, 13)},
+    }
+
+
+def normalized_budget_record(record: dict | None) -> dict:
+    base = default_budget_record()
+    if isinstance(record, dict):
+        base.update(record)
+    base["year"] = int(to_float(base.get("year")) or date.today().year)
+    base["department"] = clean_text(base.get("department")) or "공통"
+    base["category"] = clean_text(base.get("category")) or "전체"
+    base["status"] = base.get("status") if base.get("status") in BUDGET_STATUSES else "작성"
+    base["id"] = base.get("id") or budget_record_id(base["year"], base["department"], base["category"])
+    details = base.get("details") if isinstance(base.get("details"), dict) else {}
+    base["details"] = {
+        category: {
+            "budget_amount": max(to_float(details.get(category, {}).get("budget_amount")), 0.0),
+            "memo": clean_text(details.get(category, {}).get("memo")),
+        }
+        for category in BUDGET_CATEGORIES
+    }
+    quarterly = base.get("quarterly") if isinstance(base.get("quarterly"), dict) else {}
+    base["quarterly"] = {f"Q{index}": max(to_float(quarterly.get(f"Q{index}")), 0.0) for index in range(1, 5)}
+    monthly = base.get("monthly") if isinstance(base.get("monthly"), dict) else {}
+    base["monthly"] = {f"{index}월": max(to_float(monthly.get(f"{index}월")), 0.0) for index in range(1, 13)}
+    return base
+
+
+def budget_options(store: dict) -> list[dict]:
+    records = [normalized_budget_record(row) for row in store.get("budgets", []) if isinstance(row, dict)]
+    return sorted(records, key=lambda row: (int(row.get("year", 0)), row.get("department", ""), row.get("category", "")), reverse=True)
+
+
+def budget_option_label(record: dict) -> str:
+    return f"{record.get('year')} / {record.get('department')} / {record.get('category')} / {record.get('status')}"
+
+
+def select_budget_record(store: dict, key: str) -> dict:
+    records = budget_options(store)
+    labels = ["신규 예산 작성"] + [budget_option_label(row) for row in records]
+    selected_label = st.selectbox("예산 선택", labels, key=key)
+    if selected_label == "신규 예산 작성":
+        return default_budget_record()
+    return records[labels.index(selected_label) - 1]
+
+
+def upsert_budget_record(store: dict, record: dict) -> None:
+    record = normalized_budget_record(record)
+    record["id"] = budget_record_id(record["year"], record["department"], record["category"])
+    budgets = [normalized_budget_record(row) for row in store.get("budgets", []) if isinstance(row, dict)]
+    replaced = False
+    for index, existing in enumerate(budgets):
+        if existing.get("id") == record["id"]:
+            budgets[index] = record
+            replaced = True
+            break
+    if not replaced:
+        budgets.append(record)
+    store["budgets"] = budgets
+    save_purchase_budget_store(store)
+
+
+def render_annual_budget_tab(store: dict, usage_rows: list[dict]) -> None:
+    selected = select_budget_record(store, "budget_annual_select")
+    record = normalized_budget_record(selected)
+    year = int(record["year"])
+    department = record["department"]
+    category = record["category"]
+    usage_by_category = budget_usage_by_category(usage_rows, year, department)
+
+    st.markdown('<div class="purchase-section-title">예산 기본정보</div>', unsafe_allow_html=True)
+    info_cols = st.columns([0.7, 1.0, 0.9, 0.9, 0.85, 0.85, 0.8], gap="small")
+    year_value = info_cols[0].number_input("예산연도", min_value=2020, max_value=2100, value=year, step=1, key=f"budget_year_{record['id']}")
+    department_value = info_cols[1].text_input("부서", value=department, key=f"budget_department_{record['id']}")
+    category_value = info_cols[2].selectbox("카테고리", BUDGET_FORM_CATEGORIES, index=safe_index(BUDGET_FORM_CATEGORIES, category, 0), key=f"budget_category_{record['id']}")
+    manager_value = info_cols[3].text_input("담당자", value=str(record.get("manager", "")), key=f"budget_manager_{record['id']}")
+    registered_at = info_cols[4].date_input("등록일", value=parse_date(record.get("registered_at")) or date.today(), key=f"budget_registered_{record['id']}")
+    updated_at = info_cols[5].date_input("수정일", value=parse_date(record.get("updated_at")) or date.today(), key=f"budget_updated_{record['id']}")
+    status_value = info_cols[6].selectbox("상태", BUDGET_STATUSES, index=safe_index(BUDGET_STATUSES, record.get("status"), 0), key=f"budget_status_{record['id']}")
+
+    saved_total_budget = budget_record_total(record) if category_value == "전체" else to_float(record["details"].get(category_value, {}).get("budget_amount"))
+    saved_total_used = sum(usage_by_category.values()) if category_value == "전체" else usage_by_category.get(category_value, 0.0)
+    st.markdown('<div class="purchase-section-title">예산 KPI</div>', unsafe_allow_html=True)
+    render_budget_kpi_cards(saved_total_budget, saved_total_used)
+
+    st.markdown('<div class="purchase-section-title">예산 상세</div>', unsafe_allow_html=True)
+    details = {}
+    for budget_category in BUDGET_CATEGORIES:
+        with st.expander(budget_category, expanded=True):
+            saved_detail = record["details"].get(budget_category, {})
+            auto_used = usage_by_category.get(budget_category, 0.0)
+            budget_amount = st.number_input(
+                "예산금액",
+                min_value=0.0,
+                step=100000.0,
+                value=max(to_float(saved_detail.get("budget_amount")), 0.0),
+                format=price_input_format(),
+                key=f"budget_detail_amount_{record['id']}_{budget_category}",
+            )
+            usage_cols = st.columns([1.0, 1.0, 1.0, 1.5], gap="small")
+            remaining = budget_amount - auto_used
+            usage_rate = budget_usage_rate(auto_used, budget_amount)
+            usage_cols[0].number_input("사용금액", value=float(auto_used), min_value=0.0, format=price_input_format(), disabled=True, key=f"budget_detail_used_{record['id']}_{budget_category}")
+            usage_cols[1].number_input("잔여예산", value=float(remaining), format=price_input_format(), disabled=True, key=f"budget_detail_remaining_{record['id']}_{budget_category}")
+            usage_cols[2].text_input("사용률", value=f"{usage_rate:.1f}%", disabled=True, key=f"budget_detail_rate_{record['id']}_{budget_category}")
+            memo = usage_cols[3].text_input("비고", value=clean_text(saved_detail.get("memo")), key=f"budget_detail_memo_{record['id']}_{budget_category}")
+            details[budget_category] = {"budget_amount": float(budget_amount), "memo": memo}
+
+    action_cols = st.columns([1.0, 4.0], gap="small")
+    if action_cols[0].button("예산 저장", type="primary", use_container_width=True, key=f"budget_annual_save_{record['id']}"):
+        record.update(
+            {
+                "year": int(year_value),
+                "department": department_value,
+                "category": category_value,
+                "manager": manager_value,
+                "registered_at": registered_at.isoformat(),
+                "updated_at": updated_at.isoformat(),
+                "status": status_value,
+                "details": details,
+            }
+        )
+        upsert_budget_record(store, record)
+        st.success("연간 예산을 저장했습니다.")
+        st.rerun()
+    action_cols[1].caption("사용금액은 승인/진행된 PO 금액을 기준으로 자동 반영됩니다.")
+
+
+def render_quarter_budget_tab(store: dict, usage_rows: list[dict]) -> None:
+    record = normalized_budget_record(select_budget_record(store, "budget_quarter_select"))
+    st.markdown('<div class="purchase-section-title">분기 예산</div>', unsafe_allow_html=True)
+    selected_quarter = st.radio("평가분기", ["Q1", "Q2", "Q3", "Q4"], horizontal=True, key=f"budget_quarter_radio_{record['id']}")
+    quarter_usage = budget_usage_amount(usage_rows, record["year"], record["department"], record["category"], quarter=selected_quarter)
+    cols = st.columns([1.0, 1.0, 1.0, 1.0], gap="small")
+    quarter_budget = cols[0].number_input("계획예산", min_value=0.0, step=100000.0, value=float(record["quarterly"].get(selected_quarter, 0.0)), format=price_input_format(), key=f"quarter_budget_{record['id']}_{selected_quarter}")
+    cols[1].number_input("실사용금액", value=float(quarter_usage), min_value=0.0, format=price_input_format(), disabled=True, key=f"quarter_used_{record['id']}_{selected_quarter}")
+    cols[2].number_input("잔액", value=float(quarter_budget - quarter_usage), format=price_input_format(), disabled=True, key=f"quarter_remaining_{record['id']}_{selected_quarter}")
+    cols[3].text_input("사용률", value=f"{budget_usage_rate(quarter_usage, quarter_budget):.1f}%", disabled=True, key=f"quarter_rate_{record['id']}_{selected_quarter}")
+    render_budget_kpi_cards(sum(record["quarterly"].values()) - record["quarterly"].get(selected_quarter, 0) + quarter_budget, budget_usage_amount(usage_rows, record["year"], record["department"], record["category"]))
+    if st.button("분기 예산 저장", type="primary", use_container_width=True, key=f"quarter_budget_save_{record['id']}_{selected_quarter}"):
+        record["quarterly"][selected_quarter] = float(quarter_budget)
+        record["updated_at"] = date.today().isoformat()
+        upsert_budget_record(store, record)
+        st.success("분기 예산을 저장했습니다.")
+        st.rerun()
+
+
+def render_monthly_budget_tab(store: dict, usage_rows: list[dict]) -> None:
+    record = normalized_budget_record(select_budget_record(store, "budget_month_select"))
+    st.markdown('<div class="purchase-section-title">월별 예산</div>', unsafe_allow_html=True)
+    rows = []
+    for month in range(1, 13):
+        month_name = f"{month}월"
+        planned = float(record["monthly"].get(month_name, 0.0))
+        used = budget_usage_amount(usage_rows, record["year"], record["department"], record["category"], month=month)
+        rows.append(
+            {
+                "월": month_name,
+                "계획예산": planned,
+                "실사용금액": used,
+                "잔액": planned - used,
+                "사용률": budget_usage_rate(used, planned),
+            }
+        )
+    edited = st.data_editor(
+        pd.DataFrame(rows),
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "계획예산": st.column_config.NumberColumn("계획예산", min_value=0.0, step=100000.0, format=price_input_format()),
+            "실사용금액": st.column_config.NumberColumn("실사용금액", format=price_input_format()),
+            "잔액": st.column_config.NumberColumn("잔액", format=price_input_format()),
+            "사용률": st.column_config.ProgressColumn("사용률", min_value=0, max_value=100, format="%.1f%%"),
+        },
+        disabled=["월", "실사용금액", "잔액", "사용률"],
+        height=430,
+        key=f"budget_month_editor_{record['id']}",
+    )
+    if st.button("월별 예산 저장", type="primary", use_container_width=True, key=f"budget_month_save_{record['id']}"):
+        for row in edited.to_dict("records"):
+            record["monthly"][str(row.get("월"))] = max(to_float(row.get("계획예산")), 0.0)
+        record["updated_at"] = date.today().isoformat()
+        upsert_budget_record(store, record)
+        st.success("월별 예산을 저장했습니다.")
+        st.rerun()
+
+
+def render_budget_usage_tab(store: dict, usage_rows: list[dict]) -> None:
+    st.markdown('<div class="purchase-section-title">예산 사용현황</div>', unsafe_allow_html=True)
+    filter_cols = st.columns([0.72, 0.72, 0.72, 1.0, 1.0, 1.35], gap="small")
+    budget_records = budget_options(store)
+    year_options = ["전체"] + sorted(
+        {str(row.get("year")) for row in budget_records if row.get("year")}
+        | {str(row.get("연도")) for row in usage_rows if row.get("연도")},
+        reverse=True,
+    )
+    year_filter = filter_cols[0].selectbox("연도", year_options, key="budget_usage_year_filter")
+    quarter_filter = filter_cols[1].selectbox("분기", ["전체", "Q1", "Q2", "Q3", "Q4"], key="budget_usage_quarter_filter")
+    month_filter = filter_cols[2].selectbox("월", ["전체"] + [f"{index}월" for index in range(1, 13)], key="budget_usage_month_filter")
+    department_options = ["전체"] + sorted(
+        {clean_text(row.get("department")) for row in budget_records if clean_text(row.get("department"))}
+        | {clean_text(row.get("부서")) for row in usage_rows if clean_text(row.get("부서"))}
+    )
+    department_filter = filter_cols[3].selectbox("부서", department_options, key="budget_usage_department_filter")
+    category_filter = filter_cols[4].selectbox("카테고리", ["전체"] + BUDGET_CATEGORIES, key="budget_usage_category_filter")
+    keyword = clean_text(filter_cols[5].text_input("검색", placeholder="부서, 카테고리, 상태", key="budget_usage_keyword"))
+    month_number = int(month_filter.replace("월", "")) if month_filter != "전체" else None
+    budget_rows = budget_usage_status_rows(store, usage_rows, quarter_filter, month_number)
+    filtered = filter_budget_usage_rows(budget_rows, year_filter, quarter_filter, month_filter, department_filter, category_filter, keyword)
+    if not filtered:
+        st.info("검색 조건에 맞는 예산 사용현황이 없습니다.")
+    df = pd.DataFrame(filtered, columns=["연도", "부서", "카테고리", "예산", "사용", "잔액", "사용률", "상태"])
+    st.dataframe(style_budget_usage_dataframe(df), hide_index=True, use_container_width=True, height=380)
+
+
+def render_budget_approval_tab(store: dict) -> None:
+    st.markdown('<div class="purchase-section-title">예산 승인</div>', unsafe_allow_html=True)
+    approvals = [row for row in store.get("approvals", []) if isinstance(row, dict)]
+    with st.form("budget_approval_form", clear_on_submit=True):
+        cols = st.columns([1.0, 0.9, 0.9, 0.85, 1.0, 1.5, 0.8], gap="small")
+        approval_number = cols[0].text_input("승인번호", value=next_budget_approval_number(approvals), key="budget_approval_number")
+        requester = cols[1].text_input("요청자", key="budget_approval_requester")
+        approver = cols[2].text_input("승인자", key="budget_approval_approver")
+        approval_date = cols[3].date_input("승인일", value=date.today(), key="budget_approval_date")
+        change_amount = cols[4].number_input("변경금액", step=100000.0, value=0.0, format=price_input_format(), key="budget_approval_amount")
+        change_reason = cols[5].text_input("변경사유", key="budget_approval_reason")
+        status = cols[6].selectbox("상태", BUDGET_APPROVAL_STATUSES, key="budget_approval_status")
+        if st.form_submit_button("예산 승인 저장", type="primary", use_container_width=True):
+            approvals.append(
+                {
+                    "승인번호": approval_number,
+                    "요청자": requester,
+                    "승인자": approver,
+                    "승인일": approval_date.isoformat(),
+                    "변경금액": float(change_amount),
+                    "변경사유": change_reason,
+                    "상태": status,
+                }
+            )
+            store["approvals"] = approvals
+            save_purchase_budget_store(store)
+            st.success("예산 승인 정보를 저장했습니다.")
+            st.rerun()
+    if approvals:
+        st.dataframe(center_aligned_dataframe(pd.DataFrame(approvals)), hide_index=True, use_container_width=True, height=260)
+    else:
+        st.caption("저장된 예산 승인 이력이 없습니다.")
 
 
 def render_supplier_list_tab() -> None:
@@ -1291,6 +1629,248 @@ def format_price_columns_for_display(df: pd.DataFrame) -> pd.DataFrame:
         if column in PRICE_DECIMAL_COLUMNS:
             display_df[column] = display_df[column].map(format_decimal_display)
     return display_df
+
+
+def purchase_budget_usage_rows(db: Session) -> list[dict]:
+    pr_by_number = {row.pr_number: row for row in list_purchase_requests(db)}
+    rows = []
+    for po in list_purchase_orders(db):
+        if po.progress_status not in BUDGET_APPROVED_PO_PROGRESS:
+            continue
+        order_date = po.order_date or date.today()
+        pr = pr_by_number.get(po.pr_number)
+        rows.append(
+            {
+                "연도": order_date.year,
+                "분기": f"Q{((order_date.month - 1) // 3) + 1}",
+                "월": order_date.month,
+                "부서": clean_text(getattr(pr, "department", "")) or "공통",
+                "카테고리": classify_purchase_budget_category(po.item_name, getattr(pr, "item_code", ""), po.spec),
+                "예산": 0.0,
+                "사용": max(to_float(po.order_amount), 0.0),
+                "발주번호": po.po_number,
+                "품목": po.item_name,
+                "상태": po.progress_status,
+            }
+        )
+    return rows
+
+
+def classify_purchase_budget_category(*values) -> str:
+    text = " ".join(clean_text(value).lower() for value in values if clean_text(value))
+    if any(token in text for token in ["box", "carton", "label", "tape", "film", "wrap", "박스", "포장", "라벨", "테이프", "필름", "랩핑", "파렛트"]):
+        return "포장재"
+    if any(token in text for token in ["설비", "장비", "machine", "equipment", "수리", "부품", "금형", "공구"]):
+        return "설비"
+    if any(token in text for token in ["소모", "장갑", "마스크", "테이프", "청소", "문구", "consumable"]):
+        return "소모품"
+    return "기타"
+
+
+def budget_usage_rate(used: float, budget: float) -> float:
+    if budget <= 0:
+        return 0.0 if used <= 0 else 100.0
+    return used / budget * 100
+
+
+def budget_usage_status(rate: float, remaining: float) -> str:
+    if rate > 100 or remaining < 0:
+        return "예산 초과"
+    if rate >= 100:
+        return "소진"
+    if rate >= 80:
+        return "주의"
+    return "정상"
+
+
+def budget_usage_amount(
+    usage_rows: list[dict],
+    year: int,
+    department: str = "전체",
+    category: str = "전체",
+    quarter: str = "전체",
+    month: int | None = None,
+) -> float:
+    total = 0.0
+    for row in usage_rows:
+        if int(row.get("연도") or 0) != int(year):
+            continue
+        if department not in {"", "전체", "공통"} and row.get("부서") != department:
+            continue
+        if category not in {"", "전체"} and row.get("카테고리") != category:
+            continue
+        if quarter not in {"", "전체"} and row.get("분기") != quarter:
+            continue
+        if month is not None and int(row.get("월") or 0) != int(month):
+            continue
+        total += to_float(row.get("사용"))
+    return total
+
+
+def budget_usage_by_category(usage_rows: list[dict], year: int, department: str) -> dict[str, float]:
+    result = {category: 0.0 for category in BUDGET_CATEGORIES}
+    for category in BUDGET_CATEGORIES:
+        result[category] = budget_usage_amount(usage_rows, year, department, category)
+    return result
+
+
+def budget_record_total(record: dict) -> float:
+    record = normalized_budget_record(record)
+    return sum(to_float(detail.get("budget_amount")) for detail in record["details"].values())
+
+
+def render_budget_kpi_cards(total_budget: float, total_used: float) -> None:
+    remaining = total_budget - total_used
+    rate = budget_usage_rate(total_used, total_budget)
+    cols = st.columns(4, gap="small")
+    cols[0].metric("총 예산", format_decimal_display(total_budget))
+    cols[1].metric("총 사용금액", format_decimal_display(total_used))
+    cols[2].metric("잔여예산", format_decimal_display(remaining))
+    cols[3].metric("예산 사용률", f"{rate:.1f}%")
+    if rate > 100 or remaining < 0:
+        st.error("예산 초과")
+    elif rate >= 100:
+        st.error("예산 소진")
+    elif rate >= 80:
+        st.warning("예산 사용률이 80% 이상입니다.")
+
+
+def budget_usage_status_rows(store: dict, usage_rows: list[dict], quarter: str = "전체", month: int | None = None) -> list[dict]:
+    rows = []
+    budgets = budget_options(store)
+    if budgets:
+        for record in budgets:
+            record = normalized_budget_record(record)
+            categories = BUDGET_CATEGORIES if record.get("category") == "전체" else [record.get("category")]
+            for category in categories:
+                budget = budget_period_amount(record, category, quarter, month)
+                used = budget_usage_amount(usage_rows, record["year"], record["department"], category, quarter=quarter, month=month)
+                remaining = budget - used
+                rate = budget_usage_rate(used, budget)
+                rows.append(
+                    {
+                        "연도": record["year"],
+                        "분기": quarter,
+                        "월": f"{month}월" if month else "전체",
+                        "부서": record["department"],
+                        "카테고리": category,
+                        "예산": budget,
+                        "사용": used,
+                        "잔액": remaining,
+                        "사용률": rate,
+                        "상태": budget_usage_status(rate, remaining),
+                    }
+                )
+        return rows
+    grouped: dict[tuple, float] = {}
+    for usage in usage_rows:
+        if quarter not in {"", "전체"} and usage.get("분기") != quarter:
+            continue
+        if month is not None and int(usage.get("월") or 0) != int(month):
+            continue
+        key = (usage.get("연도"), usage.get("부서"), usage.get("카테고리"))
+        grouped[key] = grouped.get(key, 0.0) + to_float(usage.get("사용"))
+    for (year, department, category), used in grouped.items():
+        rows.append(
+            {
+                "연도": year,
+                "분기": quarter,
+                "월": f"{month}월" if month else "전체",
+                "부서": department,
+                "카테고리": category,
+                "예산": 0.0,
+                "사용": used,
+                "잔액": -used,
+                "사용률": 100.0 if used else 0.0,
+                "상태": "예산 초과" if used else "정상",
+            }
+        )
+    return rows
+
+
+def budget_period_amount(record: dict, category: str, quarter: str = "전체", month: int | None = None) -> float:
+    record = normalized_budget_record(record)
+    annual_amount = to_float(record["details"].get(category, {}).get("budget_amount"))
+    if month is not None:
+        monthly_total = to_float(record["monthly"].get(f"{month}월"))
+        if record.get("category") != "전체" and monthly_total:
+            return monthly_total
+        return annual_amount / 12
+    if quarter not in {"", "전체"}:
+        quarterly_total = to_float(record["quarterly"].get(quarter))
+        if record.get("category") != "전체" and quarterly_total:
+            return quarterly_total
+        return annual_amount / 4
+    return annual_amount
+
+
+def filter_budget_usage_rows(
+    rows: list[dict],
+    year_filter: str,
+    quarter_filter: str,
+    month_filter: str,
+    department_filter: str,
+    category_filter: str,
+    keyword: str,
+) -> list[dict]:
+    keyword = clean_text(keyword).lower()
+    result = []
+    for row in rows:
+        if year_filter != "전체" and str(row.get("연도")) != year_filter:
+            continue
+        if quarter_filter != "전체" and row.get("분기") != quarter_filter:
+            continue
+        if month_filter != "전체" and row.get("월") != month_filter:
+            continue
+        if department_filter != "전체" and row.get("부서") != department_filter:
+            continue
+        if category_filter != "전체" and row.get("카테고리") != category_filter:
+            continue
+        haystack = " ".join(clean_text(row.get(column)).lower() for column in ["부서", "카테고리", "상태"])
+        if keyword and keyword not in haystack:
+            continue
+        result.append(row)
+    return result
+
+
+def style_budget_usage_dataframe(df: pd.DataFrame):
+    if df.empty:
+        return df
+    display_df = df.copy()
+    for column in ["예산", "사용", "잔액"]:
+        if column in display_df.columns:
+            display_df[column] = display_df[column].map(format_decimal_display)
+    if "사용률" in display_df.columns:
+        display_df["사용률"] = display_df["사용률"].map(lambda value: f"{to_float(value):.1f}%")
+
+    def style_status(row):
+        rate = to_float(str(row.get("사용률", "0")).replace("%", ""))
+        remaining = to_float(str(row.get("잔액", "0")).replace(",", ""))
+        if row.get("상태") == "예산 초과" or rate >= 100 or remaining < 0:
+            color = "background-color: #f0dcdd; color: #7f2d34; font-weight: 850;"
+        elif rate >= 80:
+            color = "background-color: #f2e4d8; color: #7c451e; font-weight: 850;"
+        else:
+            color = "background-color: #dcebe2; color: #1f5132; font-weight: 850;"
+        return [color if column in {"사용률", "상태"} else "" for column in row.index]
+
+    return display_df.style.apply(style_status, axis=1).set_properties(**{"text-align": "center"}).set_table_styles(
+        [{"selector": "th", "props": [("text-align", "center")]}]
+    )
+
+
+def next_budget_approval_number(approvals: list[dict]) -> str:
+    today = date.today()
+    prefix = f"BA-{today:%Y%m%d}"
+    numbers = []
+    for row in approvals:
+        number = clean_text(row.get("승인번호"))
+        if number.startswith(prefix):
+            try:
+                numbers.append(int(number.rsplit("-", 1)[-1]))
+            except ValueError:
+                continue
+    return f"{prefix}-{max(numbers or [0]) + 1:03d}"
 
 
 def filter_supplier_rows(
@@ -4167,7 +4747,8 @@ def inject_purchase_css() -> None:
         [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
             background-color: #536d84 !important;
         }
-        div[role="radiogroup"][aria-label="협력사관리 내부 하위 탭"] {
+        div[role="radiogroup"][aria-label="협력사관리 내부 하위 탭"],
+        div[role="radiogroup"][aria-label="예산관리 내부 하위 탭"] {
             display: flex;
             flex-wrap: nowrap;
             gap: 0.25rem;
@@ -4178,13 +4759,15 @@ def inject_purchase_css() -> None:
             padding: 0.25rem;
             margin: 0.4rem 0 0.8rem;
         }
-        div[role="radiogroup"][aria-label="협력사관리 내부 하위 탭"] label {
+        div[role="radiogroup"][aria-label="협력사관리 내부 하위 탭"] label,
+        div[role="radiogroup"][aria-label="예산관리 내부 하위 탭"] label {
             min-width: max-content;
             background: transparent !important;
             border-radius: 6px;
             padding: 0.22rem 0.55rem;
         }
-        div[role="radiogroup"][aria-label="협력사관리 내부 하위 탭"] label:has(input:checked) {
+        div[role="radiogroup"][aria-label="협력사관리 내부 하위 탭"] label:has(input:checked),
+        div[role="radiogroup"][aria-label="예산관리 내부 하위 탭"] label:has(input:checked) {
             background: #e7e1d8 !important;
             color: #304257 !important;
             font-weight: 800 !important;

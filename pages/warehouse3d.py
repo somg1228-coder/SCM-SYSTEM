@@ -1,8 +1,10 @@
 ﻿from __future__ import annotations
 
 import base64
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import tempfile
+import threading
 from html import escape
 from pathlib import Path
 
@@ -57,6 +59,10 @@ LOCATIONS = {
 
 WAREHOUSE_LAYOUT_STORE_NAME = "warehouse3d_layouts.json"
 THREE_VENDOR_DIR = Path(__file__).resolve().parents[1] / "assets" / "vendor" / "three-0.160.0"
+WAREHOUSE_LAYOUT_API_PORTS = range(8765, 8775)
+_WAREHOUSE_LAYOUT_API_SERVER = None
+_WAREHOUSE_LAYOUT_API_PORT = None
+_WAREHOUSE_LAYOUT_API_LOCK = threading.RLock()
 
 
 @st.cache_data(show_spinner=False)
@@ -70,6 +76,13 @@ def warehouse3d_vendor_sources() -> dict:
 
 
 def warehouse_layout_store_path() -> Path:
+    project_data_dir = Path(__file__).resolve().parents[1] / "data"
+    try:
+        project_data_dir.mkdir(parents=True, exist_ok=True)
+        return project_data_dir / WAREHOUSE_LAYOUT_STORE_NAME
+    except OSError:
+        pass
+
     if writable_runtime_data_dir is not None:
         try:
             data_dir = writable_runtime_data_dir()
@@ -117,6 +130,76 @@ def save_warehouse_layout_store(payload: dict) -> Path:
     path = warehouse_layout_store_path()
     path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
+
+
+class WarehouseLayoutApiHandler(BaseHTTPRequestHandler):
+    server_version = "SCMWarehouseLayout/1.0"
+
+    def _send_cors_headers(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def _send_json(self, status: int, payload: dict) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self._send_cors_headers()
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self._send_cors_headers()
+        self.end_headers()
+
+    def do_GET(self) -> None:
+        if self.path.split("?", 1)[0] != "/warehouse3d-layout":
+            self._send_json(404, {"ok": False, "error": "not found"})
+            return
+        with _WAREHOUSE_LAYOUT_API_LOCK:
+            payload = load_warehouse_layout_store()
+        self._send_json(200, {"ok": True, "layout": payload})
+
+    def do_POST(self) -> None:
+        if self.path.split("?", 1)[0] != "/warehouse3d-layout":
+            self._send_json(404, {"ok": False, "error": "not found"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            raw_body = self.rfile.read(min(length, 8_000_000))
+            payload = json.loads(raw_body.decode("utf-8-sig") if raw_body else "{}")
+            with _WAREHOUSE_LAYOUT_API_LOCK:
+                save_warehouse_layout_store(payload)
+                saved = load_warehouse_layout_store()
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            self._send_json(400, {"ok": False, "error": str(exc)})
+            return
+        self._send_json(200, {"ok": True, "layout": saved})
+
+    def log_message(self, format: str, *args) -> None:
+        return
+
+
+def ensure_warehouse_layout_api_server() -> int | None:
+    global _WAREHOUSE_LAYOUT_API_PORT
+    global _WAREHOUSE_LAYOUT_API_SERVER
+
+    if _WAREHOUSE_LAYOUT_API_SERVER is not None and _WAREHOUSE_LAYOUT_API_PORT is not None:
+        return _WAREHOUSE_LAYOUT_API_PORT
+
+    for port in WAREHOUSE_LAYOUT_API_PORTS:
+        try:
+            server = ThreadingHTTPServer(("0.0.0.0", port), WarehouseLayoutApiHandler)
+        except OSError:
+            continue
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        _WAREHOUSE_LAYOUT_API_SERVER = server
+        _WAREHOUSE_LAYOUT_API_PORT = port
+        return port
+    return None
 
 
 def render_warehouse_layout_sync_tools() -> dict:
@@ -1753,6 +1836,8 @@ def warehouse_scene3d_html(
     vendor_sources = warehouse3d_vendor_sources()
     three_source_payload = json.dumps(vendor_sources.get("three", ""))
     controls_source_payload = json.dumps(vendor_sources.get("controls", ""))
+    layout_api_port = ensure_warehouse_layout_api_server()
+    layout_api_port_payload = json.dumps(layout_api_port)
     inventory_payload = json.dumps(
         [
             {
@@ -2508,6 +2593,8 @@ def warehouse_scene3d_html(
             const locationFloors = {location_floors_payload};
             const inventory = {inventory_payload};
             const baseStorageKey = {json.dumps(base_storage_key, ensure_ascii=False)};
+            const layoutApiPort = {layout_api_port_payload};
+            const layoutApiUrl = resolveLayoutApiUrl(layoutApiPort);
             const activeBuilding = {json.dumps(building, ensure_ascii=False)};
             const locationFocus = {{
                 "로긴": ["제조", "출입", "옥상"],
@@ -2522,6 +2609,8 @@ def warehouse_scene3d_html(
             let selectedRackId = racks[0]?.id || "";
             let selectedFixtureId = "";
             let selectedRackItemKey = "";
+            let layoutSaveTimer = null;
+            let layoutSaveInProgress = false;
 
             const canvas = document.getElementById("warehouseCanvas");
             const viewport = document.getElementById("modelViewport");
@@ -2735,16 +2824,66 @@ def warehouse_scene3d_html(
                     .replaceAll('"', "&quot;");
             }}
 
+            function resolveLayoutApiUrl(port) {{
+                if (!port) return "";
+                try {{
+                    const sourceUrl = document.referrer ? new URL(document.referrer) : new URL(window.location.href);
+                    return `${{sourceUrl.protocol}}//${{sourceUrl.hostname}}:${{port}}/warehouse3d-layout`;
+                }} catch (error) {{
+                    return "";
+                }}
+            }}
+
+            function scheduleServerLayoutSave(delay = 520) {{
+                if (!layoutApiUrl || layoutSaveInProgress) return;
+                window.clearTimeout(layoutSaveTimer);
+                layoutSaveTimer = window.setTimeout(persistWarehouseLayoutToServer, delay);
+            }}
+
+            async function persistWarehouseLayoutToServer() {{
+                if (!layoutApiUrl || layoutSaveInProgress) return;
+                layoutSaveInProgress = true;
+                try {{
+                    const payload = collectWarehouseLayoutBackup();
+                    await fetch(layoutApiUrl, {{
+                        method: "POST",
+                        headers: {{ "Content-Type": "application/json" }},
+                        body: JSON.stringify(payload),
+                        keepalive: true,
+                    }});
+                }} catch (error) {{
+                    console.warn("Warehouse layout server save failed", error);
+                }} finally {{
+                    layoutSaveInProgress = false;
+                }}
+            }}
+
             function storageKeyFor(floorName) {{
-                return `${{baseStorageKey}}${{floorName}}`;
+                return storageKeyForLocation(activeBuilding, floorName);
             }}
 
             function fixtureStorageKeyFor(floorName) {{
-                return `${{baseStorageKey}}fixtures:${{floorName}}`;
+                return fixtureStorageKeyForLocation(activeBuilding, floorName);
             }}
 
             function floorSizeStorageKeyFor(floorName) {{
-                return `${{baseStorageKey}}floorSize:${{floorName}}`;
+                return floorSizeStorageKeyForLocation(activeBuilding, floorName);
+            }}
+
+            function storageKeyForLocation(buildingName, floorName) {{
+                return `${{baseStorageKey}}${{buildingName}}:${{floorName}}`;
+            }}
+
+            function fixtureStorageKeyForLocation(buildingName, floorName) {{
+                return `${{baseStorageKey}}${{buildingName}}:fixtures:${{floorName}}`;
+            }}
+
+            function floorSizeStorageKeyForLocation(buildingName, floorName) {{
+                return `${{baseStorageKey}}${{buildingName}}:floorSize:${{floorName}}`;
+            }}
+
+            function sharedFloorData(buildingName, floorName) {{
+                return sharedLayoutStore?.locations?.[buildingName]?.[floorName] || null;
             }}
 
             function baseFloorSize(floorName) {{
@@ -2836,6 +2975,7 @@ def warehouse_scene3d_html(
 
             function resetFloorSizeToBase() {{
                 localStorage.removeItem(floorSizeStorageKeyFor(activeFloor));
+                scheduleServerLayoutSave();
                 refreshFloorOnly();
             }}
 
@@ -2968,10 +3108,12 @@ def warehouse_scene3d_html(
             function saveLayout() {{
                 racks = normalizeRackIds(racks);
                 localStorage.setItem(storageKeyFor(activeFloor), JSON.stringify(racks));
+                scheduleServerLayoutSave();
             }}
 
             function saveLayoutFor(floorName, floorRacks) {{
                 localStorage.setItem(storageKeyFor(floorName), JSON.stringify(normalizeRackIds(floorRacks)));
+                scheduleServerLayoutSave();
             }}
 
             function loadFixtures(floorName) {{
@@ -2986,10 +3128,12 @@ def warehouse_scene3d_html(
 
             function saveFixtures() {{
                 localStorage.setItem(fixtureStorageKeyFor(activeFloor), JSON.stringify(fixtures));
+                scheduleServerLayoutSave();
             }}
 
             function saveFixturesFor(floorName, floorFixtures) {{
                 localStorage.setItem(fixtureStorageKeyFor(floorName), JSON.stringify(floorFixtures));
+                scheduleServerLayoutSave();
             }}
 
             function readJsonFromLocalStorage(key, fallback = null) {{
@@ -3081,6 +3225,7 @@ def warehouse_scene3d_html(
                 selectedFixtureId = "";
                 selectedRackItemKey = "";
                 rebuildScene();
+                persistWarehouseLayoutToServer();
             }}
 
             function clamp(value, min, max) {{

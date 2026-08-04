@@ -1,12 +1,12 @@
-2026-08-04 09:29:23.714 No ASGI app assignments found in C:\Users\로긴-2021-12-09\OneDrive\바탕 화면\SCM_PORTAL\app.py
-2026-08-04 09:29:23.915 Filtered 62 packages down to 3 candidates for component scanning
-2026-08-04 09:29:23.915 Scanning 3 candidate packages for component manifests using 3 worker threads
-2026-08-04 09:29:24.069 Found 0 component manifests total
-2026-08-04 09:29:24.069 No asset roots to watch
-2026-08-04 09:29:24.070 File watching not started
-2026-08-04 09:29:24.070 Starting new event loop for server
-2026-08-04 09:29:24.072 Starting server...
-2026-08-04 09:29:24.158 Starting uvicorn server on 127.0.0.1:8502
-2026-08-04 09:29:24.217 Runtime state: RuntimeState.INITIAL -> RuntimeState.NO_SESSIONS_CONNECTED
-2026-08-04 09:29:24.217 Uvicorn server started on 127.0.0.1:8502
-2026-08-04 09:29:24.273 Setting up signal handler
+2026-08-04 10:20:19.739 No ASGI app assignments found in C:\Users\로긴-2021-12-09\OneDrive\바탕 화면\SCM_PORTAL\app.py
+2026-08-04 10:20:19.899 Filtered 62 packages down to 3 candidates for component scanning
+2026-08-04 10:20:19.900 Scanning 3 candidate packages for component manifests using 3 worker threads
+2026-08-04 10:20:20.044 Found 0 component manifests total
+2026-08-04 10:20:20.044 No asset roots to watch
+2026-08-04 10:20:20.044 File watching not started
+2026-08-04 10:20:20.045 Starting new event loop for server
+2026-08-04 10:20:20.046 Starting server...
+2026-08-04 10:20:20.126 Starting uvicorn server on 127.0.0.1:8502
+2026-08-04 10:20:20.180 Runtime state: RuntimeState.INITIAL -> RuntimeState.NO_SESSIONS_CONNECTED
+2026-08-04 10:20:20.181 Uvicorn server started on 127.0.0.1:8502
+2026-08-04 10:20:20.240 Setting up signal handler
