@@ -204,9 +204,9 @@ def ensure_warehouse_layout_api_server() -> int | None:
 
 def render_warehouse_layout_sync_tools() -> dict:
     store = load_warehouse_layout_store()
-    with st.expander("3D 배치 공용 백업", expanded=False):
+    with st.expander("3D 배치 공용 저장", expanded=False):
         uploaded_layout = st.file_uploader(
-            "배치 백업 파일 가져오기",
+            "외부 배치 파일 가져오기",
             type=["json"],
             key="warehouse3d_layout_backup_upload",
         )
@@ -220,14 +220,7 @@ def render_warehouse_layout_sync_tools() -> dict:
                 st.success("3D 창고 배치를 공용 백업으로 반영했습니다. 새로고침하면 다른 브라우저에서도 같은 배치를 읽습니다.")
                 store = load_warehouse_layout_store()
 
-        st.download_button(
-            "공용 배치 백업 다운로드",
-            data=json.dumps(store, ensure_ascii=False, indent=2).encode("utf-8"),
-            file_name=WAREHOUSE_LAYOUT_STORE_NAME,
-            mime="application/json",
-            use_container_width=True,
-            key="warehouse3d_layout_store_download",
-        )
+        st.caption(f"저장 위치: {warehouse_layout_store_path()}")
     return store
 
 FLOOR_ZONES = {
@@ -2433,7 +2426,7 @@ def warehouse_scene3d_html(
                     <button type="button" id="resetRack">배치 초기화</button>
                     <button type="button" id="fitRack">기본배치</button>
                     <button type="button" id="printScene">모델 출력</button>
-                    <button type="button" id="exportLayout">배치 백업</button>
+                    <button type="button" id="exportLayout">배치 저장</button>
                     <button type="button" id="importLayout">배치 복원</button>
                     <input id="layoutImportFile" type="file" accept="application/json,.json" hidden>
                 </div>
@@ -2799,7 +2792,7 @@ def warehouse_scene3d_html(
                 heavyBrace: new THREE.MeshStandardMaterial({{ color: 0x36556f, roughness: 0.5, metalness: 0.22 }}),
                 itemBox: new THREE.MeshStandardMaterial({{ color: 0x6f927d, roughness: 0.72, metalness: 0.04 }}),
                 itemBoxShort: new THREE.MeshStandardMaterial({{ color: 0xb66a6a, roughness: 0.72, metalness: 0.04 }}),
-                itemBoxSelected: new THREE.MeshStandardMaterial({{ color: 0x58799a, emissive: 0x1f3445, roughness: 0.68, metalness: 0.04 }}),
+                itemBoxSelected: new THREE.MeshStandardMaterial({{ color: 0xb78b5a, emissive: 0x3a2815, roughness: 0.68, metalness: 0.04 }}),
                 hitbox: new THREE.MeshBasicMaterial({{ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }}),
                 room: new THREE.MeshStandardMaterial({{ color: 0xdbe3ec, roughness: 0.82, transparent: true, opacity: 0.62 }}),
                 column: new THREE.MeshStandardMaterial({{ color: 0xf8fafc, roughness: 0.66, metalness: 0.14, transparent: true, opacity: 0.94 }}),
@@ -2809,7 +2802,7 @@ def warehouse_scene3d_html(
                 roofGarden: new THREE.MeshStandardMaterial({{ color: 0x6f927d, roughness: 0.86, metalness: 0.02, transparent: true, opacity: 0.72 }}),
                 roofEquip: new THREE.MeshStandardMaterial({{ color: 0xa7c3c0, roughness: 0.68, metalness: 0.32, transparent: true, opacity: 0.88 }}),
                 roofDetail: new THREE.MeshStandardMaterial({{ color: 0xd8c88c, roughness: 0.82, metalness: 0.05, transparent: true, opacity: 0.5 }}),
-                selected: new THREE.LineBasicMaterial({{ color: 0x36556f }}),
+                selected: new THREE.LineBasicMaterial({{ color: 0xb78b5a }}),
                 edge: new THREE.LineBasicMaterial({{ color: 0x6f879f, transparent: true, opacity: 0.76 }}),
                 floorEdge: new THREE.LineBasicMaterial({{ color: 0x36556f, transparent: true, opacity: 0.9 }}),
                 floorGridMinor: new THREE.LineBasicMaterial({{ color: 0x8fa4af, transparent: true, opacity: 0.62, depthWrite: false }}),
@@ -2841,18 +2834,23 @@ def warehouse_scene3d_html(
             }}
 
             async function persistWarehouseLayoutToServer() {{
-                if (!layoutApiUrl || layoutSaveInProgress) return;
+                if (!layoutApiUrl || layoutSaveInProgress) return false;
                 layoutSaveInProgress = true;
                 try {{
                     const payload = collectWarehouseLayoutBackup();
-                    await fetch(layoutApiUrl, {{
+                    const response = await fetch(layoutApiUrl, {{
                         method: "POST",
                         headers: {{ "Content-Type": "application/json" }},
                         body: JSON.stringify(payload),
                         keepalive: true,
                     }});
+                    if (!response.ok) {{
+                        throw new Error(`저장 요청 실패 (${{response.status}})`);
+                    }}
+                    return true;
                 }} catch (error) {{
                     console.warn("Warehouse layout server save failed", error);
+                    return false;
                 }} finally {{
                     layoutSaveInProgress = false;
                 }}
@@ -3184,18 +3182,13 @@ def warehouse_scene3d_html(
                 }};
             }}
 
-            function downloadWarehouseLayoutBackup() {{
-                const payload = collectWarehouseLayoutBackup();
-                const blob = new Blob([JSON.stringify(payload, null, 2)], {{ type: "application/json;charset=utf-8" }});
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement("a");
-                const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "").replace("T", "_");
-                link.href = url;
-                link.download = `warehouse3d_layouts_${{stamp}}.json`;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                URL.revokeObjectURL(url);
+            async function saveWarehouseLayoutToScmFile() {{
+                const saved = await persistWarehouseLayoutToServer();
+                if (saved) {{
+                    alert("배치를 SCM 내부 저장 파일에 저장했습니다.");
+                }} else {{
+                    alert("배치를 SCM 내부 파일에 저장하지 못했습니다. 화면을 새로고침한 뒤 다시 시도해주세요.");
+                }}
             }}
 
             function applyWarehouseLayoutBackup(payload) {{
@@ -3438,12 +3431,12 @@ def warehouse_scene3d_html(
                 const ctx = labelCanvas.getContext("2d");
                 ctx.scale(pixelRatio, pixelRatio);
                 ctx.clearRect(0, 0, logicalWidth, logicalHeight);
-                ctx.fillStyle = emphasis ? "rgba(22, 38, 52, 0.98)" : "rgba(250, 248, 244, 0.98)";
-                ctx.strokeStyle = emphasis ? "rgba(255, 255, 255, 0.98)" : "rgba(31, 48, 64, 0.92)";
-                ctx.lineWidth = emphasis ? 9 : 7;
-                ctx.shadowColor = emphasis ? "rgba(15, 23, 42, 0.38)" : "rgba(15, 23, 42, 0.24)";
-                ctx.shadowBlur = emphasis ? 16 : 12;
-                ctx.shadowOffsetY = emphasis ? 6 : 5;
+                ctx.fillStyle = emphasis ? "rgba(232, 194, 122, 0.98)" : "rgba(250, 248, 244, 0.98)";
+                ctx.strokeStyle = emphasis ? "rgba(96, 72, 38, 0.96)" : "rgba(31, 48, 64, 0.92)";
+                ctx.lineWidth = emphasis ? 8 : 7;
+                ctx.shadowColor = emphasis ? "rgba(82, 58, 30, 0.28)" : "rgba(15, 23, 42, 0.24)";
+                ctx.shadowBlur = emphasis ? 12 : 12;
+                ctx.shadowOffsetY = emphasis ? 5 : 5;
                 if (ctx.roundRect) {{
                     ctx.roundRect(14, 18, logicalWidth - 28, logicalHeight - 36, 16);
                 }} else {{
@@ -3454,7 +3447,7 @@ def warehouse_scene3d_html(
                 ctx.shadowBlur = 0;
                 ctx.shadowOffsetY = 0;
                 ctx.stroke();
-                ctx.fillStyle = emphasis ? "#ffffff" : "#0f172a";
+                ctx.fillStyle = emphasis ? "#24303c" : "#0f172a";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 let fontSize = lines.length > 1 ? 34 : 42;
@@ -3466,8 +3459,8 @@ def warehouse_scene3d_html(
                 const lineHeight = fontSize * 1.22;
                 const startY = logicalHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
                 ctx.lineJoin = "round";
-                ctx.strokeStyle = emphasis ? "rgba(0, 0, 0, 0.68)" : "rgba(255, 255, 255, 0.82)";
-                ctx.lineWidth = emphasis ? 5 : 3;
+                ctx.strokeStyle = emphasis ? "rgba(255, 250, 240, 0.62)" : "rgba(255, 255, 255, 0.82)";
+                ctx.lineWidth = emphasis ? 4 : 3;
                 lines.forEach((line, index) => {{
                     const textY = startY + index * lineHeight;
                     ctx.strokeText(line, logicalWidth / 2, textY);
@@ -5570,7 +5563,7 @@ def warehouse_scene3d_html(
             }}
 
             printSceneButton?.addEventListener("click", printWarehouseModel);
-            exportLayoutButton?.addEventListener("click", downloadWarehouseLayoutBackup);
+            exportLayoutButton?.addEventListener("click", saveWarehouseLayoutToScmFile);
             importLayoutButton?.addEventListener("click", () => layoutImportFile?.click());
             layoutImportFile?.addEventListener("change", () => {{
                 const file = layoutImportFile.files?.[0];
