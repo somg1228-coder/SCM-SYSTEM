@@ -185,7 +185,7 @@ MALGUN_FONT = "Malgun"
 MALGUN_BOLD_FONT = "Malgun-Bold"
 PURCHASE_BUDGET_STORE_NAME = "purchase_budgets.json"
 BUDGET_SUBTABS = ["연간 예산", "분기 예산", "월별 예산", "예산 사용현황", "예산 승인"]
-BUDGET_CATEGORIES = ["포장재", "소모품", "설비", "기타"]
+BUDGET_CATEGORIES = ["원재료", "포장재", "소모품", "설비", "기타"]
 BUDGET_FORM_CATEGORIES = ["전체"] + BUDGET_CATEGORIES
 BUDGET_STATUSES = ["작성", "승인요청", "승인", "반려", "마감"]
 BUDGET_APPROVAL_STATUSES = ["요청", "승인대기", "승인", "반려"]
@@ -1658,6 +1658,8 @@ def purchase_budget_usage_rows(db: Session) -> list[dict]:
 
 def classify_purchase_budget_category(*values) -> str:
     text = " ".join(clean_text(value).lower() for value in values if clean_text(value))
+    if any(token in text for token in ["원재료", "원료", "재료", "raw material", "material", "자재", "레진", "수지", "원단", "강판", "알루미늄"]):
+        return "원재료"
     if any(token in text for token in ["box", "carton", "label", "tape", "film", "wrap", "박스", "포장", "라벨", "테이프", "필름", "랩핑", "파렛트"]):
         return "포장재"
     if any(token in text for token in ["설비", "장비", "machine", "equipment", "수리", "부품", "금형", "공구"]):

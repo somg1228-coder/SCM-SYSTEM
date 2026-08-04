@@ -3362,8 +3362,8 @@ def warehouse_scene3d_html(
                 const longestLine = lines.reduce((longest, line) => line.length > longest.length ? line : longest, "");
                 const labelCanvas = document.createElement("canvas");
                 const pixelRatio = emphasis ? 3 : 2.2;
-                const logicalWidth = Math.min(980, Math.max(500, longestLine.length * 38 + 132));
-                const logicalHeight = lines.length > 1 ? 190 : 142;
+                const logicalWidth = Math.min(760, Math.max(300, longestLine.length * 38 + 78));
+                const logicalHeight = lines.length > 1 ? 154 : 108;
                 labelCanvas.width = Math.round(logicalWidth * pixelRatio);
                 labelCanvas.height = Math.round(logicalHeight * pixelRatio);
                 const ctx = labelCanvas.getContext("2d");
@@ -3376,9 +3376,9 @@ def warehouse_scene3d_html(
                 ctx.shadowBlur = emphasis ? 12 : 12;
                 ctx.shadowOffsetY = emphasis ? 5 : 5;
                 if (ctx.roundRect) {{
-                    ctx.roundRect(14, 18, logicalWidth - 28, logicalHeight - 36, 16);
+                    ctx.roundRect(10, 14, logicalWidth - 20, logicalHeight - 28, 12);
                 }} else {{
-                    ctx.rect(14, 18, logicalWidth - 28, logicalHeight - 36);
+                    ctx.rect(10, 14, logicalWidth - 20, logicalHeight - 28);
                 }}
                 ctx.fill();
                 ctx.shadowColor = "transparent";
@@ -3390,7 +3390,7 @@ def warehouse_scene3d_html(
                 ctx.textBaseline = "middle";
                 let fontSize = lines.length > 1 ? 34 : 42;
                 ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
-                while (fontSize > 24 && lines.some(line => ctx.measureText(line).width > logicalWidth - 86)) {{
+                while (fontSize > 24 && lines.some(line => ctx.measureText(line).width > logicalWidth - 54)) {{
                     fontSize -= 2;
                     ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
                 }}
@@ -3413,7 +3413,7 @@ def warehouse_scene3d_html(
                 sprite.renderOrder = emphasis ? 30 : 20;
                 sprite.position.copy(position);
                 const emphasisScale = emphasis ? 1.14 : 1;
-                sprite.scale.set(Math.max(5.8, logicalWidth / 68) * scale * emphasisScale, Math.max(2.0, logicalHeight / 68) * scale * emphasisScale, 1);
+                sprite.scale.set(Math.max(4.4, logicalWidth / 68) * scale * emphasisScale, Math.max(1.55, logicalHeight / 68) * scale * emphasisScale, 1);
                 return sprite;
             }}
 
