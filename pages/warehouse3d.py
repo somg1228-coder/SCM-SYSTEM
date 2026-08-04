@@ -3359,10 +3359,14 @@ def warehouse_scene3d_html(
                     return [lines[0], `${{lines.slice(1).join(" ").slice(0, maxChars - 1)}}…`];
                 }};
                 const lines = wrapLabel(rawText);
-                const longestLine = lines.reduce((longest, line) => line.length > longest.length ? line : longest, "");
                 const labelCanvas = document.createElement("canvas");
                 const pixelRatio = emphasis ? 3 : 2.2;
-                const logicalWidth = Math.min(760, Math.max(300, longestLine.length * 38 + 78));
+                const baseFontSize = lines.length > 1 ? 34 : 42;
+                const measureCtx = labelCanvas.getContext("2d");
+                measureCtx.font = `900 ${{baseFontSize}}px Pretendard, Arial, sans-serif`;
+                const measuredTextWidth = Math.max(...lines.map(line => measureCtx.measureText(line).width), 1);
+                const horizontalPadding = emphasis ? 58 : 50;
+                const logicalWidth = Math.min(760, Math.max(140, Math.ceil(measuredTextWidth + horizontalPadding)));
                 const logicalHeight = lines.length > 1 ? 154 : 108;
                 labelCanvas.width = Math.round(logicalWidth * pixelRatio);
                 labelCanvas.height = Math.round(logicalHeight * pixelRatio);
@@ -3388,7 +3392,7 @@ def warehouse_scene3d_html(
                 ctx.fillStyle = emphasis ? "#24303c" : "#0f172a";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                let fontSize = lines.length > 1 ? 34 : 42;
+                let fontSize = baseFontSize;
                 ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
                 while (fontSize > 24 && lines.some(line => ctx.measureText(line).width > logicalWidth - 54)) {{
                     fontSize -= 2;
