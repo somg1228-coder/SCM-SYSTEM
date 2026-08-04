@@ -203,25 +203,7 @@ def ensure_warehouse_layout_api_server() -> int | None:
 
 
 def render_warehouse_layout_sync_tools() -> dict:
-    store = load_warehouse_layout_store()
-    with st.expander("3D 배치 공용 저장", expanded=False):
-        uploaded_layout = st.file_uploader(
-            "외부 배치 파일 가져오기",
-            type=["json"],
-            key="warehouse3d_layout_backup_upload",
-        )
-        if uploaded_layout is not None:
-            try:
-                payload = json.loads(uploaded_layout.getvalue().decode("utf-8-sig"))
-                save_warehouse_layout_store(payload)
-            except (UnicodeDecodeError, json.JSONDecodeError, OSError) as exc:
-                st.error(f"배치 백업 파일을 읽지 못했습니다. ({exc})")
-            else:
-                st.success("3D 창고 배치를 공용 백업으로 반영했습니다. 새로고침하면 다른 브라우저에서도 같은 배치를 읽습니다.")
-                store = load_warehouse_layout_store()
-
-        st.caption(f"저장 위치: {warehouse_layout_store_path()}")
-    return store
+    return load_warehouse_layout_store()
 
 FLOOR_ZONES = {
     "1층": ["회사 출입구", "피킹존", "검수존", "랙 배치"],
@@ -1484,6 +1466,15 @@ def warehouse_scene_html(
 
             function loadFloorSize(floorName) {{
                 const base = baseFloorSize(floorName);
+                const sharedSize = sharedFloorData(activeBuilding, floorName)?.floor_size;
+                if (sharedSize && Number.isFinite(Number(sharedSize.width)) && Number.isFinite(Number(sharedSize.depth))) {{
+                    return {{
+                        width: clamp(Number(sharedSize.width), base.width * 0.45, base.width * 2.6),
+                        depth: clamp(Number(sharedSize.depth), base.depth * 0.45, base.depth * 2.6),
+                        x: Number.isFinite(Number(sharedSize.x)) ? Number(sharedSize.x) : 0,
+                        z: Number.isFinite(Number(sharedSize.z)) ? Number(sharedSize.z) : 0,
+                    }};
+                }}
                 try {{
                     const saved = JSON.parse(localStorage.getItem(floorSizeStorageKeyFor(floorName)) || "null");
                     if (saved && Number.isFinite(Number(saved.width)) && Number.isFinite(Number(saved.depth))) {{
@@ -2426,9 +2417,6 @@ def warehouse_scene3d_html(
                     <button type="button" id="resetRack">배치 초기화</button>
                     <button type="button" id="fitRack">기본배치</button>
                     <button type="button" id="printScene">모델 출력</button>
-                    <button type="button" id="exportLayout">배치 저장</button>
-                    <button type="button" id="importLayout">배치 복원</button>
-                    <input id="layoutImportFile" type="file" accept="application/json,.json" hidden>
                 </div>
                 <div class="model-viewport" id="modelViewport">
                     <canvas id="warehouseCanvas"></canvas>
@@ -2641,9 +2629,6 @@ def warehouse_scene3d_html(
             const applyFloorSizeButton = document.getElementById("applyFloorSize");
             const resetFloorSizeButton = document.getElementById("resetFloorSize");
             const printSceneButton = document.getElementById("printScene");
-            const exportLayoutButton = document.getElementById("exportLayout");
-            const importLayoutButton = document.getElementById("importLayout");
-            const layoutImportFile = document.getElementById("layoutImportFile");
             const placementScale = 1.45;
 
             const scene = new THREE.Scene();
@@ -2905,20 +2890,12 @@ def warehouse_scene3d_html(
                         }};
                     }}
                 }} catch (error) {{}}
-                const sharedSize = sharedFloorData(activeBuilding, floorName)?.floor_size;
-                if (sharedSize && Number.isFinite(Number(sharedSize.width)) && Number.isFinite(Number(sharedSize.depth))) {{
-                    return {{
-                        width: clamp(Number(sharedSize.width), base.width * 0.45, base.width * 2.6),
-                        depth: clamp(Number(sharedSize.depth), base.depth * 0.45, base.depth * 2.6),
-                        x: Number.isFinite(Number(sharedSize.x)) ? Number(sharedSize.x) : 0,
-                        z: Number.isFinite(Number(sharedSize.z)) ? Number(sharedSize.z) : 0,
-                    }};
-                }}
                 return {{ ...base, x: 0, z: 0 }};
             }}
 
             function saveFloorSize(floorName, size) {{
                 localStorage.setItem(floorSizeStorageKeyFor(floorName), JSON.stringify(size));
+                scheduleServerLayoutSave();
             }}
 
             function currentFloorSize() {{
@@ -3094,12 +3071,12 @@ def warehouse_scene3d_html(
             }}
 
             function loadLayout(floorName) {{
+                const shared = sharedFloorData(activeBuilding, floorName)?.racks;
+                if (Array.isArray(shared)) return normalizeRackIds(shared);
                 try {{
                     const saved = JSON.parse(localStorage.getItem(storageKeyFor(floorName)) || "null");
                     if (Array.isArray(saved)) return normalizeRackIds(saved);
                 }} catch (error) {{}}
-                const shared = sharedFloorData(activeBuilding, floorName)?.racks;
-                if (Array.isArray(shared)) return normalizeRackIds(shared);
                 return normalizeRackIds(defaultLayout(floorName));
             }}
 
@@ -3115,12 +3092,12 @@ def warehouse_scene3d_html(
             }}
 
             function loadFixtures(floorName) {{
+                const shared = sharedFloorData(activeBuilding, floorName)?.fixtures;
+                if (Array.isArray(shared)) return shared.map(normalizeFixture);
                 try {{
                     const saved = JSON.parse(localStorage.getItem(fixtureStorageKeyFor(floorName)) || "null");
                     if (Array.isArray(saved)) return saved.map(normalizeFixture);
                 }} catch (error) {{}}
-                const shared = sharedFloorData(activeBuilding, floorName)?.fixtures;
-                if (Array.isArray(shared)) return shared.map(normalizeFixture);
                 return [];
             }}
 
@@ -3180,45 +3157,6 @@ def warehouse_scene3d_html(
                     exported_at: new Date().toISOString(),
                     locations,
                 }};
-            }}
-
-            async function saveWarehouseLayoutToScmFile() {{
-                const saved = await persistWarehouseLayoutToServer();
-                if (saved) {{
-                    alert("배치를 SCM 내부 저장 파일에 저장했습니다.");
-                }} else {{
-                    alert("배치를 SCM 내부 파일에 저장하지 못했습니다. 화면을 새로고침한 뒤 다시 시도해주세요.");
-                }}
-            }}
-
-            function applyWarehouseLayoutBackup(payload) {{
-                const locations = payload?.locations;
-                if (!locations || typeof locations !== "object") {{
-                    alert("배치 백업 파일 형식이 올바르지 않습니다.");
-                    return;
-                }}
-                Object.entries(locations).forEach(([buildingName, floorsPayload]) => {{
-                    if (!floorsPayload || typeof floorsPayload !== "object") return;
-                    Object.entries(floorsPayload).forEach(([floorName, floorData]) => {{
-                        if (!floorData || typeof floorData !== "object") return;
-                        if (Array.isArray(floorData.racks)) {{
-                            localStorage.setItem(storageKeyForLocation(buildingName, floorName), JSON.stringify(normalizeRackIds(floorData.racks)));
-                        }}
-                        if (Array.isArray(floorData.fixtures)) {{
-                            localStorage.setItem(fixtureStorageKeyForLocation(buildingName, floorName), JSON.stringify(floorData.fixtures));
-                        }}
-                        if (floorData.floor_size && Number.isFinite(Number(floorData.floor_size.width)) && Number.isFinite(Number(floorData.floor_size.depth))) {{
-                            localStorage.setItem(floorSizeStorageKeyForLocation(buildingName, floorName), JSON.stringify(floorData.floor_size));
-                        }}
-                    }});
-                }});
-                racks = loadLayout(activeFloor);
-                fixtures = loadFixtures(activeFloor);
-                selectedRackId = racks[0]?.id || "";
-                selectedFixtureId = "";
-                selectedRackItemKey = "";
-                rebuildScene();
-                persistWarehouseLayoutToServer();
             }}
 
             function clamp(value, min, max) {{
@@ -5563,24 +5501,6 @@ def warehouse_scene3d_html(
             }}
 
             printSceneButton?.addEventListener("click", printWarehouseModel);
-            exportLayoutButton?.addEventListener("click", saveWarehouseLayoutToScmFile);
-            importLayoutButton?.addEventListener("click", () => layoutImportFile?.click());
-            layoutImportFile?.addEventListener("change", () => {{
-                const file = layoutImportFile.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.addEventListener("load", () => {{
-                    try {{
-                        applyWarehouseLayoutBackup(JSON.parse(String(reader.result || "")));
-                    }} catch (error) {{
-                        alert("배치 백업 파일을 읽지 못했습니다.");
-                    }} finally {{
-                        layoutImportFile.value = "";
-                    }}
-                }});
-                reader.readAsText(file, "utf-8");
-            }});
-
             document.querySelectorAll(".floor-chip").forEach(button => {{
                 button.addEventListener("click", () => {{
                     saveLayout();
