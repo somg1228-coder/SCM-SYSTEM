@@ -671,6 +671,10 @@ def empty_purchase_budget_store() -> dict:
 
 
 def load_purchase_budget_store() -> dict:
+    db_payload = load_purchase_budget_store_from_db()
+    if db_payload is not None:
+        return db_payload
+
     path = purchase_budget_store_path()
     if not path.exists():
         return empty_purchase_budget_store()
@@ -685,6 +689,7 @@ def load_purchase_budget_store() -> dict:
         payload["budgets"] = []
     if not isinstance(payload.get("approvals"), list):
         payload["approvals"] = []
+    save_purchase_budget_store_to_db(payload)
     return payload
 
 
@@ -693,7 +698,55 @@ def save_purchase_budget_store(store: dict) -> None:
     if isinstance(store, dict):
         payload["budgets"] = [row for row in store.get("budgets", []) if isinstance(row, dict)]
         payload["approvals"] = [row for row in store.get("approvals", []) if isinstance(row, dict)]
+    if save_purchase_budget_store_to_db(payload):
+        return
     purchase_budget_store_path().write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_purchase_budget_store_from_db() -> dict | None:
+    if PurchaseBudgetStore is None or SessionLocal is None:
+        return None
+    try:
+        db = SessionLocal()
+        row = db.execute(select(PurchaseBudgetStore).where(PurchaseBudgetStore.store_key == PURCHASE_BUDGET_STORE_NAME)).scalar_one_or_none()
+        if row is None or not isinstance(row.payload, dict):
+            return None
+        payload = empty_purchase_budget_store()
+        payload.update(row.payload)
+        if not isinstance(payload.get("budgets"), list):
+            payload["budgets"] = []
+        if not isinstance(payload.get("approvals"), list):
+            payload["approvals"] = []
+        return payload
+    except Exception:
+        return None
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
+def save_purchase_budget_store_to_db(payload: dict) -> bool:
+    if PurchaseBudgetStore is None or SessionLocal is None:
+        return False
+    db = SessionLocal()
+    try:
+        row = db.execute(select(PurchaseBudgetStore).where(PurchaseBudgetStore.store_key == PURCHASE_BUDGET_STORE_NAME)).scalar_one_or_none()
+        if row is None:
+            row = PurchaseBudgetStore(store_key=PURCHASE_BUDGET_STORE_NAME, payload=payload)
+            db.add(row)
+        else:
+            row.payload = payload
+            row.updated_at = datetime.utcnow()
+        db.commit()
+        saved = db.execute(select(PurchaseBudgetStore).where(PurchaseBudgetStore.store_key == PURCHASE_BUDGET_STORE_NAME)).scalar_one_or_none()
+        return saved is not None and isinstance(saved.payload, dict)
+    except Exception:
+        db.rollback()
+        return False
+    finally:
+        db.close()
 
 
 def budget_record_id(year: int, department: str, category: str) -> str:
