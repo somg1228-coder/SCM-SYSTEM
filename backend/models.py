@@ -161,6 +161,129 @@ class WarehouseLayout(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=func.now(), onupdate=datetime.utcnow, nullable=False)
 
 
+class ScheduleWeek(Base):
+    __tablename__ = "schedule_weeks"
+    __table_args__ = (UniqueConstraint("week_start", name="uq_schedule_weeks_week_start"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    week_start: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    owner: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    comment: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ScheduleHighlight(Base):
+    __tablename__ = "schedule_highlights"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    week_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    checked: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class ScheduleSlot(Base):
+    __tablename__ = "schedule_slots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    week_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    time_label: Mapped[str] = mapped_column(Text, nullable=False)
+    mon: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    tue: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    wed: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    thu: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    fri: Mapped[str] = mapped_column(Text, default="", nullable=False)
+
+
+class MeetingReport(Base):
+    __tablename__ = "meeting_reports"
+    __table_args__ = (UniqueConstraint("meeting_date", name="uq_meeting_reports_meeting_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    meeting_date: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    author: Mapped[str] = mapped_column(Text, nullable=False)
+    event_detail: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    issue_delay: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    issue_inventory: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    issue_special: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MeetingMeta(Base):
+    __tablename__ = "meeting_meta"
+
+    key: Mapped[str] = mapped_column(String(120), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class MeetingProductionRequest(Base):
+    __tablename__ = "meeting_production_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    report_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    production_code: Mapped[str] = mapped_column(Text, nullable=False)
+    product_name: Mapped[str] = mapped_column(Text, nullable=False)
+    current_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    request_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    due_date: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    memo: Mapped[str] = mapped_column(Text, default="", nullable=False)
+
+
+class MeetingEvent(Base):
+    __tablename__ = "meeting_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    report_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_name: Mapped[str] = mapped_column(Text, nullable=False)
+    period: Mapped[str] = mapped_column(Text, nullable=False)
+    affected_products: Mapped[str] = mapped_column(Text, nullable=False)
+    request_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    owner: Mapped[str] = mapped_column(Text, nullable=False)
+    memo: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    event_month: Mapped[str] = mapped_column(String(20), default="", index=True, nullable=False)
+
+
+class MeetingActionItem(Base):
+    __tablename__ = "meeting_action_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    report_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    owner: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    due_date: Mapped[str] = mapped_column(Text, nullable=False)
+    delivery_date: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ReturnCase(Base):
+    __tablename__ = "cases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    case_id: Mapped[str | None] = mapped_column(Text, index=True, nullable=True)
+    category: Mapped[str | None] = mapped_column(Text, index=True, nullable=True)
+    barcode: Mapped[str | None] = mapped_column(Text, index=True, nullable=True)
+    product: Mapped[str | None] = mapped_column(Text, index=True, nullable=True)
+    cause: Mapped[str | None] = mapped_column(Text, nullable=True)
+    action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    repair_method: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prevention: Mapped[str | None] = mapped_column(Text, nullable=True)
+    product_image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    case_image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    case_image_original: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    repair_image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    repair_image_original: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+
+
 class InventoryInbound(Base):
     __tablename__ = "inventory_inbound"
     __table_args__ = (
