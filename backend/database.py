@@ -413,6 +413,36 @@ def database_engine_options(database_url: str) -> dict:
 ENGINE_OPTIONS = database_engine_options(DATABASE_URL)
 
 
+def supabase_transaction_pooler_url(database_url: str) -> str | None:
+    if not is_postgresql_url(database_url):
+        return None
+    try:
+        url = make_url(database_url)
+    except Exception:
+        return None
+    host = url.host or ""
+    if not host.endswith(".pooler.supabase.com") or url.port == 6543:
+        return None
+    return url.set(port=6543).render_as_string(hide_password=False)
+
+
+def switch_database_url(next_database_url: str) -> None:
+    global DATABASE_URL, CONNECT_ARGS, ENGINE_OPTIONS, engine, SessionLocal
+
+    DATABASE_URL = normalize_database_url(next_database_url)
+    CONNECT_ARGS = database_connect_args(DATABASE_URL)
+    ENGINE_OPTIONS = database_engine_options(DATABASE_URL)
+    try:
+        engine.dispose()
+    except NameError:
+        pass
+    engine = create_engine(DATABASE_URL, **ENGINE_OPTIONS)
+    try:
+        SessionLocal.configure(bind=engine)
+    except NameError:
+        pass
+
+
 def sqlite_database_path() -> Path | None:
     if not is_sqlite_url(DATABASE_URL):
         return None
@@ -564,9 +594,42 @@ def test_database_connection() -> bool:
         _LAST_DB_ERROR = ""
         return True
     except Exception as exc:
+        if try_supabase_transaction_pooler_after_failure(exc):
+            return True
         _LAST_SELECT_1_OK = False
         _LAST_DB_ERROR = sanitize_database_text(repr(exc))
         log_database_exception("DB SELECT 1 연결 테스트", exc)
+        return False
+
+
+def try_supabase_transaction_pooler_after_failure(primary_exc: BaseException) -> bool:
+    global _LAST_SELECT_1_OK, _LAST_DB_STAGE, _LAST_DB_ERROR
+
+    retry_url = supabase_transaction_pooler_url(DATABASE_URL)
+    if not retry_url:
+        return False
+    try:
+        LOGGER.warning(
+            "Supabase session pooler SELECT 1 failed; retrying transaction pooler 6543. primary=%s",
+            sanitize_database_text(repr(primary_exc)),
+        )
+        switch_database_url(retry_url)
+        with engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+        _LAST_SELECT_1_OK = True
+        _LAST_DB_STAGE = "select_1_pooler_6543"
+        _LAST_DB_ERROR = ""
+        return True
+    except Exception as retry_exc:
+        _LAST_SELECT_1_OK = False
+        _LAST_DB_STAGE = "select_1_pooler_6543"
+        _LAST_DB_ERROR = (
+            "primary="
+            + sanitize_database_text(repr(primary_exc))
+            + " / transaction_pooler="
+            + sanitize_database_text(repr(retry_exc))
+        )
+        log_database_exception("Supabase transaction pooler 6543 연결 테스트", retry_exc)
         return False
 
 
@@ -648,7 +711,8 @@ def init_db() -> None:
         if is_postgresql_url(DATABASE_URL):
             raise RuntimeError(
                 "Supabase PostgreSQL SELECT 1 연결 테스트에 실패했습니다. "
-                "SCM_DATABASE_URL의 host, port, user, password, sslmode를 확인해주세요."
+                "SCM_DATABASE_URL의 host, port, user, password, sslmode를 확인해주세요. "
+                f"마지막 오류: {_LAST_DB_ERROR}"
             )
         raise RuntimeError(f"DB SELECT 1 연결 테스트에 실패했습니다: {_LAST_DB_ERROR}")
 
