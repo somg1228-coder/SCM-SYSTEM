@@ -363,33 +363,50 @@ def normalize_database_url(raw_url: str) -> str:
 def normalize_postgresql_url(raw_url: str) -> str:
     url = make_url(raw_url)
     if url.drivername == "postgres":
-        url = url.set(drivername="postgresql+psycopg")
+        url = url.set(drivername="postgresql+psycopg2")
     elif url.drivername == "postgresql":
-        url = url.set(drivername="postgresql+psycopg")
+        url = url.set(drivername="postgresql+psycopg2")
     query = dict(url.query)
-    host = url.host or ""
-    if "supabase.co" in host and "sslmode" not in query:
+    if "sslmode" not in query:
         query["sslmode"] = "require"
         url = url.set(query=query)
     return url.render_as_string(hide_password=False)
 
 
 DATABASE_URL = normalize_database_url(RAW_DATABASE_URL)
+
+
 def database_connect_args(database_url: str) -> dict:
     if is_sqlite_url(database_url):
         return {"check_same_thread": False, "timeout": 15}
     if is_postgresql_url(database_url):
-        try:
-            url = make_url(database_url)
-        except Exception:
-            return {}
-        if url.port == 6543:
-            return {"prepare_threshold": None}
+        return {"sslmode": "require", "connect_timeout": 10}
     return {}
 
 
 CONNECT_ARGS = database_connect_args(DATABASE_URL)
-ENGINE_OPTIONS = {"connect_args": CONNECT_ARGS, "future": True, "pool_pre_ping": True}
+
+
+def database_engine_options(database_url: str) -> dict:
+    options = {
+        "connect_args": database_connect_args(database_url),
+        "future": True,
+        "pool_pre_ping": True,
+    }
+    if is_postgresql_url(database_url):
+        options.update({"pool_recycle": 300})
+        try:
+            url = make_url(database_url)
+        except Exception:
+            url = None
+        if url is not None and url.port == 6543:
+            options["poolclass"] = NullPool
+        else:
+            options.update({"pool_size": 3, "max_overflow": 2})
+    return options
+
+
+ENGINE_OPTIONS = database_engine_options(DATABASE_URL)
 
 
 def sqlite_database_path() -> Path | None:
@@ -505,32 +522,81 @@ def masked_database_url() -> str:
         return ""
 
 
+def sanitize_database_text(value: object) -> str:
+    text = str(value)
+    for candidate in {RAW_DATABASE_URL, DATABASE_URL}:
+        if not candidate:
+            continue
+        try:
+            masked = make_url(candidate).render_as_string(hide_password=True)
+        except Exception:
+            masked = "<masked database url>"
+        text = text.replace(candidate, masked)
+    try:
+        password = make_url(DATABASE_URL).password
+    except Exception:
+        password = None
+    if password:
+        text = text.replace(str(password), "***")
+    return text
+
+
+def log_database_exception(stage: str, exc: BaseException) -> None:
+    safe_repr = sanitize_database_text(repr(exc))
+    safe_traceback = sanitize_database_text("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+    LOGGER.error("%s 실패: %s", stage, safe_repr)
+    print(safe_repr, flush=True)
+    print(safe_traceback, file=sys.stderr, flush=True)
+
+
+def test_database_connection() -> bool:
+    global _LAST_SELECT_1_OK, _LAST_DB_STAGE, _LAST_DB_ERROR
+
+    _LAST_DB_STAGE = "select_1"
+    try:
+        with engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+        _LAST_SELECT_1_OK = True
+        _LAST_DB_ERROR = ""
+        return True
+    except Exception as exc:
+        _LAST_SELECT_1_OK = False
+        _LAST_DB_ERROR = sanitize_database_text(repr(exc))
+        log_database_exception("DB SELECT 1 연결 테스트", exc)
+        return False
+
+
 def database_status() -> dict:
     url = make_url(DATABASE_URL)
     status = {
         "configured": DATABASE_URL_FROM_CONFIG,
+        "url_source": DATABASE_URL_SOURCE,
         "engine": database_engine_name(),
         "is_sqlite": is_sqlite_url(DATABASE_URL),
         "is_postgresql": is_postgresql_url(DATABASE_URL),
         "is_supabase_postgresql": is_postgresql_url(DATABASE_URL) and "supabase.co" in (url.host or ""),
         "display_url": masked_database_url(),
         "host": url.host or "",
+        "port": url.port or "",
         "database": url.database or "",
         "connected": False,
+        "select_1_ok": False,
+        "schema_initialized": _LAST_SCHEMA_INIT_OK,
+        "last_stage": _LAST_DB_STAGE,
+        "last_error": _LAST_DB_ERROR,
         "message": "",
     }
-    try:
-        with engine.connect() as conn:
-            conn.exec_driver_sql("SELECT 1")
+    if test_database_connection():
         status["connected"] = True
+        status["select_1_ok"] = True
         if status["is_supabase_postgresql"]:
             status["message"] = "데이터베이스: Supabase PostgreSQL 연결됨"
         elif status["is_postgresql"]:
             status["message"] = "데이터베이스: PostgreSQL 연결됨"
         else:
             status["message"] = "데이터베이스: 로컬 SQLite 사용 중"
-    except Exception as exc:
-        status["message"] = f"데이터베이스 연결 실패: {exc}"
+    else:
+        status["message"] = f"데이터베이스 SELECT 1 실패: {_LAST_DB_ERROR}"
     return status
 
 
