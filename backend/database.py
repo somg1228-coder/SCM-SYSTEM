@@ -673,6 +673,23 @@ def test_database_connection() -> bool:
         return False
 
 
+def test_supabase_select_1() -> tuple[bool, str]:
+    if not SUPABASE_DATABASE_URL:
+        return False, "SCM_DATABASE_URL not configured"
+    try:
+        supabase_url = normalize_postgresql_url(SUPABASE_DATABASE_URL)
+        options = database_engine_options(supabase_url)
+        probe_engine = create_engine(supabase_url, **options)
+        try:
+            with probe_engine.connect() as conn:
+                conn.exec_driver_sql("SELECT 1")
+            return True, ""
+        finally:
+            probe_engine.dispose()
+    except Exception as exc:
+        return False, sanitize_database_text(repr(exc))
+
+
 def try_supabase_transaction_pooler_after_failure(primary_exc: BaseException) -> bool:
     global _LAST_SELECT_1_OK, _LAST_DB_STAGE, _LAST_DB_ERROR
 
@@ -705,10 +722,15 @@ def try_supabase_transaction_pooler_after_failure(primary_exc: BaseException) ->
 
 def database_status() -> dict:
     url = make_url(DATABASE_URL)
+    supabase_ok, supabase_error = test_supabase_select_1()
     status = {
         "configured": DATABASE_URL_FROM_CONFIG,
         "url_source": DATABASE_URL_SOURCE,
         "engine": database_engine_name(),
+        "app_database_engine": database_engine_name(),
+        "supabase_configured": bool(SUPABASE_DATABASE_URL),
+        "supabase_select_1_ok": supabase_ok,
+        "supabase_last_error": supabase_error,
         "is_sqlite": is_sqlite_url(DATABASE_URL),
         "is_postgresql": is_postgresql_url(DATABASE_URL),
         "is_supabase_postgresql": is_postgresql_url(DATABASE_URL) and "supabase.co" in (url.host or ""),
