@@ -13,7 +13,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SQLITE_PATH = PROJECT_ROOT / "data" / "scm.db"
+DEFAULT_SCHEDULE_SQLITE_PATH = PROJECT_ROOT / "data" / "schedule.db"
+DEFAULT_MEETING_SQLITE_PATH = PROJECT_ROOT / "data" / "meeting_reports.db"
+DEFAULT_RETURN_CASE_SQLITE_PATH = PROJECT_ROOT / "ReturnCaseSystem" / "cases.db"
 DEFAULT_LAYOUT_JSON_PATH = PROJECT_ROOT / "data" / "warehouse3d_layouts.json"
+DEFAULT_PURCHASE_BUDGET_JSON_PATH = PROJECT_ROOT / "data" / "purchase_budget_store.json"
 
 
 def load_key_value_file(path: Path) -> None:
