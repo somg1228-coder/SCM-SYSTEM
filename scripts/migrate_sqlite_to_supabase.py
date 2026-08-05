@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import json
@@ -51,15 +51,18 @@ def bootstrap_project_imports() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Migrate SCM SQLite data to Supabase PostgreSQL.")
-    parser.add_argument("--sqlite-path", default=str(DEFAULT_SQLITE_PATH), help="기존 SQLite DB 경로")
-    parser.add_argument("--layout-json", default=str(DEFAULT_LAYOUT_JSON_PATH), help="3D 창고 배치 JSON 경로")
-    parser.add_argument("--skip-layout-json", action="store_true", help="3D 창고 배치 JSON 이관 건너뛰기")
-    parser.add_argument("--dry-run", action="store_true", help="이관 없이 테이블별 건수만 확인")
-    parser.add_argument("--tables", nargs="*", default=[], help="일부 테이블만 이관할 때 테이블명 지정")
+    parser = argparse.ArgumentParser(description="Migrate SCM SQLite/JSON data to Supabase PostgreSQL.")
+    parser.add_argument("--sqlite-path", default=str(DEFAULT_SQLITE_PATH), help="Legacy main SQLite DB path")
+    parser.add_argument("--schedule-sqlite-path", default=str(DEFAULT_SCHEDULE_SQLITE_PATH), help="Legacy schedule SQLite DB path")
+    parser.add_argument("--meeting-sqlite-path", default=str(DEFAULT_MEETING_SQLITE_PATH), help="Legacy meeting SQLite DB path")
+    parser.add_argument("--return-case-sqlite-path", default=str(DEFAULT_RETURN_CASE_SQLITE_PATH), help="Legacy return case SQLite DB path")
+    parser.add_argument("--layout-json", default=str(DEFAULT_LAYOUT_JSON_PATH), help="Legacy 3D warehouse layout JSON path")
+    parser.add_argument("--purchase-budget-json", default=str(DEFAULT_PURCHASE_BUDGET_JSON_PATH), help="Legacy purchase budget JSON path")
+    parser.add_argument("--skip-layout-json", action="store_true", help="Skip legacy 3D warehouse layout JSON")
+    parser.add_argument("--skip-purchase-budget-json", action="store_true", help="Skip legacy purchase budget JSON")
+    parser.add_argument("--dry-run", action="store_true", help="Preview source row counts without writing")
+    parser.add_argument("--tables", nargs="*", default=[], help="Optional table names to migrate")
     return parser.parse_args()
-
-
 def reset_postgresql_sequence(conn, table_name: str, pk_name: str) -> None:
     conn.exec_driver_sql(
         """
@@ -83,7 +86,8 @@ def migrate_table(source_conn, target_conn, table, chunk_size: int = 500) -> dic
     table_name = table.name
     rows = [dict(row) for row in source_conn.execute(select(table)).mappings()]
     source_count = len(rows)
-    target_before = target_conn.execute(select(table.c.id).limit(1)).fetchone()
+    first_column = next(iter(table.c))
+    target_before = target_conn.execute(select(first_column).limit(1)).fetchone()
     inserted = 0
     if rows:
         for offset in range(0, len(rows), chunk_size):
@@ -100,6 +104,43 @@ def migrate_table(source_conn, target_conn, table, chunk_size: int = 500) -> dic
         "inserted_rows": inserted,
         "skipped_rows": source_count - inserted,
     }
+
+
+def migrate_sqlite_file(sqlite_path: Path, label: str, model_tables: list, selected_tables: set[str], target_conn) -> list[dict]:
+    if not sqlite_path.exists():
+        return [
+            {
+                "table": label,
+                "source_rows": 0,
+                "target_had_rows": False,
+                "inserted_rows": 0,
+                "skipped_rows": 0,
+                "note": f"source DB missing: {sqlite_path}",
+            }
+        ]
+
+    source_engine = create_engine(f"sqlite:///{sqlite_path.as_posix()}", future=True)
+    source_tables = set(inspect(source_engine).get_table_names())
+    results = []
+    with source_engine.connect() as source_conn:
+        for table in model_tables:
+            if selected_tables and table.name not in selected_tables:
+                continue
+            if table.name not in source_tables:
+                continue
+            results.append(migrate_table(source_conn, target_conn, table))
+    if not results:
+        results.append(
+            {
+                "table": label,
+                "source_rows": 0,
+                "target_had_rows": False,
+                "inserted_rows": 0,
+                "skipped_rows": 0,
+                "note": "matching source tables missing",
+            }
+        )
+    return results
 
 
 def layout_rows_from_json(path: Path) -> list[dict]:
@@ -150,6 +191,38 @@ def migrate_layout_json(target_conn, layout_table, layout_path: Path) -> dict:
         "inserted_rows": inserted,
         "skipped_rows": len(rows) - inserted,
         "note": str(layout_path),
+    }
+
+
+def migrate_purchase_budget_json(target_conn, budget_table, budget_path: Path) -> dict:
+    if not budget_path.exists():
+        return {
+            "table": "purchase_budget_stores(json)",
+            "source_rows": 0,
+            "target_had_rows": False,
+            "inserted_rows": 0,
+            "skipped_rows": 0,
+            "note": str(budget_path),
+        }
+    payload = json.loads(budget_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        payload = {"version": 1, "budgets": [], "approvals": []}
+    payload.setdefault("version", 1)
+    payload.setdefault("budgets", [])
+    payload.setdefault("approvals", [])
+    stmt = pg_insert(budget_table).values(store_key=budget_path.name, payload=payload)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["store_key"],
+        set_={"payload": stmt.excluded.payload},
+    )
+    result = target_conn.execute(stmt)
+    return {
+        "table": "purchase_budget_stores(json)",
+        "source_rows": 1,
+        "target_had_rows": False,
+        "inserted_rows": int(result.rowcount or 0),
+        "skipped_rows": 0,
+        "note": str(budget_path),
     }
 
 
@@ -231,3 +304,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
