@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import hashlib
 from html.parser import HTMLParser
 from io import BytesIO, StringIO
 import json
@@ -25,6 +26,11 @@ from backend.models import (
     ThirdpartyProductMaster,
     WarehouseProductMaster,
 )
+
+try:
+    from backend import supabase_store
+except Exception:
+    supabase_store = None
 
 
 HTML_TABLE_FALLBACK_MESSAGE = "엑셀 형식이 HTML 기반이라 read_html로 처리했습니다"
@@ -468,6 +474,8 @@ def find_column(df: pd.DataFrame, candidates: list[str]) -> str:
 
 
 def list_work_dates(db: Session, source_type: str | None = None) -> list[date]:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return supabase_store.list_work_dates(source_type)
     query = select(InventoryDaily.work_date).distinct()
     if source_type:
         query = query.where(InventoryDaily.source_type == source_type)
@@ -480,6 +488,7 @@ def product_master_to_dict(row) -> dict:
         "sku": row.sku,
         "barcode": row.barcode,
         "product_name": row.product_name,
+        "category": row.large_category,
         "large_category": row.large_category,
         "medium_category": row.medium_category,
         "small_category": row.small_category,
@@ -498,6 +507,8 @@ def product_master_to_dict(row) -> dict:
 
 
 def list_product_master(db: Session, source_type: str, keyword: str = "", active_filter: str = "전체") -> list:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return supabase_store.list_product_master(source_type, keyword, active_filter)
     model = product_master_model(source_type)
     query = select(model)
     if active_filter != "전체":
@@ -517,12 +528,17 @@ def list_product_master(db: Session, source_type: str, keyword: str = "", active
 
 
 def active_product_options(db: Session, source_type: str) -> list[dict]:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return supabase_store.active_product_options(source_type)
     model = product_master_model(source_type)
     rows = db.execute(select(model).where(model.is_active == "사용").order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars()
     return [product_master_to_dict(row) for row in rows]
 
 
 def find_product_master(db: Session, source_type: str, sku: str = "", barcode: str = "", product_name: str = ""):
+    if supabase_store is not None and supabase_store.is_enabled():
+        product = supabase_store.find_product(source_type, sku, barcode, product_name)
+        return supabase_store.namespace(supabase_store.product_to_row(product)) if product else None
     model = product_master_model(source_type)
     sku = clean_text(sku)
     barcode = clean_text(barcode)
@@ -814,8 +830,6 @@ def normalize_product_master_row(row: dict) -> dict:
         or data.get("대표상품코드")
     )
     barcode = clean_text(data.get("바코드") or data.get("88바코드") or data.get("옵션바코드") or data.get("barcode"))
-    if not sku and barcode:
-        sku = barcode
     if not barcode and sku:
         barcode = sku
     product_name = clean_text(data.get("상품명") or data.get("품목") or data.get("product_name"))
@@ -952,19 +966,20 @@ def prepare_product_master_import_rows(df: pd.DataFrame, source_type: str = "") 
     skipped_duplicate = 0
 
     for index, record in enumerate(df.fillna("").to_dict("records"), start=1):
+        explicit_sku = explicit_sku_value(record)
         row = normalize_product_master_row(record)
         if source_type in {"오프라인", "창고"} and row["product_name"]:
-            if not row["sku"]:
-                row["sku"] = row["barcode"] or row["product_name"]
             if not row["barcode"]:
-                row["barcode"] = row["sku"] or row["product_name"]
+                row["barcode"] = explicit_sku or row["product_name"]
+            if not explicit_sku:
+                row["sku"] = ""
         if not row["sku"] and not row["barcode"] and not row["product_name"]:
             skipped_empty += 1
             continue
-        if not row["sku"] or not row["barcode"] or not row["product_name"]:
-            warnings.append(f"{index}행: SKU/바코드/상품명 중 누락된 값이 있어 제외했습니다.")
+        if not row["barcode"] or not row["product_name"]:
+            warnings.append(f"{index}행: 바코드/상품명 중 누락된 값이 있어 제외했습니다.")
             continue
-        if row["sku"] in seen_skus:
+        if row["sku"] and row["sku"] in seen_skus:
             skipped_duplicate += 1
             warnings.append(f"{index}행: 중복 SKU라 제외했습니다. ({row['sku']})")
             continue
@@ -973,7 +988,8 @@ def prepare_product_master_import_rows(df: pd.DataFrame, source_type: str = "") 
             skipped_duplicate += 1
             warnings.append(f"{index}행: 중복 바코드/상품명이라 제외했습니다. ({row['barcode']} / {row['product_name']})")
             continue
-        seen_skus.add(row["sku"])
+        if row["sku"]:
+            seen_skus.add(row["sku"])
         seen_barcode_products.add(barcode_product_key)
         rows.append(row)
 
@@ -990,7 +1006,15 @@ def validate_product_master_rows(db: Session, source_type: str, rows: list[dict]
     errors = []
     seen_skus: set[str] = set()
     seen_barcode_products: set[tuple[str, str]] = set()
+    sku_rows = db.execute(select(model.sku, model.barcode, model.product_name)).all()
+    existing_sku_to_barcode = {sku: barcode for sku, barcode, _product_name in sku_rows}
+    existing_barcode_product_to_sku = {(barcode, product_name): sku for sku, barcode, product_name in sku_rows}
+    used_skus = {clean_text(sku) for sku, _barcode, _product_name in sku_rows if clean_text(sku)}
+
     for index, row in enumerate(normalized, start=1):
+        if not row["sku"] and row["barcode"] and row["product_name"]:
+            existing_sku = existing_barcode_product_to_sku.get((row["barcode"], row["product_name"]))
+            row["sku"] = existing_sku or auto_product_master_sku(row, used_skus, default_prefix=source_type)
         if not row["sku"] or not row["barcode"] or not row["product_name"]:
             errors.append(f"{index}행: SKU, 바코드, 상품명은 필수입니다.")
         if row["sku"] in seen_skus:
@@ -1001,9 +1025,6 @@ def validate_product_master_rows(db: Session, source_type: str, rows: list[dict]
         seen_skus.add(row["sku"])
         seen_barcode_products.add(barcode_product_key)
 
-    sku_rows = db.execute(select(model.sku, model.barcode, model.product_name)).all()
-    existing_sku_to_barcode = {sku: barcode for sku, barcode, _product_name in sku_rows}
-    existing_barcode_product_to_sku = {(barcode, product_name): sku for sku, barcode, product_name in sku_rows}
     for index, row in enumerate(normalized, start=1):
         existing_other_sku = existing_barcode_product_to_sku.get((row["barcode"], row["product_name"]))
         if source_type != "3PL" and existing_other_sku and existing_other_sku != row["sku"]:
@@ -1023,6 +1044,18 @@ THREEPL_MASTER_IMPORT_FIELDS = [
     ("memo", "담당자"),
     ("default_lead_time", "리드타임"),
 ]
+
+
+def explicit_sku_value(row: dict) -> str:
+    data = row_data(row)
+    return clean_text(
+        data.get("SKU")
+        or data.get("sku")
+        or data.get("상품코드")
+        or data.get("품목코드")
+        or data.get("상품번호")
+        or data.get("대표상품코드")
+    )
 
 
 def threepl_master_basis_data(row: dict) -> dict:
@@ -1062,16 +1095,65 @@ def describe_threepl_master_changes(product, row: dict) -> list[str]:
 
 
 def threepl_master_identity(row: dict) -> str:
-    return clean_text(row.get("sku")) or clean_text(row.get("barcode")) or clean_text(row.get("product_name"))
-
-
-def find_threepl_master_for_import(existing_by_sku: dict[str, object], existing_by_barcode: dict[str, object], row: dict):
     sku = clean_text(row.get("sku"))
     barcode = clean_text(row.get("barcode"))
+    product_name = clean_text(row.get("product_name"))
+    if sku:
+        return f"sku:{sku}"
+    if barcode and product_name:
+        return f"barcode-name:{barcode}::{product_name}"
+    return f"barcode:{barcode}" if barcode else f"name:{product_name}" if product_name else ""
+
+
+def threepl_auto_sku(row: dict, used_skus: set[str]) -> str:
+    return auto_product_master_sku(row, used_skus, default_prefix="3PL")
+
+
+def auto_product_master_sku(row: dict, used_skus: set[str], default_prefix: str = "SKU") -> str:
+    sku = clean_text(row.get("sku"))
+    if sku:
+        used_skus.add(sku)
+        return sku
+
+    barcode = clean_text(row.get("barcode"))
+    product_name = clean_text(row.get("product_name"))
+    base = barcode or product_name
+    if base and base not in used_skus:
+        used_skus.add(base)
+        return base
+
+    identity = f"{barcode}|{product_name}" or base
+    suffix = hashlib.sha1(identity.encode("utf-8")).hexdigest()[:8]
+    candidate = f"{base or default_prefix}-{suffix}"
+    sequence = 2
+    while candidate in used_skus:
+        candidate = f"{base or default_prefix}-{suffix}-{sequence}"
+        sequence += 1
+    used_skus.add(candidate)
+    return candidate
+
+
+def find_threepl_master_for_import(
+    existing_by_sku: dict[str, object],
+    existing_by_barcode: dict[str, list[object]],
+    existing_by_barcode_name: dict[tuple[str, str], object],
+    row: dict,
+):
+    sku = clean_text(row.get("sku"))
+    barcode = clean_text(row.get("barcode"))
+    product_name = clean_text(row.get("product_name"))
+    if barcode and product_name:
+        product = existing_by_barcode_name.get((barcode, product_name))
+        if product:
+            return product
     if sku and sku in existing_by_sku:
         return existing_by_sku[sku]
-    if barcode and barcode in existing_by_barcode:
-        return existing_by_barcode[barcode]
+    if barcode:
+        if product_name:
+            return None
+        barcode_matches = existing_by_barcode.get(barcode, [])
+        if len(barcode_matches) == 1:
+            return barcode_matches[0]
     return None
 
 
@@ -1085,7 +1167,10 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
     failures = 0
 
     for index, record in enumerate(df.fillna("").to_dict("records"), start=2):
+        explicit_sku = explicit_sku_value(record)
         row = normalize_product_master_row(record)
+        if not explicit_sku:
+            row["sku"] = ""
         row_number = index
         if not row["sku"] and not row["barcode"] and not row["product_name"]:
             continue
@@ -1105,7 +1190,6 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
                 }
             )
             continue
-        row["sku"] = clean_text(row.get("sku")) or identity
         parsed_rows.append({"row_number": row_number, "data": row})
         identity_row_numbers.setdefault(identity, []).append(row_number)
 
@@ -1113,13 +1197,21 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
     duplicate_row_count = sum(len(rows) - 1 for rows in duplicate_identities.values())
     last_row_by_identity = {threepl_master_identity(item["data"]): item for item in parsed_rows}
     model = product_master_model("3PL")
-    existing_by_sku = {row.sku: row for row in db.execute(select(model)).scalars()}
-    existing_by_barcode = {row.barcode: row for row in existing_by_sku.values() if row.barcode}
+    existing_products = list(db.execute(select(model)).scalars())
+    existing_by_sku = {row.sku: row for row in existing_products}
+    existing_by_barcode: dict[str, list[object]] = {}
+    existing_by_barcode_name = {}
+    for product in existing_products:
+        if product.barcode:
+            existing_by_barcode.setdefault(product.barcode, []).append(product)
+            if product.product_name:
+                existing_by_barcode_name[(product.barcode, product.product_name)] = product
     barcode_to_skus: dict[str, set[str]] = {}
-    for product in existing_by_sku.values():
+    for product in existing_products:
         if product.barcode:
             barcode_to_skus.setdefault(product.barcode, set()).add(product.sku)
 
+    used_skus = set(existing_by_sku)
     new_count = 0
     update_count = 0
     unchanged_count = 0
@@ -1144,12 +1236,16 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
             )
             continue
 
-        product = find_threepl_master_for_import(existing_by_sku, existing_by_barcode, row)
+        product = find_threepl_master_for_import(existing_by_sku, existing_by_barcode, existing_by_barcode_name, row)
         if product is not None:
             row["sku"] = product.sku
             sku = row["sku"]
             row = keep_existing_threepl_category(product, row)
             item["data"] = row
+            used_skus.add(sku)
+        else:
+            row["sku"] = threepl_auto_sku(row, used_skus)
+            sku = row["sku"]
         row_warnings = []
         if row.get("barcode"):
             other_skus = sorted(s for s in barcode_to_skus.get(row["barcode"], set()) if s != sku)
@@ -1218,13 +1314,28 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
 
 
 def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
+    if supabase_store is not None and supabase_store.is_enabled():
+        rows = [detail.get("_data") or {} for detail in preview.get("details", []) if detail.get("_apply")]
+        result = supabase_store.bulk_save_product_master("3PL", rows)
+        summary = dict(preview.get("summary") or {})
+        result["summary"] = summary
+        result["details"] = preview.get("details", [])
+        return result
+
     model = product_master_model("3PL")
     details = preview.get("details") or []
     result_details = []
     count = 0
     existing_products = list(db.execute(select(model)).scalars())
     existing_by_sku = {row.sku: row for row in existing_products}
-    existing_by_barcode = {row.barcode: row for row in existing_products if row.barcode}
+    existing_by_barcode: dict[str, list[object]] = {}
+    existing_by_barcode_name = {}
+    for product in existing_products:
+        if product.barcode:
+            existing_by_barcode.setdefault(product.barcode, []).append(product)
+            if product.product_name:
+                existing_by_barcode_name[(product.barcode, product.product_name)] = product
+    used_skus = set(existing_by_sku)
     for detail in details:
         if not detail.get("_apply"):
             result_details.append(detail)
@@ -1233,11 +1344,18 @@ def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
         data = threepl_master_basis_data(row)
         sku = data.pop("sku")
         if not sku:
-            sku = clean_text(data.get("barcode")) or clean_text(data.get("product_name"))
+            sku = threepl_auto_sku(data, used_skus)
+        else:
+            used_skus.add(sku)
         if not sku:
             result_details.append(detail)
             continue
-        product = find_threepl_master_for_import(existing_by_sku, existing_by_barcode, {"sku": sku, **data})
+        product = find_threepl_master_for_import(
+            existing_by_sku,
+            existing_by_barcode,
+            existing_by_barcode_name,
+            {"sku": sku, **data},
+        )
         if product is None:
             product = model(
                 sku=sku,
@@ -1249,13 +1367,19 @@ def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
             db.add(product)
             existing_by_sku[sku] = product
             if data.get("barcode"):
-                existing_by_barcode[data["barcode"]] = product
+                existing_by_barcode.setdefault(data["barcode"], []).append(product)
+                if data.get("product_name"):
+                    existing_by_barcode_name[(data["barcode"], data["product_name"])] = product
         else:
             data = keep_existing_product_master_categories(product, data)
             for key, value in data.items():
                 setattr(product, key, value)
             if data.get("barcode"):
-                existing_by_barcode[data["barcode"]] = product
+                existing_by_barcode.setdefault(data["barcode"], [])
+                if product not in existing_by_barcode[data["barcode"]]:
+                    existing_by_barcode[data["barcode"]].append(product)
+                if data.get("product_name"):
+                    existing_by_barcode_name[(data["barcode"], data["product_name"])] = product
         count += 1
         result_detail = dict(detail)
         result_text = clean_text(result_detail.get("처리 결과"))
@@ -1280,6 +1404,10 @@ def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
 
 
 def bulk_save_product_master(db: Session, source_type: str, rows: list[dict]) -> dict:
+    if supabase_store is not None and supabase_store.is_enabled():
+        normalized = [normalize_product_master_row(row) for row in rows]
+        return supabase_store.bulk_save_product_master(source_type, normalized)
+
     model = product_master_model(source_type)
     normalized, errors = validate_product_master_rows(db, source_type, rows)
     if errors:
@@ -1301,6 +1429,9 @@ def bulk_save_product_master(db: Session, source_type: str, rows: list[dict]) ->
 
 
 def add_product_master(db: Session, source_type: str, row: dict) -> dict:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return supabase_store.bulk_save_product_master(source_type, [normalize_product_master_row(row)])
+
     model = product_master_model(source_type)
     normalized, errors = validate_product_master_rows(db, source_type, [row])
     if errors:
@@ -1355,6 +1486,10 @@ def import_product_master_excel(db: Session, source_type: str, file_bytes: bytes
 
 
 def sync_inventory_from_product_master(db: Session, source_type: str | None = None) -> int:
+    if supabase_store is not None and supabase_store.is_enabled():
+        sources = [source_type] if source_type else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
+        return sum(len(supabase_store.master_based_inventory_rows(source, date.today())) for source in sources)
+
     count = 0
     daily_query = select(InventoryDaily)
     inbound_query = select(InventoryInbound)
@@ -1391,6 +1526,8 @@ def sync_inventory_from_product_master(db: Session, source_type: str | None = No
 
 
 def list_daily(db: Session, source_type: str, work_date: date) -> list[InventoryDaily]:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return supabase_store.list_daily(source_type, work_date)
     return list(
         db.execute(
             select(InventoryDaily)
@@ -1422,7 +1559,7 @@ def daily_row_for_product(db: Session, source_type: str, work_date: date, produc
         ).scalars().first()
         if row:
             return row
-    if product.barcode:
+    if product.barcode and not product.product_name:
         rows = list(
             db.execute(
                 select(InventoryDaily).where(
@@ -1434,7 +1571,7 @@ def daily_row_for_product(db: Session, source_type: str, work_date: date, produc
         )
         if len(rows) == 1:
             return rows[0]
-    if product.product_name:
+    if product.product_name and not product.barcode:
         rows = list(
             db.execute(
                 select(InventoryDaily).where(
@@ -1534,6 +1671,12 @@ def pending_inbound_qty_for_product(db: Session, source_type: str, work_date: da
 
 
 def master_based_inventory_rows(db: Session, source_type: str, work_date: date, active_only: bool = False) -> list[dict]:
+    if supabase_store is not None and supabase_store.is_enabled():
+        rows = supabase_store.master_based_inventory_rows(source_type, work_date)
+        if active_only:
+            rows = [row for row in rows if row.get("is_active") == "사용"]
+        return rows
+
     model = product_master_model(source_type)
     query = select(model)
     if active_only:
@@ -1696,20 +1839,20 @@ def prepare_stock_upload_preview(
 
     products = list(db.execute(select(product_master_model(source_type))).scalars())
     by_sku = {product.sku: product for product in products if product.sku}
-    by_name = {product.product_name: product for product in products if product.product_name}
+    by_name: dict[str, list[object]] = {}
     by_name_barcode = {
         (clean_text(product.product_name), clean_text(product.barcode)): product
         for product in products
         if clean_text(product.product_name) and clean_text(product.barcode)
     }
-    by_barcode: dict[str, object] = {}
-    duplicate_master_barcodes: set[str] = set()
+    by_barcode: dict[str, list[object]] = {}
     for product in products:
+        if product.product_name:
+            by_name.setdefault(product.product_name, []).append(product)
         if not product.barcode:
             continue
-        if product.barcode in by_barcode:
-            duplicate_master_barcodes.add(product.barcode)
-        by_barcode[product.barcode] = product
+        by_barcode.setdefault(product.barcode, []).append(product)
+    duplicate_master_barcodes = {barcode for barcode, rows in by_barcode.items() if len(rows) > 1}
 
     seen_upload_keys: set[tuple[str, str]] = set()
     preview_rows = []
@@ -1749,23 +1892,38 @@ def prepare_stock_upload_preview(
                 invalid_stock_count += 1
                 errors.append("숫자가 아닌 가용재고")
 
-        product = by_name_barcode.get((product_name, barcode)) if product_name and barcode else None
-        matched_exact_name_barcode = product is not None
-        if product is None:
-            product = by_barcode.get(barcode) if barcode else None
-        if product is None and product_code:
+        product = None
+        matched_exact_name_barcode = False
+        matched_by_sku = False
+        matched_by_name = False
+        if product_code:
             product = by_sku.get(product_code)
+            matched_by_sku = product is not None
+        if product is None and product_name and barcode:
+            product = by_name_barcode.get((product_name, barcode))
+            matched_exact_name_barcode = product is not None
+        if product is None and barcode:
+            barcode_matches = by_barcode.get(barcode, [])
+            if len(barcode_matches) == 1:
+                product = barcode_matches[0]
         if product is None and product_name:
-            product = by_name.get(product_name)
+            name_matches = by_name.get(product_name, [])
+            if len(name_matches) == 1:
+                product = name_matches[0]
+                matched_by_name = True
         if product is None:
             errors.append("매칭 실패")
-        elif barcode in duplicate_master_barcodes and not matched_exact_name_barcode:
+        elif barcode in duplicate_master_barcodes and not (matched_exact_name_barcode or matched_by_sku or matched_by_name):
             errors.append("마스터 중복 바코드")
 
         previous_stock = 0
         if product:
-            daily = daily_row_for_product(db, source_type, work_date, product)
-            previous_stock = int(daily.current_stock or 0) if daily else 0
+            if supabase_store is not None and supabase_store.is_enabled():
+                summary = supabase_store.stock_summary_map(source_type).get(product.id, {})
+                previous_stock = int(summary.get("current_stock") or 0)
+            else:
+                daily = daily_row_for_product(db, source_type, work_date, product)
+                previous_stock = int(daily.current_stock or 0) if daily else 0
 
         if errors:
             failed_count += 1
@@ -1837,6 +1995,9 @@ def apply_stock_upload_preview(
     preview: dict,
     uploaded_by: str = "",
 ) -> dict:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return supabase_store.apply_stock_rows(source_type, work_date, preview)
+
     rows = [row for row in preview.get("preview_rows", []) if row.get("matched")]
     history = InventoryUploadHistory(
         source_type=source_type,
@@ -1905,6 +2066,8 @@ def record_inventory_output(
 
 
 def list_inbound(db: Session, source_type: str) -> list[InventoryInbound]:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return supabase_store.list_inbound(source_type)
     return list(
         db.execute(
             select(InventoryInbound)
@@ -1915,6 +2078,8 @@ def list_inbound(db: Session, source_type: str) -> list[InventoryInbound]:
 
 
 def list_outbound(db: Session, source_type: str) -> list[InventoryDaily]:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return supabase_store.list_outbound(source_type)
     return list(
         db.execute(
             select(InventoryDaily)
@@ -1925,6 +2090,9 @@ def list_outbound(db: Session, source_type: str) -> list[InventoryDaily]:
 
 
 def create_date(db: Session, source_type: str, work_date: date | None = None) -> dict:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return {"ok": True, "message": "Supabase는 거래 기준으로 현재고를 계산하므로 별도 기준일자 생성이 필요 없습니다.", "count": 0}
+
     target_date = work_date or date.today()
     if not is_business_day(target_date):
         return {"ok": False, "message": "주말/공휴일은 생성하지 않습니다.", "count": 0}
@@ -2033,6 +2201,9 @@ def bulk_save_daily(db: Session, source_type: str, work_date: date, rows: list[d
 
 
 def bulk_save_inbound(db: Session, source_type: str, rows: list[dict]) -> int:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return supabase_store.bulk_save_inbound(source_type, rows)
+
     existing_rows = {
         (
             row.inbound_date,
@@ -2103,6 +2274,10 @@ def get_or_create_daily(db: Session, source_type: str, work_date: date, product_
 
 
 def import_stock(db: Session, source_type: str, work_date: date, file_bytes: bytes) -> dict:
+    if supabase_store is not None and supabase_store.is_enabled():
+        preview = prepare_stock_upload_preview(db, source_type, work_date, file_bytes)
+        return apply_stock_upload_preview(db, source_type, work_date, preview)
+
     df = read_excel(file_bytes)
     name_col = find_column(df, ["상품명", "품목"])
     try:
@@ -2182,6 +2357,31 @@ def import_order(db: Session, source_type: str, work_date: date, file_bytes: byt
     except ValueError:
         barcode_col = None
 
+    if supabase_store is not None and supabase_store.is_enabled():
+        outbound_rows: dict[tuple[str, str, str], int] = {}
+        filtered = df[df[cs_col].astype(str).str.contains("정상", na=False)]
+        for _, row in filtered.iterrows():
+            product_name = clean_text(row.get(name_col))
+            if not product_name:
+                continue
+            barcode = clean_text(row.get(barcode_col)) if barcode_col else ""
+            product_code = clean_text(row.get(product_code_col)) if product_code_col else ""
+            qty = to_int(row.get(qty_col))
+            key = (product_code, barcode, product_name)
+            outbound_rows[key] = outbound_rows.get(key, 0) + qty
+
+        count = 0
+        failed = []
+        for (product_code, barcode, product_name), qty in outbound_rows.items():
+            result = supabase_store.apply_outbound(source_type, work_date, product_code, barcode, product_name, qty, "주문조회 엑셀 출고")
+            if result.get("ok"):
+                count += 1
+            else:
+                failed.append(f"{product_name}: {result.get('message')}")
+        if failed:
+            return {"ok": False, "message": "\n".join(failed[:5]), "count": count}
+        return import_result(count, df)
+
     sums: dict[tuple[str, str], int] = {}
     product_codes: dict[tuple[str, str], str] = {}
     filtered = df[df[cs_col].astype(str).str.contains("정상", na=False)]
@@ -2240,6 +2440,27 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes) -> di
     except ValueError:
         type_col = None
 
+    if supabase_store is not None and supabase_store.is_enabled():
+        rows = []
+        for _, row in df.iterrows():
+            product_name = clean_text(row.get(name_col))
+            if not product_name:
+                continue
+            rows.append(
+                {
+                    "inbound_date": parse_date(row.get(date_col)) if date_col else date.today(),
+                    "category": clean_text(row.get(category_col)) if category_col else "",
+                    "product_code": clean_text(row.get(product_code_col)) if product_code_col else "",
+                    "product_name": product_name,
+                    "barcode": clean_text(row.get(barcode_col)) if barcode_col else "",
+                    "inbound_qty": to_int(row.get(qty_col)),
+                    "vendor": clean_text(row.get(vendor_col)) if vendor_col else "",
+                    "inbound_type": clean_text(row.get(type_col)) if type_col else "",
+                    "memo": "",
+                }
+            )
+        return import_result(supabase_store.bulk_save_inbound(source_type, rows), df)
+
     count = 0
     for _, row in df.iterrows():
         product_name = clean_text(row.get(name_col))
@@ -2266,6 +2487,9 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes) -> di
 
 
 def apply_inbound_to_stock(db: Session, source_type: str, work_date: date) -> int:
+    if supabase_store is not None and supabase_store.is_enabled():
+        return 0
+
     inbound_rows = list(
         db.execute(
             select(InventoryInbound).where(
@@ -2417,7 +2641,7 @@ def daily_to_dict(row: InventoryDaily) -> dict:
         "inbound_qty": row.inbound_qty,
         "inbound_cycle": row.inbound_cycle,
         "memo": row.memo,
-        "updated_at": row.updated_at,
+        "updated_at": getattr(row, "updated_at", None),
     }
 
 
@@ -2435,8 +2659,8 @@ def inbound_to_dict(row: InventoryInbound) -> dict:
         "inbound_type": row.inbound_type,
         "memo": row.memo,
         "is_applied": row.is_applied,
-        "created_at": row.created_at,
-        "updated_at": row.updated_at,
+        "created_at": getattr(row, "created_at", None),
+        "updated_at": getattr(row, "updated_at", None),
     }
 
 
@@ -2448,6 +2672,22 @@ def excel_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
 
 
 def dashboard_summary(db: Session, work_date: date, source_type: str | None = None) -> dict:
+    if supabase_store is not None and supabase_store.is_enabled():
+        sources = [source_type] if source_type and source_type != "전체" else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
+        rows = []
+        for source in sources:
+            rows.extend(supabase_store.daily_rows(source, work_date))
+        return {
+            "sku_count": len(rows),
+            "current_stock": sum(int(row.get("current_stock") or 0) for row in rows),
+            "available_stock": sum(int(row.get("available_stock") or 0) for row in rows),
+            "need_inbound_count": sum(1 for row in rows if row.get("stock_status") in {"부족", "주의", "입고필요"}),
+            "soldout_count": sum(1 for row in rows if row.get("stock_status") == "품절"),
+            "short_count": sum(1 for row in rows if row.get("stock_status") in {"부족", "품절", "미출"}),
+            "outbound_qty": 0,
+            "inbound_qty": 0,
+        }
+
     query = select(InventoryDaily).where(InventoryDaily.work_date == work_date)
     if source_type and source_type != "전체":
         query = query.where(InventoryDaily.source_type == source_type)
@@ -2465,6 +2705,39 @@ def dashboard_summary(db: Session, work_date: date, source_type: str | None = No
 
 
 def dashboard_chart(db: Session, work_date: date, source_type: str | None = None) -> dict:
+    if supabase_store is not None and supabase_store.is_enabled():
+        sources = [source_type] if source_type and source_type != "전체" else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
+        rows = []
+        for source in sources:
+            rows.extend(supabase_store.daily_rows(source, work_date))
+        category_totals: dict[str, int] = {}
+        for row in rows:
+            label = row.get("category") or "미분류"
+            category_totals[label] = category_totals.get(label, 0) + int(row.get("current_stock") or 0)
+        need_rows = sorted(
+            [row for row in rows if row.get("stock_status") in {"부족", "주의", "입고필요"}],
+            key=lambda row: int(row.get("safe_stock") or 0) - int(row.get("current_stock") or 0),
+            reverse=True,
+        )[:10]
+        return {
+            "stock_by_source": [
+                {"label": source, "value": sum(int(row.get("current_stock") or 0) for row in rows if row.get("source_type") == source)}
+                for source in sources
+            ],
+            "stock_by_category": [{"label": label, "value": value} for label, value in sorted(category_totals.items())],
+            "outbound_by_category": [],
+            "stock_trend": [{"date": str(work_date), "value": sum(int(row.get("current_stock") or 0) for row in rows)}],
+            "outbound_trend": [],
+            "need_inbound_top10": [
+                {
+                    "product_name": row.get("product_name"),
+                    "current_stock": int(row.get("current_stock") or 0),
+                    "safe_stock": int(row.get("safe_stock") or 0),
+                }
+                for row in need_rows
+            ],
+        }
+
     base_filters = [InventoryDaily.work_date == work_date]
     trend_filters = []
     if source_type and source_type != "전체":

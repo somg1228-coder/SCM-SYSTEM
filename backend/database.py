@@ -35,6 +35,29 @@ except OSError:
     pass
 
 DEFAULT_DB_PATH = (DATA_DIR / "scm.db").resolve()
+
+
+def load_local_env_file() -> None:
+    env_path = BASE_DIR / ".env"
+    if not env_path.exists():
+        return
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        LOGGER.warning(".env 파일을 읽지 못했습니다: %s", exc)
+        return
+    for line in lines:
+        text = line.strip()
+        if not text or text.startswith("#") or "=" not in text:
+            continue
+        key, value = text.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("\"'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_local_env_file()
 RAW_DATABASE_URL = os.getenv("SCM_DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH.as_posix()}")
 
 
@@ -116,17 +139,22 @@ def sqlite_write_probe(db_path: Path) -> bool:
         return False
 
 
-def writable_runtime_data_dir() -> Path:
+def runtime_data_dir_candidates() -> list[Path]:
     candidates = []
     env_dir = os.getenv("SCM_WRITABLE_DATA_DIR")
     if env_dir:
         candidates.append(Path(env_dir))
     candidates.extend(
         [
-            Path(tempfile.gettempdir()) / "scm_portal_data",
             Path.home() / ".scm_portal" / "data",
+            Path(tempfile.gettempdir()) / "scm_portal_data",
         ]
     )
+    return candidates
+
+
+def writable_runtime_data_dir() -> Path:
+    candidates = runtime_data_dir_candidates()
     for directory in candidates:
         try:
             resolved = directory.expanduser().resolve()
@@ -135,6 +163,53 @@ def writable_runtime_data_dir() -> Path:
         except OSError as exc:
             LOGGER.warning("SQLite 대체 폴더 쓰기 테스트 실패: %s (%s)", directory, exc)
     raise RuntimeError("SQLite DB를 저장할 쓰기 가능한 폴더를 찾지 못했습니다.")
+
+
+def runtime_sqlite_paths(source_path: Path) -> list[Path]:
+    paths = []
+    for directory in runtime_data_dir_candidates():
+        try:
+            paths.append((directory.expanduser().resolve() / source_path.name).resolve())
+        except OSError as exc:
+            LOGGER.warning("SQLite 대체 DB 경로 확인 실패: %s (%s)", directory, exc)
+    return paths
+
+
+def newest_existing_sqlite_path(source_path: Path) -> Path:
+    candidates = [source_path, *runtime_sqlite_paths(source_path)]
+    existing = []
+    for candidate in candidates:
+        try:
+            if candidate.exists() and candidate.stat().st_size > 0:
+                existing.append(candidate)
+        except OSError as exc:
+            LOGGER.warning("SQLite DB 후보 확인 실패: %s (%s)", candidate, exc)
+    if not existing:
+        return source_path
+    return max(existing, key=lambda path: path.stat().st_mtime)
+
+
+def restore_newer_runtime_sqlite(source_path: Path) -> Path:
+    newest_path = newest_existing_sqlite_path(source_path)
+    if newest_path.resolve() == source_path.resolve():
+        return source_path
+    try:
+        source_mtime = source_path.stat().st_mtime if source_path.exists() else 0
+        newest_mtime = newest_path.stat().st_mtime
+    except OSError as exc:
+        LOGGER.warning("SQLite DB 최신본 비교 실패: %s", exc)
+        return newest_path
+    if newest_mtime <= source_mtime:
+        return source_path
+    try:
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(newest_path, source_path)
+        make_file_writable(source_path)
+        LOGGER.warning("더 최신 SQLite 런타임 DB를 기본 DB로 복구했습니다: %s -> %s", newest_path, source_path)
+        return source_path
+    except OSError as exc:
+        LOGGER.warning("최신 SQLite 런타임 DB 복구 실패. 런타임 DB를 계속 사용합니다: %s -> %s (%s)", newest_path, source_path, exc)
+        return newest_path
 
 
 def copy_sqlite_to_writable_path(source_path: Path) -> Path:
@@ -165,6 +240,7 @@ def normalize_database_url(raw_url: str) -> str:
         db_path = (BASE_DIR / db_path).resolve()
     else:
         db_path = db_path.resolve()
+    db_path = restore_newer_runtime_sqlite(db_path)
     if not sqlite_path_is_writable(db_path):
         db_path = copy_sqlite_to_writable_path(db_path)
     query = dict(url.query)

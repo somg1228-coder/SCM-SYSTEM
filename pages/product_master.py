@@ -1224,13 +1224,13 @@ def threepl_editor_to_payload(df: pd.DataFrame) -> list[dict]:
     for _, row in df.fillna("").iterrows():
         product_name = clean_value(row.get("상품명"))
         barcode = clean_value(row.get("바코드"))
-        sku = clean_value(row.get("SKU")) or barcode or product_name
+        sku = clean_value(row.get("SKU"))
         if not product_name and not barcode and not sku:
             continue
         box_qty, pallet_qty = parse_box_pallet_unit(row.get("박스/파렛트 단위"))
         payload = {
             "SKU": sku,
-            "바코드": barcode or sku,
+            "바코드": barcode or sku or product_name,
             "상품명": product_name,
             "카테고리": clean_value(row.get("카테고리")),
             "브랜드": clean_value(row.get("브랜드")),
@@ -1259,7 +1259,7 @@ def offline_editor_to_payload(df: pd.DataFrame) -> list[dict]:
         if not product_name:
             continue
         payload = {
-            "SKU": barcode or product_name,
+            "SKU": clean_value(row.get("SKU")),
             "바코드": barcode or product_name,
             "상품명": product_name,
             "카테고리": clean_value(row.get("카테고리")),

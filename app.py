@@ -117,6 +117,12 @@ def render_files() -> None:
     render_placeholder("자료실")
 
 
+def render_settings() -> None:
+    module = import_page_module("pages.settings", "관리자")
+    if module is not None:
+        module.render_settings_page()
+
+
 def render_page(page: str) -> None:
     if page in {"홈", "대시보드"}:
         render_home()
@@ -138,6 +144,8 @@ def render_page(page: str) -> None:
         render_guide()
     elif page == "자료실":
         render_files()
+    elif page == "관리자":
+        render_settings()
     else:
         render_home()
 

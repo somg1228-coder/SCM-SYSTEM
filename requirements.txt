@@ -2,6 +2,8 @@ streamlit
 pandas
 reportlab
 sqlalchemy
+psycopg[binary]
+supabase
 openpyxl
 xlrd
 xlsxwriter

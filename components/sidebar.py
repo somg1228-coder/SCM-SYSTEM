@@ -14,12 +14,13 @@ MENU_ITEMS = [
     ("warehouse3d", "3D 창고관리"),
     ("guide", "업무가이드"),
     ("files", "자료실"),
+    ("settings", "관리자"),
 ]
 
 MENU_GROUPS = [
     ("업무", MENU_ITEMS[0:3]),
     ("운영관리", MENU_ITEMS[3:8]),
-    ("지원", MENU_ITEMS[8:10]),
+    ("지원", MENU_ITEMS[8:11]),
 ]
 
 VALID_PAGES = {label for _, label in MENU_ITEMS}

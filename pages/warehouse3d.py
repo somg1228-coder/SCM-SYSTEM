@@ -13,12 +13,13 @@ import streamlit.components.v1 as components
 
 try:
     from backend.database import SessionLocal, init_db, writable_runtime_data_dir
-    from backend import services
+    from backend import services, supabase_store
 except (ModuleNotFoundError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
     writable_runtime_data_dir = None
     services = None
+    supabase_store = None
     WAREHOUSE_IMPORT_ERROR = str(exc)
 else:
     WAREHOUSE_IMPORT_ERROR = ""
@@ -98,7 +99,24 @@ def empty_warehouse_layout_store() -> dict:
     return {"version": 1, "locations": {}}
 
 
-def load_warehouse_layout_store() -> dict:
+def warehouse_layout_has_data(payload: dict | None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    locations = payload.get("locations")
+    if not isinstance(locations, dict):
+        return False
+    for floors in locations.values():
+        if not isinstance(floors, dict):
+            continue
+        for floor_data in floors.values():
+            if not isinstance(floor_data, dict):
+                continue
+            if floor_data.get("racks") or floor_data.get("fixtures") or floor_data.get("floor_size"):
+                return True
+    return False
+
+
+def load_local_warehouse_layout_store() -> dict:
     path = warehouse_layout_store_path()
     if not path.exists():
         return empty_warehouse_layout_store()
@@ -115,7 +133,73 @@ def load_warehouse_layout_store() -> dict:
     return payload
 
 
+def load_warehouse_layout_store() -> dict:
+    local_payload = load_local_warehouse_layout_store()
+    if supabase_store is None:
+        return local_payload
+
+    try:
+        if not supabase_store.is_enabled():
+            return local_payload
+        remote_payload = supabase_store.load_warehouse_layout_store()
+    except Exception:
+        return local_payload
+
+    if warehouse_layout_has_data(local_payload):
+        merged = merge_warehouse_layout_store(remote_payload, local_payload)
+        try:
+            supabase_store.save_warehouse_layout_store(merged)
+        except Exception:
+            pass
+        return merged
+
+    if warehouse_layout_has_data(remote_payload):
+        return remote_payload
+    return local_payload
+
+
+def backup_warehouse_layout_store(path: Path) -> None:
+    if not path.exists() or path.stat().st_size <= 0:
+        return
+    try:
+        current = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not warehouse_layout_has_data(current):
+        return
+    backup_path = path.with_name("warehouse3d_layouts.previous.json")
+    backup_path.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def merge_warehouse_layout_store(existing: dict, incoming: dict) -> dict:
+    merged = empty_warehouse_layout_store()
+    merged["locations"] = dict(existing.get("locations") or {})
+    incoming_locations = incoming.get("locations") if isinstance(incoming, dict) else None
+    if not isinstance(incoming_locations, dict):
+        return merged
+
+    for building, floors in incoming_locations.items():
+        if building not in LOCATIONS or not isinstance(floors, dict):
+            continue
+        merged["locations"].setdefault(building, {})
+        for floor, floor_data in floors.items():
+            if floor not in LOCATIONS[building]["floors"] or not isinstance(floor_data, dict):
+                continue
+            clean_floor_data = {}
+            if isinstance(floor_data.get("racks"), list):
+                clean_floor_data["racks"] = floor_data["racks"]
+            if isinstance(floor_data.get("fixtures"), list):
+                clean_floor_data["fixtures"] = floor_data["fixtures"]
+            if isinstance(floor_data.get("floor_size"), dict):
+                clean_floor_data["floor_size"] = floor_data["floor_size"]
+            if clean_floor_data:
+                merged["locations"][building][floor] = clean_floor_data
+    return merged
+
+
 def save_warehouse_layout_store(payload: dict) -> Path:
+    path = warehouse_layout_store_path()
+    existing = load_local_warehouse_layout_store()
     store = empty_warehouse_layout_store()
     if isinstance(payload, dict):
         locations = payload.get("locations")
@@ -127,8 +211,19 @@ def save_warehouse_layout_store(payload: dict) -> Path:
                 for key, value in payload.items()
                 if key in LOCATIONS and isinstance(value, dict)
             }
-    path = warehouse_layout_store_path()
+
+    if not warehouse_layout_has_data(store) and warehouse_layout_has_data(existing):
+        return path
+
+    backup_warehouse_layout_store(path)
+    store = merge_warehouse_layout_store(existing, store)
     path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+    if supabase_store is not None:
+        try:
+            if supabase_store.is_enabled():
+                supabase_store.save_warehouse_layout_store(store)
+        except Exception:
+            pass
     return path
 
 
