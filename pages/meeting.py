@@ -10,6 +10,8 @@ from urllib.parse import urlencode
 
 import pandas as pd
 import streamlit as st
+
+from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available
 import streamlit.components.v1 as components
 
 
@@ -975,7 +977,7 @@ def format_kpi_delta_text(value: str, prefix: str = "전주 대비") -> str:
 
 def ensure_schema() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS meeting_reports (
@@ -1056,7 +1058,7 @@ def ensure_schema() -> None:
 def get_or_create_report(meeting_date: date, author: str) -> dict:
     date_key = meeting_date.isoformat()
     now = datetime.now().isoformat(timespec="seconds")
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM meeting_reports WHERE meeting_date = ?", (date_key,)).fetchone()
         if row is None:
@@ -1108,7 +1110,7 @@ def load_table_df(table_name: str, report_id: int, columns: list[str]) -> pd.Dat
             ORDER BY sort_order, id
         """,
     }
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         df = pd.read_sql_query(query_map[table_name], conn, params=(report_id,))
     return normalize_df(df, columns)
 
@@ -1121,7 +1123,7 @@ def load_event_month_df(event_month: date) -> pd.DataFrame:
         WHERE event_month = ?
         ORDER BY sort_order, id
     """
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         df = pd.read_sql_query(query, conn, params=(month_key(event_month),))
     return normalize_df(df, EVENT_COLUMNS)
 
@@ -1176,7 +1178,7 @@ def meeting_history_excel_bytes() -> tuple[bytes, int]:
 
 
 def load_meeting_history_frames() -> dict[str, pd.DataFrame]:
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         report_ids = meaningful_report_ids(conn)
         if not report_ids:
             empty_summary = pd.DataFrame(
@@ -1355,7 +1357,7 @@ def parse_int(value) -> int:
 def get_event_product_options(report_id: int, event_month: date) -> list[str]:
     products = list(EVENT_PRODUCT_OPTIONS)
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with connect_sqlite_compatible(DB_PATH) as conn:
             products.extend(
                 row[0]
                 for row in conn.execute(
@@ -1479,7 +1481,7 @@ def save_report_state(
     action_df: pd.DataFrame,
 ) -> None:
     now = datetime.now().isoformat(timespec="seconds")
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.execute(
             """
             UPDATE meeting_reports
@@ -1505,7 +1507,7 @@ def delete_report_section(report_id: int, table_name: str) -> None:
     allowed_tables = {"meeting_production_requests", "meeting_events", "meeting_action_items"}
     if table_name not in allowed_tables:
         return
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.execute(f"DELETE FROM {table_name} WHERE report_id = ?", (report_id,))
 
 
@@ -1537,7 +1539,7 @@ def update_event_detail_draft(
 
 
 def delete_event_month(event_month: date) -> None:
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.execute("DELETE FROM meeting_events WHERE event_month = ?", (month_key(event_month),))
 
 
@@ -1871,7 +1873,7 @@ def summarize_event_month(events_df: pd.DataFrame, event_month: date) -> str:
 
 def count_previous_week_action_rows(meeting_date: date) -> int:
     previous_start, previous_end = week_range(meeting_date - timedelta(days=7))
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
@@ -1914,10 +1916,10 @@ def count_weekly_return_cases(meeting_date: date) -> tuple[int, int]:
 
 
 def count_return_cases_between(start_date: date, end_date: date) -> int:
-    if not RETURN_CASE_DB_PATH.exists():
+    if not legacy_store_available(RETURN_CASE_DB_PATH):
         return 0
     try:
-        with sqlite3.connect(RETURN_CASE_DB_PATH) as conn:
+        with connect_sqlite_compatible(RETURN_CASE_DB_PATH) as conn:
             rows = conn.execute("SELECT case_id FROM cases WHERE case_id IS NOT NULL").fetchall()
     except sqlite3.Error:
         return 0
@@ -1930,10 +1932,10 @@ def count_return_cases_between(start_date: date, end_date: date) -> int:
 
 
 def list_return_case_summaries_between(start_date: date, end_date: date) -> list[str]:
-    if not RETURN_CASE_DB_PATH.exists():
+    if not legacy_store_available(RETURN_CASE_DB_PATH):
         return []
     try:
-        with sqlite3.connect(RETURN_CASE_DB_PATH) as conn:
+        with connect_sqlite_compatible(RETURN_CASE_DB_PATH) as conn:
             rows = conn.execute(
                 """
                 SELECT case_id, category, product

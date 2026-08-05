@@ -8,6 +8,8 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 
+from backend.legacy_storage import connect_sqlite_compatible
+
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DB_PATH = BASE_DIR / "data" / "schedule.db"
@@ -71,7 +73,7 @@ def render_schedule_page() -> None:
 
 def ensure_schema() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS schedule_weeks (
@@ -253,7 +255,7 @@ def render_history() -> None:
 
 def get_or_create_week(week_start: date) -> dict:
     week_key = week_start.isoformat()
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM schedule_weeks WHERE week_start = ?", (week_key,)).fetchone()
         if row is None:
@@ -264,7 +266,7 @@ def get_or_create_week(week_start: date) -> dict:
 
 def ensure_weeks_through_current() -> None:
     current_week = monday_of(date.today())
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         rows = conn.execute("SELECT week_start FROM schedule_weeks WHERE week_start <= ?", (current_week.isoformat(),)).fetchall()
         existing_week_keys = {row[0] for row in rows}
         if current_week.isoformat() in existing_week_keys:
@@ -307,7 +309,7 @@ def seed_week(conn: sqlite3.Connection, week_id: int, week_start: date) -> None:
 
 def clear_unsaved_seeded_highlights_from_current() -> None:
     current_week_key = monday_of(date.today()).isoformat()
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         rows = conn.execute(
             """
             SELECT id
@@ -327,7 +329,7 @@ def clear_unsaved_seeded_highlights_from_current() -> None:
 
 
 def load_highlights_df(week_id: int) -> pd.DataFrame:
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         rows = conn.execute(
             """
             SELECT checked, title
@@ -342,7 +344,7 @@ def load_highlights_df(week_id: int) -> pd.DataFrame:
 
 
 def load_slots_df(week_id: int) -> pd.DataFrame:
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         rows = conn.execute(
             """
             SELECT time_label, mon, tue, wed, thu, fri
@@ -361,7 +363,7 @@ def load_slots_df(week_id: int) -> pd.DataFrame:
 
 def save_week(week_id: int, week_start: date, highlights_df: pd.DataFrame, slots_df: pd.DataFrame, comment: str) -> None:
     now = datetime.now().isoformat(timespec="microseconds")
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.execute(
             """
             UPDATE schedule_weeks
@@ -407,7 +409,7 @@ def save_week(week_id: int, week_start: date, highlights_df: pd.DataFrame, slots
 
 def save_slots_only(week_id: int, slots_df: pd.DataFrame) -> None:
     now = datetime.now().isoformat(timespec="microseconds")
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.execute("UPDATE schedule_weeks SET updated_at = ? WHERE id = ?", (now, week_id))
         conn.execute("DELETE FROM schedule_slots WHERE week_id = ?", (week_id,))
         for order, row in normalize_slots_df(slots_df).iterrows():
@@ -434,7 +436,7 @@ def save_slots_only(week_id: int, slots_df: pd.DataFrame) -> None:
 def copy_previous_week(week_id: int, week_start: date) -> int:
     previous_start = (week_start - timedelta(days=7)).isoformat()
     now = datetime.now().isoformat(timespec="microseconds")
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         previous = conn.execute("SELECT id FROM schedule_weeks WHERE week_start = ?", (previous_start,)).fetchone()
         if previous is None:
             return 0
@@ -470,7 +472,7 @@ def load_history_rows(recent_days: int | None = 31) -> list[dict]:
     since = (date.today() - timedelta(days=recent_days)).isoformat() if recent_days else None
     where_clause = "WHERE week_start >= ?" if since else ""
     params = (since,) if since else ()
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect_sqlite_compatible(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             f"""
