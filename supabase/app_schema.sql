@@ -644,4 +644,160 @@ CREATE INDEX IF NOT EXISTS ix_warehouse_product_master_id ON warehouse_product_m
 CREATE INDEX IF NOT EXISTS ix_warehouse_product_master_product_name ON warehouse_product_master (product_name);
 CREATE INDEX IF NOT EXISTS ix_warehouse_product_master_sku ON warehouse_product_master (sku);
 
+CREATE TABLE IF NOT EXISTS schedule_weeks (
+	id SERIAL NOT NULL,
+	week_start VARCHAR(20) NOT NULL,
+	title TEXT NOT NULL,
+	owner TEXT NOT NULL,
+	comment TEXT NOT NULL,
+	created_at VARCHAR(40) NOT NULL,
+	updated_at VARCHAR(40) NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_schedule_weeks_week_start UNIQUE (week_start)
+);
+
+CREATE INDEX IF NOT EXISTS ix_schedule_weeks_id ON schedule_weeks (id);
+CREATE INDEX IF NOT EXISTS ix_schedule_weeks_week_start ON schedule_weeks (week_start);
+
+CREATE TABLE IF NOT EXISTS schedule_highlights (
+	id SERIAL NOT NULL,
+	week_id INTEGER NOT NULL,
+	sort_order INTEGER NOT NULL,
+	title TEXT NOT NULL,
+	checked INTEGER NOT NULL,
+	PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_schedule_highlights_id ON schedule_highlights (id);
+CREATE INDEX IF NOT EXISTS ix_schedule_highlights_week_id ON schedule_highlights (week_id);
+
+CREATE TABLE IF NOT EXISTS schedule_slots (
+	id SERIAL NOT NULL,
+	week_id INTEGER NOT NULL,
+	sort_order INTEGER NOT NULL,
+	time_label TEXT NOT NULL,
+	mon TEXT NOT NULL,
+	tue TEXT NOT NULL,
+	wed TEXT NOT NULL,
+	thu TEXT NOT NULL,
+	fri TEXT NOT NULL,
+	PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_schedule_slots_id ON schedule_slots (id);
+CREATE INDEX IF NOT EXISTS ix_schedule_slots_week_id ON schedule_slots (week_id);
+
+CREATE TABLE IF NOT EXISTS meeting_reports (
+	id SERIAL NOT NULL,
+	meeting_date VARCHAR(20) NOT NULL,
+	author TEXT NOT NULL,
+	event_detail TEXT NOT NULL,
+	issue_delay TEXT NOT NULL,
+	issue_inventory TEXT NOT NULL,
+	issue_special TEXT NOT NULL,
+	created_at VARCHAR(40) NOT NULL,
+	updated_at VARCHAR(40) NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_meeting_reports_meeting_date UNIQUE (meeting_date)
+);
+
+CREATE INDEX IF NOT EXISTS ix_meeting_reports_id ON meeting_reports (id);
+CREATE INDEX IF NOT EXISTS ix_meeting_reports_meeting_date ON meeting_reports (meeting_date);
+
+CREATE TABLE IF NOT EXISTS meeting_meta (
+	key VARCHAR(120) NOT NULL,
+	value TEXT NOT NULL,
+	PRIMARY KEY (key)
+);
+
+CREATE TABLE IF NOT EXISTS meeting_production_requests (
+	id SERIAL NOT NULL,
+	report_id INTEGER NOT NULL,
+	sort_order INTEGER NOT NULL,
+	production_code TEXT NOT NULL,
+	product_name TEXT NOT NULL,
+	current_qty INTEGER NOT NULL,
+	request_qty INTEGER NOT NULL,
+	due_date TEXT NOT NULL,
+	status TEXT NOT NULL,
+	memo TEXT NOT NULL,
+	PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_meeting_production_requests_id ON meeting_production_requests (id);
+CREATE INDEX IF NOT EXISTS ix_meeting_production_requests_report_id ON meeting_production_requests (report_id);
+
+CREATE TABLE IF NOT EXISTS meeting_events (
+	id SERIAL NOT NULL,
+	report_id INTEGER NOT NULL,
+	sort_order INTEGER NOT NULL,
+	event_name TEXT NOT NULL,
+	period TEXT NOT NULL,
+	affected_products TEXT NOT NULL,
+	request_qty INTEGER NOT NULL,
+	summary TEXT NOT NULL,
+	owner TEXT NOT NULL,
+	memo TEXT NOT NULL,
+	event_month VARCHAR(20) NOT NULL,
+	PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_meeting_events_event_month ON meeting_events (event_month);
+CREATE INDEX IF NOT EXISTS ix_meeting_events_id ON meeting_events (id);
+CREATE INDEX IF NOT EXISTS ix_meeting_events_report_id ON meeting_events (report_id);
+CREATE INDEX IF NOT EXISTS idx_meeting_events_event_month ON meeting_events(event_month, sort_order, id);
+
+CREATE TABLE IF NOT EXISTS meeting_action_items (
+	id SERIAL NOT NULL,
+	report_id INTEGER NOT NULL,
+	sort_order INTEGER NOT NULL,
+	owner TEXT NOT NULL,
+	content TEXT NOT NULL,
+	quantity INTEGER NOT NULL,
+	due_date TEXT NOT NULL,
+	delivery_date TEXT NOT NULL,
+	status TEXT NOT NULL,
+	PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_meeting_action_items_id ON meeting_action_items (id);
+CREATE INDEX IF NOT EXISTS ix_meeting_action_items_report_id ON meeting_action_items (report_id);
+
+CREATE TABLE IF NOT EXISTS cases (
+	id SERIAL NOT NULL,
+	case_id TEXT,
+	category TEXT,
+	barcode TEXT,
+	product TEXT,
+	cause TEXT,
+	action TEXT,
+	repair_method TEXT,
+	prevention TEXT,
+	product_image BYTEA,
+	case_image BYTEA,
+	case_image_original BYTEA,
+	repair_image BYTEA,
+	repair_image_original BYTEA,
+	PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_cases_barcode ON cases (barcode);
+CREATE INDEX IF NOT EXISTS ix_cases_case_id ON cases (case_id);
+CREATE INDEX IF NOT EXISTS ix_cases_category ON cases (category);
+CREATE INDEX IF NOT EXISTS ix_cases_id ON cases (id);
+CREATE INDEX IF NOT EXISTS ix_cases_product ON cases (product);
+
+CREATE TABLE IF NOT EXISTS purchase_budget_stores (
+	id SERIAL NOT NULL,
+	store_key VARCHAR(80) NOT NULL,
+	payload JSON NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+	PRIMARY KEY (id),
+	UNIQUE (store_key)
+);
+
+CREATE INDEX IF NOT EXISTS ix_purchase_budget_stores_id ON purchase_budget_stores (id);
+CREATE INDEX IF NOT EXISTS ix_purchase_budget_stores_store_key ON purchase_budget_stores (store_key);
+
 COMMIT;
