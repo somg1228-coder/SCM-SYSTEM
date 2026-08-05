@@ -1143,6 +1143,56 @@ def inventory_filter_multiselect(container, label: str, options: list[str], key:
     return container.multiselect(label, options, key=key, placeholder="선택하세요")
 
 
+def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
+    state_key = f"{filter_key}_category_toggle"
+    filter_state_key = f"{filter_key}_category_filter"
+    choices = ["전체", *options]
+    selected_values = st.session_state.get(filter_state_key) or []
+    current = selected_values[0] if selected_values else st.session_state.get(state_key, "전체")
+    if current not in choices:
+        current = "전체"
+    st.session_state[state_key] = current
+
+    if not options:
+        st.caption("카테고리: 데이터 없음")
+        st.session_state[filter_state_key] = []
+        return []
+
+    st.caption("카테고리")
+    if hasattr(st, "segmented_control"):
+        selected = st.segmented_control(
+            "카테고리",
+            choices,
+            default=current,
+            key=state_key,
+            label_visibility="collapsed",
+        )
+        selected = selected or "전체"
+        categories = [] if selected == "전체" else [selected]
+        st.session_state[filter_state_key] = categories
+        return categories
+
+    rows = [choices[index : index + 6] for index in range(0, len(choices), 6)]
+    selected = current
+    for row_index, row_choices in enumerate(rows):
+        cols = st.columns(len(row_choices), gap="small")
+        for col, label in zip(cols, row_choices, strict=True):
+            if col.button(
+                label,
+                key=f"{filter_key}_category_toggle_{row_index}_{label}",
+                type="primary" if label == current else "secondary",
+                use_container_width=True,
+            ):
+                selected = label
+                st.session_state[state_key] = selected
+                st.session_state[filter_state_key] = [] if selected == "전체" else [selected]
+                st.session_state[f"{filter_key}_page"] = 1
+                st.rerun()
+    categories = [] if selected == "전체" else [selected]
+    st.session_state[filter_state_key] = categories
+    return categories
+
+
 def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
     category_options = sorted([value for value in df.get("카테고리", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
     supplier_options = sorted([value for value in df.get("업체명", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
@@ -1170,48 +1220,22 @@ def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
         st.session_state.setdefault(f"{filter_key}_{suffix}", value)
 
     with st.container(key=f"inventory_filter_{filter_key}_panel"):
-        quick_actions = [
-            ("전체", {}),
-            ("정상", {"status_filter": ["정상"]}),
-            ("주의", {"status_filter": ["주의"]}),
-            ("부족", {"status_filter": ["부족"]}),
-            ("품절", {"status_filter": ["품절"]}),
-            ("안전재고 이하", {"below_safe": True}),
-            ("입고예정", {"inbound_expected": True}),
-            ("출고예정", {"outbound_expected": True}),
-        ]
-        for action_row in [quick_actions[:4], quick_actions[4:]]:
-            quick_cols = st.columns(4, gap="small")
-            for col, (label, updates) in zip(quick_cols, action_row, strict=True):
-                if col.button(label, key=f"{filter_key}_quick_{label}", use_container_width=True):
-                    if label == "전체":
-                        reset_inventory_filters(filter_key)
-                    else:
-                        st.session_state[f"{filter_key}_status_filter"] = updates.get("status_filter", [])
-                        for suffix in ["below_safe", "inbound_expected", "outbound_expected"]:
-                            st.session_state[f"{filter_key}_{suffix}"] = bool(updates.get(suffix, False))
-                    st.session_state[f"{filter_key}_page"] = 1
-                    st.rerun()
+        categories = inventory_category_toggle(category_options, filter_key)
 
-        basic_cols = st.columns([1.6, 1.05, 1.05], gap="small")
+        basic_cols = st.columns([1.55, 1.0, 0.7, 0.7, 2.05], gap="small")
         search = basic_cols[0].text_input("통합검색", placeholder="바코드 / 상품명 / 업체명 / 담당자", key=f"{filter_key}_search")
-        categories = inventory_filter_multiselect(basic_cols[1], "카테고리", category_options, key=f"{filter_key}_category_filter")
-        suppliers = inventory_filter_multiselect(basic_cols[2], "업체명", supplier_options, key=f"{filter_key}_supplier_filter")
-
-        action_cols = st.columns([1.05, 0.72, 0.72, 2.65], gap="small")
-        statuses = inventory_filter_multiselect(action_cols[0], "재고상태", status_options, key=f"{filter_key}_status_filter")
-        with action_cols[1]:
+        suppliers = inventory_filter_multiselect(basic_cols[1], "업체명", supplier_options, key=f"{filter_key}_supplier_filter")
+        statuses = inventory_filter_multiselect(basic_cols[2], "재고상태", status_options, key=f"{filter_key}_status_filter")
+        with basic_cols[3]:
             st.write("")
             if st.button("검색", key=f"{filter_key}_search_button", type="primary", use_container_width=True):
                 st.session_state[f"{filter_key}_page"] = 1
                 st.rerun()
-        with action_cols[2]:
+        with basic_cols[4]:
             st.write("")
             if st.button("초기화", key=f"{filter_key}_filter_reset", use_container_width=True):
                 reset_inventory_filters(filter_key)
                 st.rerun()
-        with action_cols[3]:
-            st.empty()
 
         with st.expander("고급 필터 ▼", expanded=False):
             adv_cols = st.columns(4, gap="small")
