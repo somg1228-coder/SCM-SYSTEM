@@ -4,6 +4,8 @@
 
 BEGIN;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS category_bom_items (
 	id SERIAL NOT NULL, 
 	category_name VARCHAR(160) NOT NULL, 

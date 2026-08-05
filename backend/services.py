@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date, timedelta
 import hashlib
@@ -31,6 +31,10 @@ try:
     from backend import supabase_store
 except Exception:
     supabase_store = None
+
+
+def use_legacy_supabase_rest_store() -> bool:
+    return False
 
 
 HTML_TABLE_FALLBACK_MESSAGE = "엑셀 형식이 HTML 기반이라 read_html로 처리했습니다"
@@ -474,7 +478,7 @@ def find_column(df: pd.DataFrame, candidates: list[str]) -> str:
 
 
 def list_work_dates(db: Session, source_type: str | None = None) -> list[date]:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return supabase_store.list_work_dates(source_type)
     query = select(InventoryDaily.work_date).distinct()
     if source_type:
@@ -507,7 +511,7 @@ def product_master_to_dict(row) -> dict:
 
 
 def list_product_master(db: Session, source_type: str, keyword: str = "", active_filter: str = "전체") -> list:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return supabase_store.list_product_master(source_type, keyword, active_filter)
     model = product_master_model(source_type)
     query = select(model)
@@ -528,7 +532,7 @@ def list_product_master(db: Session, source_type: str, keyword: str = "", active
 
 
 def active_product_options(db: Session, source_type: str) -> list[dict]:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return supabase_store.active_product_options(source_type)
     model = product_master_model(source_type)
     rows = db.execute(select(model).where(model.is_active == "사용").order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars()
@@ -536,7 +540,7 @@ def active_product_options(db: Session, source_type: str) -> list[dict]:
 
 
 def find_product_master(db: Session, source_type: str, sku: str = "", barcode: str = "", product_name: str = ""):
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         product = supabase_store.find_product(source_type, sku, barcode, product_name)
         return supabase_store.namespace(supabase_store.product_to_row(product)) if product else None
     model = product_master_model(source_type)
@@ -1314,7 +1318,7 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
 
 
 def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         rows = [detail.get("_data") or {} for detail in preview.get("details", []) if detail.get("_apply")]
         result = supabase_store.bulk_save_product_master("3PL", rows)
         summary = dict(preview.get("summary") or {})
@@ -1404,7 +1408,7 @@ def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
 
 
 def bulk_save_product_master(db: Session, source_type: str, rows: list[dict]) -> dict:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         normalized = [normalize_product_master_row(row) for row in rows]
         return supabase_store.bulk_save_product_master(source_type, normalized)
 
@@ -1429,7 +1433,7 @@ def bulk_save_product_master(db: Session, source_type: str, rows: list[dict]) ->
 
 
 def add_product_master(db: Session, source_type: str, row: dict) -> dict:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return supabase_store.bulk_save_product_master(source_type, [normalize_product_master_row(row)])
 
     model = product_master_model(source_type)
@@ -1486,7 +1490,7 @@ def import_product_master_excel(db: Session, source_type: str, file_bytes: bytes
 
 
 def sync_inventory_from_product_master(db: Session, source_type: str | None = None) -> int:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         sources = [source_type] if source_type else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
         return sum(len(supabase_store.master_based_inventory_rows(source, date.today())) for source in sources)
 
@@ -1526,7 +1530,7 @@ def sync_inventory_from_product_master(db: Session, source_type: str | None = No
 
 
 def list_daily(db: Session, source_type: str, work_date: date) -> list[InventoryDaily]:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return supabase_store.list_daily(source_type, work_date)
     return list(
         db.execute(
@@ -1671,7 +1675,7 @@ def pending_inbound_qty_for_product(db: Session, source_type: str, work_date: da
 
 
 def master_based_inventory_rows(db: Session, source_type: str, work_date: date, active_only: bool = False) -> list[dict]:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         rows = supabase_store.master_based_inventory_rows(source_type, work_date)
         if active_only:
             rows = [row for row in rows if row.get("is_active") == "사용"]
@@ -1918,7 +1922,7 @@ def prepare_stock_upload_preview(
 
         previous_stock = 0
         if product:
-            if supabase_store is not None and supabase_store.is_enabled():
+            if use_legacy_supabase_rest_store():
                 summary = supabase_store.stock_summary_map(source_type).get(product.id, {})
                 previous_stock = int(summary.get("current_stock") or 0)
             else:
@@ -1995,7 +1999,7 @@ def apply_stock_upload_preview(
     preview: dict,
     uploaded_by: str = "",
 ) -> dict:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return supabase_store.apply_stock_rows(source_type, work_date, preview)
 
     rows = [row for row in preview.get("preview_rows", []) if row.get("matched")]
@@ -2066,7 +2070,7 @@ def record_inventory_output(
 
 
 def list_inbound(db: Session, source_type: str) -> list[InventoryInbound]:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return supabase_store.list_inbound(source_type)
     return list(
         db.execute(
@@ -2078,7 +2082,7 @@ def list_inbound(db: Session, source_type: str) -> list[InventoryInbound]:
 
 
 def list_outbound(db: Session, source_type: str) -> list[InventoryDaily]:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return supabase_store.list_outbound(source_type)
     return list(
         db.execute(
@@ -2090,7 +2094,7 @@ def list_outbound(db: Session, source_type: str) -> list[InventoryDaily]:
 
 
 def create_date(db: Session, source_type: str, work_date: date | None = None) -> dict:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return {"ok": True, "message": "Supabase는 거래 기준으로 현재고를 계산하므로 별도 기준일자 생성이 필요 없습니다.", "count": 0}
 
     target_date = work_date or date.today()
@@ -2201,7 +2205,7 @@ def bulk_save_daily(db: Session, source_type: str, work_date: date, rows: list[d
 
 
 def bulk_save_inbound(db: Session, source_type: str, rows: list[dict]) -> int:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return supabase_store.bulk_save_inbound(source_type, rows)
 
     existing_rows = {
@@ -2274,7 +2278,7 @@ def get_or_create_daily(db: Session, source_type: str, work_date: date, product_
 
 
 def import_stock(db: Session, source_type: str, work_date: date, file_bytes: bytes) -> dict:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         preview = prepare_stock_upload_preview(db, source_type, work_date, file_bytes)
         return apply_stock_upload_preview(db, source_type, work_date, preview)
 
@@ -2357,7 +2361,7 @@ def import_order(db: Session, source_type: str, work_date: date, file_bytes: byt
     except ValueError:
         barcode_col = None
 
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         outbound_rows: dict[tuple[str, str, str], int] = {}
         filtered = df[df[cs_col].astype(str).str.contains("정상", na=False)]
         for _, row in filtered.iterrows():
@@ -2440,7 +2444,7 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes) -> di
     except ValueError:
         type_col = None
 
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         rows = []
         for _, row in df.iterrows():
             product_name = clean_text(row.get(name_col))
@@ -2487,7 +2491,7 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes) -> di
 
 
 def apply_inbound_to_stock(db: Session, source_type: str, work_date: date) -> int:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         return 0
 
     inbound_rows = list(
@@ -2672,7 +2676,7 @@ def excel_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
 
 
 def dashboard_summary(db: Session, work_date: date, source_type: str | None = None) -> dict:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         sources = [source_type] if source_type and source_type != "전체" else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
         rows = []
         for source in sources:
@@ -2705,7 +2709,7 @@ def dashboard_summary(db: Session, work_date: date, source_type: str | None = No
 
 
 def dashboard_chart(db: Session, work_date: date, source_type: str | None = None) -> dict:
-    if supabase_store is not None and supabase_store.is_enabled():
+    if use_legacy_supabase_rest_store():
         sources = [source_type] if source_type and source_type != "전체" else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
         rows = []
         for source in sources:
@@ -2786,3 +2790,4 @@ def dashboard_chart(db: Session, work_date: date, source_type: str | None = None
             for name, current, safe in top_rows
         ],
     }
+
