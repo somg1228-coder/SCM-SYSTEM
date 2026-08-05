@@ -481,8 +481,8 @@ def render_warehouse3d_page() -> None:
                 inventory_rows=inventory_rows,
                 shared_layout_store=shared_layout_store,
             ),
-            height=700,
-            scrolling=False,
+            height=860,
+            scrolling=True,
         )
     with stock_tab:
         components.html(
@@ -491,8 +491,8 @@ def render_warehouse3d_page() -> None:
                 inventory_rows=inventory_rows,
                 shared_layout_store=shared_layout_store,
             ),
-            height=700,
-            scrolling=False,
+            height=760,
+            scrolling=True,
         )
 
 
@@ -534,7 +534,7 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                 color: #1f2937;
                 font-family: "Pretendard", "Noto Sans KR", Arial, sans-serif;
                 margin: 0;
-                overflow: hidden;
+                overflow: auto;
             }}
             .stock-board {{
                 background: #ffffff;
@@ -1474,12 +1474,44 @@ def warehouse_scene_html(
                 text-align: center;
             }}
             @media (max-width: 980px) {{
+                body {{
+                    overflow: auto;
+                }}
                 .warehouse-scene {{
+                    gap: 0.55rem;
                     grid-template-columns: 1fr;
                     height: auto;
+                    min-height: 0;
+                }}
+                .building-panel,
+                .rack-panel,
+                .detail-panel {{
+                    padding: 0.62rem;
+                }}
+                .building-stack {{
+                    flex-direction: row;
+                    flex-wrap: wrap;
+                }}
+                .floor-chip {{
+                    flex: 1 1 70px;
+                    min-width: 70px;
+                }}
+                .scene-head {{
+                    align-items: flex-start;
+                    flex-direction: column;
+                    gap: 0.2rem;
+                }}
+                .scene-tools {{
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
                 }}
                 .floor-plan {{
-                    height: 520px;
+                    height: clamp(420px, 72vh, 560px);
+                }}
+                .assign-box {{
+                    grid-template-columns: 1fr;
+                }}
+                .item-list table {{
+                    min-width: 560px;
                 }}
                 .detail-panel {{
                     min-height: 360px;
@@ -2075,7 +2107,7 @@ def warehouse_scene3d_html(
                 color: #d7ddd9;
                 font-family: "Pretendard", "Noto Sans KR", Arial, sans-serif;
                 margin: 0;
-                overflow: hidden;
+                overflow: auto;
             }}
             .warehouse-scene {{
                 display: grid;
@@ -2599,15 +2631,121 @@ def warehouse_scene3d_html(
                 background: #F2EFEA;
             }}
             @media (max-width: 980px) {{
+                body {{
+                    overflow: auto;
+                }}
                 .warehouse-scene {{
+                    gap: 0.55rem;
                     grid-template-columns: 1fr;
                     height: auto;
+                    min-height: 0;
+                }}
+                .building-panel,
+                .model-panel,
+                .detail-panel {{
+                    padding: 0.62rem;
+                }}
+                .building-stack {{
+                    flex-direction: row;
+                    flex-wrap: wrap;
+                }}
+                .floor-chip {{
+                    flex: 1 1 70px;
+                    min-width: 70px;
+                }}
+                .scene-head {{
+                    align-items: flex-start;
+                    flex-direction: column;
+                    gap: 0.2rem;
+                }}
+                .scene-tools {{
+                    display: grid;
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }}
+                .scene-tools select,
+                .scene-tools button,
+                #rackTypeSelect,
+                #rackLevelSelect,
+                #rackBottomSelect,
+                #rackStackTargetSelect,
+                .layout-save-status {{
+                    flex: initial;
+                    min-width: 0;
+                    width: 100%;
                 }}
                 .model-viewport {{
-                    height: 540px;
+                    height: clamp(520px, 72vh, 650px);
+                    min-height: 520px;
+                }}
+                .floor-size-tools {{
+                    grid-template-columns: auto minmax(48px, 58px) auto minmax(48px, 58px);
+                    left: 0.5rem;
+                    max-width: calc(100% - 1rem);
+                    top: 0.5rem;
+                }}
+                .floor-size-tools button {{
+                    min-width: 0;
+                }}
+                .zoom-tools {{
+                    left: 0.5rem;
+                    max-width: calc(100% - 1rem);
+                    overflow-x: auto;
+                    right: auto;
+                    top: 4.2rem;
+                }}
+                .nav-tools {{
+                    bottom: 0.55rem;
+                    right: 0.55rem;
+                    top: auto;
+                }}
+                .model-label {{
+                    display: none;
+                }}
+                .model-help {{
+                    bottom: 0.55rem;
+                    left: 0.55rem;
+                    max-width: calc(100% - 7rem);
                 }}
                 .detail-panel {{
                     min-height: 360px;
+                }}
+                .assign-box,
+                .fixture-box,
+                .move-to-rack-box,
+                .move-floor-box {{
+                    grid-template-columns: 1fr;
+                }}
+                .nudge-grid {{
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }}
+                .item-list table {{
+                    min-width: 620px;
+                }}
+            }}
+            @media (max-width: 560px) {{
+                .scene-tools {{
+                    grid-template-columns: 1fr;
+                }}
+                .model-viewport {{
+                    height: clamp(500px, 78vh, 620px);
+                    min-height: 500px;
+                }}
+                .floor-size-tools {{
+                    grid-template-columns: auto minmax(48px, 1fr) auto minmax(48px, 1fr);
+                    width: calc(100% - 1rem);
+                }}
+                .floor-size-tools button {{
+                    grid-column: span 2;
+                }}
+                .zoom-tools {{
+                    top: 6.55rem;
+                    width: calc(100% - 1rem);
+                }}
+                .zoom-tools button {{
+                    flex: 1 0 auto;
+                }}
+                .model-help {{
+                    display: none;
                 }}
             }}
         </style>
