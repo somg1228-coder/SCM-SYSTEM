@@ -6,12 +6,15 @@ from pathlib import Path
 import shutil
 import sqlite3
 import stat
+import sys
 import tempfile
+import traceback
 
 try:
     from sqlalchemy import create_engine, inspect
     from sqlalchemy.engine import make_url
     from sqlalchemy.orm import declarative_base, sessionmaker
+    from sqlalchemy.pool import NullPool
     from sqlalchemy.schema import CreateColumn
 except ModuleNotFoundError as exc:
     raise RuntimeError("sqlalchemy가 설치되어 있지 않습니다. `pip install -r requirements.txt` 후 다시 실행해주세요.") from exc
@@ -36,6 +39,11 @@ except OSError:
     pass
 
 DEFAULT_DB_PATH = (DATA_DIR / "scm.db").resolve()
+DATABASE_URL_SOURCE = "unset"
+_LAST_SELECT_1_OK = False
+_LAST_SCHEMA_INIT_OK = False
+_LAST_DB_STAGE = ""
+_LAST_DB_ERROR = ""
 
 
 def load_local_env_file() -> None:
@@ -78,7 +86,7 @@ def streamlit_secret_database_url() -> str:
     except Exception:
         return ""
     try:
-        return str(st.secrets["SCM_DATABASE_URL"] or "").strip()
+        return str(st.secrets.get("SCM_DATABASE_URL", "") or "").strip()
     except Exception:
         return ""
 
@@ -104,27 +112,39 @@ def is_deployed_environment() -> bool:
     return False
 
 
+def sqlite_explicitly_allowed() -> bool:
+    return os.getenv("SCM_ALLOW_SQLITE", "").strip().lower() in {"1", "true", "yes", "y"}
+
+
 def configured_database_url() -> str:
+    global DATABASE_URL_SOURCE
+
     secret_url = streamlit_secret_database_url()
     if secret_url:
         os.environ["SCM_DATABASE_URL"] = secret_url
+        DATABASE_URL_SOURCE = "streamlit_secrets"
         return secret_url
 
     env_url = env_database_url()
     if env_url:
+        DATABASE_URL_SOURCE = "environment"
         return env_url
 
     load_local_env_file()
     env_url = env_database_url()
     if env_url:
+        DATABASE_URL_SOURCE = "environment"
         return env_url
 
-    if is_deployed_environment():
+    if not sqlite_explicitly_allowed():
+        location = "배포 환경" if is_deployed_environment() else "로컬 환경"
         raise RuntimeError(
-            "배포 환경에서 SCM_DATABASE_URL이 설정되지 않았습니다. "
-            "Streamlit Secrets에 SCM_DATABASE_URL을 등록해야 Supabase PostgreSQL에 저장됩니다."
+            f"{location}에서 SCM_DATABASE_URL이 설정되지 않았습니다. "
+            "Supabase PostgreSQL 저장을 사용하려면 Streamlit Secrets 또는 환경변수에 SCM_DATABASE_URL을 등록하세요. "
+            "로컬 SQLite fallback은 SCM_ALLOW_SQLITE=true를 명시한 경우에만 허용됩니다."
         )
 
+    DATABASE_URL_SOURCE = "sqlite_fallback_explicit"
     return f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
 
 

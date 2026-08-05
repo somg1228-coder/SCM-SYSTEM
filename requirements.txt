@@ -3,6 +3,7 @@ pandas
 reportlab
 sqlalchemy
 psycopg[binary]
+psycopg2-binary
 supabase
 openpyxl
 xlrd
