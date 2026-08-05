@@ -27,8 +27,15 @@ function Invoke-GitOutput {
         [switch]$AllowFailure
     )
 
-    $output = & git -C $RepoPath @GitArgs 2>&1
-    $exitCode = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = & git -C $RepoPath @GitArgs 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
 
     if ($exitCode -ne 0 -and -not $AllowFailure) {
         $details = ($output | Out-String).Trim()
