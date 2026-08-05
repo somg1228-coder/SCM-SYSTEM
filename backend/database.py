@@ -40,6 +40,7 @@ except OSError:
 
 DEFAULT_DB_PATH = (DATA_DIR / "scm.db").resolve()
 DATABASE_URL_SOURCE = "unset"
+SUPABASE_DATABASE_URL = ""
 _LAST_SELECT_1_OK = False
 _LAST_SCHEMA_INIT_OK = False
 _LAST_DB_STAGE = ""
