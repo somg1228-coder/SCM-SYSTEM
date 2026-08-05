@@ -44,6 +44,8 @@ _LAST_SELECT_1_OK = False
 _LAST_SCHEMA_INIT_OK = False
 _LAST_DB_STAGE = ""
 _LAST_DB_ERROR = ""
+_LAST_SAVE_SUCCESS_AT = ""
+_LAST_SAVE_FAILURE_ITEM = ""
 
 
 def load_local_env_file() -> None:
@@ -586,6 +588,8 @@ def database_status() -> dict:
         "schema_initialized": _LAST_SCHEMA_INIT_OK,
         "last_stage": _LAST_DB_STAGE,
         "last_error": _LAST_DB_ERROR,
+        "last_save_success_at": _LAST_SAVE_SUCCESS_AT,
+        "last_save_failure_item": _LAST_SAVE_FAILURE_ITEM,
         "message": "",
     }
     if test_database_connection():
@@ -600,6 +604,28 @@ def database_status() -> dict:
     else:
         status["message"] = f"데이터베이스 SELECT 1 실패: {_LAST_DB_ERROR}"
     return status
+
+
+def record_save_success(item: str) -> None:
+    global _LAST_SAVE_SUCCESS_AT, _LAST_SAVE_FAILURE_ITEM
+
+    _LAST_SAVE_SUCCESS_AT = datetime_now_iso()
+    _LAST_SAVE_FAILURE_ITEM = ""
+    LOGGER.info("DB save success: %s", sanitize_database_text(item))
+
+
+def record_save_failure(item: str, exc: BaseException | None = None) -> None:
+    global _LAST_SAVE_FAILURE_ITEM
+
+    _LAST_SAVE_FAILURE_ITEM = sanitize_database_text(item)
+    if exc is not None:
+        log_database_exception(f"DB save failed: {item}", exc)
+
+
+def datetime_now_iso() -> str:
+    from datetime import datetime
+
+    return datetime.now().isoformat(timespec="seconds")
 
 
 try:

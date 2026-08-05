@@ -17,7 +17,7 @@ DEFAULT_SCHEDULE_SQLITE_PATH = PROJECT_ROOT / "data" / "schedule.db"
 DEFAULT_MEETING_SQLITE_PATH = PROJECT_ROOT / "data" / "meeting_reports.db"
 DEFAULT_RETURN_CASE_SQLITE_PATH = PROJECT_ROOT / "ReturnCaseSystem" / "cases.db"
 DEFAULT_LAYOUT_JSON_PATH = PROJECT_ROOT / "data" / "warehouse3d_layouts.json"
-DEFAULT_PURCHASE_BUDGET_JSON_PATH = PROJECT_ROOT / "data" / "purchase_budget_store.json"
+DEFAULT_PURCHASE_BUDGET_JSON_PATH = PROJECT_ROOT / "data" / "purchase_budgets.json"
 
 
 def load_key_value_file(path: Path) -> None:
@@ -238,29 +238,38 @@ def main() -> int:
         raise RuntimeError("SCM_DATABASE_URL이 PostgreSQL 연결 문자열이 아닙니다.")
 
     args = parse_args()
-    sqlite_path = Path(args.sqlite_path).expanduser().resolve()
-    if not sqlite_path.exists():
-        raise FileNotFoundError(f"SQLite DB를 찾지 못했습니다: {sqlite_path}")
-
-    source_engine = create_engine(f"sqlite:///{sqlite_path.as_posix()}", future=True)
-    source_tables = set(inspect(source_engine).get_table_names())
     selected_tables = set(args.tables or [])
     model_tables = [
         table
         for table in Base.metadata.sorted_tables
         if not selected_tables or table.name in selected_tables
     ]
+    sqlite_sources = [
+        ("data/scm.db", Path(args.sqlite_path).expanduser().resolve()),
+        ("data/schedule.db", Path(args.schedule_sqlite_path).expanduser().resolve()),
+        ("data/meeting_reports.db", Path(args.meeting_sqlite_path).expanduser().resolve()),
+        ("ReturnCaseSystem/cases.db", Path(args.return_case_sqlite_path).expanduser().resolve()),
+    ]
 
     if args.dry_run:
-        print(f"[DRY RUN] SQLite: {sqlite_path}")
         print(f"[DRY RUN] PostgreSQL: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else 'configured'}")
-        with source_engine.connect() as source_conn:
-            for table in model_tables:
-                if table.name not in source_tables:
-                    print(f"- {table.name}: source table 없음")
-                    continue
-                count = source_conn.execute(select(table.c.id)).fetchall()
-                print(f"- {table.name}: SQLite {len(count)}건")
+        for label, sqlite_path in sqlite_sources:
+            print(f"[DRY RUN] SQLite: {sqlite_path}")
+            if not sqlite_path.exists():
+                print(f"- {label}: source DB 없음")
+                continue
+            source_engine = create_engine(f"sqlite:///{sqlite_path.as_posix()}", future=True)
+            source_tables = set(inspect(source_engine).get_table_names())
+            with source_engine.connect() as source_conn:
+                for table in model_tables:
+                    if table.name not in source_tables:
+                        continue
+                    first_column = next(iter(table.c))
+                    count = source_conn.execute(select(first_column)).fetchall()
+                    print(f"- {table.name}: SQLite {len(count)}건")
+        if not args.skip_purchase_budget_json:
+            budget_path = Path(args.purchase_budget_json).expanduser().resolve()
+            print(f"- purchase_budget_stores(json): {1 if budget_path.exists() else 0}건")
         if not args.skip_layout_json:
             layout_rows = layout_rows_from_json(Path(args.layout_json).expanduser().resolve())
             print(f"- warehouse_layouts(json): {len(layout_rows)}건")
@@ -268,28 +277,20 @@ def main() -> int:
 
     init_db()
     results = []
-    with source_engine.connect() as source_conn:
-        with engine.begin() as target_conn:
-            Base.metadata.create_all(bind=target_conn)
-            for table in model_tables:
-                if table.name not in source_tables:
-                    results.append(
-                        {
-                            "table": table.name,
-                            "source_rows": 0,
-                            "target_had_rows": False,
-                            "inserted_rows": 0,
-                            "skipped_rows": 0,
-                            "note": "source table 없음",
-                        }
-                    )
-                    continue
-                results.append(migrate_table(source_conn, target_conn, table))
-            if not args.skip_layout_json and (not selected_tables or "warehouse_layouts" in selected_tables):
-                layout_table = Base.metadata.tables.get("warehouse_layouts")
-                if layout_table is not None:
-                    layout_path = Path(args.layout_json).expanduser().resolve()
-                    results.append(migrate_layout_json(target_conn, layout_table, layout_path))
+    with engine.begin() as target_conn:
+        Base.metadata.create_all(bind=target_conn)
+        for label, sqlite_path in sqlite_sources:
+            results.extend(migrate_sqlite_file(sqlite_path, label, model_tables, selected_tables, target_conn))
+        if not args.skip_purchase_budget_json and (not selected_tables or "purchase_budget_stores" in selected_tables):
+            budget_table = Base.metadata.tables.get("purchase_budget_stores")
+            if budget_table is not None:
+                budget_path = Path(args.purchase_budget_json).expanduser().resolve()
+                results.append(migrate_purchase_budget_json(target_conn, budget_table, budget_path))
+        if not args.skip_layout_json and (not selected_tables or "warehouse_layouts" in selected_tables):
+            layout_table = Base.metadata.tables.get("warehouse_layouts")
+            if layout_table is not None:
+                layout_path = Path(args.layout_json).expanduser().resolve()
+                results.append(migrate_layout_json(target_conn, layout_table, layout_path))
 
     print("SQLite -> Supabase PostgreSQL 이관 결과")
     for row in results:
