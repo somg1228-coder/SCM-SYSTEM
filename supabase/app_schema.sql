@@ -596,7 +596,7 @@ CREATE INDEX IF NOT EXISTS ix_thirdparty_product_master_product_name ON thirdpar
 CREATE INDEX IF NOT EXISTS ix_thirdparty_product_master_sku ON thirdparty_product_master (sku);
 
 CREATE TABLE IF NOT EXISTS warehouse_layouts (
-	id SERIAL NOT NULL, 
+	id VARCHAR(36) DEFAULT gen_random_uuid()::text NOT NULL, 
 	building VARCHAR(120) NOT NULL, 
 	floor VARCHAR(40) NOT NULL, 
 	layout_data JSON NOT NULL, 
