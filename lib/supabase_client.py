@@ -31,7 +31,7 @@ def get_supabase_client() -> tuple[Any | None, SupabaseStatus]:
 
     try:
         client = create_client(url, key)
-        client.table("inventory_items").select("id", count="exact").limit(1).execute()
+        client.table("warehouse_layouts").select("id", count="exact").limit(1).execute()
         return client, SupabaseStatus(True, True, "Supabase REST API 연결 정상")
     except Exception as exc:
         return None, SupabaseStatus(True, False, f"Supabase REST API 연결 실패: {exc}")
