@@ -4,6 +4,10 @@ __pycache__/
 *.py[cod]
 *.pyc
 *.log
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 .streamlit/secrets.toml
 .streamlit/secrets.*.toml
 !.streamlit/secrets.example.toml

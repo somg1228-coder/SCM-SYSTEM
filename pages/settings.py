@@ -4,8 +4,9 @@ from datetime import datetime
 
 import pandas as pd
 import streamlit as st
+from sqlalchemy import text
 
-from backend.database import SessionLocal
+from backend.database import SessionLocal, database_status, init_db
 from backend import supabase_migration, supabase_store
 
 
@@ -18,6 +19,30 @@ REQUIRED_TABLES = [
     "stock_counts",
     "audit_logs",
     "import_batches",
+]
+
+APP_DB_TABLES = [
+    "thirdparty_product_master",
+    "offline_product_master",
+    "warehouse_product_master",
+    "inventory_daily",
+    "inventory_inbound",
+    "inventory_upload_histories",
+    "inventory_upload_snapshots",
+    "inventory_output_histories",
+    "category_bom_items",
+    "material_inventory_items",
+    "production_plans",
+    "purchase_requests",
+    "rfq_quotes",
+    "purchase_orders",
+    "purchase_documents",
+    "suppliers",
+    "supplier_evaluations",
+    "supplier_evaluation_items",
+    "supplier_evaluation_criteria",
+    "supplier_grade_rules",
+    "warehouse_layouts",
 ]
 
 
@@ -43,12 +68,44 @@ def status_badge(ok: bool) -> str:
     return "정상" if ok else "확인 필요"
 
 
+def render_app_database_panel() -> None:
+    status = database_status()
+    st.subheader("운영 DB 상태")
+    cols = st.columns(4)
+    cols[0].metric("데이터베이스", status.get("engine") or "확인 필요")
+    cols[1].metric("연결", status_badge(bool(status.get("connected"))))
+    cols[2].metric("설정값", "Secrets/환경변수" if status.get("configured") else "SQLite fallback")
+    cols[3].metric("DB 이름", status.get("database") or "-")
+
+    if status.get("connected"):
+        st.success(status.get("message") or "운영 DB에 연결되었습니다.")
+    else:
+        st.error(status.get("message") or "운영 DB 연결을 확인해주세요.")
+    if status.get("host"):
+        st.caption(f"DB Host: {status.get('host')}")
+
+    st.markdown("##### 실제 앱 테이블")
+    try:
+        init_db()
+        with SessionLocal() as db:
+            rows = [
+                {
+                    "테이블": table,
+                    "건수": db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar_one(),
+                }
+                for table in APP_DB_TABLES
+            ]
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    except Exception as exc:
+        st.warning(f"앱 테이블 상태를 확인하지 못했습니다: {exc}")
+
+
 def render_connection_panel(status: dict) -> None:
-    st.subheader("Supabase 연결상태")
+    st.subheader("Supabase REST API 연결상태")
     cols = st.columns(3)
     cols[0].metric("Secrets 설정", status_badge(bool(status.get("configured"))))
     cols[1].metric("연결", status_badge(bool(status.get("connected"))))
-    cols[2].metric("운영 모드", "Supabase" if status.get("connected") else "로컬 백업")
+    cols[2].metric("용도", "REST API 상태 확인")
 
     message = status.get("message") or ""
     if status.get("connected"):
@@ -153,8 +210,9 @@ def render_migration_panel(connected: bool) -> None:
 
 def render_settings_page() -> None:
     st.markdown("## 관리자")
-    st.caption("Supabase 운영 DB 연결, 테이블 상태, 기존 로컬 데이터 이관 상태를 확인합니다.")
+    st.caption("실제 운영 DB 연결, Supabase REST API, 테이블 상태, 기존 로컬 데이터 이관 상태를 확인합니다.")
 
+    render_app_database_panel()
     status = supabase_store.admin_status()
     render_connection_panel(status)
     render_table_panel(status)
