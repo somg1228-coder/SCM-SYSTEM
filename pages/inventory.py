@@ -1166,6 +1166,7 @@ def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
             default=current,
             key=state_key,
             label_visibility="collapsed",
+            width="stretch",
         )
         selected = selected or "전체"
         categories = [] if selected == "전체" else [selected]
