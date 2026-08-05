@@ -3060,7 +3060,7 @@ def warehouse_scene3d_html(
             }}
 
             function scheduleServerLayoutSave(delay = 520) {{
-                if (!layoutApiUrls.length || layoutSaveInProgress) return;
+                if ((!layoutApiUrls.length && !supabaseBrowserConfig?.enabled) || layoutSaveInProgress) return;
                 window.clearTimeout(layoutSaveTimer);
                 layoutSaveTimer = window.setTimeout(persistWarehouseLayoutToServer, delay);
             }}
@@ -3131,7 +3131,6 @@ def warehouse_scene3d_html(
                 if (!layoutApiUrls.length) return false;
                 let lastError = null;
                 for (const apiUrl of layoutApiUrls) {{
-                    let lastError = null;
                     try {{
                         const response = await fetch(apiUrl, {{
                             method: "POST",
