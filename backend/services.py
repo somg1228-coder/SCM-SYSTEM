@@ -14,6 +14,7 @@ import pandas as pd
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from backend.database import record_save_failure, record_save_success
 from backend.models import (
     InventoryDaily,
     InventoryInbound,
@@ -2002,60 +2003,66 @@ def apply_stock_upload_preview(
     if use_legacy_supabase_rest_store():
         return supabase_store.apply_stock_rows(source_type, work_date, preview)
 
-    rows = [row for row in preview.get("preview_rows", []) if row.get("matched")]
-    history = InventoryUploadHistory(
-        source_type=source_type,
-        work_date=work_date,
-        file_name=clean_text(preview.get("file_name")),
-        uploaded_by=clean_text(uploaded_by) or "SYSTEM",
-        upload_mode=clean_text(preview.get("upload_mode")) or "partial",
-        total_rows=int(preview.get("total_rows") or 0),
-        matched_count=int(preview.get("matched_count") or 0),
-        failed_count=int(preview.get("failed_count") or 0),
-        duplicate_count=int(preview.get("duplicate_count") or 0),
-        zeroed_count=int(preview.get("zeroed_count") or 0),
-    )
-    db.add(history)
-    db.flush()
+    try:
+        rows = [row for row in preview.get("preview_rows", []) if row.get("matched")]
+        history = InventoryUploadHistory(
+            source_type=source_type,
+            work_date=work_date,
+            file_name=clean_text(preview.get("file_name")),
+            uploaded_by=clean_text(uploaded_by) or "SYSTEM",
+            upload_mode=clean_text(preview.get("upload_mode")) or "partial",
+            total_rows=int(preview.get("total_rows") or 0),
+            matched_count=int(preview.get("matched_count") or 0),
+            failed_count=int(preview.get("failed_count") or 0),
+            duplicate_count=int(preview.get("duplicate_count") or 0),
+            zeroed_count=int(preview.get("zeroed_count") or 0),
+        )
+        db.add(history)
+        db.flush()
 
-    count = 0
-    verification_targets = []
-    for row in rows:
-        product = find_product_master(db, source_type, clean_text(row.get("product_code")), clean_text(row.get("barcode")), clean_text(row.get("product_name")))
-        if not product:
-            continue
-        item = ensure_daily_for_product(db, source_type, work_date, product)
-        previous_stock = int(item.current_stock or 0)
-        new_stock = to_int(row.get("new_stock"))
-        new_available_stock = to_int(row.get("new_available_stock")) if "new_available_stock" in row else new_stock
-        db.add(
-            InventoryUploadSnapshot(
-                upload_history_id=history.id,
-                source_type=source_type,
-                work_date=work_date,
-                product_code=product.sku,
-                barcode=product.barcode,
-                product_name=product.product_name,
-                previous_stock=previous_stock,
-                new_stock=new_stock,
+        count = 0
+        verification_targets = []
+        for row in rows:
+            product = find_product_master(db, source_type, clean_text(row.get("product_code")), clean_text(row.get("barcode")), clean_text(row.get("product_name")))
+            if not product:
+                continue
+            item = ensure_daily_for_product(db, source_type, work_date, product)
+            previous_stock = int(item.current_stock or 0)
+            new_stock = to_int(row.get("new_stock"))
+            new_available_stock = to_int(row.get("new_available_stock")) if "new_available_stock" in row else new_stock
+            db.add(
+                InventoryUploadSnapshot(
+                    upload_history_id=history.id,
+                    source_type=source_type,
+                    work_date=work_date,
+                    product_code=product.sku,
+                    barcode=product.barcode,
+                    product_name=product.product_name,
+                    previous_stock=previous_stock,
+                    new_stock=new_stock,
+                )
             )
-        )
-        item.current_stock = new_stock
-        item.available_stock = new_available_stock
-        item.stock_status = stock_status_for_values(new_available_stock, product.min_stock or 0)
-        verification_targets.append(
-            {
-                "product_code": product.sku,
-                "barcode": product.barcode,
-                "product_name": product.product_name,
-                "current_stock": new_stock,
-                "available_stock": new_available_stock,
-            }
-        )
-        count += 1
-    db.commit()
-    verification = verify_stock_upload_saved(db, source_type, work_date, verification_targets)
+            item.current_stock = new_stock
+            item.available_stock = new_available_stock
+            item.stock_status = stock_status_for_values(new_available_stock, product.min_stock or 0)
+            verification_targets.append(
+                {
+                    "product_code": product.sku,
+                    "barcode": product.barcode,
+                    "product_name": product.product_name,
+                    "current_stock": new_stock,
+                    "available_stock": new_available_stock,
+                }
+            )
+            count += 1
+        db.commit()
+        verification = verify_stock_upload_saved(db, source_type, work_date, verification_targets)
+    except Exception as exc:
+        db.rollback()
+        record_save_failure(f"inventory upload {source_type} {work_date}", exc)
+        raise
     if not verification["ok"]:
+        record_save_failure(f"inventory upload verification {source_type} {work_date}")
         return {
             "ok": False,
             "message": verification["message"],
@@ -2064,6 +2071,7 @@ def apply_stock_upload_preview(
             "verified_count": verification["verified_count"],
             "failed_count": verification["failed_count"],
         }
+    record_save_success(f"inventory upload {source_type} {work_date}")
     return {
         "ok": True,
         "message": f"재고 업로드 반영 완료 / DB 저장 검증 {verification['verified_count']:,}건",

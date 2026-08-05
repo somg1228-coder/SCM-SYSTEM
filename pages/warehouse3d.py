@@ -14,12 +14,14 @@ import streamlit.components.v1 as components
 from sqlalchemy import select
 
 try:
-    from backend.database import SessionLocal, init_db, writable_runtime_data_dir
+    from backend.database import SessionLocal, init_db, record_save_failure, record_save_success, writable_runtime_data_dir
     from backend.models import WarehouseLayout
     from backend import services, supabase_store
 except (ModuleNotFoundError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
+    record_save_failure = None
+    record_save_success = None
     writable_runtime_data_dir = None
     WarehouseLayout = None
     services = None
@@ -220,9 +222,15 @@ def save_database_warehouse_layout_store(payload: dict) -> int:
             )
             if saved and not verified:
                 write_warehouse_layout_log("SQLAlchemy layout save verification failed: no active rows after commit.")
+                if record_save_failure is not None:
+                    record_save_failure("warehouse3d layout verification")
                 return 0
+            if saved and record_save_success is not None:
+                record_save_success("warehouse3d layout")
     except Exception as exc:
         write_warehouse_layout_log(f"SQLAlchemy layout save failed: {exc}")
+        if record_save_failure is not None:
+            record_save_failure("warehouse3d layout", exc)
         return 0
     return saved
 

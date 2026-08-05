@@ -44,6 +44,16 @@ APP_DB_TABLES = [
     "supplier_evaluation_criteria",
     "supplier_grade_rules",
     "warehouse_layouts",
+    "schedule_weeks",
+    "schedule_highlights",
+    "schedule_slots",
+    "meeting_reports",
+    "meeting_meta",
+    "meeting_production_requests",
+    "meeting_events",
+    "meeting_action_items",
+    "cases",
+    "purchase_budget_stores",
 ]
 
 
@@ -103,6 +113,10 @@ def render_app_database_panel() -> None:
         st.error(schema_error or status.get("message") or "운영 DB 연결을 확인해주세요.")
     if status.get("host"):
         st.caption(f"DB Host: {status.get('host')} / Port: {status.get('port') or '-'} / Source: {status.get('url_source')}")
+    st.caption(
+        f"최근 저장 성공: {status.get('last_save_success_at') or '-'} / "
+        f"최근 저장 실패 항목: {status.get('last_save_failure_item') or '-'}"
+    )
 
     st.markdown("##### 실제 앱 테이블")
     try:
