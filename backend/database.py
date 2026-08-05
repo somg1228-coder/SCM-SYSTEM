@@ -168,8 +168,49 @@ def is_postgresql_url(raw_url: str) -> bool:
     return driver == "postgres" or driver.startswith("postgresql")
 
 
+def supabase_database_url_config() -> str:
+    global DATABASE_URL_SOURCE
+
+    secret_url = streamlit_secret_database_url()
+    if secret_url:
+        os.environ["SCM_DATABASE_URL"] = secret_url
+        DATABASE_URL_SOURCE = "streamlit_secrets"
+        return secret_url
+
+    env_url = env_database_url()
+    if env_url:
+        DATABASE_URL_SOURCE = "environment"
+        return env_url
+
+    load_local_env_file()
+    env_url = env_database_url()
+    if env_url:
+        DATABASE_URL_SOURCE = "environment"
+        return env_url
+
+    DATABASE_URL_SOURCE = "unset"
+    return ""
+
+
+def use_supabase_as_app_database() -> bool:
+    return os.getenv("SCM_USE_SUPABASE_DB", "").strip().lower() in {"1", "true", "yes", "y"}
+
+
+def configured_database_url() -> str:
+    global DATABASE_URL_SOURCE, SUPABASE_DATABASE_URL
+
+    SUPABASE_DATABASE_URL = supabase_database_url_config()
+    if SUPABASE_DATABASE_URL and use_supabase_as_app_database():
+        return SUPABASE_DATABASE_URL
+    if SUPABASE_DATABASE_URL:
+        DATABASE_URL_SOURCE = f"{DATABASE_URL_SOURCE}_status_only"
+    elif DATABASE_URL_SOURCE == "unset":
+        DATABASE_URL_SOURCE = "sqlite_recovery"
+    return f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
+
+
 RAW_DATABASE_URL = configured_database_url()
-DATABASE_URL_FROM_CONFIG = bool(os.getenv("SCM_DATABASE_URL", "").strip())
+DATABASE_URL_FROM_CONFIG = bool(SUPABASE_DATABASE_URL)
 
 
 def make_file_writable(path: Path) -> None:
