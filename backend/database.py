@@ -72,10 +72,60 @@ def load_streamlit_secrets_to_env() -> None:
         os.environ["SCM_DATABASE_URL"] = value
 
 
+def streamlit_secret_database_url() -> str:
+    try:
+        import streamlit as st
+    except Exception:
+        return ""
+    try:
+        return str(st.secrets["SCM_DATABASE_URL"] or "").strip()
+    except Exception:
+        return ""
+
+
+def env_database_url() -> str:
+    return os.getenv("SCM_DATABASE_URL", "").strip()
+
+
+def is_deployed_environment() -> bool:
+    cloud_markers = (
+        "STREAMLIT_CLOUD",
+        "STREAMLIT_SHARING_MODE",
+        "STREAMLIT_RUNTIME_ENV",
+        "STREAMLIT_SERVER_PORT",
+        "K_SERVICE",
+        "DYNO",
+        "RENDER",
+    )
+    for key in cloud_markers:
+        value = os.getenv(key, "").strip().lower()
+        if value and value not in {"0", "false", "local", "development"}:
+            return True
+    return False
+
+
 def configured_database_url() -> str:
-    load_streamlit_secrets_to_env()
+    secret_url = streamlit_secret_database_url()
+    if secret_url:
+        os.environ["SCM_DATABASE_URL"] = secret_url
+        return secret_url
+
+    env_url = env_database_url()
+    if env_url:
+        return env_url
+
     load_local_env_file()
-    return os.getenv("SCM_DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH.as_posix()}").strip()
+    env_url = env_database_url()
+    if env_url:
+        return env_url
+
+    if is_deployed_environment():
+        raise RuntimeError(
+            "배포 환경에서 SCM_DATABASE_URL이 설정되지 않았습니다. "
+            "Streamlit Secrets에 SCM_DATABASE_URL을 등록해야 Supabase PostgreSQL에 저장됩니다."
+        )
+
+    return f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
 
 
 def is_sqlite_url(raw_url: str) -> bool:
@@ -93,7 +143,6 @@ def is_postgresql_url(raw_url: str) -> bool:
     return driver == "postgres" or driver.startswith("postgresql")
 
 
-load_local_env_file()
 RAW_DATABASE_URL = configured_database_url()
 DATABASE_URL_FROM_CONFIG = bool(os.getenv("SCM_DATABASE_URL", "").strip())
 

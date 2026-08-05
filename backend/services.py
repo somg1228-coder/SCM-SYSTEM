@@ -2019,6 +2019,7 @@ def apply_stock_upload_preview(
     db.flush()
 
     count = 0
+    verification_targets = []
     for row in rows:
         product = find_product_master(db, source_type, clean_text(row.get("product_code")), clean_text(row.get("barcode")), clean_text(row.get("product_name")))
         if not product:
@@ -2042,9 +2043,71 @@ def apply_stock_upload_preview(
         item.current_stock = new_stock
         item.available_stock = new_available_stock
         item.stock_status = stock_status_for_values(new_available_stock, product.min_stock or 0)
+        verification_targets.append(
+            {
+                "product_code": product.sku,
+                "barcode": product.barcode,
+                "product_name": product.product_name,
+                "current_stock": new_stock,
+                "available_stock": new_available_stock,
+            }
+        )
         count += 1
     db.commit()
-    return {"ok": True, "message": "재고 업로드 반영 완료", "count": count, "history_id": history.id}
+    verification = verify_stock_upload_saved(db, source_type, work_date, verification_targets)
+    if not verification["ok"]:
+        return {
+            "ok": False,
+            "message": verification["message"],
+            "count": count,
+            "history_id": history.id,
+            "verified_count": verification["verified_count"],
+            "failed_count": verification["failed_count"],
+        }
+    return {
+        "ok": True,
+        "message": f"재고 업로드 반영 완료 / DB 저장 검증 {verification['verified_count']:,}건",
+        "count": count,
+        "history_id": history.id,
+        "verified_count": verification["verified_count"],
+    }
+
+
+def verify_stock_upload_saved(db: Session, source_type: str, work_date: date, targets: list[dict]) -> dict:
+    db.expire_all()
+    failed = []
+    for target in targets:
+        item = db.execute(
+            select(InventoryDaily).where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date == work_date,
+                InventoryDaily.product_code == target["product_code"],
+            )
+        ).scalar_one_or_none()
+        if item is None:
+            item = db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == source_type,
+                    InventoryDaily.work_date == work_date,
+                    InventoryDaily.barcode == target["barcode"],
+                    InventoryDaily.product_name == target["product_name"],
+                )
+            ).scalar_one_or_none()
+        if (
+            item is None
+            or int(item.current_stock or 0) != int(target["current_stock"] or 0)
+            or int(item.available_stock or 0) != int(target["available_stock"] or 0)
+        ):
+            failed.append(target)
+
+    if failed:
+        return {
+            "ok": False,
+            "message": f"재고 업로드는 commit 되었지만 DB 재조회 검증 실패 {len(failed):,}건이 있습니다.",
+            "verified_count": len(targets) - len(failed),
+            "failed_count": len(failed),
+        }
+    return {"ok": True, "message": "DB 저장 검증 완료", "verified_count": len(targets), "failed_count": 0}
 
 
 def record_inventory_output(
