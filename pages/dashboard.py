@@ -10,14 +10,16 @@ from urllib.parse import urlencode
 import pandas as pd
 import streamlit as st
 
-from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available
 from sqlalchemy import select
 
 try:
+    from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available
     from backend.database import SessionLocal, init_db
     from backend import services
     from backend.models import CategoryBomItem, InventoryDaily, ProductionPlan, PurchaseOrder, PurchaseRequest, RfqQuote
 except (ModuleNotFoundError, RuntimeError) as exc:
+    connect_sqlite_compatible = None
+    legacy_store_available = None
     SessionLocal = None
     init_db = None
     services = None
@@ -572,7 +574,7 @@ def get_return_case_summary(work_date: date) -> dict:
         "delayed_count": 0,
         "year": current_year,
     }
-    if not legacy_store_available(RETURN_CASE_DB_PATH):
+    if legacy_store_available is None or connect_sqlite_compatible is None or not legacy_store_available(RETURN_CASE_DB_PATH):
         return summary
     try:
         with connect_sqlite_compatible(RETURN_CASE_DB_PATH) as conn:
@@ -710,7 +712,7 @@ def return_case_detail_link(case_id: str) -> str:
 
 
 def count_return_as_cases_for_month(work_date: date) -> int:
-    if not legacy_store_available(RETURN_CASE_DB_PATH):
+    if legacy_store_available is None or connect_sqlite_compatible is None or not legacy_store_available(RETURN_CASE_DB_PATH):
         return 0
     month_key = work_date.strftime("%Y%m")
     try:
@@ -851,7 +853,7 @@ def get_dashboard_week_schedule() -> tuple[pd.Timestamp, list[tuple[str, list[st
     week_start = current_week_start
     schedule_by_day = {index: [] for index in range(7)}
 
-    if legacy_store_available(SCHEDULE_DB_PATH):
+    if legacy_store_available is not None and connect_sqlite_compatible is not None and legacy_store_available(SCHEDULE_DB_PATH):
         try:
             with connect_sqlite_compatible(SCHEDULE_DB_PATH) as conn:
                 conn.row_factory = sqlite3.Row
@@ -903,7 +905,7 @@ def get_dashboard_core_tasks(limit: int = 8) -> dict:
         "rows": [],
         "source": "current",
     }
-    if not legacy_store_available(SCHEDULE_DB_PATH):
+    if legacy_store_available is None or connect_sqlite_compatible is None or not legacy_store_available(SCHEDULE_DB_PATH):
         add_dashboard_production_tasks(summary, limit)
         return summary
 

@@ -7,8 +7,18 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import text
 
-from backend.database import SessionLocal, database_status, init_db
-from backend import supabase_migration, supabase_store
+try:
+    from backend.database import SessionLocal, database_status, init_db
+    from backend import supabase_migration, supabase_store
+except Exception as exc:
+    SessionLocal = None
+    database_status = None
+    init_db = None
+    supabase_migration = None
+    supabase_store = None
+    SETTINGS_IMPORT_ERROR = str(exc)
+else:
+    SETTINGS_IMPORT_ERROR = ""
 
 
 REQUIRED_TABLES = [
@@ -93,6 +103,10 @@ def current_git_commit_hash() -> str:
 
 
 def render_app_database_panel() -> None:
+    if init_db is None or database_status is None or SessionLocal is None:
+        st.subheader("운영 DB 상태")
+        st.error(SETTINGS_IMPORT_ERROR or "DB 설정 모듈을 불러오지 못했습니다.")
+        return
     schema_error = ""
     try:
         init_db()
