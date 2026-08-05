@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Integer, JSON, LargeBinary, String, Text, UniqueConstraint, func, text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Integer, JSON, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.database import Base
@@ -152,7 +152,6 @@ class WarehouseLayout(Base):
         primary_key=True,
         index=True,
         default=lambda: str(uuid4()),
-        server_default=text("gen_random_uuid()::text"),
     )
     building: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
     floor: Mapped[str] = mapped_column(String(40), index=True, nullable=False)

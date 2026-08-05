@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import sys
@@ -12,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SQLITE_PATH = PROJECT_ROOT / "data" / "scm.db"
+DEFAULT_LAYOUT_JSON_PATH = PROJECT_ROOT / "data" / "warehouse3d_layouts.json"
 
 
 def load_key_value_file(path: Path) -> None:
@@ -47,6 +49,8 @@ def bootstrap_project_imports() -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Migrate SCM SQLite data to Supabase PostgreSQL.")
     parser.add_argument("--sqlite-path", default=str(DEFAULT_SQLITE_PATH), help="기존 SQLite DB 경로")
+    parser.add_argument("--layout-json", default=str(DEFAULT_LAYOUT_JSON_PATH), help="3D 창고 배치 JSON 경로")
+    parser.add_argument("--skip-layout-json", action="store_true", help="3D 창고 배치 JSON 이관 건너뛰기")
     parser.add_argument("--dry-run", action="store_true", help="이관 없이 테이블별 건수만 확인")
     parser.add_argument("--tables", nargs="*", default=[], help="일부 테이블만 이관할 때 테이블명 지정")
     return parser.parse_args()
@@ -94,6 +98,57 @@ def migrate_table(source_conn, target_conn, table, chunk_size: int = 500) -> dic
     }
 
 
+def layout_rows_from_json(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    locations = payload.get("locations") if isinstance(payload, dict) else None
+    if not isinstance(locations, dict):
+        return []
+    rows = []
+    for building, floors in locations.items():
+        if not isinstance(floors, dict):
+            continue
+        for floor, layout_data in floors.items():
+            if not isinstance(layout_data, dict):
+                continue
+            if not (layout_data.get("racks") or layout_data.get("fixtures") or layout_data.get("floor_size")):
+                continue
+            rows.append(
+                {
+                    "building": str(building),
+                    "floor": str(floor),
+                    "layout_data": layout_data,
+                    "is_active": True,
+                }
+            )
+    return rows
+
+
+def migrate_layout_json(target_conn, layout_table, layout_path: Path) -> dict:
+    rows = layout_rows_from_json(layout_path)
+    inserted = 0
+    if rows:
+        stmt = pg_insert(layout_table).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["building", "floor"],
+            set_={
+                "layout_data": stmt.excluded.layout_data,
+                "is_active": True,
+            },
+        )
+        result = target_conn.execute(stmt)
+        inserted = int(result.rowcount or 0)
+    return {
+        "table": "warehouse_layouts(json)",
+        "source_rows": len(rows),
+        "target_had_rows": False,
+        "inserted_rows": inserted,
+        "skipped_rows": len(rows) - inserted,
+        "note": str(layout_path),
+    }
+
+
 def main() -> int:
     bootstrap_project_imports()
 
@@ -129,6 +184,9 @@ def main() -> int:
                     continue
                 count = source_conn.execute(select(table.c.id)).fetchall()
                 print(f"- {table.name}: SQLite {len(count)}건")
+        if not args.skip_layout_json:
+            layout_rows = layout_rows_from_json(Path(args.layout_json).expanduser().resolve())
+            print(f"- warehouse_layouts(json): {len(layout_rows)}건")
         return 0
 
     init_db()
@@ -150,6 +208,11 @@ def main() -> int:
                     )
                     continue
                 results.append(migrate_table(source_conn, target_conn, table))
+            if not args.skip_layout_json and (not selected_tables or "warehouse_layouts" in selected_tables):
+                layout_table = Base.metadata.tables.get("warehouse_layouts")
+                if layout_table is not None:
+                    layout_path = Path(args.layout_json).expanduser().resolve()
+                    results.append(migrate_layout_json(target_conn, layout_table, layout_path))
 
     print("SQLite -> Supabase PostgreSQL 이관 결과")
     for row in results:
