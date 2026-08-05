@@ -47,6 +47,8 @@ _LAST_DB_ERROR = ""
 
 
 def load_local_env_file() -> None:
+    if os.getenv("SCM_IGNORE_DOTENV", "").strip().lower() in {"1", "true", "yes", "y"}:
+        return
     env_path = BASE_DIR / ".env"
     if not env_path.exists():
         return

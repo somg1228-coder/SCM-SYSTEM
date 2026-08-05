@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -68,25 +69,43 @@ def status_badge(ok: bool) -> str:
     return "정상" if ok else "확인 필요"
 
 
+def current_git_commit_hash() -> str:
+    root = Path(__file__).resolve().parents[1]
+    git_dir = root / ".git"
+    try:
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref:"):
+            ref_path = git_dir / head.split(" ", 1)[1]
+            return ref_path.read_text(encoding="utf-8").strip()[:12]
+        return head[:12]
+    except Exception:
+        return "unknown"
+
+
 def render_app_database_panel() -> None:
+    schema_error = ""
+    try:
+        init_db()
+    except Exception as exc:
+        schema_error = str(exc)
     status = database_status()
     st.subheader("운영 DB 상태")
-    cols = st.columns(4)
+    cols = st.columns(5)
     cols[0].metric("데이터베이스", status.get("engine") or "확인 필요")
-    cols[1].metric("연결", status_badge(bool(status.get("connected"))))
-    cols[2].metric("설정값", "Secrets/환경변수" if status.get("configured") else "SQLite fallback")
-    cols[3].metric("DB 이름", status.get("database") or "-")
+    cols[1].metric("URL 로드", status_badge(bool(status.get("configured"))))
+    cols[2].metric("SELECT 1", status_badge(bool(status.get("select_1_ok"))))
+    cols[3].metric("스키마 초기화", status_badge(bool(status.get("schema_initialized"))))
+    cols[4].metric("Git", current_git_commit_hash())
 
-    if status.get("connected"):
+    if status.get("connected") and status.get("schema_initialized"):
         st.success(status.get("message") or "운영 DB에 연결되었습니다.")
     else:
-        st.error(status.get("message") or "운영 DB 연결을 확인해주세요.")
+        st.error(schema_error or status.get("message") or "운영 DB 연결을 확인해주세요.")
     if status.get("host"):
-        st.caption(f"DB Host: {status.get('host')}")
+        st.caption(f"DB Host: {status.get('host')} / Port: {status.get('port') or '-'} / Source: {status.get('url_source')}")
 
     st.markdown("##### 실제 앱 테이블")
     try:
-        init_db()
         with SessionLocal() as db:
             rows = [
                 {
