@@ -601,8 +601,8 @@ CREATE TABLE IF NOT EXISTS warehouse_layouts (
 	floor VARCHAR(40) NOT NULL, 
 	layout_data JSON NOT NULL, 
 	is_active BOOLEAN NOT NULL, 
-	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
-	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
+	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
 	CONSTRAINT uq_warehouse_layouts_building_floor UNIQUE (building, floor)
 );
