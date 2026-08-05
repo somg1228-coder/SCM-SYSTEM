@@ -612,31 +612,57 @@ Base = declarative_base()
 
 
 def init_db() -> None:
+    global _LAST_SCHEMA_INIT_OK, _LAST_DB_STAGE, _LAST_DB_ERROR
+
     from backend import models  # noqa: F401
 
-    try:
-        if is_sqlite_url(DATABASE_URL):
+    if not test_database_connection():
+        if is_postgresql_url(DATABASE_URL):
+            raise RuntimeError(
+                "Supabase PostgreSQL SELECT 1 연결 테스트에 실패했습니다. "
+                "SCM_DATABASE_URL의 host, port, user, password, sslmode를 확인해주세요."
+            )
+        raise RuntimeError(f"DB SELECT 1 연결 테스트에 실패했습니다: {_LAST_DB_ERROR}")
+
+    if is_sqlite_url(DATABASE_URL):
+        try:
+            _LAST_DB_STAGE = "sqlite_schema_init"
             repair_sqlite_schema()
             Base.metadata.create_all(bind=engine)
             ensure_sqlite_columns()
-        else:
+            _LAST_SCHEMA_INIT_OK = True
+            _LAST_DB_ERROR = ""
+        except Exception as exc:
+            _LAST_SCHEMA_INIT_OK = False
+            _LAST_DB_STAGE = "sqlite_schema_init"
+            _LAST_DB_ERROR = sanitize_database_text(repr(exc))
+            log_database_exception("SQLite DB 초기화", exc)
+            if not is_sqlite_recoverable_open_error(exc):
+                raise
+            LOGGER.exception("SQLite DB 초기화 실패. 런타임 DB 경로로 전환해 재시도합니다: %s", exc)
+            switch_to_runtime_sqlite_copy()
+            repair_sqlite_schema()
             Base.metadata.create_all(bind=engine)
-            ensure_postgresql_columns()
-    except Exception as exc:
-        if not is_sqlite_url(DATABASE_URL):
-            LOGGER.exception("PostgreSQL DB 초기화 실패: %s", exc)
-            raise RuntimeError(
-                "Supabase PostgreSQL 연결 또는 스키마 초기화에 실패했습니다. "
-                "SCM_DATABASE_URL과 Supabase Database 비밀번호, SSL 설정을 확인해주세요."
-            ) from exc
-        LOGGER.exception("SQLite DB 초기화 실패: %s", exc)
-        if not is_sqlite_recoverable_open_error(exc):
-            raise
-        LOGGER.exception("SQLite DB 초기화 실패. 런타임 DB 경로로 전환해 재시도합니다: %s", exc)
-        switch_to_runtime_sqlite_copy()
-        repair_sqlite_schema()
+            ensure_sqlite_columns()
+            _LAST_SCHEMA_INIT_OK = True
+            _LAST_DB_ERROR = ""
+        return
+
+    try:
+        _LAST_DB_STAGE = "postgres_schema_init"
         Base.metadata.create_all(bind=engine)
-        ensure_sqlite_columns()
+        ensure_postgresql_columns()
+        _LAST_SCHEMA_INIT_OK = True
+        _LAST_DB_ERROR = ""
+    except Exception as exc:
+        _LAST_SCHEMA_INIT_OK = False
+        _LAST_DB_STAGE = "postgres_schema_init"
+        _LAST_DB_ERROR = sanitize_database_text(repr(exc))
+        log_database_exception("Supabase PostgreSQL 스키마 초기화", exc)
+        raise RuntimeError(
+            "Supabase PostgreSQL 스키마 초기화(create_all)에 실패했습니다. "
+            "SELECT 1은 성공했지만 테이블 생성/컬럼 확인 단계에서 실패했습니다."
+        ) from exc
 
 
 def switch_to_runtime_sqlite_copy() -> None:
@@ -646,7 +672,7 @@ def switch_to_runtime_sqlite_copy() -> None:
     runtime_path = copy_sqlite_to_writable_path(db_path)
     DATABASE_URL = f"sqlite:///{runtime_path.as_posix()}"
     CONNECT_ARGS = database_connect_args(DATABASE_URL)
-    ENGINE_OPTIONS = {"connect_args": CONNECT_ARGS, "future": True, "pool_pre_ping": True}
+    ENGINE_OPTIONS = database_engine_options(DATABASE_URL)
     engine.dispose()
     engine = create_engine(DATABASE_URL, **ENGINE_OPTIONS)
     SessionLocal.configure(bind=engine)
