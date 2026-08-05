@@ -8,7 +8,7 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 
-from backend.legacy_storage import connect_sqlite_compatible
+from backend.legacy_storage import connect_sqlite_compatible, legacy_uses_local_sqlite
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -72,7 +72,8 @@ def render_schedule_page() -> None:
 
 
 def ensure_schema() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if legacy_uses_local_sqlite():
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with connect_sqlite_compatible(DB_PATH) as conn:
         conn.executescript(
             """

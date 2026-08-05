@@ -120,6 +120,12 @@ class PostgresSqliteCompatConnection:
             self._transaction.rollback()
         self._conn.close()
 
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def _execute_into_cursor(self, cursor: CompatCursor, statement: str, parameters: Iterable[Any] | dict[str, Any] | None) -> None:
         sql = statement.strip().rstrip(";")
         try:
@@ -218,3 +224,7 @@ def legacy_store_available(database_path: str | Path) -> bool:
     if is_postgresql_url(DATABASE_URL):
         return True
     return Path(database_path).exists()
+
+
+def legacy_uses_local_sqlite() -> bool:
+    return is_sqlite_url(DATABASE_URL)

@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 import pandas as pd
 import streamlit as st
 
-from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available
+from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available, legacy_uses_local_sqlite
 import streamlit.components.v1 as components
 
 
@@ -976,7 +976,8 @@ def format_kpi_delta_text(value: str, prefix: str = "전주 대비") -> str:
 
 
 def ensure_schema() -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if legacy_uses_local_sqlite():
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with connect_sqlite_compatible(DB_PATH) as conn:
         conn.executescript(
             """
