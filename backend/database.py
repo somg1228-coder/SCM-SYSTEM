@@ -715,7 +715,7 @@ def ensure_postgresql_columns() -> None:
                 if column.name in existing_columns:
                     continue
                 column_sql = str(CreateColumn(column).compile(dialect=engine.dialect))
-                if " NOT NULL" in column_sql.upper() and column.default is not None and column.server_default is None:
+                if column.server_default is None:
                     column_sql = column_sql.replace(" NOT NULL", "")
                 conn.exec_driver_sql(f'ALTER TABLE "{table.name}" ADD COLUMN {column_sql}')
 
