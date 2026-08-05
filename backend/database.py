@@ -426,6 +426,34 @@ def supabase_transaction_pooler_url(database_url: str) -> str | None:
     return url.set(port=6543).render_as_string(hide_password=False)
 
 
+def supabase_direct_database_url(database_url: str) -> str | None:
+    if not is_postgresql_url(database_url):
+        return None
+    try:
+        url = make_url(database_url)
+    except Exception:
+        return None
+    host = url.host or ""
+    username = url.username or ""
+    project_ref = ""
+    if username.startswith("postgres."):
+        project_ref = username.split(".", 1)[1]
+    if not project_ref or host == f"db.{project_ref}.supabase.co":
+        return None
+    return url.set(username="postgres", host=f"db.{project_ref}.supabase.co", port=5432).render_as_string(hide_password=False)
+
+
+def supabase_connection_retry_urls(database_url: str) -> list[tuple[str, str]]:
+    candidates: list[tuple[str, str]] = []
+    transaction_pooler = supabase_transaction_pooler_url(database_url)
+    if transaction_pooler:
+        candidates.append(("transaction_pooler_6543", transaction_pooler))
+    direct_database = supabase_direct_database_url(database_url)
+    if direct_database:
+        candidates.append(("direct_database_5432", direct_database))
+    return candidates
+
+
 def switch_database_url(next_database_url: str) -> None:
     global DATABASE_URL, CONNECT_ARGS, ENGINE_OPTIONS, engine, SessionLocal
 
@@ -597,7 +625,8 @@ def test_database_connection() -> bool:
         if try_supabase_transaction_pooler_after_failure(exc):
             return True
         _LAST_SELECT_1_OK = False
-        _LAST_DB_ERROR = sanitize_database_text(repr(exc))
+        if not _LAST_DB_ERROR:
+            _LAST_DB_ERROR = sanitize_database_text(repr(exc))
         log_database_exception("DB SELECT 1 연결 테스트", exc)
         return False
 
@@ -605,32 +634,31 @@ def test_database_connection() -> bool:
 def try_supabase_transaction_pooler_after_failure(primary_exc: BaseException) -> bool:
     global _LAST_SELECT_1_OK, _LAST_DB_STAGE, _LAST_DB_ERROR
 
-    retry_url = supabase_transaction_pooler_url(DATABASE_URL)
-    if not retry_url:
+    retry_urls = supabase_connection_retry_urls(DATABASE_URL)
+    if not retry_urls:
         return False
-    try:
-        LOGGER.warning(
-            "Supabase session pooler SELECT 1 failed; retrying transaction pooler 6543. primary=%s",
-            sanitize_database_text(repr(primary_exc)),
-        )
-        switch_database_url(retry_url)
-        with engine.connect() as conn:
-            conn.exec_driver_sql("SELECT 1")
-        _LAST_SELECT_1_OK = True
-        _LAST_DB_STAGE = "select_1_pooler_6543"
-        _LAST_DB_ERROR = ""
-        return True
-    except Exception as retry_exc:
-        _LAST_SELECT_1_OK = False
-        _LAST_DB_STAGE = "select_1_pooler_6543"
-        _LAST_DB_ERROR = (
-            "primary="
-            + sanitize_database_text(repr(primary_exc))
-            + " / transaction_pooler="
-            + sanitize_database_text(repr(retry_exc))
-        )
-        log_database_exception("Supabase transaction pooler 6543 연결 테스트", retry_exc)
-        return False
+    errors = ["primary=" + sanitize_database_text(repr(primary_exc))]
+    for label, retry_url in retry_urls:
+        try:
+            LOGGER.warning(
+                "Supabase SELECT 1 failed; retrying %s. primary=%s",
+                label,
+                sanitize_database_text(repr(primary_exc)),
+            )
+            switch_database_url(retry_url)
+            with engine.connect() as conn:
+                conn.exec_driver_sql("SELECT 1")
+            _LAST_SELECT_1_OK = True
+            _LAST_DB_STAGE = f"select_1_{label}"
+            _LAST_DB_ERROR = ""
+            return True
+        except Exception as retry_exc:
+            errors.append(f"{label}=" + sanitize_database_text(repr(retry_exc)))
+            _LAST_SELECT_1_OK = False
+            _LAST_DB_STAGE = f"select_1_{label}"
+            log_database_exception(f"Supabase {label} 연결 테스트", retry_exc)
+    _LAST_DB_ERROR = " / ".join(errors)
+    return False
 
 
 def database_status() -> dict:
