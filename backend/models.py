@@ -748,3 +748,13 @@ class PurchaseDocument(Base):
     file_mime: Mapped[str] = mapped_column(String(120), default="application/octet-stream", nullable=False)
     file_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True, nullable=False)
+
+
+class PurchaseBudgetStore(Base):
+    __tablename__ = "purchase_budget_stores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    store_key: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=func.now(), onupdate=datetime.utcnow, nullable=False)

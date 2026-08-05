@@ -50,6 +50,7 @@ try:
     SupplierSpecialRule = getattr(backend_models, "SupplierSpecialRule", None)
     SupplierApprovalHistory = getattr(backend_models, "SupplierApprovalHistory", None)
     SupplierGradeRule = getattr(backend_models, "SupplierGradeRule", None)
+    PurchaseBudgetStore = getattr(backend_models, "PurchaseBudgetStore", None)
 except (ModuleNotFoundError, ImportError, AttributeError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
@@ -58,6 +59,7 @@ except (ModuleNotFoundError, ImportError, AttributeError, RuntimeError) as exc:
     InventoryInbound = None
     InventoryDaily = None
     PurchaseDocument = None
+    PurchaseBudgetStore = None
     PurchaseOrder = None
     PurchaseRequest = None
     RfqQuote = None
