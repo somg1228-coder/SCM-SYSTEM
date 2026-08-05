@@ -231,6 +231,14 @@ def supplier_id_for_name(name: str) -> str | None:
     return inserted[0]["id"] if inserted else None
 
 
+def first_clean(row: dict, *keys: str) -> str:
+    for key in keys:
+        value = clean(row.get(key))
+        if value:
+            return value
+    return ""
+
+
 def normalize_product_payload(source_type: str, row: dict, used_skus: set[str]) -> dict:
     supplier_name = clean(row.get("supplier") or row.get("공급처") or row.get("업체명"))
     sku = auto_sku(row, used_skus, source_type)
@@ -239,9 +247,23 @@ def normalize_product_payload(source_type: str, row: dict, used_skus: set[str]) 
         "sku": sku,
         "barcode": clean(row.get("barcode") or row.get("바코드") or row.get("88바코드") or sku),
         "product_name": clean(row.get("product_name") or row.get("상품명")),
-        "category": clean(row.get("large_category") or row.get("category") or row.get("카테고리")),
-        "medium_category": clean(row.get("medium_category")),
-        "small_category": clean(row.get("small_category")),
+        "category": first_clean(
+            row,
+            "large_category",
+            "category",
+            "카테고리",
+            "카테고리명",
+            "상품카테고리",
+            "상품 카테고리",
+            "대분류",
+            "대분류명",
+            "대 카테고리",
+            "대카테고리",
+            "분류",
+            "상품분류",
+        ),
+        "medium_category": first_clean(row, "medium_category", "중분류", "중분류명", "중 카테고리", "중카테고리"),
+        "small_category": first_clean(row, "small_category", "소분류", "소분류명", "소 카테고리", "소카테고리"),
         "brand": clean(row.get("brand") or row.get("브랜드")),
         "supplier_id": supplier_id_for_name(supplier_name),
         "supplier_name": supplier_name,
@@ -257,16 +279,36 @@ def normalize_product_payload(source_type: str, row: dict, used_skus: set[str]) 
 
 def bulk_save_product_master(source_type: str, rows: list[dict]) -> dict:
     sb = client()
-    existing = sb.table(SOURCE_TABLE).select("sku,barcode,product_name").eq("source_type", source_type).execute().data or []
+    existing = (
+        sb.table(SOURCE_TABLE)
+        .select("sku,barcode,product_name,category,medium_category,small_category")
+        .eq("source_type", source_type)
+        .execute()
+        .data
+        or []
+    )
     used_skus = {clean(row.get("sku")) for row in existing if clean(row.get("sku"))}
-    existing_key_to_sku = {(clean(row.get("barcode")), clean(row.get("product_name"))): clean(row.get("sku")) for row in existing}
+    existing_by_sku = {clean(row.get("sku")): row for row in existing if clean(row.get("sku"))}
+    existing_by_barcode_name = {
+        (clean(row.get("barcode")), clean(row.get("product_name"))): row
+        for row in existing
+    }
     payloads = []
     errors = []
     for index, row in enumerate(rows, start=1):
         normalized = normalize_product_payload(source_type, row, used_skus)
-        existing_sku = existing_key_to_sku.get((normalized["barcode"], normalized["product_name"]))
-        if existing_sku:
-            normalized["sku"] = existing_sku
+        existing_row = existing_by_barcode_name.get((normalized["barcode"], normalized["product_name"]))
+        if existing_row:
+            normalized["sku"] = clean(existing_row.get("sku")) or normalized["sku"]
+        existing_row = existing_row or existing_by_sku.get(normalized["sku"])
+        if existing_row:
+            for target, source in (
+                ("category", "category"),
+                ("medium_category", "medium_category"),
+                ("small_category", "small_category"),
+            ):
+                if not clean(normalized.get(target)) and clean(existing_row.get(source)):
+                    normalized[target] = clean(existing_row.get(source))
         if not normalized["product_name"] or not normalized["barcode"] or not normalized["sku"]:
             errors.append(f"{index}행: SKU/바코드/상품명 생성 실패")
             continue
