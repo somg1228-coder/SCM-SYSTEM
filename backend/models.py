@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.database import Base
@@ -140,6 +140,19 @@ class WarehouseProductMaster(Base):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+
+
+class WarehouseLayout(Base):
+    __tablename__ = "warehouse_layouts"
+    __table_args__ = (UniqueConstraint("building", "floor", name="uq_warehouse_layouts_building_floor"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    building: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
+    floor: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    layout_data: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class InventoryInbound(Base):

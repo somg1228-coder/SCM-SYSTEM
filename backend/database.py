@@ -9,9 +9,10 @@ import stat
 import tempfile
 
 try:
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine, inspect
     from sqlalchemy.engine import make_url
     from sqlalchemy.orm import declarative_base, sessionmaker
+    from sqlalchemy.schema import CreateColumn
 except ModuleNotFoundError as exc:
     raise RuntimeError("sqlalchemy가 설치되어 있지 않습니다. `pip install -r requirements.txt` 후 다시 실행해주세요.") from exc
 
@@ -57,8 +58,44 @@ def load_local_env_file() -> None:
             os.environ[key] = value
 
 
+def load_streamlit_secrets_to_env() -> None:
+    try:
+        import streamlit as st
+    except Exception:
+        return
+    try:
+        value = st.secrets.get("SCM_DATABASE_URL", "")
+    except Exception:
+        return
+    value = str(value or "").strip()
+    if value and "SCM_DATABASE_URL" not in os.environ:
+        os.environ["SCM_DATABASE_URL"] = value
+
+
+def configured_database_url() -> str:
+    load_streamlit_secrets_to_env()
+    load_local_env_file()
+    return os.getenv("SCM_DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH.as_posix()}").strip()
+
+
+def is_sqlite_url(raw_url: str) -> bool:
+    try:
+        return make_url(raw_url).drivername.startswith("sqlite")
+    except Exception:
+        return raw_url.startswith("sqlite")
+
+
+def is_postgresql_url(raw_url: str) -> bool:
+    try:
+        driver = make_url(raw_url).drivername
+    except Exception:
+        return raw_url.startswith(("postgres://", "postgresql://", "postgresql+"))
+    return driver == "postgres" or driver.startswith("postgresql")
+
+
 load_local_env_file()
-RAW_DATABASE_URL = os.getenv("SCM_DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH.as_posix()}")
+RAW_DATABASE_URL = configured_database_url()
+DATABASE_URL_FROM_CONFIG = bool(os.getenv("SCM_DATABASE_URL", "").strip())
 
 
 def make_file_writable(path: Path) -> None:
@@ -229,8 +266,8 @@ def copy_sqlite_to_writable_path(source_path: Path) -> Path:
 
 
 def normalize_database_url(raw_url: str) -> str:
-    if not raw_url.startswith("sqlite"):
-        return raw_url
+    if not is_sqlite_url(raw_url):
+        return normalize_postgresql_url(raw_url) if is_postgresql_url(raw_url) else raw_url
     url = make_url(raw_url)
     db_name = url.database
     if not db_name or db_name == ":memory:":
@@ -254,12 +291,27 @@ def normalize_database_url(raw_url: str) -> str:
     return f"sqlite:///{db_path.as_posix()}{query_string}"
 
 
+def normalize_postgresql_url(raw_url: str) -> str:
+    url = make_url(raw_url)
+    if url.drivername == "postgres":
+        url = url.set(drivername="postgresql+psycopg")
+    elif url.drivername == "postgresql":
+        url = url.set(drivername="postgresql+psycopg")
+    query = dict(url.query)
+    host = url.host or ""
+    if "supabase.co" in host and "sslmode" not in query:
+        query["sslmode"] = "require"
+        url = url.set(query=query)
+    return url.render_as_string(hide_password=False)
+
+
 DATABASE_URL = normalize_database_url(RAW_DATABASE_URL)
-CONNECT_ARGS = {"check_same_thread": False, "timeout": 15} if DATABASE_URL.startswith("sqlite") else {}
+CONNECT_ARGS = {"check_same_thread": False, "timeout": 15} if is_sqlite_url(DATABASE_URL) else {}
+ENGINE_OPTIONS = {"connect_args": CONNECT_ARGS, "future": True, "pool_pre_ping": True}
 
 
 def sqlite_database_path() -> Path | None:
-    if not DATABASE_URL.startswith("sqlite"):
+    if not is_sqlite_url(DATABASE_URL):
         return None
     db_name = make_url(DATABASE_URL).database
     if not db_name or db_name == ":memory:":
@@ -315,6 +367,13 @@ def sqlite_writability_report() -> dict:
         "error": "",
     }
     if db_path is None:
+        report.update(
+            {
+                "database_engine": database_engine_name(),
+                "is_sqlite": False,
+                "is_postgresql": is_postgresql_url(DATABASE_URL),
+            }
+        )
         return report
     try:
         ensure_path_writable(db_path)
@@ -346,12 +405,60 @@ def log_sqlite_writability(context: str = "") -> dict:
     return report
 
 
+def database_engine_name() -> str:
+    if is_postgresql_url(DATABASE_URL):
+        return "Supabase PostgreSQL" if "supabase.co" in (make_url(DATABASE_URL).host or "") else "PostgreSQL"
+    if is_sqlite_url(DATABASE_URL):
+        return "SQLite"
+    try:
+        return make_url(DATABASE_URL).drivername
+    except Exception:
+        return "unknown"
+
+
+def masked_database_url() -> str:
+    try:
+        return make_url(DATABASE_URL).render_as_string(hide_password=True)
+    except Exception:
+        return ""
+
+
+def database_status() -> dict:
+    url = make_url(DATABASE_URL)
+    status = {
+        "configured": DATABASE_URL_FROM_CONFIG,
+        "engine": database_engine_name(),
+        "is_sqlite": is_sqlite_url(DATABASE_URL),
+        "is_postgresql": is_postgresql_url(DATABASE_URL),
+        "is_supabase_postgresql": is_postgresql_url(DATABASE_URL) and "supabase.co" in (url.host or ""),
+        "display_url": masked_database_url(),
+        "host": url.host or "",
+        "database": url.database or "",
+        "connected": False,
+        "message": "",
+    }
+    try:
+        with engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+        status["connected"] = True
+        if status["is_supabase_postgresql"]:
+            status["message"] = "데이터베이스: Supabase PostgreSQL 연결됨"
+        elif status["is_postgresql"]:
+            status["message"] = "데이터베이스: PostgreSQL 연결됨"
+        else:
+            status["message"] = "데이터베이스: 로컬 SQLite 사용 중"
+    except Exception as exc:
+        status["message"] = f"데이터베이스 연결 실패: {exc}"
+    return status
+
+
 try:
-    log_sqlite_writability("module import")
+    if is_sqlite_url(DATABASE_URL):
+        log_sqlite_writability("module import")
 except Exception as exc:
     LOGGER.warning("SQLite write check skipped during import: %s", exc)
 
-engine = create_engine(DATABASE_URL, connect_args=CONNECT_ARGS, future=True)
+engine = create_engine(DATABASE_URL, **ENGINE_OPTIONS)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 Base = declarative_base()
 
@@ -360,12 +467,22 @@ def init_db() -> None:
     from backend import models  # noqa: F401
 
     try:
-        repair_sqlite_schema()
-        Base.metadata.create_all(bind=engine)
-        ensure_sqlite_columns()
+        if is_sqlite_url(DATABASE_URL):
+            repair_sqlite_schema()
+            Base.metadata.create_all(bind=engine)
+            ensure_sqlite_columns()
+        else:
+            Base.metadata.create_all(bind=engine)
+            ensure_postgresql_columns()
     except Exception as exc:
+        if not is_sqlite_url(DATABASE_URL):
+            LOGGER.exception("PostgreSQL DB 초기화 실패: %s", exc)
+            raise RuntimeError(
+                "Supabase PostgreSQL 연결 또는 스키마 초기화에 실패했습니다. "
+                "SCM_DATABASE_URL과 Supabase Database 비밀번호, SSL 설정을 확인해주세요."
+            ) from exc
         LOGGER.exception("SQLite DB 초기화 실패: %s", exc)
-        if not DATABASE_URL.startswith("sqlite") or not is_sqlite_recoverable_open_error(exc):
+        if not is_sqlite_recoverable_open_error(exc):
             raise
         LOGGER.exception("SQLite DB 초기화 실패. 런타임 DB 경로로 전환해 재시도합니다: %s", exc)
         switch_to_runtime_sqlite_copy()
@@ -375,19 +492,20 @@ def init_db() -> None:
 
 
 def switch_to_runtime_sqlite_copy() -> None:
-    global DATABASE_URL, CONNECT_ARGS, engine, SessionLocal
+    global DATABASE_URL, CONNECT_ARGS, ENGINE_OPTIONS, engine, SessionLocal
 
     db_path = sqlite_database_path() or DEFAULT_DB_PATH
     runtime_path = copy_sqlite_to_writable_path(db_path)
     DATABASE_URL = f"sqlite:///{runtime_path.as_posix()}"
     CONNECT_ARGS = {"check_same_thread": False, "timeout": 15}
+    ENGINE_OPTIONS = {"connect_args": CONNECT_ARGS, "future": True, "pool_pre_ping": True}
     engine.dispose()
-    engine = create_engine(DATABASE_URL, connect_args=CONNECT_ARGS, future=True)
+    engine = create_engine(DATABASE_URL, **ENGINE_OPTIONS)
     SessionLocal.configure(bind=engine)
 
 
 def reset_sqlite_engine_after_write_error(exc: BaseException) -> bool:
-    if not DATABASE_URL.startswith("sqlite") or not is_sqlite_recoverable_open_error(exc):
+    if not is_sqlite_url(DATABASE_URL) or not is_sqlite_recoverable_open_error(exc):
         return False
     LOGGER.warning("SQLite 쓰기 오류 감지. 연결을 재설정하고 1회 재시도합니다: %s", exc)
     try:
@@ -403,7 +521,7 @@ def reset_sqlite_engine_after_write_error(exc: BaseException) -> bool:
 
 
 def repair_sqlite_schema() -> None:
-    if not DATABASE_URL.startswith("sqlite"):
+    if not is_sqlite_url(DATABASE_URL):
         return
 
     known_stale_indexes = ("ix_purchase_documents_created_at",)
@@ -472,7 +590,7 @@ def quote_sqlite_identifier(identifier: str) -> str:
 
 
 def ensure_sqlite_columns() -> None:
-    if not DATABASE_URL.startswith("sqlite"):
+    if not is_sqlite_url(DATABASE_URL):
         return
 
     column_specs = {
@@ -581,6 +699,25 @@ def ensure_sqlite_columns() -> None:
                         f"ALTER TABLE {quoted_table} ADD COLUMN {quote_sqlite_identifier(column_name)} {ddl}"
                     )
         ensure_product_master_barcode_constraints(conn)
+
+
+def ensure_postgresql_columns() -> None:
+    if not is_postgresql_url(DATABASE_URL):
+        return
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue
+            existing_columns = {column["name"] for column in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in existing_columns:
+                    continue
+                column_sql = str(CreateColumn(column).compile(dialect=engine.dialect))
+                if " NOT NULL" in column_sql.upper() and column.default is not None and column.server_default is None:
+                    column_sql = column_sql.replace(" NOT NULL", "")
+                conn.exec_driver_sql(f'ALTER TABLE "{table.name}" ADD COLUMN {column_sql}')
 
 
 def ensure_product_master_barcode_constraints(conn) -> None:
