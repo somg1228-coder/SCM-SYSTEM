@@ -306,7 +306,20 @@ def normalize_postgresql_url(raw_url: str) -> str:
 
 
 DATABASE_URL = normalize_database_url(RAW_DATABASE_URL)
-CONNECT_ARGS = {"check_same_thread": False, "timeout": 15} if is_sqlite_url(DATABASE_URL) else {}
+def database_connect_args(database_url: str) -> dict:
+    if is_sqlite_url(database_url):
+        return {"check_same_thread": False, "timeout": 15}
+    if is_postgresql_url(database_url):
+        try:
+            url = make_url(database_url)
+        except Exception:
+            return {}
+        if url.port == 6543:
+            return {"prepare_threshold": None}
+    return {}
+
+
+CONNECT_ARGS = database_connect_args(DATABASE_URL)
 ENGINE_OPTIONS = {"connect_args": CONNECT_ARGS, "future": True, "pool_pre_ping": True}
 
 
@@ -497,7 +510,7 @@ def switch_to_runtime_sqlite_copy() -> None:
     db_path = sqlite_database_path() or DEFAULT_DB_PATH
     runtime_path = copy_sqlite_to_writable_path(db_path)
     DATABASE_URL = f"sqlite:///{runtime_path.as_posix()}"
-    CONNECT_ARGS = {"check_same_thread": False, "timeout": 15}
+    CONNECT_ARGS = database_connect_args(DATABASE_URL)
     ENGINE_OPTIONS = {"connect_args": CONNECT_ARGS, "future": True, "pool_pre_ping": True}
     engine.dispose()
     engine = create_engine(DATABASE_URL, **ENGINE_OPTIONS)
