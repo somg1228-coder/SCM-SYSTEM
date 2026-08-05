@@ -191,6 +191,10 @@ def render_recent_transactions(status: dict) -> None:
 
 
 def render_storage_analysis() -> None:
+    if supabase_migration is None:
+        st.subheader("기존 저장소 분석")
+        st.warning(SETTINGS_IMPORT_ERROR or "저장소 분석 모듈을 불러오지 못했습니다.")
+        return
     st.subheader("기존 저장소 분석")
     rows = supabase_migration.discover_local_storage()
     if not rows:
@@ -213,6 +217,10 @@ def render_storage_analysis() -> None:
 
 
 def render_migration_panel(connected: bool) -> None:
+    if supabase_migration is None or SessionLocal is None:
+        st.subheader("기존 데이터 이관")
+        st.warning(SETTINGS_IMPORT_ERROR or "이관 모듈을 불러오지 못했습니다.")
+        return
     st.subheader("기존 데이터 이관")
     st.caption("기존 SQLite/Excel/JSON 파일은 삭제하지 않고, 운영 데이터만 Supabase로 Upsert합니다.")
 
@@ -260,6 +268,9 @@ def render_settings_page() -> None:
     st.caption("실제 운영 DB 연결, Supabase REST API, 테이블 상태, 기존 로컬 데이터 이관 상태를 확인합니다.")
 
     render_app_database_panel()
+    if supabase_store is None:
+        st.warning(SETTINGS_IMPORT_ERROR or "Supabase REST 상태 모듈을 불러오지 못했습니다.")
+        return
     status = supabase_store.admin_status()
     render_connection_panel(status)
     render_table_panel(status)
