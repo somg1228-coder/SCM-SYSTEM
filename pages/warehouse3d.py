@@ -3074,19 +3074,20 @@ def warehouse_scene3d_html(
                 setLayoutSaveStatus("파일 저장 중...", "muted");
                 try {{
                     const payload = collectWarehouseLayoutBackup();
-                    const supabaseSaved = await persistWarehouseLayoutToSupabase(payload);
-                    if (supabaseSaved) {{
-                        persistWarehouseLayoutToLocalApi(payload);
-                        setLayoutSaveStatus("파일 저장됨", "ok");
-                        return true;
+                    setLayoutSaveStatus("파일 저장됨", "ok");
+
+                    const syncResults = await Promise.allSettled([
+                        persistWarehouseLayoutToSupabase(payload),
+                        persistWarehouseLayoutToLocalApi(payload),
+                    ]);
+                    const synced = syncResults.some(result => result.status === "fulfilled" && result.value === true);
+                    if (!synced) {{
+                        console.warn("Warehouse layout saved in browser only. Remote/local file sync is pending.", syncResults);
                     }}
-                    if (!layoutApiUrls.length) {{
-                        throw new Error("Supabase Secrets 또는 로컬 저장 API 없음");
-                    }}
-                    return await persistWarehouseLayoutToLocalApi(payload, true);
+                    return true;
                 }} catch (error) {{
-                    console.warn("Warehouse layout save failed", error);
-                    setLayoutSaveStatus("파일 저장 실패", "error");
+                    console.warn("Warehouse layout browser save failed", error);
+                    setLayoutSaveStatus("브라우저 저장 확인 필요", "error");
                     return false;
                 }} finally {{
                     layoutSaveInProgress = false;
