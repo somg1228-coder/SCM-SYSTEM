@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import base64
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import tempfile
@@ -97,6 +98,16 @@ def warehouse_layout_store_path() -> Path:
 
 def empty_warehouse_layout_store() -> dict:
     return {"version": 1, "locations": {}}
+
+
+def write_warehouse_layout_log(message: str) -> None:
+    try:
+        log_path = warehouse_layout_store_path().parent / "warehouse3d_layout_save.log"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"[{timestamp}] {message}\n")
+    except Exception:
+        pass
 
 
 def warehouse_layout_has_data(payload: dict | None) -> bool:
@@ -222,8 +233,9 @@ def save_warehouse_layout_store(payload: dict) -> Path:
         try:
             if supabase_store.is_enabled():
                 supabase_store.save_warehouse_layout_store(store)
-        except Exception:
-            pass
+                write_warehouse_layout_log("Saved layout to Supabase.")
+        except Exception as exc:
+            write_warehouse_layout_log(f"Supabase layout save failed: {exc}")
     return path
 
 
@@ -269,8 +281,10 @@ class WarehouseLayoutApiHandler(BaseHTTPRequestHandler):
                 save_warehouse_layout_store(payload)
                 saved = load_warehouse_layout_store()
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            write_warehouse_layout_log(f"POST save failed: {exc}")
             self._send_json(400, {"ok": False, "error": str(exc)})
             return
+        write_warehouse_layout_log("POST save succeeded.")
         self._send_json(200, {"ok": True, "layout": saved})
 
     def log_message(self, format: str, *args) -> None:
@@ -284,16 +298,19 @@ def ensure_warehouse_layout_api_server() -> int | None:
     if _WAREHOUSE_LAYOUT_API_SERVER is not None and _WAREHOUSE_LAYOUT_API_PORT is not None:
         return _WAREHOUSE_LAYOUT_API_PORT
 
-    for port in WAREHOUSE_LAYOUT_API_PORTS:
-        try:
-            server = ThreadingHTTPServer(("0.0.0.0", port), WarehouseLayoutApiHandler)
-        except OSError:
-            continue
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        _WAREHOUSE_LAYOUT_API_SERVER = server
-        _WAREHOUSE_LAYOUT_API_PORT = port
-        return port
+    for host in ("127.0.0.1", "localhost", "0.0.0.0"):
+        for port in WAREHOUSE_LAYOUT_API_PORTS:
+            try:
+                server = ThreadingHTTPServer((host, port), WarehouseLayoutApiHandler)
+            except OSError:
+                continue
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            _WAREHOUSE_LAYOUT_API_SERVER = server
+            _WAREHOUSE_LAYOUT_API_PORT = port
+            write_warehouse_layout_log(f"Layout API started at http://{host}:{port}.")
+            return port
+    write_warehouse_layout_log("Layout API could not start.")
     return None
 
 
@@ -3018,15 +3035,16 @@ def warehouse_scene3d_html(
 
             function resolveLayoutApiUrls(port) {{
                 if (!port) return [];
+                const urls = [`http://127.0.0.1:${{port}}/warehouse3d-layout`, `http://localhost:${{port}}/warehouse3d-layout`];
                 try {{
                     const sourceUrl = document.referrer ? new URL(document.referrer) : new URL(window.location.href);
-                    const protocol = sourceUrl.protocol === "https:" ? "https:" : "http:";
-                    const hosts = [sourceUrl.hostname, window.location.hostname, "localhost", "127.0.0.1"]
+                    const hosts = [sourceUrl.hostname, window.location.hostname]
                         .filter(Boolean)
                         .filter((host, index, list) => list.indexOf(host) === index);
-                    return hosts.map(host => `${{protocol}}//${{host}}:${{port}}/warehouse3d-layout`);
+                    hosts.forEach(host => urls.push(`http://${{host}}:${{port}}/warehouse3d-layout`));
+                    return urls.filter((url, index, list) => list.indexOf(url) === index);
                 }} catch (error) {{
-                    return [`http://localhost:${{port}}/warehouse3d-layout`, `http://127.0.0.1:${{port}}/warehouse3d-layout`];
+                    return urls;
                 }}
             }}
 
