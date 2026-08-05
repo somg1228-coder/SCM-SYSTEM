@@ -16,7 +16,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.datavalidation import DataValidation
 from st_aggrid import AgGrid, GridOptionsBuilder
 
-from backend.legacy_storage import connect_sqlite_compatible
+from backend.legacy_storage import connect_sqlite_compatible, legacy_uses_local_sqlite
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "cases.db"
@@ -1356,7 +1356,8 @@ def render_return_case_system():
     # ==========================
 
     try:
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if legacy_uses_local_sqlite():
+            DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         conn = connect_sqlite_compatible(str(DB_PATH), check_same_thread=False)
     except sqlite3.Error as exc:
         st.error("반품/AS DB를 열 수 없습니다. 배포 환경의 파일 쓰기 권한을 확인해주세요.")
