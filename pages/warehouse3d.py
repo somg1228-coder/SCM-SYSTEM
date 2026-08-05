@@ -317,6 +317,15 @@ def ensure_warehouse_layout_api_server() -> int | None:
 def render_warehouse_layout_sync_tools() -> dict:
     return load_warehouse_layout_store()
 
+
+def warehouse_layout_supabase_browser_config() -> dict:
+    try:
+        url = str(st.secrets["SUPABASE_URL"]).strip().rstrip("/")
+        key = str(st.secrets["SUPABASE_KEY"]).strip()
+    except Exception:
+        return {"enabled": False, "url": "", "key": ""}
+    return {"enabled": bool(url and key), "url": url, "key": key}
+
 FLOOR_ZONES = {
     "1층": ["회사 출입구", "피킹존", "검수존", "랙 배치"],
     "2층": ["보관 구역", "포장재", "예비 랙", "랙 배치"],
@@ -2026,6 +2035,7 @@ def warehouse_scene3d_html(
     floor_model_payload = json.dumps(FLOOR_MODELS, ensure_ascii=False)
     shared_layout_payload = json.dumps(shared_layout_store or empty_warehouse_layout_store(), ensure_ascii=False)
     location_floors_payload = json.dumps(warehouse_location_floor_options(), ensure_ascii=False)
+    supabase_browser_config_payload = json.dumps(warehouse_layout_supabase_browser_config(), ensure_ascii=False)
     vendor_sources = warehouse3d_vendor_sources()
     three_source_payload = json.dumps(vendor_sources.get("three", ""))
     controls_source_payload = json.dumps(vendor_sources.get("controls", ""))
@@ -2795,6 +2805,7 @@ def warehouse_scene3d_html(
             const floorModels = {floor_model_payload};
             const sharedLayoutStore = {shared_layout_payload};
             const locationFloors = {location_floors_payload};
+            const supabaseBrowserConfig = {supabase_browser_config_payload};
             const inventory = {inventory_payload};
             const baseStorageKey = {json.dumps(base_storage_key, ensure_ascii=False)};
             const layoutApiPort = {layout_api_port_payload};
@@ -3055,7 +3066,7 @@ def warehouse_scene3d_html(
             }}
 
             async function persistWarehouseLayoutToServer() {{
-                if (!layoutApiUrls.length || layoutSaveInProgress) {{
+                if (layoutSaveInProgress) {{
                     setLayoutSaveStatus("파일 저장 대기", "muted");
                     return false;
                 }}
@@ -3063,32 +3074,81 @@ def warehouse_scene3d_html(
                 setLayoutSaveStatus("파일 저장 중...", "muted");
                 try {{
                     const payload = collectWarehouseLayoutBackup();
-                    let lastError = null;
-                    for (const apiUrl of layoutApiUrls) {{
-                        try {{
-                            const response = await fetch(apiUrl, {{
-                                method: "POST",
-                                headers: {{ "Content-Type": "application/json" }},
-                                body: JSON.stringify(payload),
-                                keepalive: true,
-                            }});
-                            if (!response.ok) {{
-                                throw new Error(`저장 요청 실패 (${{response.status}})`);
-                            }}
-                            setLayoutSaveStatus("파일 저장됨", "ok");
-                            return true;
-                        }} catch (error) {{
-                            lastError = error;
-                        }}
+                    const supabaseSaved = await persistWarehouseLayoutToSupabase(payload);
+                    if (supabaseSaved) {{
+                        persistWarehouseLayoutToLocalApi(payload);
+                        setLayoutSaveStatus("파일 저장됨", "ok");
+                        return true;
                     }}
-                    throw lastError || new Error("저장 API 연결 실패");
+                    if (!layoutApiUrls.length) {{
+                        throw new Error("Supabase Secrets 또는 로컬 저장 API 없음");
+                    }}
+                    return await persistWarehouseLayoutToLocalApi(payload, true);
                 }} catch (error) {{
-                    console.warn("Warehouse layout server save failed", error);
+                    console.warn("Warehouse layout save failed", error);
                     setLayoutSaveStatus("파일 저장 실패", "error");
                     return false;
                 }} finally {{
                     layoutSaveInProgress = false;
                 }}
+            }}
+
+            async function persistWarehouseLayoutToSupabase(payload) {{
+                if (!supabaseBrowserConfig?.enabled) return false;
+                const rows = [];
+                Object.entries(payload?.locations || {{}}).forEach(([buildingName, floors]) => {{
+                    Object.entries(floors || {{}}).forEach(([floorName, floorData]) => {{
+                        if (!floorData || typeof floorData !== "object") return;
+                        if (!Array.isArray(floorData.racks) && !Array.isArray(floorData.fixtures) && !floorData.floor_size) return;
+                        rows.push({{
+                            building: buildingName,
+                            floor: floorName,
+                            layout_data: floorData,
+                            is_active: true,
+                        }});
+                    }});
+                }});
+                if (!rows.length) return false;
+                const endpoint = `${{supabaseBrowserConfig.url}}/rest/v1/warehouse_layouts?on_conflict=building,floor`;
+                const response = await fetch(endpoint, {{
+                    method: "POST",
+                    headers: {{
+                        "apikey": supabaseBrowserConfig.key,
+                        "Authorization": `Bearer ${{supabaseBrowserConfig.key}}`,
+                        "Content-Type": "application/json",
+                        "Prefer": "resolution=merge-duplicates,return=minimal",
+                    }},
+                    body: JSON.stringify(rows),
+                }});
+                if (!response.ok) {{
+                    const detail = await response.text().catch(() => "");
+                    throw new Error(`Supabase 저장 실패 (${{response.status}}) ${{detail}}`);
+                }}
+                return true;
+            }}
+
+            async function persistWarehouseLayoutToLocalApi(payload, throwOnFailure = false) {{
+                if (!layoutApiUrls.length) return false;
+                let lastError = null;
+                for (const apiUrl of layoutApiUrls) {{
+                    let lastError = null;
+                    try {{
+                        const response = await fetch(apiUrl, {{
+                            method: "POST",
+                            headers: {{ "Content-Type": "application/json" }},
+                            body: JSON.stringify(payload),
+                        }});
+                        if (!response.ok) {{
+                            throw new Error(`저장 요청 실패 (${{response.status}})`);
+                        }}
+                        setLayoutSaveStatus("파일 저장됨", "ok");
+                        return true;
+                    }} catch (error) {{
+                        lastError = error;
+                    }}
+                }}
+                if (throwOnFailure) throw lastError || new Error("저장 API 연결 실패");
+                return false;
             }}
 
             function storageKeyFor(floorName) {{
