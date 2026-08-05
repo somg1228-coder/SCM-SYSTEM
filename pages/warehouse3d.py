@@ -11,14 +11,17 @@ from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
+from sqlalchemy import select
 
 try:
     from backend.database import SessionLocal, init_db, writable_runtime_data_dir
+    from backend.models import WarehouseLayout
     from backend import services, supabase_store
 except (ModuleNotFoundError, RuntimeError) as exc:
     SessionLocal = None
     init_db = None
     writable_runtime_data_dir = None
+    WarehouseLayout = None
     services = None
     supabase_store = None
     WAREHOUSE_IMPORT_ERROR = str(exc)
@@ -144,8 +147,90 @@ def load_local_warehouse_layout_store() -> dict:
     return payload
 
 
+def load_database_warehouse_layout_store() -> dict:
+    if SessionLocal is None or WarehouseLayout is None or init_db is None:
+        return empty_warehouse_layout_store()
+    try:
+        init_db()
+        with SessionLocal() as db:
+            rows = (
+                db.execute(
+                    select(WarehouseLayout).where(WarehouseLayout.is_active.is_(True))
+                )
+                .scalars()
+                .all()
+            )
+    except Exception as exc:
+        write_warehouse_layout_log(f"SQLAlchemy layout load failed: {exc}")
+        return empty_warehouse_layout_store()
+
+    locations: dict[str, dict] = {}
+    for row in rows:
+        if row.building not in LOCATIONS or row.floor not in LOCATIONS[row.building]["floors"]:
+            continue
+        if not isinstance(row.layout_data, dict):
+            continue
+        locations.setdefault(row.building, {})[row.floor] = row.layout_data
+    return {"version": 1, "locations": locations}
+
+
+def save_database_warehouse_layout_store(payload: dict) -> int:
+    if SessionLocal is None or WarehouseLayout is None or init_db is None:
+        return 0
+    locations = payload.get("locations") if isinstance(payload, dict) else None
+    if not isinstance(locations, dict):
+        return 0
+
+    saved = 0
+    try:
+        init_db()
+        with SessionLocal() as db:
+            for building, floors in locations.items():
+                if building not in LOCATIONS or not isinstance(floors, dict):
+                    continue
+                for floor, floor_data in floors.items():
+                    if floor not in LOCATIONS[building]["floors"] or not isinstance(floor_data, dict):
+                        continue
+                    if not (floor_data.get("racks") or floor_data.get("fixtures") or floor_data.get("floor_size")):
+                        continue
+                    existing = db.execute(
+                        select(WarehouseLayout).where(
+                            WarehouseLayout.building == building,
+                            WarehouseLayout.floor == floor,
+                        )
+                    ).scalar_one_or_none()
+                    if existing is None:
+                        db.add(
+                            WarehouseLayout(
+                                building=building,
+                                floor=floor,
+                                layout_data=floor_data,
+                                is_active=True,
+                            )
+                        )
+                    else:
+                        existing.layout_data = floor_data
+                        existing.is_active = True
+                    saved += 1
+            db.commit()
+    except Exception as exc:
+        write_warehouse_layout_log(f"SQLAlchemy layout save failed: {exc}")
+        return 0
+    return saved
+
+
 def load_warehouse_layout_store() -> dict:
     local_payload = load_local_warehouse_layout_store()
+    db_payload = load_database_warehouse_layout_store()
+
+    if warehouse_layout_has_data(local_payload):
+        merged = merge_warehouse_layout_store(db_payload, local_payload)
+        save_database_warehouse_layout_store(merged)
+        return merged
+
+    if warehouse_layout_has_data(db_payload):
+        return db_payload
+
     if supabase_store is None:
         return local_payload
 
@@ -158,6 +243,7 @@ def load_warehouse_layout_store() -> dict:
 
     if warehouse_layout_has_data(local_payload):
         merged = merge_warehouse_layout_store(remote_payload, local_payload)
+        save_database_warehouse_layout_store(merged)
         try:
             supabase_store.save_warehouse_layout_store(merged)
         except Exception:
@@ -165,6 +251,7 @@ def load_warehouse_layout_store() -> dict:
         return merged
 
     if warehouse_layout_has_data(remote_payload):
+        save_database_warehouse_layout_store(remote_payload)
         return remote_payload
     return local_payload
 
@@ -229,6 +316,9 @@ def save_warehouse_layout_store(payload: dict) -> Path:
     backup_warehouse_layout_store(path)
     store = merge_warehouse_layout_store(existing, store)
     path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+    saved_db_rows = save_database_warehouse_layout_store(store)
+    if saved_db_rows:
+        write_warehouse_layout_log(f"Saved layout to SQLAlchemy DB: {saved_db_rows} rows.")
     if supabase_store is not None:
         try:
             if supabase_store.is_enabled():
