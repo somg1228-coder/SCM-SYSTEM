@@ -213,6 +213,14 @@ def save_database_warehouse_layout_store(payload: dict) -> int:
                         existing.is_active = True
                     saved += 1
             db.commit()
+            verified = (
+                db.execute(select(WarehouseLayout).where(WarehouseLayout.is_active.is_(True)))
+                .scalars()
+                .all()
+            )
+            if saved and not verified:
+                write_warehouse_layout_log("SQLAlchemy layout save verification failed: no active rows after commit.")
+                return 0
     except Exception as exc:
         write_warehouse_layout_log(f"SQLAlchemy layout save failed: {exc}")
         return 0
@@ -313,12 +321,14 @@ def save_warehouse_layout_store(payload: dict) -> Path:
     if not warehouse_layout_has_data(store) and warehouse_layout_has_data(existing):
         return path
 
-    backup_warehouse_layout_store(path)
     store = merge_warehouse_layout_store(existing, store)
-    path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
     saved_db_rows = save_database_warehouse_layout_store(store)
     if saved_db_rows:
         write_warehouse_layout_log(f"Saved layout to SQLAlchemy DB: {saved_db_rows} rows.")
+        return path
+
+    backup_warehouse_layout_store(path)
+    path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
     if supabase_store is not None:
         try:
             if supabase_store.is_enabled():
