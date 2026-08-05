@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import importlib
 import os
+from pathlib import Path
 import subprocess
 import sys
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 
 def run_child(code: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
@@ -15,7 +20,7 @@ def run_child(code: str, env: dict[str, str] | None = None) -> subprocess.Comple
     child_env.setdefault("SCM_IGNORE_DOTENV", "true")
     return subprocess.run(
         [sys.executable, "-c", code],
-        cwd=os.getcwd(),
+        cwd=str(PROJECT_ROOT),
         env=child_env,
         text=True,
         capture_output=True,
