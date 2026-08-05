@@ -129,7 +129,7 @@ def render_master_tab(source_type: str, title: str) -> None:
             if st.button("엑셀 반영", key=f"product_master_{key}_import_btn", use_container_width=True):
                 if uploaded is None:
                     st.warning(f"먼저 {title} 엑셀을 업로드하세요.")
-                else:
+                elif show_sqlite_write_status(f"{title} 엑셀 반영"):
                     outcome = with_db(
                         lambda db: services.import_product_master_excel(
                             db,
@@ -637,6 +637,8 @@ def active_select_index(value) -> int:
 def save_product_master_rows(source_type: str, key: str, payload: list[dict]) -> None:
     if not payload:
         st.warning("저장할 품목 정보가 없습니다.")
+        return
+    if not show_sqlite_write_status(f"{source_type} 마스터 저장"):
         return
     outcome = with_db(lambda db: services.bulk_save_product_master(db, source_type, payload))
     if outcome and outcome.get("ok", True):

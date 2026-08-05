@@ -41,6 +41,10 @@ KNOWN_IMPORT_HEADERS = {
     "상품 카테고리",
     "대분류",
     "대분류명",
+    "중분류",
+    "중분류명",
+    "소분류",
+    "소분류명",
     "분류",
     "상품분류",
     "업체명",
@@ -55,6 +59,8 @@ KNOWN_IMPORT_HEADERS = {
 }
 IMPORT_HEADER_ALIASES = {
     "카테고리": ("카테고리", "카테고리명", "상품카테고리", "상품 카테고리", "대분류", "대분류명", "대 카테고리", "대카테고리", "분류", "상품분류", "category", "large_category", "largeCategory"),
+    "중분류": ("중분류", "중분류명", "중 카테고리", "중카테고리", "medium_category", "mediumCategory"),
+    "소분류": ("소분류", "소분류명", "소 카테고리", "소카테고리", "small_category", "smallCategory"),
     "바코드": ("바코드", "88바코드", "옵션바코드", "barcode"),
     "상품명": ("상품명", "품목", "품목명", "product_name"),
     "업체명": ("업체명", "공급처", "거래처", "supplier"),
@@ -789,6 +795,14 @@ def product_master_dataframe(rows: list) -> pd.DataFrame:
     )
 
 
+def first_clean_value(data: dict, *keys: str) -> str:
+    for key in keys:
+        value = clean_text(data.get(key))
+        if value:
+            return value
+    return ""
+
+
 def normalize_product_master_row(row: dict) -> dict:
     data = row_data(row)
     sku = clean_text(
@@ -815,23 +829,40 @@ def normalize_product_master_row(row: dict) -> dict:
         "sku": sku,
         "barcode": barcode,
         "product_name": product_name,
-        "large_category": clean_text(
-            data.get("카테고리")
-            or data.get("카테고리명")
-            or data.get("상품카테고리")
-            or data.get("상품 카테고리")
-            or data.get("대분류")
-            or data.get("대분류명")
-            or data.get("대 카테고리")
-            or data.get("대카테고리")
-            or data.get("분류")
-            or data.get("상품분류")
-            or data.get("category")
-            or data.get("large_category")
-            or data.get("largeCategory")
+        "large_category": first_clean_value(
+            data,
+            "카테고리",
+            "카테고리명",
+            "상품카테고리",
+            "상품 카테고리",
+            "대분류",
+            "대분류명",
+            "대 카테고리",
+            "대카테고리",
+            "분류",
+            "상품분류",
+            "category",
+            "large_category",
+            "largeCategory",
         ),
-        "medium_category": "",
-        "small_category": "",
+        "medium_category": first_clean_value(
+            data,
+            "중분류",
+            "중분류명",
+            "중 카테고리",
+            "중카테고리",
+            "medium_category",
+            "mediumCategory",
+        ),
+        "small_category": first_clean_value(
+            data,
+            "소분류",
+            "소분류명",
+            "소 카테고리",
+            "소카테고리",
+            "small_category",
+            "smallCategory",
+        ),
         "brand": clean_text(data.get("브랜드") or data.get("brand")),
         "supplier": clean_text(data.get("공급처") or data.get("업체명") or data.get("거래처") or data.get("supplier")),
         "pack_qty": combined_pallet_qty or to_int(data.get("입수") or data.get("pack_qty")),
@@ -855,43 +886,64 @@ def normalize_product_master_row(row: dict) -> dict:
     }
 
 
-def fill_down_threepl_master_categories(df: pd.DataFrame) -> pd.DataFrame:
+PRODUCT_MASTER_CATEGORY_FIELDS = ("large_category", "medium_category", "small_category")
+PRODUCT_MASTER_CATEGORY_HEADERS = {"카테고리", "중분류", "소분류"}
+
+
+def fill_down_product_master_categories(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
-    category_columns = [column for column in df.columns if normalize_import_header_name(str(column)) == "카테고리"]
+    category_columns = [
+        column
+        for column in df.columns
+        if normalize_import_header_name(str(column)) in PRODUCT_MASTER_CATEGORY_HEADERS
+    ]
     if not category_columns:
         return df
     df = df.copy()
-    category_column = category_columns[0]
     product_columns = [
         column
         for column in df.columns
-        if normalize_import_header_name(str(column)) in {"바코드", "상품명", "업체명", "박스/파렛트 단위", "담당자", "리드타임"}
+        if normalize_import_header_name(str(column))
+        in {"SKU", "바코드", "상품명", "업체명", "박스/파렛트 단위", "담당자", "리드타임"}
     ]
-    last_category = ""
+    last_values = {column: "" for column in category_columns}
     for index in df.index:
-        current_category = clean_text(df.at[index, category_column])
-        if current_category:
-            last_category = current_category
-            continue
         has_product_data = any(clean_text(df.at[index, column]) for column in product_columns)
-        if last_category and has_product_data:
-            df.at[index, category_column] = last_category
+        for column in category_columns:
+            current_category = clean_text(df.at[index, column])
+            if current_category:
+                last_values[column] = current_category
+            elif last_values[column] and has_product_data:
+                df.at[index, column] = last_values[column]
     return df
 
 
+def fill_down_threepl_master_categories(df: pd.DataFrame) -> pd.DataFrame:
+    return fill_down_product_master_categories(df)
+
+
+def keep_existing_product_master_categories(product, row: dict) -> dict:
+    if product is None:
+        return row
+    next_row = dict(row)
+    changed = False
+    for field in PRODUCT_MASTER_CATEGORY_FIELDS:
+        if clean_text(next_row.get(field)):
+            continue
+        existing_category = clean_text(getattr(product, field, ""))
+        if existing_category:
+            next_row[field] = existing_category
+            changed = True
+    return next_row if changed else row
+
+
 def keep_existing_threepl_category(product, row: dict) -> dict:
-    if product is None or clean_text(row.get("large_category")):
-        return row
-    existing_category = clean_text(getattr(product, "large_category", ""))
-    if not existing_category:
-        return row
-    row = dict(row)
-    row["large_category"] = existing_category
-    return row
+    return keep_existing_product_master_categories(product, row)
 
 
 def prepare_product_master_import_rows(df: pd.DataFrame, source_type: str = "") -> tuple[list[dict], list[str]]:
+    df = fill_down_product_master_categories(df)
     rows = []
     warnings = []
     seen_skus: set[str] = set()
@@ -979,8 +1031,8 @@ def threepl_master_basis_data(row: dict) -> dict:
         "barcode": clean_text(row.get("barcode")),
         "product_name": clean_text(row.get("product_name")),
         "large_category": clean_text(row.get("large_category")),
-        "medium_category": "",
-        "small_category": "",
+        "medium_category": clean_text(row.get("medium_category")),
+        "small_category": clean_text(row.get("small_category")),
         "brand": clean_text(row.get("brand")),
         "supplier": clean_text(row.get("supplier")),
         "pack_qty": to_int(row.get("pack_qty")),
@@ -1199,7 +1251,7 @@ def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
             if data.get("barcode"):
                 existing_by_barcode[data["barcode"]] = product
         else:
-            data["large_category"] = clean_text(data.get("large_category")) or clean_text(getattr(product, "large_category", ""))
+            data = keep_existing_product_master_categories(product, data)
             for key, value in data.items():
                 setattr(product, key, value)
             if data.get("barcode"):
@@ -1239,6 +1291,7 @@ def bulk_save_product_master(db: Session, source_type: str, rows: list[dict]) ->
             product = model(**row)
             db.add(product)
         else:
+            row = keep_existing_product_master_categories(product, row)
             for key, value in row.items():
                 setattr(product, key, value)
         count += 1
@@ -1358,23 +1411,42 @@ def daily_row_for_product(db: Session, source_type: str, work_date: date, produc
         ).scalars().first()
         if row:
             return row
-    if product.barcode:
+    if product.barcode and product.product_name:
         row = db.execute(
             select(InventoryDaily).where(
                 InventoryDaily.source_type == source_type,
                 InventoryDaily.work_date == work_date,
                 InventoryDaily.barcode == product.barcode,
+                InventoryDaily.product_name == product.product_name,
             )
         ).scalars().first()
         if row:
             return row
-    return db.execute(
-        select(InventoryDaily).where(
-            InventoryDaily.source_type == source_type,
-            InventoryDaily.work_date == work_date,
-            InventoryDaily.product_name == product.product_name,
+    if product.barcode:
+        rows = list(
+            db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == source_type,
+                    InventoryDaily.work_date == work_date,
+                    InventoryDaily.barcode == product.barcode,
+                )
+            ).scalars()
         )
-    ).scalars().first()
+        if len(rows) == 1:
+            return rows[0]
+    if product.product_name:
+        rows = list(
+            db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == source_type,
+                    InventoryDaily.work_date == work_date,
+                    InventoryDaily.product_name == product.product_name,
+                )
+            ).scalars()
+        )
+        if len(rows) == 1:
+            return rows[0]
+    return None
 
 
 def ensure_daily_for_product(db: Session, source_type: str, work_date: date, product) -> InventoryDaily:

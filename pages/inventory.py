@@ -661,14 +661,20 @@ def render_material_inventory_tab() -> None:
 def render_daily_tab(source_type: str) -> None:
     st.markdown(f'<div class="inventory-tab-title">{source_type} 재고조회</div>', unsafe_allow_html=True)
     today = date.today()
-    daily_date_key = f"{source_type}_daily_date_{today.isoformat()}"
+    saved_work_dates = fetch_work_dates(source_type)
+    default_work_date = saved_work_dates[0] if saved_work_dates else today
+    daily_date_key = f"{source_type}_daily_date"
     pending_daily_date_key = f"{source_type}_daily_date_sync"
     if pending_daily_date_key in st.session_state:
         st.session_state[daily_date_key] = st.session_state.pop(pending_daily_date_key)
-    work_date = st.date_input("기준일자", value=today, key=daily_date_key)
+    elif daily_date_key not in st.session_state:
+        st.session_state[daily_date_key] = default_work_date
+    work_date = st.date_input("기준일자", value=default_work_date, key=daily_date_key)
 
     rows = fetch_master_inventory(source_type, work_date)
     base_df = daily_to_editor(rows)
+    if rows and saved_work_dates and work_date not in set(saved_work_dates):
+        st.caption(f"{work_date:%Y-%m-%d} 기준 저장된 현재고가 없어 마스터 품목을 0재고로 표시합니다. 최신 저장일자는 {saved_work_dates[0]:%Y-%m-%d}입니다.")
     filters = render_inventory_filters(source_type, base_df)
     filtered_df = apply_inventory_filters(base_df, filters)
     paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
