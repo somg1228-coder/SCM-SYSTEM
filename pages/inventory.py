@@ -1147,8 +1147,9 @@ def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
     state_key = f"{filter_key}_category_toggle"
     filter_state_key = f"{filter_key}_category_filter"
     choices = ["전체", *options]
+    selected_toggle = st.session_state.get(state_key)
     selected_values = st.session_state.get(filter_state_key) or []
-    current = selected_values[0] if selected_values else st.session_state.get(state_key, "전체")
+    current = selected_toggle or (selected_values[0] if selected_values else "전체")
     if current not in choices:
         current = "전체"
     st.session_state[state_key] = current
@@ -1159,6 +1160,7 @@ def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
         return []
 
     st.caption("카테고리")
+    previous = current
     if hasattr(st, "segmented_control"):
         selected = st.segmented_control(
             "카테고리",
@@ -1169,6 +1171,8 @@ def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
             width="stretch",
         )
         selected = selected or "전체"
+        if selected != previous:
+            st.session_state[f"{filter_key}_page"] = 1
         categories = [] if selected == "전체" else [selected]
         st.session_state[filter_state_key] = categories
         return categories
@@ -1352,6 +1356,7 @@ def reset_inventory_filters(filter_key: str) -> None:
         "page_size",
         "page",
         "last_page_size",
+        "category_toggle",
     ]:
         st.session_state.pop(f"{filter_key}_{suffix}", None)
 
@@ -1398,6 +1403,9 @@ def render_inventory_filter_badges(filter_key: str, badges: list[tuple[str, str,
 def clear_inventory_filter(filter_key: str, suffix: str, value: str | None = None) -> None:
     if suffix in {"search"}:
         st.session_state[f"{filter_key}_{suffix}"] = ""
+    elif suffix in {"category_filter"}:
+        st.session_state[f"{filter_key}_{suffix}"] = []
+        st.session_state[f"{filter_key}_category_toggle"] = "전체"
     elif suffix in {"stock_presence"}:
         st.session_state[f"{filter_key}_{suffix}"] = "전체"
     elif suffix in {"inbound_expected", "outbound_expected", "below_safe"}:

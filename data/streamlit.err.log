@@ -1,12 +1,14 @@
-2026-08-04 10:20:19.739 No ASGI app assignments found in C:\Users\로긴-2021-12-09\OneDrive\바탕 화면\SCM_PORTAL\app.py
-2026-08-04 10:20:19.899 Filtered 62 packages down to 3 candidates for component scanning
-2026-08-04 10:20:19.900 Scanning 3 candidate packages for component manifests using 3 worker threads
-2026-08-04 10:20:20.044 Found 0 component manifests total
-2026-08-04 10:20:20.044 No asset roots to watch
-2026-08-04 10:20:20.044 File watching not started
-2026-08-04 10:20:20.045 Starting new event loop for server
-2026-08-04 10:20:20.046 Starting server...
-2026-08-04 10:20:20.126 Starting uvicorn server on 127.0.0.1:8502
-2026-08-04 10:20:20.180 Runtime state: RuntimeState.INITIAL -> RuntimeState.NO_SESSIONS_CONNECTED
-2026-08-04 10:20:20.181 Uvicorn server started on 127.0.0.1:8502
-2026-08-04 10:20:20.240 Setting up signal handler
+2026-08-06 09:02:13.810 No ASGI app assignments found in C:\Users\로긴-2021-12-09\OneDrive\바탕 화면\SCM_PORTAL\app.py
+2026-08-06 09:02:14.011 Filtered 63 packages down to 3 candidates for component scanning
+2026-08-06 09:02:14.011 Scanning 3 candidate packages for component manifests using 3 worker threads
+2026-08-06 09:02:14.166 Found 0 component manifests total
+2026-08-06 09:02:14.166 No asset roots to watch
+2026-08-06 09:02:14.167 File watching not started
+2026-08-06 09:02:14.167 Starting new event loop for server
+2026-08-06 09:02:14.171 Starting server...
+2026-08-06 09:02:14.264 Starting uvicorn server on 0.0.0.0:8502
+2026-08-06 09:02:14.330 Runtime state: RuntimeState.INITIAL -> RuntimeState.NO_SESSIONS_CONNECTED
+2026-08-06 09:02:14.331 Uvicorn server started on 0.0.0.0:8502
+2026-08-06 09:02:14.648 Did not auto detect external IP.
+Please go to https://docs.streamlit.io/ for debugging hints.
+2026-08-06 09:02:14.651 Setting up signal handler

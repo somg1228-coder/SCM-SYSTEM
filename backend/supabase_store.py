@@ -47,11 +47,16 @@ def iso(value) -> str | None:
 
 
 def table_count(table_name: str) -> int | None:
+    count, _ = table_count_probe(table_name)
+    return count
+
+
+def table_count_probe(table_name: str) -> tuple[int | None, str]:
     try:
         result = client().table(table_name).select("id", count="exact").limit(1).execute()
-        return result.count
-    except Exception:
-        return None
+        return result.count, ""
+    except Exception as exc:
+        return None, str(exc)
 
 
 def table_exists(table_name: str) -> bool:
@@ -70,8 +75,16 @@ def admin_status() -> dict:
         "audit_logs",
         "import_batches",
     ]
-    counts = {table: table_count(table) for table in tables} if status.connected else {table: None for table in tables}
+    counts = {table: None for table in tables}
+    table_errors = {}
+    if status.connected:
+        for table in tables:
+            count, error = table_count_probe(table)
+            counts[table] = count
+            if error:
+                table_errors[table] = error
     recent = []
+    recent_error = ""
     if status.connected:
         try:
             recent = (
@@ -84,14 +97,18 @@ def admin_status() -> dict:
                 .data
                 or []
             )
-        except Exception:
+        except Exception as exc:
             recent = []
+            recent_error = str(exc)
     return {
         "configured": status.configured,
         "connected": status.connected,
         "message": status.message,
+        "source": status.source,
         "counts": counts,
+        "table_errors": table_errors,
         "recent_transactions": recent,
+        "recent_error": recent_error,
     }
 
 

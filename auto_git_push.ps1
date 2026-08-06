@@ -20,6 +20,24 @@ function Write-Log {
     Add-Content -LiteralPath $LogFile -Value "[$timestamp] $Message"
 }
 
+function ConvertTo-ProcessArgument {
+    param([string]$Argument)
+
+    if ($null -eq $Argument) {
+        return '""'
+    }
+    if ($Argument -notmatch '[\s"]') {
+        return $Argument
+    }
+    return '"' + ($Argument -replace '"', '\"') + '"'
+}
+
+function Join-ProcessArguments {
+    param([string[]]$Arguments)
+
+    return (($Arguments | ForEach-Object { ConvertTo-ProcessArgument -Argument $_ }) -join " ")
+}
+
 function Invoke-GitOutput {
     param(
         [Parameter(Mandatory = $true)]
@@ -27,14 +45,34 @@ function Invoke-GitOutput {
         [switch]$AllowFailure
     )
 
-    $previousErrorActionPreference = $ErrorActionPreference
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo.FileName = "git"
+    $process.StartInfo.WorkingDirectory = $RepoPath
+    $process.StartInfo.Arguments = Join-ProcessArguments -Arguments $GitArgs
+    $process.StartInfo.UseShellExecute = $false
+    $process.StartInfo.RedirectStandardOutput = $true
+    $process.StartInfo.RedirectStandardError = $true
+    $process.StartInfo.CreateNoWindow = $true
+
     try {
-        $ErrorActionPreference = "Continue"
-        $output = & git -C $RepoPath @GitArgs 2>&1
-        $exitCode = $LASTEXITCODE
+        $started = $process.Start()
+        if (-not $started) {
+            throw "git process did not start."
+        }
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
+        $output = @()
+        if ($stdout) {
+            $output += @($stdout -split "`r?`n" | Where-Object { $_ -ne "" })
+        }
+        if ($stderr) {
+            $output += @($stderr -split "`r?`n" | Where-Object { $_ -ne "" })
+        }
     }
     finally {
-        $ErrorActionPreference = $previousErrorActionPreference
+        $process.Dispose()
     }
 
     if ($exitCode -ne 0 -and -not $AllowFailure) {
@@ -74,8 +112,7 @@ function Test-RepositoryReady {
 }
 
 function Test-HasWorkingTreeChanges {
-    $status = (Invoke-GitOutput -GitArgs @("status", "--porcelain", "--untracked-files=normal")).Output
-    return ($status.Count -gt 0)
+    return ((Get-AutoPushCandidatePaths).Count -gt 0)
 }
 
 function Test-HasUnpushedCommits {
@@ -122,8 +159,59 @@ function Test-IgnoredPath {
         }
     }
 
+    $extension = [System.IO.Path]::GetExtension($normalized).ToLowerInvariant()
+    $ignoredExtensions = @(".log", ".db", ".db-journal", ".db-wal", ".db-shm", ".pyc", ".pem", ".key")
+    if ($ignoredExtensions -contains $extension) {
+        return $true
+    }
+
     $ignoredFiles = @(".env", ".streamlit/secrets.toml")
-    return ($ignoredFiles -contains $normalized)
+    if ($ignoredFiles -contains $normalized) {
+        return $true
+    }
+
+    return (
+        ($normalized -like ".env.*" -and $normalized -ne ".env.example") -or
+        ($normalized -like ".streamlit/secrets.*.toml" -and $normalized -ne ".streamlit/secrets.example.toml") -or
+        ($normalized -like "data/streamlit.*.log") -or
+        ($normalized -like "ReturnCaseSystem/streamlit.*.log") -or
+        ($normalized -like "data/warehouse3d_layout_backups/*")
+    )
+}
+
+function Convert-GitStatusLineToPaths {
+    param([string]$Line)
+
+    if ([string]::IsNullOrWhiteSpace($Line) -or $Line.Length -lt 4) {
+        return @()
+    }
+
+    $pathText = $Line.Substring(3).Trim()
+    if ($pathText -match " -> ") {
+        return @($pathText -split " -> ", 2 | ForEach-Object { $_.Trim('"') })
+    }
+
+    return @($pathText.Trim('"'))
+}
+
+function Get-AutoPushCandidatePaths {
+    $status = (Invoke-GitOutput -GitArgs @("status", "--porcelain", "--untracked-files=normal")).Output
+    $paths = New-Object System.Collections.Generic.List[string]
+
+    foreach ($line in $status) {
+        foreach ($relativePath in (Convert-GitStatusLineToPaths -Line $line)) {
+            if (-not $relativePath) {
+                continue
+            }
+            $normalizedRelative = $relativePath -replace "/", "\"
+            $fullPath = Join-Path $RepoPath $normalizedRelative
+            if (-not (Test-IgnoredPath -Path $fullPath)) {
+                $paths.Add($normalizedRelative)
+            }
+        }
+    }
+
+    return @($paths | Select-Object -Unique)
 }
 
 function Invoke-RebaseRecovery {
@@ -158,8 +246,9 @@ function Invoke-AutoPush {
 
     for ($attempt = 1; $attempt -le $RetryCount; $attempt++) {
         try {
-            if (Test-HasWorkingTreeChanges) {
-                Invoke-GitOutput -GitArgs @("add", ".") | Out-Null
+            $candidatePaths = Get-AutoPushCandidatePaths
+            if ($candidatePaths.Count -gt 0) {
+                Invoke-GitOutput -GitArgs (@("add", "--") + @($candidatePaths)) | Out-Null
 
                 $staged = (Invoke-GitOutput -GitArgs @("diff", "--cached", "--name-only")).Output
                 if ($staged.Count -gt 0) {

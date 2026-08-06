@@ -15,6 +15,7 @@ def run_child(code: str, env: dict[str, str] | None = None) -> subprocess.Comple
     child_env = os.environ.copy()
     child_env.pop("SCM_DATABASE_URL", None)
     child_env.pop("SCM_ALLOW_SQLITE", None)
+    child_env.pop("SCM_USE_SUPABASE_DB", None)
     if env:
         child_env.update(env)
     child_env.setdefault("SCM_IGNORE_DOTENV", "true")
@@ -49,6 +50,48 @@ def test_sqlite_auto_fallback_blocked() -> None:
     assert_ok("SQLite 자동 전환 오류 메시지", "SCM_ALLOW_SQLITE=true" in (result.stderr + result.stdout), result.stderr + result.stdout)
 
 
+def test_supabase_flag_string_true() -> None:
+    result = run_child(
+        "import backend.database as db; print(db.RAW_DATABASE_URL); print(db.use_supabase_as_app_database())",
+        {
+            "SCM_DATABASE_URL": "postgresql://u:p@aws-1-ap-south-1.pooler.supabase.com:5432/postgres",
+            "SCM_USE_SUPABASE_DB": "true",
+        },
+    )
+    assert_ok("SCM_USE_SUPABASE_DB 문자열 true", result.returncode == 0, result.stderr)
+    assert_ok("문자열 true로 Supabase DB 사용", "True" in result.stdout, result.stdout)
+
+
+def test_supabase_flag_boolean_secret_true() -> None:
+    code = """
+import sys
+import types
+
+streamlit = types.ModuleType("streamlit")
+streamlit.secrets = {
+    "SCM_DATABASE_URL": "postgresql://u:p@aws-1-ap-south-1.pooler.supabase.com:5432/postgres",
+    "SCM_USE_SUPABASE_DB": True,
+}
+sys.modules["streamlit"] = streamlit
+
+import backend.database as db
+print(db.DATABASE_URL_SOURCE)
+print(db.use_supabase_as_app_database())
+"""
+    result = run_child(code)
+    assert_ok("Streamlit Secrets boolean true import", result.returncode == 0, result.stderr)
+    assert_ok("boolean true로 Supabase DB 사용", "True" in result.stdout and "streamlit_secrets" in result.stdout, result.stdout)
+
+
+def test_supabase_url_without_flag_blocked() -> None:
+    result = run_child(
+        "import backend.database",
+        {"SCM_DATABASE_URL": "postgresql://u:p@aws-1-ap-south-1.pooler.supabase.com:5432/postgres"},
+    )
+    assert_ok("SCM_DATABASE_URL만 있을 때 SQLite 자동 전환 금지", result.returncode != 0, result.stdout + result.stderr)
+    assert_ok("SCM_USE_SUPABASE_DB 안내", "SCM_USE_SUPABASE_DB" in (result.stderr + result.stdout), result.stderr + result.stdout)
+
+
 def test_postgresql_url_normalization() -> None:
     os.environ["SCM_ALLOW_SQLITE"] = "true"
     db = importlib.import_module("backend.database")
@@ -79,6 +122,9 @@ def test_engine_options() -> None:
 def main() -> int:
     test_sqlite_explicit_allow()
     test_sqlite_auto_fallback_blocked()
+    test_supabase_flag_string_true()
+    test_supabase_flag_boolean_secret_true()
+    test_supabase_url_without_flag_blocked()
     test_postgresql_url_normalization()
     test_engine_options()
     print("DB 설정 단위 테스트 완료")

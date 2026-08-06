@@ -71,29 +71,51 @@ def load_local_env_file() -> None:
             os.environ[key] = value
 
 
-def load_streamlit_secrets_to_env() -> None:
+def streamlit_secret_value(key: str):
     try:
         import streamlit as st
     except Exception:
-        return
+        return None
     try:
-        value = st.secrets.get("SCM_DATABASE_URL", "")
+        return st.secrets.get(key, None)
     except Exception:
-        return
-    value = str(value or "").strip()
-    if value and "SCM_DATABASE_URL" not in os.environ:
-        os.environ["SCM_DATABASE_URL"] = value
+        return None
+
+
+def config_text_value(key: str) -> tuple[str, str]:
+    secret_value = streamlit_secret_value(key)
+    if secret_value is not None and str(secret_value).strip():
+        return str(secret_value).strip(), "streamlit_secrets"
+
+    env_value = os.getenv(key, "").strip()
+    if env_value:
+        return env_value, "environment"
+
+    load_local_env_file()
+    env_value = os.getenv(key, "").strip()
+    if env_value:
+        return env_value, "environment"
+
+    return "", "unset"
+
+
+def truthy_config_value(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def load_streamlit_secrets_to_env() -> None:
+    for key in ("SCM_DATABASE_URL", "SCM_USE_SUPABASE_DB"):
+        value = streamlit_secret_value(key)
+        if value is not None and str(value).strip() and key not in os.environ:
+            os.environ[key] = str(value).strip()
 
 
 def streamlit_secret_database_url() -> str:
-    try:
-        import streamlit as st
-    except Exception:
-        return ""
-    try:
-        return str(st.secrets.get("SCM_DATABASE_URL", "") or "").strip()
-    except Exception:
-        return ""
+    return config_text_value("SCM_DATABASE_URL")[0]
 
 
 def env_database_url() -> str:
@@ -118,10 +140,11 @@ def is_deployed_environment() -> bool:
 
 
 def sqlite_explicitly_allowed() -> bool:
-    return os.getenv("SCM_ALLOW_SQLITE", "").strip().lower() in {"1", "true", "yes", "y"}
+    value, _ = config_text_value("SCM_ALLOW_SQLITE")
+    return truthy_config_value(value)
 
 
-def configured_database_url() -> str:
+def _unused_legacy_configured_database_url() -> str:
     global DATABASE_URL_SOURCE
 
     secret_url = streamlit_secret_database_url()
@@ -171,29 +194,23 @@ def is_postgresql_url(raw_url: str) -> bool:
 def supabase_database_url_config() -> str:
     global DATABASE_URL_SOURCE
 
-    secret_url = streamlit_secret_database_url()
-    if secret_url:
-        os.environ["SCM_DATABASE_URL"] = secret_url
-        DATABASE_URL_SOURCE = "streamlit_secrets"
-        return secret_url
-
-    env_url = env_database_url()
-    if env_url:
-        DATABASE_URL_SOURCE = "environment"
-        return env_url
-
-    load_local_env_file()
-    env_url = env_database_url()
-    if env_url:
-        DATABASE_URL_SOURCE = "environment"
-        return env_url
+    database_url, source = config_text_value("SCM_DATABASE_URL")
+    if database_url:
+        DATABASE_URL_SOURCE = source
+        if source == "streamlit_secrets":
+            os.environ["SCM_DATABASE_URL"] = database_url
+        return database_url
 
     DATABASE_URL_SOURCE = "unset"
     return ""
 
 
 def use_supabase_as_app_database() -> bool:
-    return os.getenv("SCM_USE_SUPABASE_DB", "").strip().lower() in {"1", "true", "yes", "y"}
+    secret_value = streamlit_secret_value("SCM_USE_SUPABASE_DB")
+    if secret_value is not None:
+        return truthy_config_value(secret_value)
+    value, _ = config_text_value("SCM_USE_SUPABASE_DB")
+    return truthy_config_value(value)
 
 
 def configured_database_url() -> str:
@@ -203,10 +220,25 @@ def configured_database_url() -> str:
     if SUPABASE_DATABASE_URL and use_supabase_as_app_database():
         return SUPABASE_DATABASE_URL
     if SUPABASE_DATABASE_URL:
-        DATABASE_URL_SOURCE = f"{DATABASE_URL_SOURCE}_status_only"
-    elif DATABASE_URL_SOURCE == "unset":
-        DATABASE_URL_SOURCE = "sqlite_recovery"
-    return f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
+        if sqlite_explicitly_allowed():
+            DATABASE_URL_SOURCE = f"{DATABASE_URL_SOURCE}_status_only"
+            return f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
+        raise RuntimeError(
+            "SCM_DATABASE_URL is configured, but SCM_USE_SUPABASE_DB is not true. "
+            "Set SCM_USE_SUPABASE_DB = true in Streamlit Secrets to use Supabase PostgreSQL, "
+            "or set SCM_ALLOW_SQLITE=true only for explicit local SQLite development."
+        )
+
+    if sqlite_explicitly_allowed():
+        DATABASE_URL_SOURCE = "sqlite_fallback_explicit"
+        return f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
+
+    location = "deployed environment" if is_deployed_environment() else "local environment"
+    raise RuntimeError(
+        f"SCM_DATABASE_URL is not configured in the {location}. "
+        "Add SCM_DATABASE_URL and SCM_USE_SUPABASE_DB=true to Streamlit Secrets for Supabase PostgreSQL. "
+        "SQLite is allowed only when SCM_ALLOW_SQLITE=true is explicitly set for local development."
+    )
 
 
 RAW_DATABASE_URL = configured_database_url()
@@ -729,6 +761,7 @@ def database_status() -> dict:
         "engine": database_engine_name(),
         "app_database_engine": database_engine_name(),
         "supabase_configured": bool(SUPABASE_DATABASE_URL),
+        "supabase_db_enabled": use_supabase_as_app_database(),
         "supabase_select_1_ok": supabase_ok,
         "supabase_last_error": supabase_error,
         "is_sqlite": is_sqlite_url(DATABASE_URL),

@@ -9,6 +9,11 @@ set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python314\python.exe"
 if not exist "%PYTHON_EXE%" set "PYTHON_EXE=python"
 set "PYTHONDONTWRITEBYTECODE=1"
 
+where git >nul 2>nul
+if not errorlevel 1 (
+  start "SCM Portal Auto Git Push" /min powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0auto_git_push.ps1"
+)
+
 echo Starting SCM Portal on http://localhost:8502
 echo Logs:
 echo   data\streamlit.out.log

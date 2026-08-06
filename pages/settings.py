@@ -102,6 +102,11 @@ def current_git_commit_hash() -> str:
         return "unknown"
 
 
+def render_diagnostic_details(title: str, rows: list[dict]) -> None:
+    st.markdown(f"##### {title}")
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
 def render_app_database_panel() -> None:
     if init_db is None or database_status is None or SessionLocal is None:
         st.subheader("운영 DB 상태")
@@ -113,6 +118,16 @@ def render_app_database_panel() -> None:
     except Exception as exc:
         schema_error = str(exc)
     status = database_status()
+    render_diagnostic_details(
+        "Supabase PostgreSQL 연결 진단",
+        [
+            {"항목": "SCM_DATABASE_URL 로드", "상태": "OK" if status.get("supabase_configured") else "MISSING", "값": status.get("url_source") or ""},
+            {"항목": "SCM_USE_SUPABASE_DB 적용", "상태": "OK" if status.get("supabase_db_enabled") else "OFF", "값": str(status.get("supabase_db_enabled"))},
+            {"항목": "앱 DB 엔진", "상태": status.get("engine") or "", "값": status.get("display_url") or ""},
+            {"항목": "Supabase SELECT 1", "상태": "OK" if status.get("supabase_select_1_ok") else "FAIL", "값": status.get("supabase_last_error") or ""},
+            {"항목": "앱 DB SELECT 1", "상태": "OK" if status.get("select_1_ok") else "FAIL", "값": status.get("last_error") or ""},
+        ],
+    )
     st.subheader("운영 DB 상태")
     cols = st.columns(5)
     cols[0].metric("데이터베이스", status.get("engine") or "확인 필요")
@@ -148,6 +163,13 @@ def render_app_database_panel() -> None:
 
 
 def render_connection_panel(status: dict) -> None:
+    render_diagnostic_details(
+        "Supabase REST API 연결 진단",
+        [
+            {"항목": "SUPABASE_URL / SUPABASE_KEY 로드", "상태": "OK" if status.get("configured") else "MISSING", "값": status.get("source") or ""},
+            {"항목": "warehouse_layouts 테이블 조회", "상태": "OK" if status.get("connected") else "FAIL", "값": status.get("message") or ""},
+        ],
+    )
     st.subheader("Supabase REST API 연결상태")
     cols = st.columns(3)
     cols[0].metric("Secrets 설정", status_badge(bool(status.get("configured"))))
@@ -164,11 +186,13 @@ def render_connection_panel(status: dict) -> None:
 def render_table_panel(status: dict) -> None:
     st.subheader("테이블 상태")
     counts = status.get("counts") or {}
+    table_errors = status.get("table_errors") or {}
     rows = [
         {
             "테이블": table,
-            "존재": "예" if counts.get(table) is not None else "아니오",
+            "조회": "OK" if counts.get(table) is not None else "FAIL",
             "건수": counts.get(table) if counts.get(table) is not None else "",
+            "오류": table_errors.get(table, ""),
         }
         for table in REQUIRED_TABLES
     ]
@@ -185,6 +209,8 @@ def render_recent_transactions(status: dict) -> None:
     st.subheader("최근 거래")
     rows = status.get("recent_transactions") or []
     if not rows:
+        if status.get("recent_error"):
+            st.error(f"최근 거래 조회 실패: {status.get('recent_error')}")
         st.caption("최근 거래가 없습니다.")
         return
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
