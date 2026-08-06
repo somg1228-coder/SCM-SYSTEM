@@ -21,7 +21,7 @@ else:
     SETTINGS_IMPORT_ERROR = ""
 
 
-REQUIRED_TABLES = [
+REQUIRED_REST_TABLES = [
     "suppliers",
     "inventory_items",
     "warehouse_locations",
@@ -86,7 +86,7 @@ def format_mtime(value: float | int | None) -> str:
 
 
 def status_badge(ok: bool) -> str:
-    return "정상" if ok else "확인 필요"
+    return "OK" if ok else "Check needed"
 
 
 def current_git_commit_hash() -> str:
@@ -109,134 +109,142 @@ def render_diagnostic_details(title: str, rows: list[dict]) -> None:
 
 def render_app_database_panel() -> None:
     if init_db is None or database_status is None or SessionLocal is None:
-        st.subheader("운영 DB 상태")
-        st.error(SETTINGS_IMPORT_ERROR or "DB 설정 모듈을 불러오지 못했습니다.")
+        st.subheader("Application database")
+        st.error(SETTINGS_IMPORT_ERROR or "Database module could not be loaded.")
         return
+
     schema_error = ""
     try:
         init_db()
     except Exception as exc:
         schema_error = str(exc)
+
     status = database_status()
     render_diagnostic_details(
-        "Supabase PostgreSQL 연결 진단",
+        "Supabase PostgreSQL connection diagnostics",
         [
-            {"항목": "SCM_DATABASE_URL 로드", "상태": "OK" if status.get("supabase_configured") else "MISSING", "값": status.get("url_source") or ""},
-            {"항목": "SCM_USE_SUPABASE_DB 적용", "상태": "OK" if status.get("supabase_db_enabled") else "OFF", "값": str(status.get("supabase_db_enabled"))},
-            {"항목": "앱 DB 엔진", "상태": status.get("engine") or "", "값": status.get("display_url") or ""},
-            {"항목": "Supabase SELECT 1", "상태": "OK" if status.get("supabase_select_1_ok") else "FAIL", "값": status.get("supabase_last_error") or ""},
-            {"항목": "앱 DB SELECT 1", "상태": "OK" if status.get("select_1_ok") else "FAIL", "값": status.get("last_error") or ""},
+            {"Item": "SCM_DATABASE_URL loaded", "Status": "OK" if status.get("supabase_configured") else "MISSING", "Detail": status.get("url_source") or ""},
+            {"Item": "SCM_USE_SUPABASE_DB enabled", "Status": "OK" if status.get("supabase_db_enabled") else "OFF", "Detail": str(status.get("supabase_db_enabled"))},
+            {"Item": "App DB engine", "Status": status.get("engine") or "", "Detail": status.get("display_url") or ""},
+            {"Item": "Supabase SELECT 1", "Status": "OK" if status.get("supabase_select_1_ok") else "FAIL", "Detail": status.get("supabase_last_error") or ""},
+            {"Item": "App DB SELECT 1", "Status": "OK" if status.get("select_1_ok") else "FAIL", "Detail": status.get("last_error") or ""},
         ],
     )
-    st.subheader("운영 DB 상태")
+
+    st.subheader("Application database status")
     cols = st.columns(5)
-    cols[0].metric("데이터베이스", status.get("engine") or "확인 필요")
-    cols[1].metric("URL 로드", status_badge(bool(status.get("configured"))))
+    cols[0].metric("Database", status.get("engine") or "Unknown")
+    cols[1].metric("URL loaded", status_badge(bool(status.get("configured"))))
     cols[2].metric("SELECT 1", status_badge(bool(status.get("select_1_ok"))))
-    cols[3].metric("스키마 초기화", status_badge(bool(status.get("schema_initialized"))))
+    cols[3].metric("Schema", status_badge(bool(status.get("schema_initialized"))))
     cols[4].metric("Git", current_git_commit_hash())
 
     if status.get("connected") and status.get("schema_initialized"):
-        st.success(status.get("message") or "운영 DB에 연결되었습니다.")
+        if status.get("engine") == "Supabase PostgreSQL":
+            st.success("Supabase connected")
+        else:
+            st.warning(f"SQLite in use: {status.get('display_url')}")
     else:
-        st.error(schema_error or status.get("message") or "운영 DB 연결을 확인해주세요.")
+        st.error(schema_error or status.get("message") or "Database connection failed.")
+
     if status.get("host"):
         st.caption(f"DB Host: {status.get('host')} / Port: {status.get('port') or '-'} / Source: {status.get('url_source')}")
     st.caption(
-        f"최근 저장 성공: {status.get('last_save_success_at') or '-'} / "
-        f"최근 저장 실패 항목: {status.get('last_save_failure_item') or '-'}"
+        f"Last save success: {status.get('last_save_success_at') or '-'} / "
+        f"Last save failure item: {status.get('last_save_failure_item') or '-'}"
     )
 
-    st.markdown("##### 실제 앱 테이블")
+    st.markdown("##### Application table probes")
     try:
         with SessionLocal() as db:
-            rows = [
-                {
-                    "테이블": table,
-                    "건수": db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar_one(),
-                }
-                for table in APP_DB_TABLES
-            ]
+            rows = []
+            for table in APP_DB_TABLES:
+                try:
+                    count = db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar_one()
+                    rows.append({"Table": table, "Probe": "OK", "Rows": count, "Error": ""})
+                except Exception as exc:
+                    rows.append({"Table": table, "Probe": "FAIL", "Rows": "", "Error": str(exc)})
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     except Exception as exc:
-        st.warning(f"앱 테이블 상태를 확인하지 못했습니다: {exc}")
+        st.warning(f"Could not check application tables: {exc}")
 
 
 def render_connection_panel(status: dict) -> None:
     render_diagnostic_details(
-        "Supabase REST API 연결 진단",
+        "Supabase REST API connection diagnostics",
         [
-            {"항목": "SUPABASE_URL / SUPABASE_KEY 로드", "상태": "OK" if status.get("configured") else "MISSING", "값": status.get("source") or ""},
-            {"항목": "warehouse_layouts 테이블 조회", "상태": "OK" if status.get("connected") else "FAIL", "값": status.get("message") or ""},
+            {"Item": "SUPABASE_URL / SUPABASE_KEY loaded", "Status": "OK" if status.get("configured") else "MISSING", "Detail": status.get("source") or ""},
+            {"Item": "warehouse_layouts table probe", "Status": "OK" if status.get("connected") else "FAIL", "Detail": status.get("message") or ""},
         ],
     )
-    st.subheader("Supabase REST API 연결상태")
+
+    st.subheader("Supabase REST API status")
     cols = st.columns(3)
-    cols[0].metric("Secrets 설정", status_badge(bool(status.get("configured"))))
-    cols[1].metric("연결", status_badge(bool(status.get("connected"))))
-    cols[2].metric("용도", "REST API 상태 확인")
+    cols[0].metric("Secrets", status_badge(bool(status.get("configured"))))
+    cols[1].metric("Connection", status_badge(bool(status.get("connected"))))
+    cols[2].metric("Purpose", "REST status")
 
     message = status.get("message") or ""
     if status.get("connected"):
-        st.success(message or "Supabase에 연결되었습니다.")
+        st.success(message or "Supabase REST API connected.")
     else:
-        st.warning(message or "Supabase 연결 정보를 확인해 주세요.")
+        st.warning(message or "Check Supabase REST API settings.")
 
 
 def render_table_panel(status: dict) -> None:
-    st.subheader("테이블 상태")
+    st.subheader("Supabase REST table status")
     counts = status.get("counts") or {}
     table_errors = status.get("table_errors") or {}
     rows = [
         {
-            "테이블": table,
-            "조회": "OK" if counts.get(table) is not None else "FAIL",
-            "건수": counts.get(table) if counts.get(table) is not None else "",
-            "오류": table_errors.get(table, ""),
+            "Table": table,
+            "Probe": "OK" if counts.get(table) is not None else "FAIL",
+            "Rows": counts.get(table) if counts.get(table) is not None else "",
+            "Error": table_errors.get(table, ""),
         }
-        for table in REQUIRED_TABLES
+        for table in REQUIRED_REST_TABLES
     ]
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     item_count = counts.get("inventory_items") or 0
     tx_count = counts.get("inventory_transactions") or 0
     cols = st.columns(2)
-    cols[0].metric("품목 수", f"{item_count:,}")
-    cols[1].metric("거래 건수", f"{tx_count:,}")
+    cols[0].metric("Items", f"{item_count:,}")
+    cols[1].metric("Transactions", f"{tx_count:,}")
 
 
 def render_recent_transactions(status: dict) -> None:
-    st.subheader("최근 거래")
+    st.subheader("Recent transactions")
     rows = status.get("recent_transactions") or []
     if not rows:
         if status.get("recent_error"):
-            st.error(f"최근 거래 조회 실패: {status.get('recent_error')}")
-        st.caption("최근 거래가 없습니다.")
+            st.error(f"Recent transaction probe failed: {status.get('recent_error')}")
+        st.caption("No recent transactions.")
         return
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 def render_storage_analysis() -> None:
     if supabase_migration is None:
-        st.subheader("기존 저장소 분석")
-        st.warning(SETTINGS_IMPORT_ERROR or "저장소 분석 모듈을 불러오지 못했습니다.")
+        st.subheader("Local storage analysis")
+        st.warning(SETTINGS_IMPORT_ERROR or "Storage analysis module could not be loaded.")
         return
-    st.subheader("기존 저장소 분석")
+    st.subheader("Local storage analysis")
     rows = supabase_migration.discover_local_storage()
     if not rows:
-        st.caption("CSV, Excel, JSON, pickle, SQLite 저장 파일을 찾지 못했습니다.")
+        st.caption("No local CSV, Excel, JSON, pickle, or SQLite files were found.")
         return
     df = pd.DataFrame(rows)
     df["size"] = df["size"].map(format_bytes)
     df["last_modified"] = df["last_modified"].map(format_mtime)
-    df["operational_candidate"] = df["operational_candidate"].map(lambda value: "운영 후보" if value else "보관/설정")
+    df["operational_candidate"] = df["operational_candidate"].map(lambda value: "Operational candidate" if value else "Archive/config")
     df = df.rename(
         columns={
-            "path": "파일",
-            "kind": "종류",
-            "size": "크기",
-            "last_modified": "수정일",
-            "operational_candidate": "분류",
+            "path": "File",
+            "kind": "Kind",
+            "size": "Size",
+            "last_modified": "Modified",
+            "operational_candidate": "Classification",
         }
     )
     st.dataframe(df, use_container_width=True, hide_index=True)
@@ -244,20 +252,20 @@ def render_storage_analysis() -> None:
 
 def render_migration_panel(connected: bool) -> None:
     if supabase_migration is None or SessionLocal is None:
-        st.subheader("기존 데이터 이관")
-        st.warning(SETTINGS_IMPORT_ERROR or "이관 모듈을 불러오지 못했습니다.")
+        st.subheader("Legacy data migration")
+        st.warning(SETTINGS_IMPORT_ERROR or "Migration module could not be loaded.")
         return
-    st.subheader("기존 데이터 이관")
-    st.caption("기존 SQLite/Excel/JSON 파일은 삭제하지 않고, 운영 데이터만 Supabase로 Upsert합니다.")
+    st.subheader("Legacy data migration")
+    st.caption("Preview or upsert existing operational data without deleting the local source files.")
 
     preview_key = "supabase_migration_preview"
     cols = st.columns([1, 1, 3])
-    if cols[0].button("이관 미리보기", use_container_width=True):
+    if cols[0].button("Preview migration", use_container_width=True):
         with SessionLocal() as db:
             st.session_state[preview_key] = supabase_migration.build_migration_preview(db)
 
-    if cols[1].button("Supabase 이관 실행", use_container_width=True, disabled=not connected):
-        with st.spinner("Supabase로 이관 중입니다..."):
+    if cols[1].button("Run Supabase migration", use_container_width=True, disabled=not connected):
+        with st.spinner("Migrating to Supabase..."):
             with SessionLocal() as db:
                 result = supabase_migration.migrate_operational_data(db)
         if result.get("ok"):
@@ -270,7 +278,7 @@ def render_migration_panel(connected: bool) -> None:
     if not preview:
         return
 
-    st.markdown("##### 미리보기")
+    st.markdown("##### Preview")
     product_counts = preview.get("product_master_counts") or {}
     daily_counts = preview.get("latest_daily_counts") or {}
     inbound_counts = preview.get("inbound_counts") or {}
@@ -279,23 +287,23 @@ def render_migration_panel(connected: bool) -> None:
         latest = daily_counts.get(source_type) or {}
         summary_rows.append(
             {
-                "재고처": source_type,
-                "마스터 품목": count,
-                "최신 재고일": latest.get("latest_date") or "",
-                "최신 재고 행": latest.get("rows") or 0,
-                "입고 이력": inbound_counts.get(source_type) or 0,
+                "Source": source_type,
+                "Master rows": count,
+                "Latest inventory date": latest.get("latest_date") or "",
+                "Latest inventory rows": latest.get("rows") or 0,
+                "Inbound rows": inbound_counts.get(source_type) or 0,
             }
         )
     st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
 
 
 def render_settings_page() -> None:
-    st.markdown("## 관리자")
-    st.caption("실제 운영 DB 연결, Supabase REST API, 테이블 상태, 기존 로컬 데이터 이관 상태를 확인합니다.")
+    st.markdown("## Admin")
+    st.caption("Check the application DB, Supabase REST API, table probes, local storage, and migration status.")
 
     render_app_database_panel()
     if supabase_store is None:
-        st.warning(SETTINGS_IMPORT_ERROR or "Supabase REST 상태 모듈을 불러오지 못했습니다.")
+        st.warning(SETTINGS_IMPORT_ERROR or "Supabase REST status module could not be loaded.")
         return
     status = supabase_store.admin_status()
     render_connection_panel(status)

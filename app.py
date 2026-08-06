@@ -47,6 +47,25 @@ def load_css() -> None:
         st.markdown(f"<style>{css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
 
+def verify_database_startup() -> None:
+    try:
+        from backend.database import database_status, init_db
+
+        init_db()
+        status = database_status()
+    except Exception as exc:
+        log_app_exception(exc)
+        st.error(f"Supabase connection failed: {exc}")
+        st.stop()
+
+    if status.get("is_supabase_postgresql") and status.get("select_1_ok"):
+        st.sidebar.success("Supabase connected")
+    elif status.get("is_sqlite"):
+        st.sidebar.warning(f"SQLite in use: {status.get('display_url')}")
+    else:
+        st.sidebar.warning(status.get("message") or "Check database connection status.")
+
+
 def render_placeholder(active_menu: str) -> None:
     st.markdown(
         f"""
@@ -205,6 +224,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     load_css()
+    verify_database_startup()
     sync_query_params_to_state()
 
     page = importlib.reload(sidebar_component).render_sidebar()

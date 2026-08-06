@@ -14,12 +14,24 @@ import streamlit.components.v1 as components
 from sqlalchemy import select
 
 try:
-    from backend.database import SessionLocal, init_db, record_save_failure, record_save_success, writable_runtime_data_dir
+    from backend.config import config_text_value
+    from backend.database import (
+        DATABASE_URL,
+        SessionLocal,
+        init_db,
+        is_postgresql_url,
+        record_save_failure,
+        record_save_success,
+        writable_runtime_data_dir,
+    )
     from backend.models import WarehouseLayout
     from backend import services, supabase_store
 except (ModuleNotFoundError, RuntimeError) as exc:
+    DATABASE_URL = ""
     SessionLocal = None
+    config_text_value = None
     init_db = None
+    is_postgresql_url = None
     record_save_failure = None
     record_save_success = None
     writable_runtime_data_dir = None
@@ -174,6 +186,10 @@ def load_database_warehouse_layout_store() -> dict:
             continue
         locations.setdefault(row.building, {})[row.floor] = row.layout_data
     return {"version": 1, "locations": locations}
+
+
+def app_database_is_postgresql() -> bool:
+    return bool(is_postgresql_url is not None and DATABASE_URL and is_postgresql_url(DATABASE_URL))
 
 
 def save_database_warehouse_layout_store(payload: dict) -> int:
@@ -334,6 +350,12 @@ def save_warehouse_layout_store(payload: dict) -> Path:
     if saved_db_rows:
         write_warehouse_layout_log(f"Saved layout to SQLAlchemy DB: {saved_db_rows} rows.")
         return path
+    if app_database_is_postgresql() and warehouse_layout_has_data(store):
+        message = "Supabase PostgreSQL mode is enabled, but warehouse_layouts could not be saved."
+        write_warehouse_layout_log(message)
+        if record_save_failure is not None:
+            record_save_failure("warehouse3d layout", RuntimeError(message))
+        raise RuntimeError(message)
 
     backup_warehouse_layout_store(path)
     path.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -388,9 +410,9 @@ class WarehouseLayoutApiHandler(BaseHTTPRequestHandler):
             with _WAREHOUSE_LAYOUT_API_LOCK:
                 save_warehouse_layout_store(payload)
                 saved = load_warehouse_layout_store()
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, RuntimeError) as exc:
             write_warehouse_layout_log(f"POST save failed: {exc}")
-            self._send_json(400, {"ok": False, "error": str(exc)})
+            self._send_json(500 if isinstance(exc, RuntimeError) else 400, {"ok": False, "error": str(exc)})
             return
         write_warehouse_layout_log("POST save succeeded.")
         self._send_json(200, {"ok": True, "layout": saved})
@@ -427,11 +449,11 @@ def render_warehouse_layout_sync_tools() -> dict:
 
 
 def warehouse_layout_supabase_browser_config() -> dict:
-    try:
-        url = str(st.secrets["SUPABASE_URL"]).strip().rstrip("/")
-        key = str(st.secrets["SUPABASE_KEY"]).strip()
-    except Exception:
+    if config_text_value is None:
         return {"enabled": False, "url": "", "key": ""}
+    url, _ = config_text_value("SUPABASE_URL")
+    key, _ = config_text_value("SUPABASE_KEY")
+    url = url.rstrip("/")
     return {"enabled": bool(url and key), "url": url, "key": key}
 
 FLOOR_ZONES = {

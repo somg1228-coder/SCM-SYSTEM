@@ -5,19 +5,28 @@ param(
     [string]$Branch = "main",
     [int]$DebounceSeconds = 5,
     [int]$RetryCount = 3,
-    [int]$RetryDelaySeconds = 20
+    [int]$RetryDelaySeconds = 20,
+    [string]$LogFilePath = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $RepoPath = (Resolve-Path -LiteralPath $RepoPath).Path
-$LogFile = Join-Path $RepoPath ".git\auto_git_push.log"
+$LogFile = if ($LogFilePath) { $LogFilePath } else { Join-Path $RepoPath "auto_git_push.log" }
+$PidFile = Join-Path $RepoPath "auto_git_push.pid"
 
 function Write-Log {
     param([string]$Message)
 
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Add-Content -LiteralPath $LogFile -Value "[$timestamp] $Message"
+}
+
+function Write-Status {
+    param([string]$Message)
+
+    Write-Host "[auto-git-push] $Message"
+    Write-Log $Message
 }
 
 function ConvertTo-ProcessArgument {
@@ -91,20 +100,20 @@ function Test-RepositoryReady {
 
     $currentBranch = (Invoke-GitOutput -GitArgs @("branch", "--show-current")).Output | Select-Object -First 1
     if ($currentBranch -ne $Branch) {
-        Write-Log "Skipped: current branch is '$currentBranch', expected '$Branch'."
+        Write-Status "Skipped: current branch is '$currentBranch', expected '$Branch'."
         return $false
     }
 
     $remoteResult = Invoke-GitOutput -GitArgs @("remote", "get-url", $RemoteName) -AllowFailure
     if ($remoteResult.ExitCode -ne 0) {
         Invoke-GitOutput -GitArgs @("remote", "add", $RemoteName, $RemoteUrl) | Out-Null
-        Write-Log "Added remote '$RemoteName'."
+        Write-Status "Added remote '$RemoteName'."
     }
     else {
         $currentRemoteUrl = $remoteResult.Output | Select-Object -First 1
         if ($currentRemoteUrl -ne $RemoteUrl) {
             Invoke-GitOutput -GitArgs @("remote", "set-url", $RemoteName, $RemoteUrl) | Out-Null
-            Write-Log "Updated remote '$RemoteName' URL."
+            Write-Status "Updated remote '$RemoteName' URL."
         }
     }
 
@@ -222,15 +231,15 @@ function Invoke-RebaseRecovery {
     try {
         Invoke-GitOutput -GitArgs @("fetch", $RemoteName, $Branch) | Out-Null
         Invoke-GitOutput -GitArgs @("pull", "--rebase", "--autostash", $RemoteName, $Branch) | Out-Null
-        Write-Log "Rebased with $RemoteName/$Branch after push failure."
+        Write-Status "Rebased with $RemoteName/$Branch after push failure."
     }
     catch {
-        Write-Log "Rebase recovery failed: $($_.Exception.Message)"
+        Write-Status "Rebase recovery failed: $($_.Exception.Message)"
 
         $isRebasing = (Test-Path -LiteralPath $rebaseMergePath) -or (Test-Path -LiteralPath $rebaseApplyPath)
         if (-not $wasRebasing -and $isRebasing) {
             Invoke-GitOutput -GitArgs @("rebase", "--abort") -AllowFailure | Out-Null
-            Write-Log "Aborted failed automatic rebase."
+            Write-Status "Aborted failed automatic rebase."
         }
     }
 }
@@ -248,28 +257,30 @@ function Invoke-AutoPush {
         try {
             $candidatePaths = Get-AutoPushCandidatePaths
             if ($candidatePaths.Count -gt 0) {
+                Write-Status "Detected $($candidatePaths.Count) changed file(s): $($candidatePaths -join ', ')"
                 Invoke-GitOutput -GitArgs (@("add", "--") + @($candidatePaths)) | Out-Null
+                Write-Status "git add completed."
 
                 $staged = (Invoke-GitOutput -GitArgs @("diff", "--cached", "--name-only")).Output
                 if ($staged.Count -gt 0) {
                     $message = "Auto Update $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
                     Invoke-GitOutput -GitArgs @("commit", "-m", $message) | Out-Null
-                    Write-Log "Committed: $message"
+                    Write-Status "Committed: $message"
                 }
                 else {
-                    Write-Log "No staged changes. Nothing to commit."
+                    Write-Status "No staged changes. Nothing to commit."
                 }
             }
 
             if (Test-HasUnpushedCommits) {
                 Invoke-GitOutput -GitArgs @("push", $RemoteName, $Branch) | Out-Null
-                Write-Log "Pushed to $RemoteName/$Branch."
+                Write-Status "Pushed to $RemoteName/$Branch."
             }
 
             return $true
         }
         catch {
-            Write-Log "Attempt $attempt failed: $($_.Exception.Message)"
+            Write-Status "Attempt $attempt failed: $($_.Exception.Message)"
 
             if ($attempt -lt $RetryCount) {
                 Invoke-RebaseRecovery
@@ -278,7 +289,7 @@ function Invoke-AutoPush {
         }
     }
 
-    Write-Log "Auto push failed after $RetryCount attempts. It will retry after the next debounce window."
+    Write-Status "Auto push failed after $RetryCount attempts. It will retry after the next debounce window."
     return $false
 }
 
@@ -297,7 +308,7 @@ function New-MutexName {
 
 $mutex = New-Object System.Threading.Mutex($false, (New-MutexName))
 if (-not $mutex.WaitOne(0)) {
-    Write-Log "Another auto git push watcher is already running. Exiting."
+    Write-Status "Another auto git push watcher is already running. Exiting."
     exit 0
 }
 
@@ -305,7 +316,8 @@ $watcher = $null
 $registrations = @()
 
 try {
-    Write-Log "Auto git push watcher started for $RepoPath."
+    Set-Content -LiteralPath $PidFile -Value $PID -Encoding ascii
+    Write-Status "Auto git push watcher running. PID=$PID Repo=$RepoPath Log=$LogFile"
 
     $watcher = New-Object System.IO.FileSystemWatcher
     $watcher.Path = $RepoPath
@@ -341,6 +353,7 @@ try {
 
                 $path = $queuedEvent.SourceEventArgs.FullPath
                 if (-not (Test-IgnoredPath -Path $path)) {
+                    Write-Status "File change detected: $path"
                     $pending = $true
                     $nextRunAt = (Get-Date).AddSeconds($DebounceSeconds)
                 }
@@ -356,6 +369,10 @@ try {
         }
     }
 }
+catch {
+    Write-Status "Fatal watcher error: $($_.Exception.Message)"
+    throw
+}
 finally {
     foreach ($registration in $registrations) {
         Unregister-Event -SubscriptionId $registration.Id -ErrorAction SilentlyContinue
@@ -365,6 +382,8 @@ finally {
         $watcher.Dispose()
     }
 
+    Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
+    Write-Log "Auto git push watcher stopped. PID=$PID"
     $mutex.ReleaseMutex() | Out-Null
     $mutex.Dispose()
 }

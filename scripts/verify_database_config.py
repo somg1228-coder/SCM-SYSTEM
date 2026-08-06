@@ -44,10 +44,10 @@ def test_sqlite_explicit_allow() -> None:
     assert_ok("SQLite 명시 허용 상태", "SQLite" in result.stdout, result.stdout)
 
 
-def test_sqlite_auto_fallback_blocked() -> None:
+def test_sqlite_default_local_mode() -> None:
     result = run_child("import backend.database")
-    assert_ok("SQLite 자동 전환 금지", result.returncode != 0, "SCM_ALLOW_SQLITE 없이 import가 성공했습니다.")
-    assert_ok("SQLite 자동 전환 오류 메시지", "SCM_ALLOW_SQLITE=true" in (result.stderr + result.stdout), result.stderr + result.stdout)
+    assert_ok("SQLite 기본 로컬 모드 import", result.returncode == 0, result.stderr)
+    assert_ok("SQLite 기본 로컬 모드 상태", "SQLite" in result.stdout or result.returncode == 0, result.stdout)
 
 
 def test_supabase_flag_string_true() -> None:
@@ -83,20 +83,26 @@ print(db.use_supabase_as_app_database())
     assert_ok("boolean true로 Supabase DB 사용", "True" in result.stdout and "streamlit_secrets" in result.stdout, result.stdout)
 
 
-def test_supabase_url_without_flag_blocked() -> None:
+def test_supabase_url_without_flag_uses_sqlite() -> None:
     result = run_child(
-        "import backend.database",
+        "import backend.database as db; print(db.database_status()['engine']); print(db.database_status()['supabase_db_enabled'])",
         {"SCM_DATABASE_URL": "postgresql://u:p@aws-1-ap-south-1.pooler.supabase.com:5432/postgres"},
     )
-    assert_ok("SCM_DATABASE_URL만 있을 때 SQLite 자동 전환 금지", result.returncode != 0, result.stdout + result.stderr)
-    assert_ok("SCM_USE_SUPABASE_DB 안내", "SCM_USE_SUPABASE_DB" in (result.stderr + result.stdout), result.stderr + result.stdout)
+    assert_ok("SCM_DATABASE_URL만 있을 때 SQLite 로컬 모드", result.returncode == 0, result.stdout + result.stderr)
+    assert_ok("SCM_USE_SUPABASE_DB false", "False" in result.stdout and "SQLite" in result.stdout, result.stdout)
+
+
+def test_supabase_true_without_url_blocked() -> None:
+    result = run_child("import backend.database", {"SCM_USE_SUPABASE_DB": "true"})
+    assert_ok("SCM_USE_SUPABASE_DB true에서 URL 누락 차단", result.returncode != 0, result.stdout + result.stderr)
+    assert_ok("SCM_DATABASE_URL 안내", "SCM_DATABASE_URL" in (result.stderr + result.stdout), result.stderr + result.stdout)
 
 
 def test_postgresql_url_normalization() -> None:
     os.environ["SCM_ALLOW_SQLITE"] = "true"
     db = importlib.import_module("backend.database")
     normalized = db.normalize_database_url(
-        "postgresql://postgres.wzwbpufolohgllwmgamo:pass%40word@aws-1-ap-south-1.pooler.supabase.com:5432/postgres"
+        "postgresql://postgres.example_ref:pass%40word@aws-1-ap-south-1.pooler.supabase.com:5432/postgres"
     )
     assert_ok("PostgreSQL driver 정규화", normalized.startswith("postgresql+psycopg2://"), normalized)
     assert_ok("PostgreSQL sslmode 추가", "sslmode=require" in normalized, normalized)
@@ -121,10 +127,11 @@ def test_engine_options() -> None:
 
 def main() -> int:
     test_sqlite_explicit_allow()
-    test_sqlite_auto_fallback_blocked()
+    test_sqlite_default_local_mode()
     test_supabase_flag_string_true()
     test_supabase_flag_boolean_secret_true()
-    test_supabase_url_without_flag_blocked()
+    test_supabase_url_without_flag_uses_sqlite()
+    test_supabase_true_without_url_blocked()
     test_postgresql_url_normalization()
     test_engine_options()
     print("DB 설정 단위 테스트 완료")

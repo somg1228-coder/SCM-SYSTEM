@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from typing import Any
 
 import streamlit as st
+
+from backend.config import config_text_value
 
 
 @dataclass(frozen=True)
@@ -13,21 +14,6 @@ class SupabaseStatus:
     connected: bool
     message: str
     source: str = ""
-
-
-def config_text_value(key: str) -> tuple[str, str]:
-    try:
-        secret_value = st.secrets.get(key, None)
-    except Exception:
-        secret_value = None
-    if secret_value is not None and str(secret_value).strip():
-        return str(secret_value).strip(), "streamlit_secrets"
-
-    env_value = os.getenv(key, "").strip()
-    if env_value:
-        return env_value, "environment"
-
-    return "", "unset"
 
 
 @st.cache_resource(show_spinner=False)

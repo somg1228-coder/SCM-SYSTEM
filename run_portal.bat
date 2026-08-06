@@ -11,7 +11,11 @@ set "PYTHONDONTWRITEBYTECODE=1"
 
 where git >nul 2>nul
 if not errorlevel 1 (
+  echo Starting auto git push watcher...
+  echo   auto_git_push.log
   start "SCM Portal Auto Git Push" /min powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0auto_git_push.ps1"
+) else (
+  echo [WARN] git is not available. Auto git push watcher was not started.
 )
 
 echo Starting SCM Portal on http://localhost:8502

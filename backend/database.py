@@ -10,6 +10,8 @@ import sys
 import tempfile
 import traceback
 
+from backend.config import config_text_value, is_deployed_environment, streamlit_secret_value, truthy_config_value
+
 try:
     from sqlalchemy import create_engine, inspect
     from sqlalchemy.engine import make_url
@@ -49,7 +51,7 @@ _LAST_SAVE_SUCCESS_AT = ""
 _LAST_SAVE_FAILURE_ITEM = ""
 
 
-def load_local_env_file() -> None:
+def _legacy_load_local_env_file() -> None:
     if os.getenv("SCM_IGNORE_DOTENV", "").strip().lower() in {"1", "true", "yes", "y"}:
         return
     env_path = BASE_DIR / ".env"
@@ -71,7 +73,7 @@ def load_local_env_file() -> None:
             os.environ[key] = value
 
 
-def streamlit_secret_value(key: str):
+def _legacy_streamlit_secret_value(key: str):
     try:
         import streamlit as st
     except Exception:
@@ -82,7 +84,7 @@ def streamlit_secret_value(key: str):
         return None
 
 
-def config_text_value(key: str) -> tuple[str, str]:
+def _legacy_config_text_value(key: str) -> tuple[str, str]:
     secret_value = streamlit_secret_value(key)
     if secret_value is not None and str(secret_value).strip():
         return str(secret_value).strip(), "streamlit_secrets"
@@ -99,7 +101,7 @@ def config_text_value(key: str) -> tuple[str, str]:
     return "", "unset"
 
 
-def truthy_config_value(value) -> bool:
+def _legacy_truthy_config_value(value) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -122,7 +124,7 @@ def env_database_url() -> str:
     return os.getenv("SCM_DATABASE_URL", "").strip()
 
 
-def is_deployed_environment() -> bool:
+def _legacy_is_deployed_environment() -> bool:
     cloud_markers = (
         "STREAMLIT_CLOUD",
         "STREAMLIT_SHARING_MODE",
@@ -217,28 +219,20 @@ def configured_database_url() -> str:
     global DATABASE_URL_SOURCE, SUPABASE_DATABASE_URL
 
     SUPABASE_DATABASE_URL = supabase_database_url_config()
-    if SUPABASE_DATABASE_URL and use_supabase_as_app_database():
+    if use_supabase_as_app_database():
+        if not SUPABASE_DATABASE_URL:
+            location = "deployed environment" if is_deployed_environment() else "local environment"
+            raise RuntimeError(
+                f"SCM_USE_SUPABASE_DB is true, but SCM_DATABASE_URL is not configured in the {location}. "
+                "Add SCM_DATABASE_URL to Streamlit Secrets or os.environ."
+            )
         return SUPABASE_DATABASE_URL
+
     if SUPABASE_DATABASE_URL:
-        if sqlite_explicitly_allowed():
-            DATABASE_URL_SOURCE = f"{DATABASE_URL_SOURCE}_status_only"
-            return f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
-        raise RuntimeError(
-            "SCM_DATABASE_URL is configured, but SCM_USE_SUPABASE_DB is not true. "
-            "Set SCM_USE_SUPABASE_DB = true in Streamlit Secrets to use Supabase PostgreSQL, "
-            "or set SCM_ALLOW_SQLITE=true only for explicit local SQLite development."
-        )
-
-    if sqlite_explicitly_allowed():
-        DATABASE_URL_SOURCE = "sqlite_fallback_explicit"
-        return f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
-
-    location = "deployed environment" if is_deployed_environment() else "local environment"
-    raise RuntimeError(
-        f"SCM_DATABASE_URL is not configured in the {location}. "
-        "Add SCM_DATABASE_URL and SCM_USE_SUPABASE_DB=true to Streamlit Secrets for Supabase PostgreSQL. "
-        "SQLite is allowed only when SCM_ALLOW_SQLITE=true is explicitly set for local development."
-    )
+        DATABASE_URL_SOURCE = f"{DATABASE_URL_SOURCE}_status_only"
+    else:
+        DATABASE_URL_SOURCE = "sqlite_local"
+    return f"sqlite:///{DEFAULT_DB_PATH.as_posix()}"
 
 
 RAW_DATABASE_URL = configured_database_url()
