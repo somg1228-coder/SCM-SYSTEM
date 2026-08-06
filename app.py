@@ -12,6 +12,7 @@ from components import sidebar as sidebar_component
 
 BASE_DIR = Path(__file__).parent
 APP_ERROR_LOG_PATH = BASE_DIR / "data" / "app_error.log"
+APP_ROUTING_LOG_PATH = BASE_DIR / "data" / "app_routing.log"
 
 
 def import_page_module(module_name: str, label: str):
@@ -23,6 +24,15 @@ def import_page_module(module_name: str, label: str):
         st.error(f"{label} 화면을 불러오지 못했습니다. 배포 로그와 아래 오류를 확인해주세요.")
         st.exception(exc)
         return None
+
+
+def log_route_event(message: str) -> None:
+    try:
+        APP_ROUTING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with APP_ROUTING_LOG_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(f"{message}\n")
+    except Exception:
+        pass
 
 
 def log_app_exception(exc: BaseException) -> None:
@@ -48,7 +58,7 @@ def load_css() -> None:
         st.markdown(f"<style>{css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
 
-def verify_database_startup() -> None:
+def verify_database_startup() -> dict:
     try:
         from backend.database import database_status, init_db
 
@@ -60,13 +70,7 @@ def verify_database_startup() -> None:
         render_startup_config_diagnostics()
         st.stop()
 
-    if status.get("supabase_db_enabled") and status.get("is_postgresql") and status.get("select_1_ok"):
-        st.sidebar.success("Supabase connected")
-    elif status.get("is_sqlite"):
-        st.sidebar.warning(f"SQLite in use: {status.get('display_url')}")
-    else:
-        st.sidebar.warning(status.get("message") or "Check database connection status.")
-    render_sidebar_config_summary(status)
+    return status
 
 
 def render_startup_config_diagnostics() -> None:
@@ -96,20 +100,29 @@ def render_sidebar_config_summary(status: dict) -> None:
     diagnostics = status.get("config_diagnostics") or {}
     use_diag = diagnostics.get("SCM_USE_SUPABASE_DB") or {}
     db_diag = diagnostics.get("SCM_DATABASE_URL") or {}
-    st.sidebar.caption(
-        " / ".join(
-            [
-                f"SCM_USE_SUPABASE_DB={str(status.get('supabase_db_enabled')).lower()}",
-                f"use source={status.get('supabase_db_enabled_source')}",
-                f"db url source={status.get('url_source')}",
-                f"selected={status.get('selected_database')}",
-            ]
+    with st.sidebar.expander("Database status", expanded=False):
+        if status.get("supabase_db_enabled") and status.get("is_postgresql") and status.get("select_1_ok"):
+            st.success("Supabase connected")
+        elif status.get("is_sqlite"):
+            st.warning("SQLite in use")
+        else:
+            st.error(status.get("message") or "Check database connection status.")
+        st.caption(
+            " / ".join(
+                [
+                    f"SCM_USE_SUPABASE_DB={str(status.get('supabase_db_enabled')).lower()}",
+                    f"use source={status.get('supabase_db_enabled_source')}",
+                    f"db url source={status.get('url_source')}",
+                    f"selected={status.get('selected_database')}",
+                ]
+            )
         )
-    )
-    if db_diag.get("selected_masked"):
-        st.sidebar.caption(f"DB URL: {db_diag.get('selected_masked')}")
-    if use_diag.get("streamlit_secret_error") or db_diag.get("streamlit_secret_error"):
-        st.sidebar.caption(use_diag.get("streamlit_secret_error") or db_diag.get("streamlit_secret_error"))
+        host = status.get("host") or ""
+        port = status.get("port") or ""
+        if host:
+            st.caption(f"DB host={host} port={port or '-'}")
+        if use_diag.get("streamlit_secret_error") or db_diag.get("streamlit_secret_error"):
+            st.caption(use_diag.get("streamlit_secret_error") or db_diag.get("streamlit_secret_error"))
 
 
 def render_placeholder(active_menu: str) -> None:
@@ -189,29 +202,48 @@ def render_settings() -> None:
 
 
 def render_page(page: str) -> None:
+    st.session_state["page"] = page
+    st.session_state["selected_menu"] = page
+    st.session_state["current_page"] = page
+    log_route_event(
+        f"render_page page={page!r} session_page={st.session_state.get('page')!r} "
+        f"selected_menu={st.session_state.get('selected_menu')!r} current_page={st.session_state.get('current_page')!r}"
+    )
     if page in {"홈", "대시보드"}:
+        log_route_event("calling render_home")
         render_home()
     elif page == "일정관리":
+        log_route_event("calling render_schedule")
         render_schedule()
     elif page == "회의자료":
+        log_route_event("calling render_meeting")
         render_meeting()
     elif page == "반품/AS 관리":
+        log_route_event("calling render_return_as")
         render_return_as()
     elif page == "재고관리":
+        log_route_event("calling render_inventory")
         render_inventory()
     elif page in {"구매관리", "발주관리"}:
+        log_route_event("calling render_order")
         render_order()
     elif page == "BOM 관리":
+        log_route_event("calling render_bom")
         render_bom()
     elif page == "3D 창고관리":
+        log_route_event("calling render_warehouse_3d")
         render_warehouse_3d()
     elif page == "업무가이드":
+        log_route_event("calling render_guide")
         render_guide()
     elif page == "자료실":
+        log_route_event("calling render_files")
         render_files()
     elif page == "관리자":
+        log_route_event("calling render_settings")
         render_settings()
     else:
+        log_route_event(f"unknown page {page!r}; falling back to render_home")
         render_home()
 
 
@@ -226,6 +258,8 @@ def sync_query_params_to_state() -> None:
     query_page = query_value("page")
     if query_page:
         st.session_state["page"] = query_page
+        st.session_state["selected_menu"] = query_page
+        st.session_state["current_page"] = query_page
 
     inventory_filter = query_value("inventory_filter")
     if inventory_filter:
@@ -270,11 +304,18 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     load_css()
-    verify_database_startup()
+    database_status = verify_database_startup()
     sync_query_params_to_state()
 
     page = importlib.reload(sidebar_component).render_sidebar()
     st.session_state["page"] = page
+    st.session_state["selected_menu"] = page
+    st.session_state["current_page"] = page
+    render_sidebar_config_summary(database_status)
+    log_route_event(
+        f"main selected page={page!r} session_page={st.session_state.get('page')!r} "
+        f"selected_menu={st.session_state.get('selected_menu')!r} current_page={st.session_state.get('current_page')!r}"
+    )
 
     if page != "반품/AS 관리":
         render_header(page)

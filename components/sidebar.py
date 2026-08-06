@@ -28,6 +28,8 @@ VALID_PAGES = {label for _, label in MENU_ITEMS}
 
 def normalize_page() -> str:
     page = st.session_state.get("page", "대시보드")
+    page = st.session_state.get("selected_menu", page)
+    page = st.session_state.get("current_page", page)
     if page == "홈":
         page = "대시보드"
     if page == "발주관리":
@@ -35,13 +37,17 @@ def normalize_page() -> str:
     if page not in VALID_PAGES:
         page = "대시보드"
     st.session_state["page"] = page
+    st.session_state["selected_menu"] = page
+    st.session_state["current_page"] = page
     return page
 
 
 def activate_page(label: str) -> None:
     st.session_state["page"] = label
+    st.session_state["selected_menu"] = label
+    st.session_state["current_page"] = label
+    st.session_state["last_sidebar_click"] = label
     try:
-        st.query_params.clear()
         st.query_params["page"] = label
     except Exception:
         pass
@@ -102,4 +108,4 @@ def render_sidebar() -> str:
 
         st.markdown('<div class="sidebar-meta">SCM Portal · v1.0</div>', unsafe_allow_html=True)
 
-    return st.session_state["page"]
+    return normalize_page()
