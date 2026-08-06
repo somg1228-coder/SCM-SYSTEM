@@ -477,7 +477,11 @@ def database_connect_args(database_url: str) -> dict:
     if is_sqlite_url(database_url):
         return {"check_same_thread": False, "timeout": 15}
     if is_postgresql_url(database_url):
-        return {"sslmode": "require", "connect_timeout": 10}
+        return {
+            "sslmode": "require",
+            "connect_timeout": 5,
+            "options": "-c statement_timeout=10000 -c idle_in_transaction_session_timeout=10000",
+        }
     return {}
 
 
@@ -499,7 +503,7 @@ def database_engine_options(database_url: str) -> dict:
         if url is not None and url.port == 6543:
             options["poolclass"] = NullPool
         else:
-            options.update({"pool_size": 3, "max_overflow": 2})
+            options.update({"pool_size": 3, "max_overflow": 2, "pool_timeout": 5})
     return options
 
 

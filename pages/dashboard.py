@@ -5,6 +5,7 @@ from html import escape
 import math
 from pathlib import Path
 import sqlite3
+import time
 from urllib.parse import urlencode
 
 import pandas as pd
@@ -47,16 +48,55 @@ def render_html(markup: str) -> None:
         st.markdown(markup, unsafe_allow_html=True)
 
 
+def log_dashboard_event(message: str) -> None:
+    try:
+        log_path = BASE_DIR / "data" / "dashboard_perf.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+    except Exception:
+        pass
+
+
+def dashboard_result_size(value) -> str:
+    if isinstance(value, dict):
+        parts = []
+        for key, item in value.items():
+            if isinstance(item, (list, tuple, set)):
+                parts.append(f"{key}={len(item)}")
+        return ", ".join(parts) if parts else f"keys={len(value)}"
+    if isinstance(value, (list, tuple, set)):
+        return f"rows={len(value)}"
+    return type(value).__name__
+
+
+def timed_dashboard_step(name: str, action):
+    started_at = time.perf_counter()
+    log_dashboard_event(f"{name} start")
+    try:
+        result = action()
+        elapsed = time.perf_counter() - started_at
+        log_dashboard_event(f"{name} done seconds={elapsed:.3f} {dashboard_result_size(result)}")
+        return result
+    except Exception as exc:
+        elapsed = time.perf_counter() - started_at
+        log_dashboard_event(f"{name} error seconds={elapsed:.3f} {type(exc).__name__}: {exc}")
+        raise
+
+
 def render_dashboard() -> None:
-    inventory_summary = get_home_inventory_summary()
+    log_dashboard_event("render_dashboard start")
+    inventory_summary = timed_dashboard_step("inventory_summary", get_home_inventory_summary)
     work_date = inventory_summary.get("work_date") or date.today()
-    purchase_summary = get_home_purchase_summary(work_date)
-    core_tasks_summary = get_dashboard_core_tasks()
-    return_case_summary = get_return_case_summary(work_date)
+    purchase_summary = timed_dashboard_step("purchase_summary", lambda: get_home_purchase_summary(work_date))
+    core_tasks_summary = timed_dashboard_step("core_tasks", get_dashboard_core_tasks)
+    return_case_summary = timed_dashboard_step("return_case_summary", lambda: get_return_case_summary(work_date))
+    weekly_markup = timed_dashboard_step("weekly_schedule", weekly_schedule_html)
+    log_dashboard_event("dashboard_html render start")
     render_html(
         f"""
         <main class="dashboard-shell">
-            {weekly_schedule_html()}
+            {weekly_markup}
             {kpi_cards_html(inventory_summary, purchase_summary)}
             <section class="dashboard-middle-grid">
                 <section class="status-grid">
@@ -73,6 +113,7 @@ def render_dashboard() -> None:
         </main>
         """
     )
+    log_dashboard_event("render_dashboard done")
 
 
 def dashboard_available() -> bool:
@@ -91,12 +132,21 @@ def dashboard_available() -> bool:
     return True
 
 
-def with_db(action):
+def with_db(action, label: str = "db_action"):
     if SessionLocal is None:
         return None
+    started_at = time.perf_counter()
+    log_dashboard_event(f"{label} session_open start")
     db = SessionLocal()
     try:
-        return action(db)
+        result = action(db)
+        elapsed = time.perf_counter() - started_at
+        log_dashboard_event(f"{label} session_done seconds={elapsed:.3f} {dashboard_result_size(result)}")
+        return result
+    except Exception as exc:
+        elapsed = time.perf_counter() - started_at
+        log_dashboard_event(f"{label} session_error seconds={elapsed:.3f} {type(exc).__name__}: {exc}")
+        raise
     finally:
         db.close()
 
@@ -122,10 +172,10 @@ def get_home_inventory_summary() -> dict:
     if not dashboard_available():
         return default_summary
 
-    date_payload = with_db(lambda db: services.list_work_dates(db)) or []
+    date_payload = with_db(lambda db: services.list_work_dates(db), "inventory_work_dates") or []
     date_values = [value.date() for value in pd.to_datetime(date_payload, errors="coerce") if not pd.isna(value)]
     work_date = date_values[0] if date_values else date.today()
-    payload = with_db(lambda db: build_home_inventory_payload(db, work_date)) or {}
+    payload = with_db(lambda db: build_home_inventory_payload(db, work_date), "inventory_payload") or {}
     summary = payload.get("summary", {})
     return {
         **default_summary,
@@ -169,7 +219,7 @@ def get_home_purchase_summary(work_date: date) -> dict:
     }
     if not dashboard_available() or PurchaseRequest is None or PurchaseOrder is None or RfqQuote is None:
         return default
-    payload = with_db(lambda db: build_home_purchase_payload(db, work_date, trend_days)) or {}
+    payload = with_db(lambda db: build_home_purchase_payload(db, work_date, trend_days), "purchase_payload") or {}
     return {**default, **payload}
 
 

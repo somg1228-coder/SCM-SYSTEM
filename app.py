@@ -214,43 +214,42 @@ def render_page(page: str) -> None:
     log_route_event(f"render_page_start {route_context}")
     started_at = time.perf_counter()
     try:
-        with st.spinner(f"{page} 데이터를 불러오는 중입니다..."):
-            if page in {"홈", "대시보드"}:
-                log_route_event("call render_home")
-                render_home()
-            elif page == "일정관리":
-                log_route_event("call render_schedule")
-                render_schedule()
-            elif page == "회의자료":
-                log_route_event("call render_meeting")
-                render_meeting()
-            elif page == "반품/AS 관리":
-                log_route_event("call render_return_as")
-                render_return_as()
-            elif page == "재고관리":
-                log_route_event("call render_inventory")
-                render_inventory()
-            elif page in {"구매관리", "발주관리"}:
-                log_route_event("call render_order")
-                render_order()
-            elif page == "BOM 관리":
-                log_route_event("call render_bom")
-                render_bom()
-            elif page == "3D 창고관리":
-                log_route_event("call render_warehouse_3d")
-                render_warehouse_3d()
-            elif page == "업무가이드":
-                log_route_event("call render_guide")
-                render_guide()
-            elif page == "자료실":
-                log_route_event("call render_files")
-                render_files()
-            elif page == "관리자":
-                log_route_event("call render_settings")
-                render_settings()
-            else:
-                log_route_event(f"unknown_page_fallback {page!r}")
-                render_home()
+        if page in {"홈", "대시보드"}:
+            log_route_event("call render_home")
+            render_home()
+        elif page == "일정관리":
+            log_route_event("call render_schedule")
+            render_schedule()
+        elif page == "회의자료":
+            log_route_event("call render_meeting")
+            render_meeting()
+        elif page == "반품/AS 관리":
+            log_route_event("call render_return_as")
+            render_return_as()
+        elif page == "재고관리":
+            log_route_event("call render_inventory")
+            render_inventory()
+        elif page in {"구매관리", "발주관리"}:
+            log_route_event("call render_order")
+            render_order()
+        elif page == "BOM 관리":
+            log_route_event("call render_bom")
+            render_bom()
+        elif page == "3D 창고관리":
+            log_route_event("call render_warehouse_3d")
+            render_warehouse_3d()
+        elif page == "업무가이드":
+            log_route_event("call render_guide")
+            render_guide()
+        elif page == "자료실":
+            log_route_event("call render_files")
+            render_files()
+        elif page == "관리자":
+            log_route_event("call render_settings")
+            render_settings()
+        else:
+            log_route_event(f"unknown_page_fallback {page!r}")
+            render_home()
     except Exception as exc:
         log_app_exception(exc)
         log_route_event(f"render_page_error {page!r} {type(exc).__name__}: {exc}")

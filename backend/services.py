@@ -2826,13 +2826,13 @@ def dashboard_chart(db: Session, work_date: date, source_type: str | None = None
         return [{"label": str(label or "미분류"), "value": int(value or 0)} for label, value in rows]
 
     def grouped_by_master_category(value_attr: str) -> list[dict]:
-        rows = list(db.execute(select(InventoryDaily).where(*base_filters)).scalars())
-        grouped_values: dict[str, int] = {}
-        for row in rows:
-            product = find_product_master(db, row.source_type, row.product_code, row.barcode, row.product_name)
-            label = (product.large_category if product else row.category) or row.category or "미분류"
-            grouped_values[label] = grouped_values.get(label, 0) + int(getattr(row, value_attr) or 0)
-        return [{"label": label, "value": value} for label, value in sorted(grouped_values.items())]
+        value_column = getattr(InventoryDaily, value_attr)
+        rows = db.execute(
+            select(InventoryDaily.category, func.sum(value_column))
+            .where(*base_filters)
+            .group_by(InventoryDaily.category)
+        ).all()
+        return [{"label": str(label or "미분류"), "value": int(value or 0)} for label, value in rows]
 
     def trend(value_column):
         rows = db.execute(
