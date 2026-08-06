@@ -8,7 +8,7 @@ from typing import Any, Iterable
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from backend.database import Base, DATABASE_URL, engine, is_postgresql_url, is_sqlite_url, log_database_exception, sanitize_database_text
+from backend import database
 
 
 _LEGACY_SCHEMA_READY = False
@@ -64,7 +64,7 @@ class PostgresSqliteCompatConnection:
     row_factory = None
 
     def __init__(self):
-        self._conn = engine.connect()
+        self._conn = database.engine.connect()
         self._transaction = self._conn.begin()
         self._last_insert_id = None
 
@@ -95,7 +95,7 @@ class PostgresSqliteCompatConnection:
         return cursor
 
     def executescript(self, script: str):
-        if is_postgresql_url(DATABASE_URL):
+        if database.is_postgresql_url(database.DATABASE_URL):
             # DDL for legacy SQLite pages is represented in backend.models and
             # created via Base.metadata.create_all(). Keep this method harmless.
             return CompatCursor(self)
@@ -131,7 +131,7 @@ class PostgresSqliteCompatConnection:
         try:
             if re.match(r"^PRAGMA\s+table_info\s*\(", sql, re.IGNORECASE):
                 table_name = re.search(r"\(([^)]+)\)", sql).group(1).strip().strip("\"'")
-                columns = inspect(engine).get_columns(table_name)
+                columns = inspect(database.engine).get_columns(table_name)
                 keys = ["cid", "name", "type", "notnull", "dflt_value", "pk"]
                 rows = [
                     CompatRow(
@@ -157,7 +157,7 @@ class PostgresSqliteCompatConnection:
                 return
 
             converted_sql, bind_params = convert_sqlite_query(sql, parameters)
-            if is_postgresql_url(DATABASE_URL):
+            if database.is_postgresql_url(database.DATABASE_URL):
                 converted_sql = convert_sqlite_dialect_sql(converted_sql)
             if is_insert_without_returning(converted_sql):
                 converted_sql = f"{converted_sql} RETURNING id"
@@ -177,8 +177,8 @@ class PostgresSqliteCompatConnection:
                 cursor.description = None
                 cursor._rows = []
         except SQLAlchemyError as exc:
-            log_database_exception("legacy sqlite-compatible query", exc)
-            raise sqlite3.Error(sanitize_database_text(repr(exc))) from exc
+            database.log_database_exception("legacy sqlite-compatible query", exc)
+            raise sqlite3.Error(database.sanitize_database_text(repr(exc))) from exc
 
 
 def is_insert_without_returning(sql: str) -> bool:
@@ -220,26 +220,26 @@ def convert_sqlite_query(statement: str, parameters: Iterable[Any] | dict[str, A
 
 def ensure_legacy_schema() -> None:
     global _LEGACY_SCHEMA_READY
-    if _LEGACY_SCHEMA_READY or not is_postgresql_url(DATABASE_URL):
+    if _LEGACY_SCHEMA_READY or not database.is_postgresql_url(database.DATABASE_URL):
         return
     from backend import models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+    database.Base.metadata.create_all(bind=database.engine)
     _LEGACY_SCHEMA_READY = True
 
 
 def connect_sqlite_compatible(database_path: str | Path, *args, **kwargs):
-    if is_sqlite_url(DATABASE_URL):
+    if database.is_sqlite_url(database.DATABASE_URL):
         return sqlite3.connect(database_path, *args, **kwargs)
     ensure_legacy_schema()
     return PostgresSqliteCompatConnection()
 
 
 def legacy_store_available(database_path: str | Path) -> bool:
-    if is_postgresql_url(DATABASE_URL):
+    if database.is_postgresql_url(database.DATABASE_URL):
         return True
     return Path(database_path).exists()
 
 
 def legacy_uses_local_sqlite() -> bool:
-    return is_sqlite_url(DATABASE_URL)
+    return database.is_sqlite_url(database.DATABASE_URL)
