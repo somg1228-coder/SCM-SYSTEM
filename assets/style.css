@@ -12942,6 +12942,224 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     display: block !important;
 }
 
+/* Final Streamlit Cloud sidebar/body visibility override. This must stay last. */
+:root {
+    --scm-sidebar-width-final: clamp(220px, 14vw, 280px);
+}
+
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+[data-testid="stAppViewBlockContainer"],
+section.main,
+.main,
+.block-container {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"][aria-expanded="true"],
+[data-testid="stSidebar"][aria-expanded="false"],
+[data-testid="stSidebar"][aria-hidden="true"] {
+    display: block !important;
+    flex: 0 0 var(--scm-sidebar-width-final) !important;
+    max-width: var(--scm-sidebar-width-final) !important;
+    min-width: var(--scm-sidebar-width-final) !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    transform: none !important;
+    visibility: visible !important;
+    width: var(--scm-sidebar-width-final) !important;
+}
+
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"][aria-expanded="false"] > div,
+[data-testid="stSidebar"][aria-hidden="true"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"][aria-hidden="true"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] .block-container,
+[data-testid="stSidebar"][aria-expanded="false"] .block-container,
+[data-testid="stSidebar"][aria-hidden="true"] .block-container {
+    display: block !important;
+    max-width: var(--scm-sidebar-width-final) !important;
+    min-width: 0 !important;
+    opacity: 1 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    transform: none !important;
+    visibility: visible !important;
+    width: var(--scm-sidebar-width-final) !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand,
+[data-testid="stSidebar"] .sidebar-divider,
+[data-testid="stSidebar"] .sidebar-meta,
+[data-testid="stSidebar"] .stButton,
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[kind="secondary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-secondary"] {
+    align-items: center !important;
+    background: #F2EFEA !important;
+    border: 1px solid #DDD8D0 !important;
+    border-radius: 7px !important;
+    color: #334155 !important;
+    display: flex !important;
+    font-size: 0.9rem !important;
+    font-weight: 760 !important;
+    justify-content: flex-start !important;
+    min-height: 34px !important;
+    opacity: 1 !important;
+    padding: 0 0.7rem !important;
+    text-align: left !important;
+    visibility: visible !important;
+    width: 100% !important;
+    -webkit-text-fill-color: #334155 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] {
+    background: #E8E3DC !important;
+    border-color: #C6BDB0 !important;
+    box-shadow: inset 4px 0 0 #4F6F8F !important;
+    color: #2F4659 !important;
+    -webkit-text-fill-color: #2F4659 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button *,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] p {
+    color: #334155 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    -webkit-text-fill-color: #334155 !important;
+}
+
+/* Streamlit Cloud UI recovery guard.
+   Several legacy responsive rules above collapse the sidebar to 0px when
+   Streamlit reports aria-expanded=false/aria-hidden=true. In recent Cloud
+   builds that state can appear while the sidebar rail is still visible, which
+   leaves a blank rail and an empty-looking app. Keep this final. */
+:root {
+    --scm-sidebar-width: clamp(220px, 14vw, 280px);
+}
+
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+[data-testid="stAppViewBlockContainer"],
+section.main,
+.main,
+.block-container {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"][aria-expanded="true"],
+[data-testid="stSidebar"][aria-expanded="false"],
+[data-testid="stSidebar"][aria-hidden="true"] {
+    background: linear-gradient(180deg, #FAF9F7 0%, #F4F1EC 100%) !important;
+    border-right: 1px solid #D8D2C8 !important;
+    display: block !important;
+    flex: 0 0 var(--scm-sidebar-width) !important;
+    max-width: var(--scm-sidebar-width) !important;
+    min-width: var(--scm-sidebar-width) !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    transform: none !important;
+    visibility: visible !important;
+    width: var(--scm-sidebar-width) !important;
+}
+
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"][aria-expanded="false"] > div,
+[data-testid="stSidebar"][aria-hidden="true"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"][aria-hidden="true"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] .block-container,
+[data-testid="stSidebar"][aria-expanded="false"] .block-container,
+[data-testid="stSidebar"][aria-hidden="true"] .block-container {
+    display: block !important;
+    max-width: var(--scm-sidebar-width) !important;
+    min-width: 0 !important;
+    opacity: 1 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    transform: none !important;
+    visibility: visible !important;
+    width: var(--scm-sidebar-width) !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand,
+[data-testid="stSidebar"] .sidebar-divider,
+[data-testid="stSidebar"] .sidebar-meta,
+[data-testid="stSidebar"] .stButton,
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[kind="secondary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-secondary"] {
+    align-items: center !important;
+    background: #F2EFEA !important;
+    border: 1px solid #DDD8D0 !important;
+    border-radius: 7px !important;
+    color: #334155 !important;
+    display: flex !important;
+    font-size: 0.9rem !important;
+    font-weight: 760 !important;
+    justify-content: flex-start !important;
+    min-height: 34px !important;
+    opacity: 1 !important;
+    padding: 0 0.7rem !important;
+    text-align: left !important;
+    visibility: visible !important;
+    width: 100% !important;
+    -webkit-text-fill-color: #334155 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] {
+    background: #E8E3DC !important;
+    border-color: #C6BDB0 !important;
+    box-shadow: inset 4px 0 0 #4F6F8F !important;
+    color: #2F4659 !important;
+    -webkit-text-fill-color: #2F4659 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button *,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] p {
+    color: #334155 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    -webkit-text-fill-color: #334155 !important;
+}
+
 /* Mobile usability final override.
    Keep Streamlit's native sidebar reopen control visible after legacy sidebar CSS. */
 [data-testid="collapsedControl"],
@@ -14425,4 +14643,110 @@ div[class*="st-key-meeting_issue_"] textarea {
     opacity: 1 !important;
     visibility: visible !important;
     display: block !important;
+}
+
+/* Final Streamlit Cloud sidebar/body visibility override. This must stay last. */
+:root {
+    --scm-sidebar-width-final: clamp(220px, 14vw, 280px);
+}
+
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+[data-testid="stAppViewBlockContainer"],
+section.main,
+.main,
+.block-container {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"][aria-expanded="true"],
+[data-testid="stSidebar"][aria-expanded="false"],
+[data-testid="stSidebar"][aria-hidden="true"] {
+    display: block !important;
+    flex: 0 0 var(--scm-sidebar-width-final) !important;
+    max-width: var(--scm-sidebar-width-final) !important;
+    min-width: var(--scm-sidebar-width-final) !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    transform: none !important;
+    visibility: visible !important;
+    width: var(--scm-sidebar-width-final) !important;
+}
+
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"][aria-expanded="false"] > div,
+[data-testid="stSidebar"][aria-hidden="true"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"][aria-hidden="true"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] .block-container,
+[data-testid="stSidebar"][aria-expanded="false"] .block-container,
+[data-testid="stSidebar"][aria-hidden="true"] .block-container {
+    display: block !important;
+    max-width: var(--scm-sidebar-width-final) !important;
+    min-width: 0 !important;
+    opacity: 1 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    transform: none !important;
+    visibility: visible !important;
+    width: var(--scm-sidebar-width-final) !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand,
+[data-testid="stSidebar"] .sidebar-divider,
+[data-testid="stSidebar"] .sidebar-meta,
+[data-testid="stSidebar"] .stButton,
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[kind="secondary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-secondary"] {
+    align-items: center !important;
+    background: #F2EFEA !important;
+    border: 1px solid #DDD8D0 !important;
+    border-radius: 7px !important;
+    color: #334155 !important;
+    display: flex !important;
+    font-size: 0.9rem !important;
+    font-weight: 760 !important;
+    justify-content: flex-start !important;
+    min-height: 34px !important;
+    opacity: 1 !important;
+    padding: 0 0.7rem !important;
+    text-align: left !important;
+    visibility: visible !important;
+    width: 100% !important;
+    -webkit-text-fill-color: #334155 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] {
+    background: #E8E3DC !important;
+    border-color: #C6BDB0 !important;
+    box-shadow: inset 4px 0 0 #4F6F8F !important;
+    color: #2F4659 !important;
+    -webkit-text-fill-color: #2F4659 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button *,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] p {
+    color: #334155 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    -webkit-text-fill-color: #334155 !important;
 }
