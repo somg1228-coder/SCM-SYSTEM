@@ -2710,8 +2710,8 @@ def render_return_case_system():
     .st-key-top5_3 button,
     .st-key-top5_4 button,
     .st-key-top5_5 button {
-        height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
-        min-height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
+        height: clamp(30px, calc(var(--app-dashboard-card-h) * 0.105), 34px) !important;
+        min-height: clamp(30px, calc(var(--app-dashboard-card-h) * 0.105), 34px) !important;
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
@@ -2732,8 +2732,8 @@ def render_return_case_system():
     }
 
     div[class*="st-key-top5_"] button {
-        height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
-        min-height: clamp(34px, calc(var(--app-dashboard-card-h) * 0.11), 37px) !important;
+        height: clamp(30px, calc(var(--app-dashboard-card-h) * 0.105), 34px) !important;
+        min-height: clamp(30px, calc(var(--app-dashboard-card-h) * 0.105), 34px) !important;
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
@@ -2782,7 +2782,7 @@ def render_return_case_system():
 
     .top5-meter {
         width:100%;
-        margin: 8px 0 18px 0;
+        margin: 5px 0 10px 0;
     }
 
     .top5-track {
@@ -2807,7 +2807,7 @@ def render_return_case_system():
     }
 
     .st-key-dashboard_card_top5 div[data-testid="stVerticalBlock"] {
-        gap:0.36rem !important;
+        gap:0.24rem !important;
     }
 
     .st-key-dashboard_card_top5 {
@@ -2900,12 +2900,12 @@ def render_return_case_system():
         --app-max-width: none;
         --app-page-x: clamp(0.8rem, 1vw, 1.2rem);
         --app-page-y: clamp(2.55rem, 3.2vh, 3.1rem);
-        --app-kpi-h: clamp(82px, 8.2vh, 96px);
-        --app-chart-card-h: clamp(320px, 31vh, 350px);
-        --app-list-card-h: clamp(350px, 38vh, 450px);
+        --app-kpi-h: clamp(96px, 9.4vh, 112px);
+        --app-chart-card-h: clamp(300px, 29vh, 330px);
+        --app-list-card-h: clamp(244px, 28vh, 306px);
         --app-dashboard-card-h: var(--app-list-card-h);
         --app-chart-h: calc(var(--app-chart-card-h) - 36px);
-        --app-grid-h: calc(var(--app-list-card-h) - 46px);
+        --app-grid-h: calc(var(--app-list-card-h) - 50px);
         --app-detail-photo-h: clamp(240px, 34vh, 312px);
         --app-search-h: clamp(236px, 28vh, 320px);
     }
@@ -3047,9 +3047,9 @@ def render_return_case_system():
     @media (max-height: 850px) {
         :root {
             --app-page-y: 2.4rem;
-            --app-kpi-h: 82px;
-            --app-chart-card-h: 326px;
-            --app-list-card-h: clamp(300px, 34vh, 340px);
+            --app-kpi-h: 94px;
+            --app-chart-card-h: 292px;
+            --app-list-card-h: clamp(230px, 27vh, 286px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-search-h: 240px;
         }
@@ -3058,9 +3058,9 @@ def render_return_case_system():
     @media (max-height: 760px) {
         :root {
             --app-page-y: 2.1rem;
-            --app-kpi-h: 78px;
-            --app-chart-card-h: 310px;
-            --app-list-card-h: clamp(276px, 33vh, 310px);
+            --app-kpi-h: 88px;
+            --app-chart-card-h: 282px;
+            --app-list-card-h: clamp(218px, 26vh, 270px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 250px;
             --app-search-h: 220px;
@@ -3089,9 +3089,9 @@ def render_return_case_system():
     @media (max-width: 900px) {
         :root {
             --app-page-x: 0.85rem;
-            --app-kpi-h: 92px;
-            --app-chart-card-h: 330px;
-            --app-list-card-h: clamp(320px, 44vh, 430px);
+            --app-kpi-h: 96px;
+            --app-chart-card-h: 300px;
+            --app-list-card-h: clamp(240px, 30vh, 310px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 260px;
             --app-search-h: 240px;
@@ -4598,17 +4598,17 @@ def render_return_case_system():
         c.execute("SELECT COUNT(*) FROM cases")
         total_count = c.fetchone()[0]
 
-        c.execute("SELECT COUNT(*) FROM cases WHERE category='파손'")
-        broken_count = c.fetchone()[0]
+        c.execute("""
+        SELECT category, COUNT(*)
+        FROM cases
+        GROUP BY category
+        """)
+        category_counts = {row[0]: row[1] for row in c.fetchall()}
 
-        c.execute("SELECT COUNT(*) FROM cases WHERE category='불량'")
-        defect_count = c.fetchone()[0]
-
-        c.execute("SELECT COUNT(*) FROM cases WHERE category='오발송'")
-        wrong_count = c.fetchone()[0]
-
-        c.execute("SELECT COUNT(*) FROM cases WHERE category='쇼트'")
-        shortage_count = c.fetchone()[0]
+        broken_count = category_counts.get("파손", 0)
+        defect_count = category_counts.get("불량", 0)
+        wrong_count = category_counts.get("오발송", 0)
+        shortage_count = category_counts.get("쇼트", 0)
 
         this_month = st.session_state.get("dashboard_month") or datetime.now().strftime("%Y%m")
 
@@ -4623,17 +4623,10 @@ def render_return_case_system():
         # KPI 통계
         # =====================
 
-        c.execute("SELECT COUNT(*) FROM cases WHERE category='누락'")
-        missing_count = c.fetchone()[0]
-
-        c.execute("SELECT COUNT(*) FROM cases WHERE category='기타'")
-        etc_count = c.fetchone()[0]
-
-        c.execute("SELECT COUNT(*) FROM cases WHERE category='수평'")
-        horizontal_count = c.fetchone()[0]
-
-        c.execute("SELECT COUNT(*) FROM cases WHERE category='용접'")
-        welding_count = c.fetchone()[0]
+        missing_count = category_counts.get("누락", 0)
+        etc_count = category_counts.get("기타", 0)
+        horizontal_count = category_counts.get("수평", 0)
+        welding_count = category_counts.get("용접", 0)
 
         active_kpi_key = {
             "ALL": "kpi_all",
@@ -5059,6 +5052,7 @@ def render_return_case_system():
                     product
                 FROM cases
                 ORDER BY case_id DESC
+                LIMIT 12
                 """)
 
                 recent_df = pd.DataFrame(
@@ -5110,7 +5104,7 @@ def render_return_case_system():
                 grid_response = AgGrid(
                     recent_df,
                     gridOptions=grid_options,
-                    height=360,
+                    height=235,
                     theme="streamlit",
                     fit_columns_on_grid_load=True,
 
