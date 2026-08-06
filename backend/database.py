@@ -744,12 +744,15 @@ def test_database_connection(force: bool = False) -> bool:
     if _LAST_SELECT_1_OK and not force and now - _LAST_SELECT_1_CHECK_AT < _SELECT_1_TTL_SECONDS:
         return True
     _LAST_DB_STAGE = "select_1"
+    started_at = time.perf_counter()
+    LOGGER.info("DB SELECT 1 start force=%s engine=%s", force, database_engine_name())
     try:
         with engine.connect() as conn:
             conn.exec_driver_sql("SELECT 1")
         _LAST_SELECT_1_OK = True
         _LAST_SELECT_1_CHECK_AT = time.monotonic()
         _LAST_DB_ERROR = ""
+        LOGGER.info("DB SELECT 1 done seconds=%.3f", time.perf_counter() - started_at)
         return True
     except Exception as exc:
         if try_supabase_transaction_pooler_after_failure(exc):
@@ -757,6 +760,7 @@ def test_database_connection(force: bool = False) -> bool:
         _LAST_SELECT_1_OK = False
         if not _LAST_DB_ERROR:
             _LAST_DB_ERROR = sanitize_database_text(repr(exc))
+        LOGGER.info("DB SELECT 1 failed seconds=%.3f", time.perf_counter() - started_at)
         log_database_exception("DB SELECT 1 연결 테스트", exc)
         return False
 
@@ -891,7 +895,13 @@ def database_status(include_live_checks: bool = False, include_config_diagnostic
         "config_diagnostics": config_diagnostics,
         "message": "",
     }
-    if test_database_connection(force=include_live_checks):
+    connected = False
+    if include_live_checks:
+        connected = test_database_connection(force=True)
+    elif _LAST_SELECT_1_OK:
+        connected = True
+
+    if connected:
         status["connected"] = True
         status["select_1_ok"] = True
         if status["is_supabase_postgresql"]:
@@ -900,6 +910,8 @@ def database_status(include_live_checks: bool = False, include_config_diagnostic
             status["message"] = "Database: PostgreSQL connected"
         else:
             status["message"] = "Database: local SQLite in use"
+    elif not include_live_checks:
+        status["message"] = "Database check pending; live diagnostics run from Admin."
     else:
         status["message"] = f"Database SELECT 1 failed: {_LAST_DB_ERROR}"
     return status
@@ -978,6 +990,7 @@ def init_db(force: bool = False, ensure_schema: bool | None = None) -> None:
             "schema_seconds": 0.0,
             "total_seconds": time.perf_counter() - started_at,
         }
+        LOGGER.info("init_db done without schema seconds=%.3f", _INIT_DB_PROFILE["total_seconds"])
         return
 
     if is_sqlite_url(DATABASE_URL):

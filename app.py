@@ -13,6 +13,7 @@ from components import sidebar as sidebar_component
 
 BASE_DIR = Path(__file__).parent
 APP_ERROR_LOG_PATH = BASE_DIR / "data" / "app_error.log"
+APP_ROUTING_LOG_PATH = BASE_DIR / "data" / "app_routing.log"
 
 
 def import_page_module(module_name: str, label: str):
@@ -23,6 +24,15 @@ def import_page_module(module_name: str, label: str):
         st.error(f"{label} 화면을 불러오지 못했습니다. 배포 로그와 아래 오류를 확인해주세요.")
         st.exception(exc)
         return None
+
+
+def log_route_event(message: str) -> None:
+    try:
+        APP_ROUTING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with APP_ROUTING_LOG_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+    except Exception:
+        pass
 
 
 def log_app_exception(exc: BaseException) -> None:
@@ -48,19 +58,21 @@ def load_css() -> None:
         st.markdown(f"<style>{css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
 
-def verify_database_startup() -> dict:
+def database_status_nonblocking() -> dict:
     try:
-        from backend.database import database_status, init_db
+        from backend.database import database_status
 
-        init_db(ensure_schema=False)
-        status = database_status()
+        return database_status(include_live_checks=False)
     except Exception as exc:
         log_app_exception(exc)
-        st.error(f"Supabase connection failed: {exc}")
-        render_startup_config_diagnostics()
-        st.stop()
-
-    return status
+        return {
+            "supabase_db_enabled": False,
+            "is_postgresql": False,
+            "is_sqlite": False,
+            "select_1_ok": False,
+            "connected": False,
+            "message": f"Database status unavailable: {exc}",
+        }
 
 
 def render_startup_config_diagnostics() -> None:
@@ -192,30 +204,62 @@ def render_settings() -> None:
 
 
 def render_page(page: str) -> None:
-    if page in {"홈", "대시보드"}:
-        render_home()
-    elif page == "일정관리":
-        render_schedule()
-    elif page == "회의자료":
-        render_meeting()
-    elif page == "반품/AS 관리":
-        render_return_as()
-    elif page == "재고관리":
-        render_inventory()
-    elif page in {"구매관리", "발주관리"}:
-        render_order()
-    elif page == "BOM 관리":
-        render_bom()
-    elif page == "3D 창고관리":
-        render_warehouse_3d()
-    elif page == "업무가이드":
-        render_guide()
-    elif page == "자료실":
-        render_files()
-    elif page == "관리자":
-        render_settings()
-    else:
-        render_home()
+    st.session_state["page"] = page
+    st.session_state["selected_menu"] = page
+    st.session_state["current_page"] = page
+    route_context = (
+        f"page={page!r} selected_menu={st.session_state.get('selected_menu')!r} "
+        f"current_page={st.session_state.get('current_page')!r}"
+    )
+    log_route_event(f"render_page_start {route_context}")
+    started_at = time.perf_counter()
+    try:
+        with st.spinner(f"{page} 데이터를 불러오는 중입니다..."):
+            if page in {"홈", "대시보드"}:
+                log_route_event("call render_home")
+                render_home()
+            elif page == "일정관리":
+                log_route_event("call render_schedule")
+                render_schedule()
+            elif page == "회의자료":
+                log_route_event("call render_meeting")
+                render_meeting()
+            elif page == "반품/AS 관리":
+                log_route_event("call render_return_as")
+                render_return_as()
+            elif page == "재고관리":
+                log_route_event("call render_inventory")
+                render_inventory()
+            elif page in {"구매관리", "발주관리"}:
+                log_route_event("call render_order")
+                render_order()
+            elif page == "BOM 관리":
+                log_route_event("call render_bom")
+                render_bom()
+            elif page == "3D 창고관리":
+                log_route_event("call render_warehouse_3d")
+                render_warehouse_3d()
+            elif page == "업무가이드":
+                log_route_event("call render_guide")
+                render_guide()
+            elif page == "자료실":
+                log_route_event("call render_files")
+                render_files()
+            elif page == "관리자":
+                log_route_event("call render_settings")
+                render_settings()
+            else:
+                log_route_event(f"unknown_page_fallback {page!r}")
+                render_home()
+    except Exception as exc:
+        log_app_exception(exc)
+        log_route_event(f"render_page_error {page!r} {type(exc).__name__}: {exc}")
+        st.error(f"{page} 화면 렌더링 중 오류가 발생했습니다.")
+        st.exception(exc)
+    finally:
+        elapsed = time.perf_counter() - started_at
+        st.session_state["last_page_render_seconds"] = round(elapsed, 3)
+        log_route_event(f"render_page_done {page!r} seconds={elapsed:.3f}")
 
 
 def query_value(name: str) -> str:
@@ -278,13 +322,13 @@ def main() -> None:
 
     page = sidebar_component.render_sidebar()
     st.session_state["page"] = page
-
-    database_status = verify_database_startup()
-    render_sidebar_config_summary(database_status)
+    st.session_state["selected_menu"] = page
+    st.session_state["current_page"] = page
 
     if page != "반품/AS 관리":
         render_header(page)
     render_page(page)
+    render_sidebar_config_summary(database_status_nonblocking())
     load_css()
     st.session_state["last_app_render_seconds"] = round(time.perf_counter() - started_at, 3)
 
