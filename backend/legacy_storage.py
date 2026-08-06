@@ -157,6 +157,8 @@ class PostgresSqliteCompatConnection:
                 return
 
             converted_sql, bind_params = convert_sqlite_query(sql, parameters)
+            if is_postgresql_url(DATABASE_URL):
+                converted_sql = convert_sqlite_dialect_sql(converted_sql)
             if is_insert_without_returning(converted_sql):
                 converted_sql = f"{converted_sql} RETURNING id"
 
@@ -182,6 +184,19 @@ class PostgresSqliteCompatConnection:
 def is_insert_without_returning(sql: str) -> bool:
     normalized = sql.strip().lower()
     return normalized.startswith("insert into ") and " returning " not in normalized
+
+
+def convert_sqlite_dialect_sql(statement: str) -> str:
+    converted = statement
+    converted = re.sub(
+        r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b",
+        "BIGSERIAL PRIMARY KEY",
+        converted,
+        flags=re.IGNORECASE,
+    )
+    converted = re.sub(r"\bAUTOINCREMENT\b", "", converted, flags=re.IGNORECASE)
+    converted = re.sub(r"\bBLOB\b", "BYTEA", converted, flags=re.IGNORECASE)
+    return converted
 
 
 def convert_sqlite_query(statement: str, parameters: Iterable[Any] | dict[str, Any] | None) -> tuple[str, dict[str, Any]]:
