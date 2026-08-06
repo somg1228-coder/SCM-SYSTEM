@@ -81,6 +81,8 @@ LOCATIONS = {
 }
 
 
+LEGACY_LOCATION_MAP = {"밑창고1": "창고1", "옆창고2": "창고2"}
+CANONICAL_LOCATION_BY_LEGACY = {legacy: current for current, legacy in LEGACY_LOCATION_MAP.items()}
 WAREHOUSE_LAYOUT_STORE_NAME = "warehouse3d_layouts.json"
 THREE_VENDOR_DIR = Path(__file__).resolve().parents[1] / "assets" / "vendor" / "three-0.160.0"
 WAREHOUSE_LAYOUT_API_PORTS = range(8765, 8775)
@@ -149,6 +151,13 @@ def warehouse_layout_has_data(payload: dict | None) -> bool:
     return False
 
 
+def canonical_warehouse_building(building: object) -> str:
+    name = str(building or "").strip()
+    if name in LOCATIONS:
+        return name
+    return CANONICAL_LOCATION_BY_LEGACY.get(name, name)
+
+
 def load_local_warehouse_layout_store() -> dict:
     path = warehouse_layout_store_path()
     if not path.exists():
@@ -185,11 +194,12 @@ def load_database_warehouse_layout_store() -> dict:
 
     locations: dict[str, dict] = {}
     for row in rows:
-        if row.building not in LOCATIONS or row.floor not in LOCATIONS[row.building]["floors"]:
+        building = canonical_warehouse_building(row.building)
+        if building not in LOCATIONS or row.floor not in LOCATIONS[building]["floors"]:
             continue
         if not isinstance(row.layout_data, dict):
             continue
-        locations.setdefault(row.building, {})[row.floor] = row.layout_data
+        locations.setdefault(building, {})[row.floor] = row.layout_data
     return {"version": 1, "locations": locations}
 
 
@@ -348,6 +358,7 @@ def save_database_warehouse_layout_store(payload: dict) -> int:
         with SessionLocal() as db:
             saved_keys: list[tuple[str, str]] = []
             for building, floors in locations.items():
+                building = canonical_warehouse_building(building)
                 if building not in LOCATIONS or not isinstance(floors, dict):
                     continue
                 for floor, floor_data in floors.items():
@@ -471,12 +482,18 @@ def backup_warehouse_layout_store(path: Path) -> None:
 
 def merge_warehouse_layout_store(existing: dict, incoming: dict) -> dict:
     merged = empty_warehouse_layout_store()
-    merged["locations"] = dict(existing.get("locations") or {})
+    existing_locations = existing.get("locations") if isinstance(existing, dict) else None
+    if isinstance(existing_locations, dict):
+        for building, floors in existing_locations.items():
+            building = canonical_warehouse_building(building)
+            if building in LOCATIONS and isinstance(floors, dict):
+                merged["locations"].setdefault(building, {}).update(floors)
     incoming_locations = incoming.get("locations") if isinstance(incoming, dict) else None
     if not isinstance(incoming_locations, dict):
         return merged
 
     for building, floors in incoming_locations.items():
+        building = canonical_warehouse_building(building)
         if building not in LOCATIONS or not isinstance(floors, dict):
             continue
         merged["locations"].setdefault(building, {})
@@ -618,11 +635,11 @@ def render_warehouse_layout_sync_tools() -> dict:
 
 def warehouse_layout_supabase_browser_config() -> dict:
     if config_text_value is None:
-        return {"enabled": False, "url": "", "key": ""}
+        return {"enabled": False, "url": "", "key": "", "postgresql": app_database_is_postgresql()}
     url, _ = config_text_value("SUPABASE_URL")
     key, _ = config_text_value("SUPABASE_KEY")
     url = url.rstrip("/")
-    return {"enabled": bool(url and key), "url": url, "key": key}
+    return {"enabled": bool(url and key), "url": url, "key": key, "postgresql": app_database_is_postgresql()}
 
 FLOOR_ZONES = {
     "1층": ["회사 출입구", "피킹존", "검수존", "랙 배치"],
@@ -1899,6 +1916,7 @@ def warehouse_scene_html(
             const zonesByFloor = {zones_payload};
             const floorModels = {floor_model_payload};
             const sharedLayoutStore = {json.dumps(empty_warehouse_layout_store(), ensure_ascii=False)};
+            const legacyLocationMap = {json.dumps(LEGACY_LOCATION_MAP, ensure_ascii=False)};
             const inventory = {inventory_payload};
             const baseStorageKey = {json.dumps(base_storage_key, ensure_ascii=False)};
             const activeBuilding = {json.dumps(building, ensure_ascii=False)};
@@ -1960,26 +1978,35 @@ def warehouse_scene_html(
             }}
 
             function layoutStorageKeyCandidates(buildingName, floorName) {{
+                const legacyName = legacyLocationMap[buildingName] || "";
                 return uniqueKeys([
                     storageKeyForLocation(buildingName, floorName),
                     `${{baseStorageKey}}${{buildingName}}:${{floorName}}`,
                     buildingName === activeBuilding ? `${{baseStorageKey}}${{floorName}}` : "",
+                    legacyName ? storageKeyForLocation(legacyName, floorName) : "",
+                    legacyName ? `${{baseStorageKey}}${{legacyName}}:${{floorName}}` : "",
                 ]);
             }}
 
             function fixtureStorageKeyCandidates(buildingName, floorName) {{
+                const legacyName = legacyLocationMap[buildingName] || "";
                 return uniqueKeys([
                     fixtureStorageKeyForLocation(buildingName, floorName),
                     `${{baseStorageKey}}${{buildingName}}:fixtures:${{floorName}}`,
                     buildingName === activeBuilding ? `${{baseStorageKey}}fixtures:${{floorName}}` : "",
+                    legacyName ? fixtureStorageKeyForLocation(legacyName, floorName) : "",
+                    legacyName ? `${{baseStorageKey}}${{legacyName}}:fixtures:${{floorName}}` : "",
                 ]);
             }}
 
             function floorSizeStorageKeyCandidates(buildingName, floorName) {{
+                const legacyName = legacyLocationMap[buildingName] || "";
                 return uniqueKeys([
                     floorSizeStorageKeyForLocation(buildingName, floorName),
                     `${{baseStorageKey}}${{buildingName}}:floorSize:${{floorName}}`,
                     buildingName === activeBuilding ? `${{baseStorageKey}}floorSize:${{floorName}}` : "",
+                    legacyName ? floorSizeStorageKeyForLocation(legacyName, floorName) : "",
+                    legacyName ? `${{baseStorageKey}}${{legacyName}}:floorSize:${{floorName}}` : "",
                 ]);
             }}
 
@@ -2409,6 +2436,7 @@ def warehouse_scene3d_html(
     floor_model_payload = json.dumps(FLOOR_MODELS, ensure_ascii=False)
     shared_layout_payload = json.dumps(shared_layout_store or empty_warehouse_layout_store(), ensure_ascii=False)
     location_floors_payload = json.dumps(warehouse_location_floor_options(), ensure_ascii=False)
+    legacy_location_map_payload = json.dumps(LEGACY_LOCATION_MAP, ensure_ascii=False)
     supabase_browser_config_payload = json.dumps(warehouse_layout_supabase_browser_config(), ensure_ascii=False)
     vendor_sources = warehouse3d_vendor_sources()
     three_source_payload = json.dumps(vendor_sources.get("three", ""))
@@ -3283,8 +3311,9 @@ def warehouse_scene3d_html(
             const defaultRacksByFloor = {floor_payload};
             const zonesByFloor = {zones_payload};
             const floorModels = {floor_model_payload};
-            const sharedLayoutStore = {shared_layout_payload};
+            let sharedLayoutStore = {shared_layout_payload};
             const locationFloors = {location_floors_payload};
+            const legacyLocationMap = {legacy_location_map_payload};
             const supabaseBrowserConfig = {supabase_browser_config_payload};
             const inventory = {inventory_payload};
             const baseStorageKey = {json.dumps(base_storage_key, ensure_ascii=False)};
@@ -3555,20 +3584,29 @@ def warehouse_scene3d_html(
                 setLayoutSaveStatus("Supabase 저장 중...", "muted");
                 try {{
                     const payload = collectWarehouseLayoutBackup();
-
-                    const syncResults = await Promise.allSettled([
-                        persistWarehouseLayoutToSupabase(payload),
-                        persistWarehouseLayoutToLocalApi(payload),
-                    ]);
-                    const synced = syncResults.some(result => result.status === "fulfilled" && result.value === true);
-                    if (!synced) {{
-                        const detail = syncResults
-                            .map(result => result.status === "rejected" ? result.reason?.message || String(result.reason) : "")
-                            .filter(Boolean)
-                            .join(" / ");
-                        throw new Error(detail || "Supabase 저장 응답을 확인하지 못했습니다.");
+                    const requiresSupabase = Boolean(supabaseBrowserConfig?.enabled || supabaseBrowserConfig?.postgresql);
+                    if (requiresSupabase) {{
+                        if (!supabaseBrowserConfig?.enabled) {{
+                            throw new Error("SUPABASE_URL 또는 SUPABASE_KEY가 없어 브라우저 Supabase 저장을 실행할 수 없습니다.");
+                        }}
+                        const synced = await persistWarehouseLayoutToSupabase(payload);
+                        if (!synced) {{
+                            throw new Error("Supabase 저장 응답을 확인하지 못했습니다.");
+                        }}
+                        sharedLayoutStore = payload;
+                        persistWarehouseLayoutToLocalApi(payload).catch(error => {{
+                            console.warn("Warehouse layout local API mirror save failed", error);
+                        }});
+                        setLayoutSaveStatus("Supabase 저장됨", "ok");
+                        return true;
                     }}
-                    setLayoutSaveStatus("Supabase 저장됨", "ok");
+
+                    const localSynced = await persistWarehouseLayoutToLocalApi(payload, true);
+                    if (!localSynced) {{
+                        throw new Error("로컬 저장 API 응답을 확인하지 못했습니다.");
+                    }}
+                    sharedLayoutStore = payload;
+                    setLayoutSaveStatus("로컬 저장됨", "ok");
                     return true;
                 }} catch (error) {{
                     console.warn("Warehouse layout Supabase save failed", error);
