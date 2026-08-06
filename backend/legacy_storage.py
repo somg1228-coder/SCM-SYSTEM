@@ -157,8 +157,7 @@ class PostgresSqliteCompatConnection:
                 return
 
             converted_sql, bind_params = convert_sqlite_query(sql, parameters)
-            if database.is_postgresql_url(database.DATABASE_URL):
-                converted_sql = convert_sqlite_dialect_sql(converted_sql)
+            converted_sql = convert_sqlite_dialect_sql(converted_sql)
             if is_insert_without_returning(converted_sql):
                 converted_sql = f"{converted_sql} RETURNING id"
 
