@@ -10,7 +10,7 @@ import sys
 import tempfile
 import traceback
 
-from backend.config import config_text_value, is_deployed_environment, streamlit_secret_value, truthy_config_value
+from backend.config import config_bool_value, config_key_diagnostics, config_text_value, is_deployed_environment, streamlit_secret_value, truthy_config_value
 
 try:
     from sqlalchemy import create_engine, inspect
@@ -43,6 +43,8 @@ except OSError:
 DEFAULT_DB_PATH = (DATA_DIR / "scm.db").resolve()
 DATABASE_URL_SOURCE = "unset"
 SUPABASE_DATABASE_URL = ""
+SUPABASE_DB_ENABLED = False
+SUPABASE_DB_ENABLED_SOURCE = "unset"
 _LAST_SELECT_1_OK = False
 _LAST_SCHEMA_INIT_OK = False
 _LAST_DB_STAGE = ""
@@ -199,7 +201,7 @@ def supabase_database_url_config() -> str:
     database_url, source = config_text_value("SCM_DATABASE_URL")
     if database_url:
         DATABASE_URL_SOURCE = source
-        if source == "streamlit_secrets":
+        if source == "st.secrets":
             os.environ["SCM_DATABASE_URL"] = database_url
         return database_url
 
@@ -207,19 +209,20 @@ def supabase_database_url_config() -> str:
     return ""
 
 
+def supabase_database_enabled_config() -> tuple[bool, str]:
+    return config_bool_value("SCM_USE_SUPABASE_DB", default=False)
+
+
 def use_supabase_as_app_database() -> bool:
-    secret_value = streamlit_secret_value("SCM_USE_SUPABASE_DB")
-    if secret_value is not None:
-        return truthy_config_value(secret_value)
-    value, _ = config_text_value("SCM_USE_SUPABASE_DB")
-    return truthy_config_value(value)
+    return SUPABASE_DB_ENABLED
 
 
 def configured_database_url() -> str:
-    global DATABASE_URL_SOURCE, SUPABASE_DATABASE_URL
+    global DATABASE_URL_SOURCE, SUPABASE_DATABASE_URL, SUPABASE_DB_ENABLED, SUPABASE_DB_ENABLED_SOURCE
 
     SUPABASE_DATABASE_URL = supabase_database_url_config()
-    if use_supabase_as_app_database():
+    SUPABASE_DB_ENABLED, SUPABASE_DB_ENABLED_SOURCE = supabase_database_enabled_config()
+    if SUPABASE_DB_ENABLED:
         if not SUPABASE_DATABASE_URL:
             location = "deployed environment" if is_deployed_environment() else "local environment"
             raise RuntimeError(
@@ -227,6 +230,14 @@ def configured_database_url() -> str:
                 "Add SCM_DATABASE_URL to Streamlit Secrets or os.environ."
             )
         return SUPABASE_DATABASE_URL
+
+    if SUPABASE_DB_ENABLED_SOURCE == "unset" and (is_deployed_environment() or SUPABASE_DATABASE_URL):
+        raise RuntimeError(
+            "SCM_USE_SUPABASE_DB is not configured or was not readable. "
+            f"SCM_DATABASE_URL source={DATABASE_URL_SOURCE}. "
+            "Set SCM_USE_SUPABASE_DB=true in Streamlit Cloud Secrets to use Supabase, "
+            "or set SCM_USE_SUPABASE_DB=false explicitly for local SQLite."
+        )
 
     if SUPABASE_DATABASE_URL:
         DATABASE_URL_SOURCE = f"{DATABASE_URL_SOURCE}_status_only"
@@ -636,13 +647,23 @@ def log_sqlite_writability(context: str = "") -> dict:
 
 def database_engine_name() -> str:
     if is_postgresql_url(DATABASE_URL):
-        return "Supabase PostgreSQL" if "supabase.co" in (make_url(DATABASE_URL).host or "") else "PostgreSQL"
+        return "Supabase PostgreSQL" if is_supabase_database_url(DATABASE_URL) else "PostgreSQL"
     if is_sqlite_url(DATABASE_URL):
         return "SQLite"
     try:
         return make_url(DATABASE_URL).drivername
     except Exception:
         return "unknown"
+
+
+def is_supabase_database_url(raw_url: str) -> bool:
+    if not is_postgresql_url(raw_url):
+        return False
+    try:
+        host = (make_url(raw_url).host or "").lower()
+    except Exception:
+        host = raw_url.lower()
+    return SUPABASE_DB_ENABLED or "supabase.co" in host or "supabase.com" in host or "pooler.supabase" in host
 
 
 def masked_database_url() -> str:
@@ -760,7 +781,7 @@ def database_status() -> dict:
         "supabase_last_error": supabase_error,
         "is_sqlite": is_sqlite_url(DATABASE_URL),
         "is_postgresql": is_postgresql_url(DATABASE_URL),
-        "is_supabase_postgresql": is_postgresql_url(DATABASE_URL) and "supabase.co" in (url.host or ""),
+        "is_supabase_postgresql": is_supabase_database_url(DATABASE_URL),
         "display_url": masked_database_url(),
         "host": url.host or "",
         "port": url.port or "",
@@ -785,6 +806,55 @@ def database_status() -> dict:
             status["message"] = "데이터베이스: 로컬 SQLite 사용 중"
     else:
         status["message"] = f"데이터베이스 SELECT 1 실패: {_LAST_DB_ERROR}"
+    return status
+
+
+def database_status() -> dict:
+    url = make_url(DATABASE_URL)
+    supabase_ok, supabase_error = test_supabase_select_1()
+    config_diagnostics = {
+        key: config_key_diagnostics(key)
+        for key in ("SCM_USE_SUPABASE_DB", "SCM_DATABASE_URL", "SUPABASE_URL", "SUPABASE_KEY")
+    }
+    status = {
+        "configured": DATABASE_URL_FROM_CONFIG,
+        "url_source": DATABASE_URL_SOURCE,
+        "engine": database_engine_name(),
+        "app_database_engine": database_engine_name(),
+        "selected_database": database_engine_name(),
+        "supabase_configured": bool(SUPABASE_DATABASE_URL),
+        "supabase_db_enabled": SUPABASE_DB_ENABLED,
+        "supabase_db_enabled_source": SUPABASE_DB_ENABLED_SOURCE,
+        "supabase_select_1_ok": supabase_ok,
+        "supabase_last_error": supabase_error,
+        "is_sqlite": is_sqlite_url(DATABASE_URL),
+        "is_postgresql": is_postgresql_url(DATABASE_URL),
+        "is_supabase_postgresql": is_supabase_database_url(DATABASE_URL),
+        "display_url": masked_database_url(),
+        "host": url.host or "",
+        "port": url.port or "",
+        "database": url.database or "",
+        "connected": False,
+        "select_1_ok": False,
+        "schema_initialized": _LAST_SCHEMA_INIT_OK,
+        "last_stage": _LAST_DB_STAGE,
+        "last_error": _LAST_DB_ERROR,
+        "last_save_success_at": _LAST_SAVE_SUCCESS_AT,
+        "last_save_failure_item": _LAST_SAVE_FAILURE_ITEM,
+        "config_diagnostics": config_diagnostics,
+        "message": "",
+    }
+    if test_database_connection():
+        status["connected"] = True
+        status["select_1_ok"] = True
+        if status["is_supabase_postgresql"]:
+            status["message"] = "Database: Supabase PostgreSQL connected"
+        elif status["is_postgresql"]:
+            status["message"] = "Database: PostgreSQL connected"
+        else:
+            status["message"] = "Database: local SQLite in use"
+    else:
+        status["message"] = f"Database SELECT 1 failed: {_LAST_DB_ERROR}"
     return status
 
 
@@ -829,11 +899,11 @@ def init_db() -> None:
     if not test_database_connection():
         if is_postgresql_url(DATABASE_URL):
             raise RuntimeError(
-                "Supabase PostgreSQL SELECT 1 연결 테스트에 실패했습니다. "
-                "SCM_DATABASE_URL의 host, port, user, password, sslmode를 확인해주세요. "
-                f"마지막 오류: {_LAST_DB_ERROR}"
+                "Supabase PostgreSQL SELECT 1 failed. "
+                "Check SCM_DATABASE_URL host, port, user, password, and sslmode. "
+                f"Last error: {_LAST_DB_ERROR}"
             )
-        raise RuntimeError(f"DB SELECT 1 연결 테스트에 실패했습니다: {_LAST_DB_ERROR}")
+        raise RuntimeError(f"DB SELECT 1 failed: {_LAST_DB_ERROR}")
 
     if is_sqlite_url(DATABASE_URL):
         try:

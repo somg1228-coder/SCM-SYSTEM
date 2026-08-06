@@ -9,11 +9,12 @@ from sqlalchemy import text
 
 try:
     from backend.database import SessionLocal, database_status, init_db
-    from backend import supabase_migration, supabase_store
+    from backend import supabase_diagnostics, supabase_migration, supabase_store
 except Exception as exc:
     SessionLocal = None
     database_status = None
     init_db = None
+    supabase_diagnostics = None
     supabase_migration = None
     supabase_store = None
     SETTINGS_IMPORT_ERROR = str(exc)
@@ -120,6 +121,21 @@ def render_app_database_panel() -> None:
         schema_error = str(exc)
 
     status = database_status()
+    config_rows = []
+    for key, item in (status.get("config_diagnostics") or {}).items():
+        config_rows.append(
+            {
+                "Key": key,
+                "Selected source": item.get("selected_source"),
+                "Selected present": item.get("selected_present"),
+                "Masked selected value": item.get("selected_masked"),
+                "st.secrets present": item.get("st_secrets_present"),
+                "env present": item.get("environment_present"),
+                ".env present": item.get("local_env_present"),
+                "st.secrets error": item.get("streamlit_secret_error"),
+            }
+        )
+    render_diagnostic_details("Streamlit Cloud configuration source diagnostics", config_rows)
     render_diagnostic_details(
         "Supabase PostgreSQL connection diagnostics",
         [
@@ -167,6 +183,36 @@ def render_app_database_panel() -> None:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     except Exception as exc:
         st.warning(f"Could not check application tables: {exc}")
+
+
+def render_supabase_script_diagnostics() -> None:
+    if supabase_diagnostics is None:
+        st.warning("Supabase diagnostics module could not be loaded.")
+        return
+    st.subheader("Supabase DB diagnostics")
+    result = supabase_diagnostics.run_supabase_connection_diagnostics()
+    summary_rows = [
+        {"Item": "SCM_DATABASE_URL source", "Status": result.get("source"), "Detail": result.get("masked_url") or ""},
+        {"Item": "SELECT 1", "Status": "OK" if result.get("select_1_ok") else "FAIL", "Detail": result.get("select_1_result") or result.get("error") or ""},
+        {"Item": "DB host", "Status": result.get("host") or "", "Detail": f"port={result.get('port') or '-'} database={result.get('database') or '-'} user={result.get('user') or '-'}"},
+    ]
+    render_diagnostic_details("test_supabase_connection.py equivalent", summary_rows)
+    table_rows = []
+    for table, item in (result.get("tables") or {}).items():
+        table_rows.append(
+            {
+                "Table": table,
+                "Exists": item.get("exists"),
+                "Rows": item.get("count") if item.get("count") is not None else "",
+                "Error": item.get("error") or "",
+            }
+        )
+    if table_rows:
+        st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
+    if result.get("ok"):
+        st.success("Supabase diagnostics passed.")
+    else:
+        st.error(result.get("error") or "Supabase diagnostics failed.")
 
 
 def render_connection_panel(status: dict) -> None:
@@ -306,6 +352,7 @@ def render_settings_page() -> None:
         st.warning(SETTINGS_IMPORT_ERROR or "Supabase REST status module could not be loaded.")
         return
     status = supabase_store.admin_status()
+    render_supabase_script_diagnostics()
     render_connection_panel(status)
     render_table_panel(status)
     render_recent_transactions(status)

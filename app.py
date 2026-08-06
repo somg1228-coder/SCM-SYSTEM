@@ -3,6 +3,7 @@ import importlib
 import logging
 import traceback
 
+import pandas as pd
 import streamlit as st
 
 from components.header import render_header
@@ -56,14 +57,59 @@ def verify_database_startup() -> None:
     except Exception as exc:
         log_app_exception(exc)
         st.error(f"Supabase connection failed: {exc}")
+        render_startup_config_diagnostics()
         st.stop()
 
-    if status.get("is_supabase_postgresql") and status.get("select_1_ok"):
+    if status.get("supabase_db_enabled") and status.get("is_postgresql") and status.get("select_1_ok"):
         st.sidebar.success("Supabase connected")
     elif status.get("is_sqlite"):
         st.sidebar.warning(f"SQLite in use: {status.get('display_url')}")
     else:
         st.sidebar.warning(status.get("message") or "Check database connection status.")
+    render_sidebar_config_summary(status)
+
+
+def render_startup_config_diagnostics() -> None:
+    try:
+        from backend.config import config_key_diagnostics
+    except Exception:
+        return
+    rows = []
+    for key in ("SCM_USE_SUPABASE_DB", "SCM_DATABASE_URL", "SUPABASE_URL", "SUPABASE_KEY"):
+        item = config_key_diagnostics(key)
+        rows.append(
+            {
+                "Key": key,
+                "Selected source": item.get("selected_source"),
+                "Selected present": item.get("selected_present"),
+                "Masked value": item.get("selected_masked"),
+                "st.secrets present": item.get("st_secrets_present"),
+                "env present": item.get("environment_present"),
+                ".env present": item.get("local_env_present"),
+                "st.secrets error": item.get("streamlit_secret_error"),
+            }
+        )
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def render_sidebar_config_summary(status: dict) -> None:
+    diagnostics = status.get("config_diagnostics") or {}
+    use_diag = diagnostics.get("SCM_USE_SUPABASE_DB") or {}
+    db_diag = diagnostics.get("SCM_DATABASE_URL") or {}
+    st.sidebar.caption(
+        " / ".join(
+            [
+                f"SCM_USE_SUPABASE_DB={str(status.get('supabase_db_enabled')).lower()}",
+                f"use source={status.get('supabase_db_enabled_source')}",
+                f"db url source={status.get('url_source')}",
+                f"selected={status.get('selected_database')}",
+            ]
+        )
+    )
+    if db_diag.get("selected_masked"):
+        st.sidebar.caption(f"DB URL: {db_diag.get('selected_masked')}")
+    if use_diag.get("streamlit_secret_error") or db_diag.get("streamlit_secret_error"):
+        st.sidebar.caption(use_diag.get("streamlit_secret_error") or db_diag.get("streamlit_secret_error"))
 
 
 def render_placeholder(active_menu: str) -> None:
