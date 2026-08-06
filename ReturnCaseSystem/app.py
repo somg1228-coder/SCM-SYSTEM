@@ -2900,12 +2900,12 @@ def render_return_case_system():
         --app-max-width: none;
         --app-page-x: clamp(0.8rem, 1vw, 1.2rem);
         --app-page-y: clamp(2.55rem, 3.2vh, 3.1rem);
-        --app-kpi-h: clamp(96px, 9.4vh, 112px);
+        --app-kpi-h: clamp(82px, 8.1vh, 98px);
         --app-chart-card-h: clamp(300px, 29vh, 330px);
-        --app-list-card-h: clamp(244px, 28vh, 306px);
+        --app-list-card-h: clamp(278px, 31vh, 336px);
         --app-dashboard-card-h: var(--app-list-card-h);
         --app-chart-h: calc(var(--app-chart-card-h) - 36px);
-        --app-grid-h: calc(var(--app-list-card-h) - 50px);
+        --app-grid-h: calc(var(--app-list-card-h) - 62px);
         --app-detail-photo-h: clamp(240px, 34vh, 312px);
         --app-search-h: clamp(236px, 28vh, 320px);
     }
@@ -3047,9 +3047,9 @@ def render_return_case_system():
     @media (max-height: 850px) {
         :root {
             --app-page-y: 2.4rem;
-            --app-kpi-h: 94px;
+            --app-kpi-h: 82px;
             --app-chart-card-h: 292px;
-            --app-list-card-h: clamp(230px, 27vh, 286px);
+            --app-list-card-h: clamp(258px, 30vh, 310px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-search-h: 240px;
         }
@@ -3058,9 +3058,9 @@ def render_return_case_system():
     @media (max-height: 760px) {
         :root {
             --app-page-y: 2.1rem;
-            --app-kpi-h: 88px;
+            --app-kpi-h: 78px;
             --app-chart-card-h: 282px;
-            --app-list-card-h: clamp(218px, 26vh, 270px);
+            --app-list-card-h: clamp(238px, 29vh, 292px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 250px;
             --app-search-h: 220px;
@@ -3089,9 +3089,9 @@ def render_return_case_system():
     @media (max-width: 900px) {
         :root {
             --app-page-x: 0.85rem;
-            --app-kpi-h: 96px;
+            --app-kpi-h: 84px;
             --app-chart-card-h: 300px;
-            --app-list-card-h: clamp(240px, 30vh, 310px);
+            --app-list-card-h: clamp(260px, 32vh, 324px);
             --app-dashboard-card-h: var(--app-list-card-h);
             --app-detail-photo-h: 260px;
             --app-search-h: 240px;
@@ -5104,7 +5104,7 @@ def render_return_case_system():
                 grid_response = AgGrid(
                     recent_df,
                     gridOptions=grid_options,
-                    height=235,
+                    height=272,
                     theme="streamlit",
                     fit_columns_on_grid_load=True,
 
