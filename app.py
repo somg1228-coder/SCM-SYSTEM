@@ -295,6 +295,8 @@ def sync_query_params_to_state() -> None:
     query_page = query_value("page")
     if query_page:
         st.session_state["page"] = query_page
+        st.session_state["selected_menu"] = query_page
+        st.session_state["current_page"] = query_page
 
     inventory_filter = query_value("inventory_filter")
     if inventory_filter:

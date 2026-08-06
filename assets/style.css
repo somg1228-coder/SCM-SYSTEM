@@ -14426,3 +14426,63 @@ div[class*="st-key-meeting_issue_"] textarea {
     visibility: visible !important;
     display: block !important;
 }
+
+/* BOM/sidebar final priority: this must remain at the end of the stylesheet. */
+:root {
+    --portal-sidebar-width: clamp(210px, 14.2vw, 230px);
+    --portal-sidebar-button-h: clamp(48px, 4.9vh, 52px);
+}
+
+@media (min-width: 761px) {
+    [data-testid="stSidebar"],
+    [data-testid="stSidebar"][aria-expanded="true"],
+    [data-testid="stSidebar"][aria-hidden="true"]:not([aria-expanded="false"]) {
+        flex: 0 0 var(--portal-sidebar-width) !important;
+        max-width: var(--portal-sidebar-width) !important;
+        min-width: var(--portal-sidebar-width) !important;
+        opacity: 1 !important;
+        transform: none !important;
+        visibility: visible !important;
+        width: var(--portal-sidebar-width) !important;
+    }
+
+    [data-testid="stSidebar"][aria-expanded="false"],
+    [data-testid="stSidebar"][aria-expanded="false"] > div,
+    [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+    [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarUserContent"],
+    [data-testid="stSidebar"][aria-expanded="false"] .block-container {
+        flex-basis: 0 !important;
+        max-width: 0 !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+        width: 0 !important;
+    }
+
+    [data-testid="stSidebar"] .block-container {
+        padding: 0.45rem 0.72rem 0.9rem !important;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+        gap: 0.55rem !important;
+    }
+
+    [data-testid="stSidebar"] .stButton > button {
+        background: #F2EFEA !important;
+        border: 1px solid #D8D2C8 !important;
+        border-radius: 8px !important;
+        color: #26384A !important;
+        font-size: 0.9rem !important;
+        font-weight: 850 !important;
+        height: var(--portal-sidebar-button-h) !important;
+        min-height: var(--portal-sidebar-button-h) !important;
+        padding: 0 0.72rem !important;
+    }
+
+    [data-testid="stSidebar"] .stButton > button[kind="primary"] {
+        background: #E8E1D6 !important;
+        border-color: #CDBFAE !important;
+        box-shadow: inset 4px 0 0 #58799A !important;
+        color: #26384A !important;
+        font-weight: 950 !important;
+    }
+}

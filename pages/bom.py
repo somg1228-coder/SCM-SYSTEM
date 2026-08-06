@@ -1737,9 +1737,10 @@ def inject_bom_css() -> None:
     st.markdown(
         """
         <style>
+        .stApp,
         div[data-testid="stAppViewContainer"],
-        section[data-testid="stSidebar"] + div,
-        .stApp {
+        div[data-testid="stMain"],
+        div[data-testid="stMainBlockContainer"] {
             background:
                 radial-gradient(circle at 48% 4%, rgba(83, 109, 132, 0.07), transparent 34%),
                 linear-gradient(135deg, #f0f1ef 0%, #f3f3f0 48%, #f6f5f2 100%) !important;

@@ -71,10 +71,9 @@ def toggle_group(group_tone: str) -> None:
 
 def render_group_toggle(group_label: str, group_tone: str) -> bool:
     expanded = is_group_expanded(group_tone)
-    state = "open" if expanded else "closed"
     st.button(
         group_label,
-        key=f"sidebar_group_{group_tone}_{state}",
+        key=f"sidebar_group_toggle_{group_tone}",
         use_container_width=True,
         type="secondary",
         on_click=toggle_group,
