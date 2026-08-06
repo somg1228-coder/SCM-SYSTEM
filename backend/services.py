@@ -11,7 +11,7 @@ from statistics import median
 import unicodedata
 
 import pandas as pd
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.orm import Session
 
 from backend.database import record_save_failure, record_save_success
@@ -2763,19 +2763,30 @@ def dashboard_summary(db: Session, work_date: date, source_type: str | None = No
             "inbound_qty": 0,
         }
 
-    query = select(InventoryDaily).where(InventoryDaily.work_date == work_date)
+    filters = [InventoryDaily.work_date == work_date]
     if source_type and source_type != "전체":
-        query = query.where(InventoryDaily.source_type == source_type)
-    rows = list(db.execute(query).scalars())
+        filters.append(InventoryDaily.source_type == source_type)
+    row = db.execute(
+        select(
+            func.count(InventoryDaily.id),
+            func.coalesce(func.sum(InventoryDaily.current_stock), 0),
+            func.coalesce(func.sum(InventoryDaily.available_stock), 0),
+            func.coalesce(func.sum(InventoryDaily.outbound_qty), 0),
+            func.coalesce(func.sum(InventoryDaily.inbound_qty), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
+        ).where(*filters)
+    ).one()
     return {
-        "sku_count": len(rows),
-        "current_stock": sum(row.current_stock for row in rows),
-        "available_stock": sum(row.available_stock for row in rows),
-        "need_inbound_count": sum(1 for row in rows if row.stock_status in {"부족", "주의", "입고필요"}),
-        "soldout_count": sum(1 for row in rows if row.stock_status == "품절"),
-        "short_count": sum(1 for row in rows if row.stock_status in {"부족", "품절", "미출"}),
-        "outbound_qty": sum(row.outbound_qty for row in rows),
-        "inbound_qty": sum(row.inbound_qty for row in rows),
+        "sku_count": int(row[0] or 0),
+        "current_stock": int(row[1] or 0),
+        "available_stock": int(row[2] or 0),
+        "outbound_qty": int(row[3] or 0),
+        "inbound_qty": int(row[4] or 0),
+        "need_inbound_count": int(row[5] or 0),
+        "soldout_count": int(row[6] or 0),
+        "short_count": int(row[7] or 0),
     }
 
 

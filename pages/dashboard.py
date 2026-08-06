@@ -11,13 +11,13 @@ from urllib.parse import urlencode
 import pandas as pd
 import streamlit as st
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 
 try:
     from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available
     from backend.database import SessionLocal, init_db
     from backend import services
-    from backend.models import CategoryBomItem, InventoryDaily, ProductionPlan, PurchaseOrder, PurchaseRequest, RfqQuote
+    from backend.models import CategoryBomItem, InventoryDaily, InventoryInbound, ProductionPlan, PurchaseOrder, PurchaseRequest, RfqQuote
 except (ModuleNotFoundError, RuntimeError) as exc:
     connect_sqlite_compatible = None
     legacy_store_available = None
@@ -26,6 +26,7 @@ except (ModuleNotFoundError, RuntimeError) as exc:
     services = None
     CategoryBomItem = None
     InventoryDaily = None
+    InventoryInbound = None
     ProductionPlan = None
     PurchaseOrder = None
     PurchaseRequest = None
@@ -151,6 +152,42 @@ def with_db(action, label: str = "db_action"):
         db.close()
 
 
+def latest_inventory_work_date(db) -> date | None:
+    if InventoryDaily is None:
+        return None
+    return db.scalar(select(func.max(InventoryDaily.work_date)))
+
+
+def dashboard_inventory_summary(db, work_date: date, source_type: str | None = None) -> dict:
+    if InventoryDaily is None:
+        return {}
+    filters = [InventoryDaily.work_date == work_date]
+    if source_type and source_type != "전체":
+        filters.append(InventoryDaily.source_type == source_type)
+    row = db.execute(
+        select(
+            func.count(InventoryDaily.id),
+            func.coalesce(func.sum(InventoryDaily.current_stock), 0),
+            func.coalesce(func.sum(InventoryDaily.available_stock), 0),
+            func.coalesce(func.sum(InventoryDaily.outbound_qty), 0),
+            func.coalesce(func.sum(InventoryDaily.inbound_qty), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
+        ).where(*filters)
+    ).one()
+    return {
+        "sku_count": int(row[0] or 0),
+        "current_stock": int(row[1] or 0),
+        "available_stock": int(row[2] or 0),
+        "outbound_qty": int(row[3] or 0),
+        "inbound_qty": int(row[4] or 0),
+        "need_inbound_count": int(row[5] or 0),
+        "soldout_count": int(row[6] or 0),
+        "short_count": int(row[7] or 0),
+    }
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def get_home_inventory_summary() -> dict:
     default_summary = {
@@ -172,9 +209,7 @@ def get_home_inventory_summary() -> dict:
     if not dashboard_available():
         return default_summary
 
-    date_payload = with_db(lambda db: services.list_work_dates(db), "inventory_work_dates") or []
-    date_values = [value.date() for value in pd.to_datetime(date_payload, errors="coerce") if not pd.isna(value)]
-    work_date = date_values[0] if date_values else date.today()
+    work_date = with_db(latest_inventory_work_date, "inventory_latest_work_date") or date.today()
     payload = with_db(lambda db: build_home_inventory_payload(db, work_date), "inventory_payload") or {}
     summary = payload.get("summary", {})
     return {
@@ -559,17 +594,35 @@ def source_status_tone(current_stock: int, ratio: int, problem_count: int) -> st
 
 
 def get_weekly_3pl_inbound_rows(db, work_date: date, limit: int = 5) -> list[dict]:
+    if InventoryInbound is None or InventoryDaily is None:
+        return []
     week_start = work_date - timedelta(days=work_date.weekday())
     week_end = week_start + timedelta(days=6)
-    inbound_rows = [
-        row
-        for row in services.list_inbound(db, "3PL")
-        if row.inbound_date and week_start <= row.inbound_date <= week_end
-    ]
+    inbound_rows = list(
+        db.execute(
+            select(InventoryInbound)
+            .where(
+                InventoryInbound.source_type == "3PL",
+                InventoryInbound.inbound_date >= week_start,
+                InventoryInbound.inbound_date <= week_end,
+            )
+            .order_by(InventoryInbound.inbound_date.desc(), InventoryInbound.id.desc())
+            .limit(limit)
+        ).scalars()
+    )
 
     stock_map = {
         (row.product_name, row.barcode or ""): row
-        for row in services.list_daily(db, "3PL", work_date)
+        for row in db.execute(
+            select(
+                InventoryDaily.product_name,
+                InventoryDaily.barcode,
+                InventoryDaily.available_stock,
+                InventoryDaily.current_stock,
+                InventoryDaily.safe_stock,
+                InventoryDaily.stock_status,
+            ).where(InventoryDaily.source_type == "3PL", InventoryDaily.work_date == work_date)
+        ).all()
     }
     result = []
     for inbound in inbound_rows[:limit]:
@@ -599,10 +652,15 @@ def inbound_stock_status(stock) -> tuple[str, str]:
 
 
 def get_recent_inbound_rows(db, limit: int = 5) -> list[dict]:
-    rows = []
-    for source_type in SOURCE_TYPES:
-        rows.extend(services.list_inbound(db, source_type))
-    rows.sort(key=lambda row: (row.inbound_date or date.min, row.id or 0), reverse=True)
+    if InventoryInbound is None:
+        return []
+    rows = list(
+        db.execute(
+            select(InventoryInbound)
+            .order_by(InventoryInbound.inbound_date.desc(), InventoryInbound.id.desc())
+            .limit(limit)
+        ).scalars()
+    )
     return [
         {
             "source_type": row.source_type,
