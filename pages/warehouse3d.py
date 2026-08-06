@@ -2,6 +2,7 @@
 
 import base64
 from datetime import datetime
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import tempfile
@@ -26,7 +27,7 @@ try:
         record_save_success,
         writable_runtime_data_dir,
     )
-    from backend.models import WarehouseLayout
+    from backend.models import WarehouseInventoryPosition, WarehouseLayout, WarehouseRack
     from backend import services, supabase_store
 except (ModuleNotFoundError, RuntimeError) as exc:
     DATABASE_URL = ""
@@ -37,7 +38,9 @@ except (ModuleNotFoundError, RuntimeError) as exc:
     record_save_failure = None
     record_save_success = None
     writable_runtime_data_dir = None
+    WarehouseInventoryPosition = None
     WarehouseLayout = None
+    WarehouseRack = None
     services = None
     supabase_store = None
     WAREHOUSE_IMPORT_ERROR = str(exc)
@@ -194,6 +197,144 @@ def app_database_is_postgresql() -> bool:
     return bool(is_postgresql_url is not None and DATABASE_URL and is_postgresql_url(DATABASE_URL))
 
 
+def stable_warehouse_id(*parts: object, prefix: str = "wh") -> str:
+    raw = "|".join(str(part or "").strip() for part in parts)
+    digest = hashlib.sha1(raw.encode("utf-8", errors="ignore")).hexdigest()[:24]
+    return f"{prefix}_{digest}"
+
+
+def safe_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def safe_int(value, default: int = 0) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def rack_shelf_no(item: dict, fallback: int) -> int:
+    part = str(item.get("part") or item.get("shelf") or item.get("shelf_no") or "").strip()
+    digits = "".join(ch for ch in part if ch.isdigit())
+    if digits:
+        return max(1, safe_int(digits, fallback))
+    return max(1, fallback)
+
+
+def ensure_warehouse_detail_tables(db) -> None:
+    if WarehouseRack is None or WarehouseInventoryPosition is None:
+        return
+    if not app_database_is_postgresql():
+        return
+    bind = db.get_bind()
+    WarehouseRack.__table__.create(bind=bind, checkfirst=True)
+    WarehouseInventoryPosition.__table__.create(bind=bind, checkfirst=True)
+
+
+def sync_warehouse_layout_detail_tables(db, layout_rows: list) -> None:
+    if WarehouseRack is None or WarehouseInventoryPosition is None:
+        return
+    if not app_database_is_postgresql():
+        return
+    ensure_warehouse_detail_tables(db)
+    for layout in layout_rows:
+        floor_data = layout.layout_data if isinstance(layout.layout_data, dict) else {}
+        racks = floor_data.get("racks") if isinstance(floor_data.get("racks"), list) else []
+        current_rack_codes: set[str] = set()
+        existing_racks = {
+            rack.rack_code: rack
+            for rack in db.execute(
+                select(WarehouseRack).where(WarehouseRack.layout_id == layout.id)
+            ).scalars()
+        }
+        for index, rack_data in enumerate(racks):
+            if not isinstance(rack_data, dict):
+                continue
+            rack_code = str(rack_data.get("id") or rack_data.get("rack_code") or f"R-{index + 1:03d}").strip()
+            if not rack_code:
+                continue
+            current_rack_codes.add(rack_code)
+            rack = existing_racks.get(rack_code)
+            if rack is None:
+                rack = WarehouseRack(
+                    id=stable_warehouse_id(layout.id, rack_code, prefix="rack"),
+                    layout_id=layout.id,
+                    rack_code=rack_code,
+                )
+                db.add(rack)
+            rack.rack_name = str(rack_data.get("name") or rack_data.get("label") or rack_code).strip()
+            rack.x = safe_float(rack_data.get("x"))
+            rack.y = safe_float(rack_data.get("y"))
+            rack.z = safe_float(rack_data.get("z"))
+            rack.rotation = safe_float(rack_data.get("rotation"))
+            rack.width = safe_float(rack_data.get("width", rack_data.get("w")))
+            rack.depth = safe_float(rack_data.get("depth", rack_data.get("h")))
+            rack.height = safe_float(rack_data.get("height"), safe_float(rack_data.get("levels"), 1.0))
+            rack.shelf_count = max(1, safe_int(rack_data.get("shelf_count", rack_data.get("levels", rack_data.get("level_count"))), 1))
+            rack.rack_type = str(rack_data.get("rack_type") or rack_data.get("type") or "").strip()
+            rack.sort_order = index
+            rack.rack_data = rack_data
+            rack.updated_at = datetime.utcnow()
+            db.flush()
+
+            items = rack_data.get("items") if isinstance(rack_data.get("items"), list) else []
+            aggregated: dict[tuple[int, str, str], dict] = {}
+            for item_index, item in enumerate(items):
+                if not isinstance(item, dict):
+                    continue
+                shelf_no = rack_shelf_no(item, item_index + 1)
+                sku = str(item.get("sku") or item.get("barcode") or item.get("product_code") or "").strip()
+                item_name = str(item.get("item_name") or item.get("product_name") or item.get("name") or "").strip()
+                if not sku and not item_name:
+                    continue
+                key = (shelf_no, sku, item_name)
+                quantity = safe_int(item.get("quantity", item.get("qty", item.get("stock"))), 0)
+                if key not in aggregated:
+                    aggregated[key] = {"quantity": 0, "sort_order": item_index, "position_data": dict(item)}
+                aggregated[key]["quantity"] += quantity
+
+            current_position_ids: set[str] = set()
+            existing_positions = {
+                position.id: position
+                for position in db.execute(
+                    select(WarehouseInventoryPosition).where(WarehouseInventoryPosition.rack_id == rack.id)
+                ).scalars()
+            }
+            for (shelf_no, sku, item_name), position_data in aggregated.items():
+                position_id = stable_warehouse_id(rack.id, shelf_no, sku, item_name, prefix="pos")
+                current_position_ids.add(position_id)
+                position = existing_positions.get(position_id)
+                if position is None:
+                    position = WarehouseInventoryPosition(
+                        id=position_id,
+                        rack_id=rack.id,
+                        shelf_no=shelf_no,
+                        sku=sku,
+                        item_name=item_name,
+                    )
+                    db.add(position)
+                position.quantity = max(0, safe_int(position_data["quantity"], 0))
+                position.sort_order = safe_int(position_data["sort_order"], 0)
+                position.position_data = position_data["position_data"]
+                position.updated_at = datetime.utcnow()
+            for position in existing_positions.values():
+                if position.id not in current_position_ids:
+                    db.delete(position)
+
+        for rack_code, rack in existing_racks.items():
+            if rack_code in current_rack_codes:
+                continue
+            for position in db.execute(
+                select(WarehouseInventoryPosition).where(WarehouseInventoryPosition.rack_id == rack.id)
+            ).scalars():
+                db.delete(position)
+            db.delete(rack)
+
+
 def save_database_warehouse_layout_store(payload: dict) -> int:
     if SessionLocal is None or WarehouseLayout is None or init_db is None:
         return 0
@@ -205,6 +346,7 @@ def save_database_warehouse_layout_store(payload: dict) -> int:
     try:
         init_db(ensure_schema=False)
         with SessionLocal() as db:
+            saved_keys: list[tuple[str, str]] = []
             for building, floors in locations.items():
                 if building not in LOCATIONS or not isinstance(floors, dict):
                     continue
@@ -231,7 +373,23 @@ def save_database_warehouse_layout_store(payload: dict) -> int:
                     else:
                         existing.layout_data = floor_data
                         existing.is_active = True
+                        existing.updated_at = datetime.utcnow()
+                    saved_keys.append((building, floor))
                     saved += 1
+            db.flush()
+            if saved_keys:
+                layout_rows = (
+                    db.execute(
+                        select(WarehouseLayout).where(
+                            WarehouseLayout.building.in_([key[0] for key in saved_keys]),
+                            WarehouseLayout.floor.in_([key[1] for key in saved_keys]),
+                            WarehouseLayout.is_active.is_(True),
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                sync_warehouse_layout_detail_tables(db, layout_rows)
             db.commit()
             verified = (
                 db.execute(select(WarehouseLayout).where(WarehouseLayout.is_active.is_(True)))
@@ -254,19 +412,27 @@ def save_database_warehouse_layout_store(payload: dict) -> int:
 
 
 def load_warehouse_layout_store() -> dict:
-    local_payload = load_local_warehouse_layout_store()
     db_payload = load_database_warehouse_layout_store()
 
-    if warehouse_layout_has_data(local_payload):
-        merged = merge_warehouse_layout_store(db_payload, local_payload)
-        save_database_warehouse_layout_store(merged)
-        return merged
+    if app_database_is_postgresql():
+        if warehouse_layout_has_data(db_payload):
+            return db_payload
+
+        local_payload = load_local_warehouse_layout_store()
+        if warehouse_layout_has_data(local_payload):
+            saved = save_database_warehouse_layout_store(local_payload)
+            if saved:
+                write_warehouse_layout_log(f"Migrated legacy local warehouse layout JSON to Supabase: {saved} rows.")
+                return load_database_warehouse_layout_store()
+        return db_payload
+
+    local_payload = load_local_warehouse_layout_store()
+
+    if supabase_store is None:
+        return db_payload if warehouse_layout_has_data(db_payload) else local_payload
 
     if warehouse_layout_has_data(db_payload):
         return db_payload
-
-    if supabase_store is None:
-        return local_payload
 
     try:
         if not supabase_store.is_enabled():
@@ -331,7 +497,7 @@ def merge_warehouse_layout_store(existing: dict, incoming: dict) -> dict:
 
 def save_warehouse_layout_store(payload: dict) -> Path:
     path = warehouse_layout_store_path()
-    existing = load_local_warehouse_layout_store()
+    existing = load_database_warehouse_layout_store() if app_database_is_postgresql() else load_local_warehouse_layout_store()
     store = empty_warehouse_layout_store()
     if isinstance(payload, dict):
         locations = payload.get("locations")
@@ -1862,8 +2028,24 @@ def warehouse_scene_html(
                 );
             }}
 
-            function shouldMigrateBrowserLayoutToFile() {{
+            function shouldMigrateBrowserLayoutToDatabase() {{
                 return !hasSharedFloorData(activeBuilding, activeFloor) && hasBrowserStoredFloorData(activeBuilding, activeFloor);
+            }}
+
+            function hydrateBrowserLayoutFromSharedStore() {{
+                locationFloors.forEach(option => {{
+                    const shared = sharedFloorData(option.building, option.floor);
+                    if (!shared || typeof shared !== "object") return;
+                    if (Array.isArray(shared.racks)) {{
+                        writeJsonToLocalStorage(storageKeyForLocation(option.building, option.floor), normalizeRackIds(shared.racks));
+                    }}
+                    if (Array.isArray(shared.fixtures)) {{
+                        writeJsonToLocalStorage(fixtureStorageKeyForLocation(option.building, option.floor), shared.fixtures);
+                    }}
+                    if (shared.floor_size && Number.isFinite(Number(shared.floor_size.width)) && Number.isFinite(Number(shared.floor_size.depth))) {{
+                        writeJsonToLocalStorage(floorSizeStorageKeyForLocation(option.building, option.floor), shared.floor_size);
+                    }}
+                }});
             }}
 
             function baseFloorSize(floorName) {{
@@ -2946,7 +3128,7 @@ def warehouse_scene3d_html(
                     <button type="button" id="resetRack">배치 초기화</button>
                     <button type="button" id="fitRack">기본배치</button>
                     <button type="button" id="printScene">모델 출력</button>
-                    <button type="button" id="saveLayoutFile">파일 저장</button>
+                    <button type="button" id="saveLayoutFile">Supabase 저장</button>
                     <span id="layoutSaveStatus" class="layout-save-status"></span>
                 </div>
                 <div class="model-viewport" id="modelViewport">
@@ -3117,6 +3299,7 @@ def warehouse_scene3d_html(
             }};
             const floors = {json.dumps(floors, ensure_ascii=False)};
             let activeFloor = {json.dumps(floor, ensure_ascii=False)};
+            hydrateBrowserLayoutFromSharedStore();
             let racks = loadLayout(activeFloor);
             let fixtures = [];
             let selectedRackId = racks[0]?.id || "";
@@ -3365,14 +3548,13 @@ def warehouse_scene3d_html(
 
             async function persistWarehouseLayoutToServer() {{
                 if (layoutSaveInProgress) {{
-                    setLayoutSaveStatus("파일 저장 대기", "muted");
+                    setLayoutSaveStatus("Supabase 저장 대기", "muted");
                     return false;
                 }}
                 layoutSaveInProgress = true;
-                setLayoutSaveStatus("파일 저장 중...", "muted");
+                setLayoutSaveStatus("Supabase 저장 중...", "muted");
                 try {{
                     const payload = collectWarehouseLayoutBackup();
-                    setLayoutSaveStatus("파일 저장됨", "ok");
 
                     const syncResults = await Promise.allSettled([
                         persistWarehouseLayoutToSupabase(payload),
@@ -3380,15 +3562,221 @@ def warehouse_scene3d_html(
                     ]);
                     const synced = syncResults.some(result => result.status === "fulfilled" && result.value === true);
                     if (!synced) {{
-                        console.warn("Warehouse layout saved in browser only. Remote/local file sync is pending.", syncResults);
+                        const detail = syncResults
+                            .map(result => result.status === "rejected" ? result.reason?.message || String(result.reason) : "")
+                            .filter(Boolean)
+                            .join(" / ");
+                        throw new Error(detail || "Supabase 저장 응답을 확인하지 못했습니다.");
                     }}
+                    setLayoutSaveStatus("Supabase 저장됨", "ok");
                     return true;
                 }} catch (error) {{
-                    console.warn("Warehouse layout browser save failed", error);
-                    setLayoutSaveStatus("브라우저 저장 확인 필요", "error");
+                    console.warn("Warehouse layout Supabase save failed", error);
+                    setLayoutSaveStatus(`Supabase 저장 실패: ${{error?.message || error}}`, "error");
                     return false;
                 }} finally {{
                     layoutSaveInProgress = false;
+                }}
+            }}
+
+            function stableWarehouseHashId(prefix, ...parts) {{
+                const text = parts.map(part => String(part ?? "").trim()).join("|");
+                let hashA = 2166136261;
+                let hashB = 0x9e3779b9;
+                for (let index = 0; index < text.length; index += 1) {{
+                    const code = text.charCodeAt(index);
+                    hashA ^= code;
+                    hashA = Math.imul(hashA, 16777619) >>> 0;
+                    hashB = Math.imul(hashB ^ code, 2246822519) >>> 0;
+                }}
+                return `${{prefix}}_${{hashA.toString(16).padStart(8, "0")}}${{hashB.toString(16).padStart(8, "0")}}`;
+            }}
+
+            function layoutStableId(buildingName, floorName) {{
+                return stableWarehouseHashId("wl", buildingName, floorName);
+            }}
+
+            function numberOrZero(value) {{
+                const numberValue = Number(value);
+                return Number.isFinite(numberValue) ? numberValue : 0;
+            }}
+
+            function integerOrZero(value) {{
+                const numberValue = Number(value);
+                return Number.isFinite(numberValue) ? Math.trunc(numberValue) : 0;
+            }}
+
+            function shelfNumber(item, fallback) {{
+                const text = String(item?.part || item?.shelf || item?.shelf_no || "");
+                const digits = text.replace(/[^0-9]/g, "");
+                return Math.max(1, integerOrZero(digits || fallback || 1));
+            }}
+
+            function supabaseHeaders(prefer = "") {{
+                const headers = {{
+                    "apikey": supabaseBrowserConfig.key,
+                    "Authorization": `Bearer ${{supabaseBrowserConfig.key}}`,
+                    "Content-Type": "application/json",
+                }};
+                if (prefer) headers.Prefer = prefer;
+                return headers;
+            }}
+
+            async function supabaseRest(path, options = {{}}) {{
+                const response = await fetch(`${{supabaseBrowserConfig.url}}/rest/v1/${{path}}`, {{
+                    ...options,
+                    headers: {{ ...supabaseHeaders(options.prefer || ""), ...(options.headers || {{}}) }},
+                }});
+                if (!response.ok) {{
+                    const detail = await response.text().catch(() => "");
+                    throw new Error(`Supabase 요청 실패 (${{response.status}}) ${{detail}}`);
+                }}
+                return response;
+            }}
+
+            async function fetchExistingWarehouseLayoutIds() {{
+                const response = await supabaseRest("warehouse_layouts?select=id,building,floor", {{ method: "GET" }});
+                const rows = await response.json().catch(() => []);
+                const ids = new Map();
+                (Array.isArray(rows) ? rows : []).forEach(row => {{
+                    if (row?.id && row?.building && row?.floor) ids.set(`${{row.building}}|${{row.floor}}`, row.id);
+                }});
+                return ids;
+            }}
+
+            function rackStableId(layoutId, rackCode) {{
+                return stableWarehouseHashId("rack", layoutId, rackCode);
+            }}
+
+            function positionStableId(rackId, shelfNo, sku, itemName) {{
+                return stableWarehouseHashId("pos", rackId, shelfNo, sku, itemName);
+            }}
+
+            function rackRowsFromPayload(payload, layoutIdByKey) {{
+                const rows = [];
+                Object.entries(payload?.locations || {{}}).forEach(([buildingName, floors]) => {{
+                    Object.entries(floors || {{}}).forEach(([floorName, floorData]) => {{
+                        const layoutId = layoutIdByKey.get(`${{buildingName}}|${{floorName}}`) || layoutStableId(buildingName, floorName);
+                        (Array.isArray(floorData?.racks) ? floorData.racks : []).forEach((rack, index) => {{
+                            const rackCode = String(rack?.id || rack?.rack_code || `R-${{String(index + 1).padStart(3, "0")}}`).trim();
+                            if (!rackCode) return;
+                            rows.push({{
+                                id: rackStableId(layoutId, rackCode),
+                                layout_id: layoutId,
+                                rack_code: rackCode,
+                                rack_name: String(rack?.name || rack?.label || rackCode).trim(),
+                                x: numberOrZero(rack?.x),
+                                y: numberOrZero(rack?.y),
+                                z: numberOrZero(rack?.z),
+                                rotation: numberOrZero(rack?.rotation),
+                                width: numberOrZero(rack?.width ?? rack?.w),
+                                depth: numberOrZero(rack?.depth ?? rack?.h),
+                                height: numberOrZero(rack?.height ?? rack?.levels ?? 1),
+                                shelf_count: Math.max(1, integerOrZero(rack?.shelf_count ?? rack?.levels ?? rack?.level_count ?? 1)),
+                                rack_type: String(rack?.rack_type || rack?.type || "").trim(),
+                                sort_order: index,
+                                rack_data: rack,
+                                updated_at: new Date().toISOString(),
+                            }});
+                        }});
+                    }});
+                }});
+                return rows;
+            }}
+
+            function positionRowsFromPayload(payload, rackIdByKey, layoutIdByKey) {{
+                const rows = [];
+                Object.entries(payload?.locations || {{}}).forEach(([buildingName, floors]) => {{
+                    Object.entries(floors || {{}}).forEach(([floorName, floorData]) => {{
+                        const layoutId = layoutIdByKey.get(`${{buildingName}}|${{floorName}}`) || layoutStableId(buildingName, floorName);
+                        (Array.isArray(floorData?.racks) ? floorData.racks : []).forEach((rack, rackIndex) => {{
+                            const rackCode = String(rack?.id || rack?.rack_code || `R-${{String(rackIndex + 1).padStart(3, "0")}}`).trim();
+                            const rackId = rackIdByKey.get(`${{layoutId}}|${{rackCode}}`) || rackStableId(layoutId, rackCode);
+                            const aggregated = new Map();
+                            (Array.isArray(rack?.items) ? rack.items : []).forEach((item, itemIndex) => {{
+                                const shelfNo = shelfNumber(item, itemIndex + 1);
+                                const sku = String(item?.sku || item?.barcode || item?.product_code || "").trim();
+                                const itemName = String(item?.item_name || item?.product_name || item?.name || "").trim();
+                                if (!sku && !itemName) return;
+                                const key = `${{shelfNo}}|${{sku}}|${{itemName}}`;
+                                const quantity = Math.max(0, integerOrZero(item?.quantity ?? item?.qty ?? item?.stock));
+                                const existing = aggregated.get(key) || {{ quantity: 0, sort_order: itemIndex, position_data: item }};
+                                existing.quantity += quantity;
+                                aggregated.set(key, existing);
+                            }});
+                            aggregated.forEach((value, key) => {{
+                                const [shelfNoText, sku, itemName] = key.split("|");
+                                const shelfNo = Math.max(1, integerOrZero(shelfNoText));
+                                rows.push({{
+                                    id: positionStableId(rackId, shelfNo, sku, itemName),
+                                    rack_id: rackId,
+                                    shelf_no: shelfNo,
+                                    sku,
+                                    item_name: itemName,
+                                    quantity: value.quantity,
+                                    sort_order: value.sort_order,
+                                    position_data: value.position_data,
+                                    updated_at: new Date().toISOString(),
+                                }});
+                            }});
+                        }});
+                    }});
+                }});
+                return rows;
+            }}
+
+            async function deleteMissingSupabaseRows(tableName, parentColumn, parentId, idColumn, currentIds) {{
+                const listResponse = await supabaseRest(`${{tableName}}?select=${{idColumn}}&${{parentColumn}}=eq.${{encodeURIComponent(parentId)}}`, {{ method: "GET" }});
+                const existing = await listResponse.json().catch(() => []);
+                const staleIds = (Array.isArray(existing) ? existing : [])
+                    .map(row => row?.[idColumn])
+                    .filter(Boolean)
+                    .filter(id => !currentIds.has(id));
+                if (!staleIds.length) return;
+                await supabaseRest(`${{tableName}}?${{idColumn}}=in.(${{staleIds.map(encodeURIComponent).join(",")}})`, {{
+                    method: "DELETE",
+                    prefer: "return=minimal",
+                }});
+            }}
+
+            async function persistWarehouseDetailsToSupabase(payload, layoutIdByKey) {{
+                const rackRows = rackRowsFromPayload(payload, layoutIdByKey);
+                const rackIdByKey = new Map(rackRows.map(row => [`${{row.layout_id}}|${{row.rack_code}}`, row.id]));
+                const layoutIds = [...new Set([...layoutIdByKey.values()])];
+                if (rackRows.length) {{
+                    const rackResponse = await supabaseRest("warehouse_racks?on_conflict=layout_id,rack_code", {{
+                        method: "POST",
+                        prefer: "resolution=merge-duplicates,return=representation",
+                        body: JSON.stringify(rackRows),
+                    }});
+                    const savedRacks = await rackResponse.json().catch(() => []);
+                    if (!Array.isArray(savedRacks) || savedRacks.length < rackRows.length) {{
+                        throw new Error("랙 저장 검증 실패: 저장 행 수가 맞지 않습니다.");
+                    }}
+                    savedRacks.forEach(row => {{
+                        if (row?.layout_id && row?.rack_code && row?.id) rackIdByKey.set(`${{row.layout_id}}|${{row.rack_code}}`, row.id);
+                    }});
+                }}
+                for (const layoutId of layoutIds) {{
+                    const currentRackIds = new Set(rackRows.filter(row => row.layout_id === layoutId).map(row => row.id));
+                    await deleteMissingSupabaseRows("warehouse_racks", "layout_id", layoutId, "id", currentRackIds);
+                }}
+
+                const positionRows = positionRowsFromPayload(payload, rackIdByKey, layoutIdByKey);
+                if (positionRows.length) {{
+                    const positionResponse = await supabaseRest("warehouse_inventory_positions?on_conflict=rack_id,shelf_no,sku,item_name", {{
+                        method: "POST",
+                        prefer: "resolution=merge-duplicates,return=representation",
+                        body: JSON.stringify(positionRows),
+                    }});
+                    const savedPositions = await positionResponse.json().catch(() => []);
+                    if (!Array.isArray(savedPositions) || savedPositions.length < positionRows.length) {{
+                        throw new Error("재고 위치 저장 검증 실패: 저장 행 수가 맞지 않습니다.");
+                    }}
+                }}
+                for (const rackId of rackIdByKey.values()) {{
+                    const currentPositionIds = new Set(positionRows.filter(row => row.rack_id === rackId).map(row => row.id));
+                    await deleteMissingSupabaseRows("warehouse_inventory_positions", "rack_id", rackId, "id", currentPositionIds);
                 }}
             }}
 
@@ -3400,22 +3788,28 @@ def warehouse_scene3d_html(
                         if (!floorData || typeof floorData !== "object") return;
                         if (!Array.isArray(floorData.racks) && !Array.isArray(floorData.fixtures) && !floorData.floor_size) return;
                         rows.push({{
+                            id: layoutStableId(buildingName, floorName),
                             building: buildingName,
                             floor: floorName,
                             layout_data: floorData,
                             is_active: true,
+                            updated_at: new Date().toISOString(),
                         }});
                     }});
                 }});
                 if (!rows.length) return false;
-                const endpoint = `${{supabaseBrowserConfig.url}}/rest/v1/warehouse_layouts?on_conflict=building,floor`;
-                const response = await fetch(endpoint, {{
+                const existingLayoutIds = await fetchExistingWarehouseLayoutIds();
+                rows.forEach(row => {{
+                    const existingId = existingLayoutIds.get(`${{row.building}}|${{row.floor}}`);
+                    if (existingId) row.id = existingId;
+                }});
+                const response = await fetch(`${{supabaseBrowserConfig.url}}/rest/v1/warehouse_layouts?on_conflict=building,floor`, {{
                     method: "POST",
                     headers: {{
                         "apikey": supabaseBrowserConfig.key,
                         "Authorization": `Bearer ${{supabaseBrowserConfig.key}}`,
                         "Content-Type": "application/json",
-                        "Prefer": "resolution=merge-duplicates,return=minimal",
+                        "Prefer": "resolution=merge-duplicates,return=representation",
                     }},
                     body: JSON.stringify(rows),
                 }});
@@ -3423,6 +3817,16 @@ def warehouse_scene3d_html(
                     const detail = await response.text().catch(() => "");
                     throw new Error(`Supabase 저장 실패 (${{response.status}}) ${{detail}}`);
                 }}
+                const savedRows = await response.json().catch(() => []);
+                if (!Array.isArray(savedRows) || savedRows.length < rows.length) {{
+                    throw new Error("Supabase 저장 검증 실패: 저장 행 수가 맞지 않습니다.");
+                }}
+                const layoutIdByKey = new Map();
+                rows.forEach(row => layoutIdByKey.set(`${{row.building}}|${{row.floor}}`, row.id));
+                savedRows.forEach(row => {{
+                    if (row?.building && row?.floor && row?.id) layoutIdByKey.set(`${{row.building}}|${{row.floor}}`, row.id);
+                }});
+                await persistWarehouseDetailsToSupabase(payload, layoutIdByKey);
                 return true;
             }}
 
@@ -3439,7 +3843,6 @@ def warehouse_scene3d_html(
                         if (!response.ok) {{
                             throw new Error(`저장 요청 실패 (${{response.status}})`);
                         }}
-                        setLayoutSaveStatus("파일 저장됨", "ok");
                         return true;
                     }} catch (error) {{
                         lastError = error;
@@ -3546,8 +3949,24 @@ def warehouse_scene3d_html(
                 );
             }}
 
-            function shouldMigrateBrowserLayoutToFile() {{
+            function shouldMigrateBrowserLayoutToDatabase() {{
                 return !hasSharedFloorData(activeBuilding, activeFloor) && hasBrowserStoredFloorData(activeBuilding, activeFloor);
+            }}
+
+            function hydrateBrowserLayoutFromSharedStore() {{
+                locationFloors.forEach(option => {{
+                    const shared = sharedFloorData(option.building, option.floor);
+                    if (!shared || typeof shared !== "object") return;
+                    if (Array.isArray(shared.racks)) {{
+                        writeJsonToLocalStorage(storageKeyForLocation(option.building, option.floor), normalizeRackIds(shared.racks));
+                    }}
+                    if (Array.isArray(shared.fixtures)) {{
+                        writeJsonToLocalStorage(fixtureStorageKeyForLocation(option.building, option.floor), shared.fixtures);
+                    }}
+                    if (shared.floor_size && Number.isFinite(Number(shared.floor_size.width)) && Number.isFinite(Number(shared.floor_size.depth))) {{
+                        writeJsonToLocalStorage(floorSizeStorageKeyForLocation(option.building, option.floor), shared.floor_size);
+                    }}
+                }});
             }}
 
             function baseFloorSize(floorName) {{
@@ -6217,10 +6636,10 @@ def warehouse_scene3d_html(
             setZoom(100);
             rebuildScene();
             canvas.dataset.ready = "true";
-            if (shouldMigrateBrowserLayoutToFile()) {{
+            if (shouldMigrateBrowserLayoutToDatabase()) {{
                 scheduleServerLayoutSave(900);
             }} else if (hasSharedFloorData(activeBuilding, activeFloor)) {{
-                setLayoutSaveStatus("파일 배치 불러옴", "ok");
+                setLayoutSaveStatus("Supabase 배치 불러옴", "ok");
             }}
             animate();
             window.addEventListener("resize", resizeRenderer);

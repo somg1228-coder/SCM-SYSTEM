@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, Integer, JSON, LargeBinary, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.database import Base
@@ -158,6 +158,44 @@ class WarehouseLayout(Base):
     layout_data: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=func.now(), onupdate=datetime.utcnow, nullable=False)
+
+
+class WarehouseRack(Base):
+    __tablename__ = "warehouse_racks"
+    __table_args__ = (UniqueConstraint("layout_id", "rack_code", name="uq_warehouse_racks_layout_rack_code"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
+    layout_id: Mapped[str] = mapped_column(String(36), ForeignKey("warehouse_layouts.id", ondelete="CASCADE"), index=True, nullable=False)
+    rack_code: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
+    rack_name: Mapped[str] = mapped_column(String(160), default="", nullable=False)
+    x: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    y: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    z: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    rotation: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    width: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    depth: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    height: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    shelf_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    rack_type: Mapped[str] = mapped_column(String(60), default="", nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    rack_data: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=func.now(), onupdate=datetime.utcnow, nullable=False)
+
+
+class WarehouseInventoryPosition(Base):
+    __tablename__ = "warehouse_inventory_positions"
+    __table_args__ = (UniqueConstraint("rack_id", "shelf_no", "sku", "item_name", name="uq_warehouse_inventory_positions_rack_item"),)
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True, index=True)
+    rack_id: Mapped[str] = mapped_column(String(64), ForeignKey("warehouse_racks.id", ondelete="CASCADE"), index=True, nullable=False)
+    shelf_no: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    sku: Mapped[str] = mapped_column(String(120), index=True, default="", nullable=False)
+    item_name: Mapped[str] = mapped_column(String(255), index=True, default="", nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    position_data: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=func.now(), onupdate=datetime.utcnow, nullable=False)
 
 

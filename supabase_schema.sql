@@ -1,6 +1,8 @@
 -- SCM Portal Supabase PostgreSQL schema generated from data/scm.db
 -- Generated on demand by Codex. No secrets are stored in this file.
 -- Run this in Supabase SQL Editor before migrating SQLite data.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS "cases" (
@@ -710,6 +712,48 @@ CREATE INDEX IF NOT EXISTS "ix_warehouse_layouts_building" ON "warehouse_layouts
 CREATE INDEX IF NOT EXISTS "ix_warehouse_layouts_floor" ON "warehouse_layouts" ("floor");
 CREATE INDEX IF NOT EXISTS "ix_warehouse_layouts_is_active" ON "warehouse_layouts" ("is_active");
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_warehouse_layouts_building_floor" ON "warehouse_layouts" ("building", "floor");
+ALTER TABLE "warehouse_layouts" ALTER COLUMN "id" SET DEFAULT gen_random_uuid()::text;
+
+CREATE TABLE IF NOT EXISTS "warehouse_racks" (
+    "id" VARCHAR(64) NOT NULL,
+    "layout_id" VARCHAR(36) NOT NULL REFERENCES "warehouse_layouts" ("id") ON DELETE CASCADE,
+    "rack_code" VARCHAR(120) NOT NULL,
+    "rack_name" VARCHAR(160) DEFAULT '' NOT NULL,
+    "x" DOUBLE PRECISION DEFAULT 0 NOT NULL,
+    "y" DOUBLE PRECISION DEFAULT 0 NOT NULL,
+    "z" DOUBLE PRECISION DEFAULT 0 NOT NULL,
+    "rotation" DOUBLE PRECISION DEFAULT 0 NOT NULL,
+    "width" DOUBLE PRECISION DEFAULT 0 NOT NULL,
+    "depth" DOUBLE PRECISION DEFAULT 0 NOT NULL,
+    "height" DOUBLE PRECISION DEFAULT 0 NOT NULL,
+    "shelf_count" INTEGER DEFAULT 1 NOT NULL,
+    "rack_type" VARCHAR(60) DEFAULT '' NOT NULL,
+    "sort_order" INTEGER DEFAULT 0 NOT NULL,
+    "rack_data" JSONB DEFAULT '{}'::jsonb NOT NULL,
+    "created_at" TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updated_at" TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "ix_warehouse_racks_layout_id" ON "warehouse_racks" ("layout_id");
+CREATE INDEX IF NOT EXISTS "ix_warehouse_racks_rack_code" ON "warehouse_racks" ("rack_code");
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_warehouse_racks_layout_rack_code" ON "warehouse_racks" ("layout_id", "rack_code");
+
+CREATE TABLE IF NOT EXISTS "warehouse_inventory_positions" (
+    "id" VARCHAR(80) NOT NULL,
+    "rack_id" VARCHAR(64) NOT NULL REFERENCES "warehouse_racks" ("id") ON DELETE CASCADE,
+    "shelf_no" INTEGER DEFAULT 1 NOT NULL,
+    "sku" VARCHAR(120) DEFAULT '' NOT NULL,
+    "item_name" VARCHAR(255) DEFAULT '' NOT NULL,
+    "quantity" INTEGER DEFAULT 0 NOT NULL,
+    "sort_order" INTEGER DEFAULT 0 NOT NULL,
+    "position_data" JSONB DEFAULT '{}'::jsonb NOT NULL,
+    "updated_at" TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "ix_warehouse_inventory_positions_rack_id" ON "warehouse_inventory_positions" ("rack_id");
+CREATE INDEX IF NOT EXISTS "ix_warehouse_inventory_positions_sku" ON "warehouse_inventory_positions" ("sku");
+CREATE INDEX IF NOT EXISTS "ix_warehouse_inventory_positions_item_name" ON "warehouse_inventory_positions" ("item_name");
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_warehouse_inventory_positions_rack_item" ON "warehouse_inventory_positions" ("rack_id", "shelf_no", "sku", "item_name");
 
 CREATE TABLE IF NOT EXISTS "warehouse_product_master" (
     "id" BIGSERIAL PRIMARY KEY,
