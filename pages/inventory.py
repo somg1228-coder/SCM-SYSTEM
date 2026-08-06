@@ -126,7 +126,7 @@ def inventory_available() -> bool:
     if init_db is None or SessionLocal is None or services is None:
         return False
     try:
-        init_db()
+        init_db(ensure_schema=False)
     except Exception as exc:
         global INVENTORY_IMPORT_ERROR
         INVENTORY_IMPORT_ERROR = f"재고관리 DB 초기화 실패: {exc}"

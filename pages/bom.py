@@ -468,7 +468,7 @@ def bom_available() -> bool:
     if init_db is None or SessionLocal is None or CategoryBomItem is None:
         return False
     try:
-        init_db()
+        init_db(ensure_schema=False)
     except Exception as exc:
         global BOM_IMPORT_ERROR
         BOM_IMPORT_ERROR = f"BOM DB 초기화 실패: {exc}"

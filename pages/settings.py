@@ -114,13 +114,15 @@ def render_app_database_panel() -> None:
         st.error(SETTINGS_IMPORT_ERROR or "Database module could not be loaded.")
         return
 
+    run_live = st.button("Run application DB diagnostics", use_container_width=True)
     schema_error = ""
-    try:
-        init_db()
-    except Exception as exc:
-        schema_error = str(exc)
+    if run_live:
+        try:
+            init_db(force=True, ensure_schema=True)
+        except Exception as exc:
+            schema_error = str(exc)
 
-    status = database_status()
+    status = database_status(include_live_checks=run_live, include_config_diagnostics=run_live)
     config_rows = []
     for key, item in (status.get("config_diagnostics") or {}).items():
         config_rows.append(
@@ -135,17 +137,18 @@ def render_app_database_panel() -> None:
                 "st.secrets error": item.get("streamlit_secret_error"),
             }
         )
-    render_diagnostic_details("Streamlit Cloud configuration source diagnostics", config_rows)
-    render_diagnostic_details(
-        "Supabase PostgreSQL connection diagnostics",
-        [
-            {"Item": "SCM_DATABASE_URL loaded", "Status": "OK" if status.get("supabase_configured") else "MISSING", "Detail": status.get("url_source") or ""},
-            {"Item": "SCM_USE_SUPABASE_DB enabled", "Status": "OK" if status.get("supabase_db_enabled") else "OFF", "Detail": str(status.get("supabase_db_enabled"))},
-            {"Item": "App DB engine", "Status": status.get("engine") or "", "Detail": status.get("display_url") or ""},
-            {"Item": "Supabase SELECT 1", "Status": "OK" if status.get("supabase_select_1_ok") else "FAIL", "Detail": status.get("supabase_last_error") or ""},
-            {"Item": "App DB SELECT 1", "Status": "OK" if status.get("select_1_ok") else "FAIL", "Detail": status.get("last_error") or ""},
-        ],
-    )
+    if run_live:
+        render_diagnostic_details("Streamlit Cloud configuration source diagnostics", config_rows)
+        render_diagnostic_details(
+            "Supabase PostgreSQL connection diagnostics",
+            [
+                {"Item": "SCM_DATABASE_URL loaded", "Status": "OK" if status.get("supabase_configured") else "MISSING", "Detail": status.get("url_source") or ""},
+                {"Item": "SCM_USE_SUPABASE_DB enabled", "Status": "OK" if status.get("supabase_db_enabled") else "OFF", "Detail": str(status.get("supabase_db_enabled"))},
+                {"Item": "App DB engine", "Status": status.get("engine") or "", "Detail": status.get("display_url") or ""},
+                {"Item": "Supabase SELECT 1", "Status": "OK" if status.get("supabase_select_1_ok") else "FAIL", "Detail": status.get("supabase_last_error") or ""},
+                {"Item": "App DB SELECT 1", "Status": "OK" if status.get("select_1_ok") else "FAIL", "Detail": status.get("last_error") or ""},
+            ],
+        )
 
     st.subheader("Application database status")
     cols = st.columns(5)
@@ -170,19 +173,22 @@ def render_app_database_panel() -> None:
         f"Last save failure item: {status.get('last_save_failure_item') or '-'}"
     )
 
-    st.markdown("##### Application table probes")
-    try:
-        with SessionLocal() as db:
-            rows = []
-            for table in APP_DB_TABLES:
-                try:
-                    count = db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar_one()
-                    rows.append({"Table": table, "Probe": "OK", "Rows": count, "Error": ""})
-                except Exception as exc:
-                    rows.append({"Table": table, "Probe": "FAIL", "Rows": "", "Error": str(exc)})
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    except Exception as exc:
-        st.warning(f"Could not check application tables: {exc}")
+    if run_live:
+        st.markdown("##### Application table probes")
+        try:
+            with SessionLocal() as db:
+                rows = []
+                for table in APP_DB_TABLES:
+                    try:
+                        count = db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar_one()
+                        rows.append({"Table": table, "Probe": "OK", "Rows": count, "Error": ""})
+                    except Exception as exc:
+                        rows.append({"Table": table, "Probe": "FAIL", "Rows": "", "Error": str(exc)})
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        except Exception as exc:
+            st.warning(f"Could not check application tables: {exc}")
+    else:
+        st.caption("Live SELECT 1, schema checks, and table COUNT probes run only when you press the diagnostics button.")
 
 
 def render_supabase_script_diagnostics() -> None:
@@ -351,10 +357,13 @@ def render_settings_page() -> None:
     if supabase_store is None:
         st.warning(SETTINGS_IMPORT_ERROR or "Supabase REST status module could not be loaded.")
         return
-    status = supabase_store.admin_status()
-    render_supabase_script_diagnostics()
-    render_connection_panel(status)
-    render_table_panel(status)
-    render_recent_transactions(status)
-    render_storage_analysis()
-    render_migration_panel(bool(status.get("connected")))
+    if st.button("Run Supabase REST diagnostics", use_container_width=True):
+        status = supabase_store.admin_status()
+        render_supabase_script_diagnostics()
+        render_connection_panel(status)
+        render_table_panel(status)
+        render_recent_transactions(status)
+        render_storage_analysis()
+        render_migration_panel(bool(status.get("connected")))
+    else:
+        st.caption("Supabase REST table probes, row counts, storage scan, and migration preview are skipped until requested.")

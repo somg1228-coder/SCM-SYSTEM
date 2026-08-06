@@ -8,6 +8,7 @@ import sqlite3
 import stat
 import sys
 import tempfile
+import time
 import traceback
 
 from backend.config import config_bool_value, config_key_diagnostics, config_text_value, is_deployed_environment, streamlit_secret_value, truthy_config_value
@@ -51,6 +52,19 @@ _LAST_DB_STAGE = ""
 _LAST_DB_ERROR = ""
 _LAST_SAVE_SUCCESS_AT = ""
 _LAST_SAVE_FAILURE_ITEM = ""
+_LAST_SELECT_1_CHECK_AT = 0.0
+_SELECT_1_TTL_SECONDS = 60.0
+_INIT_DB_DONE = False
+_INIT_DB_PROFILE: dict[str, float] = {}
+
+
+def _streamlit_cache_resource():
+    try:
+        import streamlit as st
+
+        return st.cache_resource
+    except Exception:
+        return None
 
 
 def _legacy_load_local_env_file() -> None:
@@ -492,6 +506,29 @@ def database_engine_options(database_url: str) -> dict:
 ENGINE_OPTIONS = database_engine_options(DATABASE_URL)
 
 
+_cache_resource = _streamlit_cache_resource()
+
+
+def _create_uncached_engine(database_url: str):
+    return create_engine(database_url, **database_engine_options(database_url))
+
+
+if _cache_resource is not None:
+
+    @_cache_resource(show_spinner=False)
+    def create_cached_engine(database_url: str):
+        return _create_uncached_engine(database_url)
+
+else:
+
+    def create_cached_engine(database_url: str):
+        return _create_uncached_engine(database_url)
+
+
+def create_app_engine(database_url: str):
+    return create_cached_engine(database_url)
+
+
 def supabase_transaction_pooler_url(database_url: str) -> str | None:
     if not is_postgresql_url(database_url):
         return None
@@ -543,7 +580,7 @@ def switch_database_url(next_database_url: str) -> None:
         engine.dispose()
     except NameError:
         pass
-    engine = create_engine(DATABASE_URL, **ENGINE_OPTIONS)
+    engine = create_app_engine(DATABASE_URL)
     try:
         SessionLocal.configure(bind=engine)
     except NameError:
@@ -700,14 +737,18 @@ def log_database_exception(stage: str, exc: BaseException) -> None:
     print(safe_traceback, file=sys.stderr, flush=True)
 
 
-def test_database_connection() -> bool:
-    global _LAST_SELECT_1_OK, _LAST_DB_STAGE, _LAST_DB_ERROR
+def test_database_connection(force: bool = False) -> bool:
+    global _LAST_SELECT_1_OK, _LAST_DB_STAGE, _LAST_DB_ERROR, _LAST_SELECT_1_CHECK_AT
 
+    now = time.monotonic()
+    if _LAST_SELECT_1_OK and not force and now - _LAST_SELECT_1_CHECK_AT < _SELECT_1_TTL_SECONDS:
+        return True
     _LAST_DB_STAGE = "select_1"
     try:
         with engine.connect() as conn:
             conn.exec_driver_sql("SELECT 1")
         _LAST_SELECT_1_OK = True
+        _LAST_SELECT_1_CHECK_AT = time.monotonic()
         _LAST_DB_ERROR = ""
         return True
     except Exception as exc:
@@ -809,13 +850,18 @@ def database_status() -> dict:
     return status
 
 
-def database_status() -> dict:
+def database_status(include_live_checks: bool = False, include_config_diagnostics: bool = False) -> dict:
     url = make_url(DATABASE_URL)
-    supabase_ok, supabase_error = test_supabase_select_1()
-    config_diagnostics = {
-        key: config_key_diagnostics(key)
-        for key in ("SCM_USE_SUPABASE_DB", "SCM_DATABASE_URL", "SUPABASE_URL", "SUPABASE_KEY")
-    }
+    if include_live_checks:
+        supabase_ok, supabase_error = test_supabase_select_1()
+    else:
+        supabase_ok, supabase_error = _LAST_SELECT_1_OK, ""
+    config_diagnostics = {}
+    if include_config_diagnostics:
+        config_diagnostics = {
+            key: config_key_diagnostics(key)
+            for key in ("SCM_USE_SUPABASE_DB", "SCM_DATABASE_URL", "SUPABASE_URL", "SUPABASE_KEY")
+        }
     status = {
         "configured": DATABASE_URL_FROM_CONFIG,
         "url_source": DATABASE_URL_SOURCE,
@@ -841,10 +887,11 @@ def database_status() -> dict:
         "last_error": _LAST_DB_ERROR,
         "last_save_success_at": _LAST_SAVE_SUCCESS_AT,
         "last_save_failure_item": _LAST_SAVE_FAILURE_ITEM,
+        "init_profile": dict(_INIT_DB_PROFILE),
         "config_diagnostics": config_diagnostics,
         "message": "",
     }
-    if test_database_connection():
+    if test_database_connection(force=include_live_checks):
         status["connected"] = True
         status["select_1_ok"] = True
         if status["is_supabase_postgresql"]:
@@ -863,6 +910,7 @@ def record_save_success(item: str) -> None:
 
     _LAST_SAVE_SUCCESS_AT = datetime_now_iso()
     _LAST_SAVE_FAILURE_ITEM = ""
+    clear_streamlit_data_cache()
     LOGGER.info("DB save success: %s", sanitize_database_text(item))
 
 
@@ -880,23 +928,36 @@ def datetime_now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def clear_streamlit_data_cache() -> None:
+    try:
+        import streamlit as st
+
+        st.cache_data.clear()
+    except Exception:
+        pass
+
+
 try:
     if is_sqlite_url(DATABASE_URL):
         log_sqlite_writability("module import")
 except Exception as exc:
     LOGGER.warning("SQLite write check skipped during import: %s", exc)
 
-engine = create_engine(DATABASE_URL, **ENGINE_OPTIONS)
+engine = create_app_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 Base = declarative_base()
 
 
-def init_db() -> None:
-    global _LAST_SCHEMA_INIT_OK, _LAST_DB_STAGE, _LAST_DB_ERROR
+def init_db(force: bool = False, ensure_schema: bool | None = None) -> None:
+    global _LAST_SCHEMA_INIT_OK, _LAST_DB_STAGE, _LAST_DB_ERROR, _INIT_DB_DONE, _INIT_DB_PROFILE
 
+    if _INIT_DB_DONE and not force:
+        return
+    started_at = time.perf_counter()
     from backend import models  # noqa: F401
 
-    if not test_database_connection():
+    select_started_at = time.perf_counter()
+    if not test_database_connection(force=force):
         if is_postgresql_url(DATABASE_URL):
             raise RuntimeError(
                 "Supabase PostgreSQL SELECT 1 failed. "
@@ -904,15 +965,36 @@ def init_db() -> None:
                 f"Last error: {_LAST_DB_ERROR}"
             )
         raise RuntimeError(f"DB SELECT 1 failed: {_LAST_DB_ERROR}")
+    select_elapsed = time.perf_counter() - select_started_at
+
+    if ensure_schema is None:
+        ensure_schema = is_sqlite_url(DATABASE_URL)
+    if not ensure_schema:
+        _LAST_SCHEMA_INIT_OK = True
+        _LAST_DB_ERROR = ""
+        _INIT_DB_DONE = True
+        _INIT_DB_PROFILE = {
+            "select_1_seconds": select_elapsed,
+            "schema_seconds": 0.0,
+            "total_seconds": time.perf_counter() - started_at,
+        }
+        return
 
     if is_sqlite_url(DATABASE_URL):
         try:
+            schema_started_at = time.perf_counter()
             _LAST_DB_STAGE = "sqlite_schema_init"
             repair_sqlite_schema()
             Base.metadata.create_all(bind=engine)
             ensure_sqlite_columns()
             _LAST_SCHEMA_INIT_OK = True
             _LAST_DB_ERROR = ""
+            _INIT_DB_DONE = True
+            _INIT_DB_PROFILE = {
+                "select_1_seconds": select_elapsed,
+                "schema_seconds": time.perf_counter() - schema_started_at,
+                "total_seconds": time.perf_counter() - started_at,
+            }
         except Exception as exc:
             _LAST_SCHEMA_INIT_OK = False
             _LAST_DB_STAGE = "sqlite_schema_init"
@@ -927,14 +1009,22 @@ def init_db() -> None:
             ensure_sqlite_columns()
             _LAST_SCHEMA_INIT_OK = True
             _LAST_DB_ERROR = ""
+            _INIT_DB_DONE = True
         return
 
     try:
+        schema_started_at = time.perf_counter()
         _LAST_DB_STAGE = "postgres_schema_init"
         Base.metadata.create_all(bind=engine)
         ensure_postgresql_columns()
         _LAST_SCHEMA_INIT_OK = True
         _LAST_DB_ERROR = ""
+        _INIT_DB_DONE = True
+        _INIT_DB_PROFILE = {
+            "select_1_seconds": select_elapsed,
+            "schema_seconds": time.perf_counter() - schema_started_at,
+            "total_seconds": time.perf_counter() - started_at,
+        }
     except Exception as exc:
         _LAST_SCHEMA_INIT_OK = False
         _LAST_DB_STAGE = "postgres_schema_init"
@@ -955,7 +1045,7 @@ def switch_to_runtime_sqlite_copy() -> None:
     CONNECT_ARGS = database_connect_args(DATABASE_URL)
     ENGINE_OPTIONS = database_engine_options(DATABASE_URL)
     engine.dispose()
-    engine = create_engine(DATABASE_URL, **ENGINE_OPTIONS)
+    engine = create_app_engine(DATABASE_URL)
     SessionLocal.configure(bind=engine)
 
 

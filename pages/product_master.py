@@ -973,7 +973,7 @@ def product_master_available() -> bool:
     if init_db is None or SessionLocal is None or services is None:
         return False
     try:
-        init_db()
+        init_db(ensure_schema=False)
     except Exception as exc:
         global PRODUCT_MASTER_IMPORT_ERROR
         PRODUCT_MASTER_IMPORT_ERROR = f"상품 마스터 DB 초기화 실패: {exc}"

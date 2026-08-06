@@ -165,7 +165,7 @@ def load_database_warehouse_layout_store() -> dict:
     if SessionLocal is None or WarehouseLayout is None or init_db is None:
         return empty_warehouse_layout_store()
     try:
-        init_db()
+        init_db(ensure_schema=False)
         with SessionLocal() as db:
             rows = (
                 db.execute(
@@ -201,7 +201,7 @@ def save_database_warehouse_layout_store(payload: dict) -> int:
 
     saved = 0
     try:
-        init_db()
+        init_db(ensure_schema=False)
         with SessionLocal() as db:
             for building, floors in locations.items():
                 if building not in LOCATIONS or not isinstance(floors, dict):
@@ -1048,7 +1048,7 @@ def warehouse_available() -> bool:
     if init_db is None or SessionLocal is None or services is None:
         return False
     try:
-        init_db()
+        init_db(ensure_schema=False)
     except Exception as exc:
         global WAREHOUSE_IMPORT_ERROR
         WAREHOUSE_IMPORT_ERROR = f"창고관리 DB 초기화 실패: {exc}"

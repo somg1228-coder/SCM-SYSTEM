@@ -37,6 +37,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 RETURN_CASE_DB_PATH = BASE_DIR / "ReturnCaseSystem" / "cases.db"
 SCHEDULE_DB_PATH = BASE_DIR / "data" / "schedule.db"
 SOURCE_TYPES = ["3PL", "오프라인", "창고"]
+_DASHBOARD_READY = False
 
 
 def render_html(markup: str) -> None:
@@ -75,14 +76,18 @@ def render_dashboard() -> None:
 
 
 def dashboard_available() -> bool:
+    global _DASHBOARD_READY
+    if _DASHBOARD_READY:
+        return True
     if init_db is None or SessionLocal is None or services is None:
         return False
     try:
-        init_db()
+        init_db(ensure_schema=False)
     except Exception as exc:
         global DASHBOARD_IMPORT_ERROR
         DASHBOARD_IMPORT_ERROR = f"재고관리 DB 초기화 실패: {exc}"
         return False
+    _DASHBOARD_READY = True
     return True
 
 
@@ -96,6 +101,7 @@ def with_db(action):
         db.close()
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_home_inventory_summary() -> dict:
     default_summary = {
         "sku_count": 0,
@@ -143,6 +149,7 @@ def build_home_inventory_payload(db, work_date: date) -> dict:
     }
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_home_purchase_summary(work_date: date) -> dict:
     trend_days = dashboard_purchase_trend_days()
     default = {
@@ -560,6 +567,7 @@ def get_recent_inbound_rows(db, limit: int = 5) -> list[dict]:
     ]
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_return_case_summary(work_date: date) -> dict:
     current_year = work_date.year if hasattr(work_date, "year") else date.today().year
     summary = {
@@ -819,6 +827,7 @@ def render_line_chart(rows: list[dict]) -> None:
     st.line_chart(df.set_index("date")["value"])
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def weekly_schedule_html() -> str:
     week_start, days = get_dashboard_week_schedule()
     week_end = week_start + pd.Timedelta(days=6)
@@ -896,6 +905,7 @@ def get_dashboard_week_schedule() -> tuple[pd.Timestamp, list[tuple[str, list[st
     return week_start, days
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_dashboard_core_tasks(limit: int = 8) -> dict:
     today = pd.Timestamp(date.today())
     current_week_start = today - pd.Timedelta(days=today.weekday())

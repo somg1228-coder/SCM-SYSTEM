@@ -1,6 +1,7 @@
 from pathlib import Path
 import importlib
 import logging
+import time
 import traceback
 
 import pandas as pd
@@ -16,8 +17,7 @@ APP_ERROR_LOG_PATH = BASE_DIR / "data" / "app_error.log"
 
 def import_page_module(module_name: str, label: str):
     try:
-        module = importlib.import_module(module_name)
-        return importlib.reload(module)
+        return importlib.import_module(module_name)
     except Exception as exc:
         log_app_exception(exc)
         st.error(f"{label} 화면을 불러오지 못했습니다. 배포 로그와 아래 오류를 확인해주세요.")
@@ -52,7 +52,7 @@ def verify_database_startup() -> dict:
     try:
         from backend.database import database_status, init_db
 
-        init_db()
+        init_db(ensure_schema=False)
         status = database_status()
     except Exception as exc:
         log_app_exception(exc)
@@ -267,23 +267,26 @@ def sync_query_params_to_state() -> None:
 
 
 def main() -> None:
+    started_at = time.perf_counter()
     st.set_page_config(
         page_title="SCM 물류운영포털",
         layout="wide",
         initial_sidebar_state="expanded",
     )
     load_css()
-    database_status = verify_database_startup()
     sync_query_params_to_state()
 
-    page = importlib.reload(sidebar_component).render_sidebar()
+    page = sidebar_component.render_sidebar()
     st.session_state["page"] = page
+
+    database_status = verify_database_startup()
     render_sidebar_config_summary(database_status)
 
     if page != "반품/AS 관리":
         render_header(page)
     render_page(page)
     load_css()
+    st.session_state["last_app_render_seconds"] = round(time.perf_counter() - started_at, 3)
 
 
 if __name__ == "__main__":
