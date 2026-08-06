@@ -13463,6 +13463,52 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     -webkit-text-fill-color: #26384A !important;
 }
 
+/* Lazy tab selector: keep inventory tabs visually close to the original Streamlit tab rail. */
+.stApp [data-testid="stSegmentedControl"] {
+    margin: 0.15rem 0 0.85rem !important;
+}
+
+.stApp [data-testid="stSegmentedControl"] [role="radiogroup"] {
+    align-items: flex-end !important;
+    background: transparent !important;
+    border-bottom: 1px solid var(--beige-line) !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 0.15rem !important;
+    padding: 0 !important;
+}
+
+.stApp [data-testid="stSegmentedControl"] label,
+.stApp [data-testid="stSegmentedControl"] button {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: var(--beige-muted) !important;
+    -webkit-text-fill-color: var(--beige-muted) !important;
+    font-size: 0.9rem !important;
+    font-weight: 700 !important;
+    min-height: 2.2rem !important;
+    padding: 0.42rem 0.65rem !important;
+}
+
+.stApp [data-testid="stSegmentedControl"] label[aria-checked="true"],
+.stApp [data-testid="stSegmentedControl"] button[aria-pressed="true"],
+.stApp [data-testid="stSegmentedControl"] [aria-selected="true"] {
+    background: #E8E1D6 !important;
+    border-color: #CDBFAE !important;
+    color: #26384A !important;
+    -webkit-text-fill-color: #26384A !important;
+    box-shadow: inset 0 -3px 0 #58799A, 0 5px 12px rgba(45, 38, 30, 0.035) !important;
+}
+
+.stApp [data-testid="stSegmentedControl"] label[aria-checked="true"] *,
+.stApp [data-testid="stSegmentedControl"] button[aria-pressed="true"] *,
+.stApp [data-testid="stSegmentedControl"] [aria-selected="true"] * {
+    color: #26384A !important;
+    -webkit-text-fill-color: #26384A !important;
+}
+
 /* Responsive layout guard: keep sidebar and dashboard cards inside every viewport. */
 :root {
     --responsive-sidebar-width: clamp(184px, 15vw, 232px);

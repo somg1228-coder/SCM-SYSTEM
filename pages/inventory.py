@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import delete, func, select
 
+from components.lazy_tabs import lazy_tab_selector
 from pages import product_master as product_master_page
 
 try:
@@ -87,6 +88,8 @@ def render_inventory_page() -> None:
         return
 
     sync_inventory_filter_from_query()
+    render_inventory_page_lazy()
+    return
 
     current_tab, safe_tab, history_tab, mrp_tab, recommend_tab, material_tab = st.tabs(
         ["현재재고", "안전재고", "재고이력", "MRP", "발주추천", "자재/반제품"]
@@ -132,6 +135,44 @@ def inventory_available() -> bool:
         INVENTORY_IMPORT_ERROR = f"재고관리 DB 초기화 실패: {exc}"
         return False
     return True
+
+
+def render_inventory_page_lazy() -> None:
+    main_sections = ["현재재고", "안전재고", "재고이력", "MRP", "발주추천", "자재/반제품"]
+    selected_section = lazy_tab_selector(main_sections, "inventory_main_section")
+
+    if selected_section == "현재재고":
+        render_inventory_list_panel()
+        render_outbound_history_linked_panel()
+        source_sections = ["3PL", "오프라인", "창고관리"]
+        selected_source = lazy_tab_selector(source_sections, "inventory_current_source")
+        source_map = {"3PL": "3PL", "오프라인": "오프라인", "창고관리": "창고"}
+        render_source_inventory_tabs_lazy(source_map[selected_source])
+    elif selected_section == "안전재고":
+        render_safe_stock_tab()
+    elif selected_section == "재고이력":
+        render_stock_history_tab()
+    elif selected_section == "MRP":
+        render_mrp_tab()
+    elif selected_section == "발주추천":
+        render_purchase_recommendation_tab()
+    elif selected_section == "자재/반제품":
+        render_material_inventory_tab()
+
+
+def render_source_inventory_tabs_lazy(source_type: str) -> None:
+    tab_sections = ["재고조회", "입고내역", "출고내역", "대시보드", "마스터 관리"]
+    selected_tab = lazy_tab_selector(tab_sections, f"inventory_{source_key(source_type)}_section")
+    if selected_tab == "재고조회":
+        render_daily_tab(source_type)
+    elif selected_tab == "입고내역":
+        render_inbound_tab(source_type)
+    elif selected_tab == "출고내역":
+        render_outbound_tab(source_type)
+    elif selected_tab == "대시보드":
+        render_inventory_dashboard_tab(source_type)
+    elif selected_tab == "마스터 관리":
+        product_master_page.render_master_tab(source_type, master_title(source_type))
 
 
 def with_db(action):
