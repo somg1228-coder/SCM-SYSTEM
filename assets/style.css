@@ -14750,3 +14750,48 @@ section.main,
     visibility: visible !important;
     -webkit-text-fill-color: #334155 !important;
 }
+/* Absolute final Streamlit Cloud body repair.
+   The sidebar guard above must not collapse the main app shell. */
+[data-testid="stAppViewContainer"] {
+    align-items: stretch !important;
+    display: flex !important;
+    flex-direction: row !important;
+    min-height: 100vh !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    width: 100% !important;
+}
+
+[data-testid="stMain"],
+section.main,
+.main {
+    display: block !important;
+    flex: 1 1 auto !important;
+    margin-left: 0 !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    opacity: 1 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    position: relative !important;
+    transform: none !important;
+    visibility: visible !important;
+    width: auto !important;
+}
+
+[data-testid="stMainBlockContainer"],
+[data-testid="stAppViewBlockContainer"],
+[data-testid="stMain"] .block-container,
+.main .block-container {
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    max-width: none !important;
+    min-height: 100vh !important;
+    min-width: 0 !important;
+    opacity: 1 !important;
+    position: relative !important;
+    transform: none !important;
+    visibility: visible !important;
+    width: 100% !important;
+}
