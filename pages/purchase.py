@@ -29,6 +29,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from components.lazy_tabs import lazy_tab_selector
+
 try:
     from backend import services
     from backend.database import SessionLocal, init_db, reset_sqlite_engine_after_write_error
@@ -203,6 +205,9 @@ def render_purchase_page() -> None:
         st.error(PURCHASE_IMPORT_ERROR or "구매관리 DB를 초기화하지 못했습니다.")
         return
 
+    render_purchase_page_lazy()
+    return
+
     pr_tab, rfq_tab, po_tab, supplier_tab, budget_tab, price_tab, kpi_tab, doc_tab = st.tabs(
         ["구매요청(PR)", "견적관리(RFQ)", "발주관리(PO)", "협력사관리", "예산관리", "단가이력", "구매 KPI", "문서/다운로드"]
     )
@@ -234,6 +239,21 @@ def purchase_available() -> bool:
         PURCHASE_IMPORT_ERROR = f"구매관리 DB 초기화 실패: {exc}"
         return False
     return True
+
+
+def render_purchase_page_lazy() -> None:
+    sections = {
+        "구매요청(PR)": render_pr_tab,
+        "견적관리(RFQ)": render_rfq_tab,
+        "발주관리(PO)": render_po_tab,
+        "협력사관리": render_supplier_tab,
+        "예산관리": render_budget_tab,
+        "단가이력": render_price_history_tab,
+        "구매 KPI": render_kpi_tab,
+        "문서/다운로드": render_document_tab,
+    }
+    selected_section = lazy_tab_selector(list(sections), "purchase_main_section")
+    sections[selected_section]()
 
 
 def with_db(action):

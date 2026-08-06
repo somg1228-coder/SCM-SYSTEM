@@ -4,7 +4,6 @@ import logging
 import time
 import traceback
 
-import pandas as pd
 import streamlit as st
 
 from components.header import render_header
@@ -52,10 +51,15 @@ def log_app_exception(exc: BaseException) -> None:
         pass
 
 
+@st.cache_data(show_spinner=False)
+def read_css_text(css_path: str, mtime: float) -> str:
+    return Path(css_path).read_text(encoding="utf-8")
+
+
 def load_css() -> None:
     css_path = BASE_DIR / "assets" / "style.css"
     if css_path.exists():
-        st.markdown(f"<style>{css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+        st.markdown(f"<style>{read_css_text(str(css_path), css_path.stat().st_mtime)}</style>", unsafe_allow_html=True)
 
 
 def database_status_nonblocking() -> dict:
@@ -78,6 +82,7 @@ def database_status_nonblocking() -> dict:
 def render_startup_config_diagnostics() -> None:
     try:
         from backend.config import config_key_diagnostics
+        import pandas as pd
     except Exception:
         return
     rows = []
@@ -125,6 +130,24 @@ def render_sidebar_config_summary(status: dict) -> None:
             st.caption(f"DB host={host} port={port or '-'}")
         if use_diag.get("streamlit_secret_error") or db_diag.get("streamlit_secret_error"):
             st.caption(use_diag.get("streamlit_secret_error") or db_diag.get("streamlit_secret_error"))
+
+
+def render_sidebar_status_placeholder() -> None:
+    with st.sidebar.expander("Database status", expanded=False):
+        status = st.session_state.get("last_database_status")
+        if isinstance(status, dict):
+            if status.get("supabase_db_enabled") and status.get("is_postgresql"):
+                st.success("Supabase configured")
+            elif status.get("is_sqlite"):
+                st.warning("SQLite in use")
+            else:
+                st.caption(status.get("message") or "Database status cached.")
+            host = status.get("host") or ""
+            port = status.get("port") or ""
+            if host:
+                st.caption(f"DB host={host} port={port or '-'}")
+        else:
+            st.caption("Live diagnostics run from Admin.")
 
 
 def render_placeholder(active_menu: str) -> None:
@@ -327,8 +350,7 @@ def main() -> None:
     if page != "반품/AS 관리":
         render_header(page)
     render_page(page)
-    render_sidebar_config_summary(database_status_nonblocking())
-    load_css()
+    render_sidebar_status_placeholder()
     st.session_state["last_app_render_seconds"] = round(time.perf_counter() - started_at, 3)
 
 

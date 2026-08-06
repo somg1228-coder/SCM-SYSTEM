@@ -13,6 +13,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 from sqlalchemy import select
 
+from components.lazy_tabs import lazy_tab_selector
+
 try:
     from backend.config import config_text_value
     from backend.database import (
@@ -597,6 +599,34 @@ def render_warehouse3d_page() -> None:
     racks = build_rack_layout(inventory_rows, floor)
     summary = warehouse_summary(racks, inventory_rows)
     render_summary(summary, work_date)
+
+    selected_view = lazy_tab_selector(["3D 배치", "재고 위치표"], "warehouse3d_view")
+    if selected_view == "3D 배치":
+        components.html(
+            warehouse_scene3d_html(
+                building=building,
+                floor=floor,
+                drawing_mode=drawing_mode,
+                drawing=drawing,
+                racks=racks,
+                zones=FLOOR_ZONES.get(floor, []),
+                inventory_rows=inventory_rows,
+                shared_layout_store=shared_layout_store,
+            ),
+            height=860,
+            scrolling=True,
+        )
+    else:
+        components.html(
+            warehouse_stock_position_html(
+                building=building,
+                inventory_rows=inventory_rows,
+                shared_layout_store=shared_layout_store,
+            ),
+            height=760,
+            scrolling=True,
+        )
+    return
 
     scene_tab, stock_tab = st.tabs(["3D 배치", "재고 위치표"])
     with scene_tab:

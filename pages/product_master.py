@@ -7,6 +7,8 @@ import re
 import pandas as pd
 import streamlit as st
 
+from components.lazy_tabs import lazy_tab_selector
+
 try:
     from backend.database import SessionLocal, init_db, log_sqlite_writability, reset_sqlite_engine_after_write_error
     from backend import services
@@ -81,6 +83,13 @@ def render_product_master_page() -> None:
     if not product_master_available():
         st.error(PRODUCT_MASTER_IMPORT_ERROR or "상품 마스터 DB를 초기화하지 못했습니다.")
         return
+
+    labels = [label for _, label in SOURCE_TABS]
+    selected_label = lazy_tab_selector(labels, "product_master_source")
+    for source_type, title in SOURCE_TABS:
+        if title == selected_label:
+            render_master_tab(source_type, title)
+            return
 
     tabs = st.tabs([label for _, label in SOURCE_TABS])
     for tab, (source_type, title) in zip(tabs, SOURCE_TABS, strict=True):

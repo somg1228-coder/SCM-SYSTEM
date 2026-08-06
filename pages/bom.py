@@ -8,6 +8,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 from sqlalchemy import delete, select
 
+from components.lazy_tabs import lazy_tab_selector
+
 try:
     from backend.database import SessionLocal, init_db
     from backend.models import CategoryBomItem
@@ -140,6 +142,10 @@ def render_bom_editor(category: str, draft_key: str, current_df: pd.DataFrame) -
         if edit_buffer_key not in st.session_state:
             st.session_state[edit_buffer_key] = prepare_editor_df(current_df)
         edit_buffer = prepare_editor_df(st.session_state[edit_buffer_key])
+        section = lazy_tab_selector([f"{category} BOM", "BOM 등록/수정"], f"bom_editor_section_{safe_key(category)}")
+        if section == f"{category} BOM":
+            render_bom_outline_view(current_df, category)
+            return
         view_tab, edit_tab = st.tabs([f"{category} BOM", "BOM 등록/수정"])
 
         with view_tab:
