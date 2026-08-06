@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 import pandas as pd
 import streamlit as st
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, distinct, func, select
 
 try:
     from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available
@@ -40,6 +40,12 @@ RETURN_CASE_DB_PATH = BASE_DIR / "ReturnCaseSystem" / "cases.db"
 SCHEDULE_DB_PATH = BASE_DIR / "data" / "schedule.db"
 SOURCE_TYPES = ["3PL", "오프라인", "창고"]
 _DASHBOARD_READY = False
+PURCHASE_PR_PENDING_STATUSES = ["작성", "상신"]
+PURCHASE_PR_OPEN_STATUSES = ["작성", "상신", "승인"]
+PO_INBOUND_DONE = "입고완료"
+PO_INBOUND_WAITING_STATUSES = ["입고대기", "부분입고"]
+PO_PROGRESS_DONE = "발주완료"
+PO_PROGRESS_CANCELED = "취소"
 
 
 def render_html(markup: str) -> None:
@@ -85,14 +91,51 @@ def timed_dashboard_step(name: str, action):
         raise
 
 
+def dashboard_query_result_size(value) -> str:
+    if isinstance(value, list):
+        return f"rows={len(value)}"
+    if hasattr(value, "__len__") and not isinstance(value, (str, bytes, dict)):
+        try:
+            return f"rows={len(value)}"
+        except TypeError:
+            pass
+    return type(value).__name__
+
+
+def dashboard_query(metrics: dict, db, label: str, statement, mode: str = "all"):
+    started_at = time.perf_counter()
+    metrics["count"] = int(metrics.get("count", 0)) + 1
+    log_dashboard_event(f"sql {label} start")
+    result = db.execute(statement)
+    if mode == "one":
+        value = result.one()
+    elif mode == "scalar":
+        value = result.scalar()
+    elif mode == "scalars":
+        value = list(result.scalars())
+    else:
+        value = result.all()
+    elapsed = time.perf_counter() - started_at
+    metrics["seconds"] = float(metrics.get("seconds", 0.0)) + elapsed
+    log_dashboard_event(f"sql {label} done seconds={elapsed:.3f} {dashboard_query_result_size(value)}")
+    return value
+
+
 def render_dashboard() -> None:
     log_dashboard_event("render_dashboard start")
-    inventory_summary = timed_dashboard_step("inventory_summary", get_home_inventory_summary)
+    trend_days = dashboard_purchase_trend_days()
+    dashboard_data = timed_dashboard_step("dashboard_data", lambda: get_dashboard_data(trend_days))
+    inventory_summary = dashboard_data.get("inventory_summary", {})
     work_date = inventory_summary.get("work_date") or date.today()
-    purchase_summary = timed_dashboard_step("purchase_summary", lambda: get_home_purchase_summary(work_date))
-    core_tasks_summary = timed_dashboard_step("core_tasks", get_dashboard_core_tasks)
-    return_case_summary = timed_dashboard_step("return_case_summary", lambda: get_return_case_summary(work_date))
-    weekly_markup = timed_dashboard_step("weekly_schedule", weekly_schedule_html)
+    purchase_summary = dashboard_data.get("purchase_summary", {})
+    core_tasks_summary = dashboard_data.get("core_tasks_summary", {})
+    return_case_summary = dashboard_data.get("return_case_summary", {})
+    weekly_markup = dashboard_data.get("weekly_markup") or weekly_schedule_html()
+    log_dashboard_event(
+        "dashboard_data metrics "
+        f"db_calls={dashboard_data.get('db_call_count', 0)} "
+        f"db_seconds={float(dashboard_data.get('db_seconds', 0.0)):.3f}"
+    )
     log_dashboard_event("dashboard_html render start")
     render_html(
         f"""
@@ -131,6 +174,502 @@ def dashboard_available() -> bool:
         return False
     _DASHBOARD_READY = True
     return True
+
+
+def default_inventory_summary() -> dict:
+    return {
+        "sku_count": 0,
+        "current_stock": 0,
+        "available_stock": 0,
+        "need_inbound_count": 0,
+        "soldout_count": 0,
+        "short_count": 0,
+        "outbound_qty": 0,
+        "inbound_qty": 0,
+        "return_as_count": 0,
+        "work_date": None,
+        "charts": {},
+        "source_status": [],
+        "weekly_3pl_inbound": [],
+        "recent_inbound": [],
+    }
+
+
+def default_purchase_summary(trend_days: int = 7) -> dict:
+    return {
+        "pending_pr_count": 0,
+        "pending_pr_amount": 0,
+        "po_progress_count": 0,
+        "uninbound_amount": 0,
+        "delayed_count": 0,
+        "max_delay_days": 0,
+        "month_amount": 0,
+        "month_change_rate": 0,
+        "trend_days": trend_days,
+        "trend_rows": [],
+        "progress_rows": [],
+        "priority_rows": [],
+        "recent_po_inbound": [],
+    }
+
+
+def default_return_case_summary(work_date: date) -> dict:
+    current_year = work_date.year if hasattr(work_date, "year") else date.today().year
+    return {
+        "total_count": 0,
+        "category_rows": [],
+        "monthly_rows": [{"month": month, "month_key": f"{current_year}{month:02d}", "count": 0} for month in range(1, 13)],
+        "recent_cases": [],
+        "today_count": 0,
+        "week_count": 0,
+        "in_progress_count": 0,
+        "done_count": 0,
+        "delayed_count": 0,
+        "year": current_year,
+    }
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_dashboard_data(trend_days: int = 7) -> dict:
+    started_at = time.perf_counter()
+    metrics = {"count": 0, "seconds": 0.0}
+    inventory_summary = default_inventory_summary()
+    purchase_summary = default_purchase_summary(trend_days)
+    return_case_summary = default_return_case_summary(date.today())
+    core_tasks_summary = default_core_tasks_summary()
+    weekly_markup = ""
+
+    if not dashboard_available():
+        return {
+            "inventory_summary": inventory_summary,
+            "purchase_summary": purchase_summary,
+            "return_case_summary": return_case_summary,
+            "core_tasks_summary": core_tasks_summary,
+            "weekly_markup": weekly_markup,
+            "db_call_count": 0,
+            "db_seconds": 0.0,
+        }
+
+    db = SessionLocal()
+    try:
+        payload = build_dashboard_data_payload(db, trend_days, metrics)
+    finally:
+        db.close()
+
+    inventory_summary = {**inventory_summary, **payload.get("inventory_summary", {})}
+    work_date = inventory_summary.get("work_date") or date.today()
+    return_case_summary = get_return_case_summary(work_date)
+    inventory_summary["return_as_count"] = int(return_case_summary.get("week_count") or return_case_summary.get("total_count") or 0)
+    core_tasks_summary = build_core_tasks_summary_from_schedule(payload.get("production_rows", []))
+    weekly_markup = build_weekly_schedule_html_from_production(payload.get("production_rows", []))
+    purchase_summary = {**purchase_summary, **payload.get("purchase_summary", {})}
+    elapsed = time.perf_counter() - started_at
+    log_dashboard_event(
+        f"dashboard_payload done seconds={elapsed:.3f} "
+        f"db_calls={metrics['count']} db_seconds={metrics['seconds']:.3f}"
+    )
+    return {
+        "inventory_summary": inventory_summary,
+        "purchase_summary": purchase_summary,
+        "return_case_summary": return_case_summary,
+        "core_tasks_summary": core_tasks_summary,
+        "weekly_markup": weekly_markup,
+        "db_call_count": metrics["count"],
+        "db_seconds": round(metrics["seconds"], 3),
+    }
+
+
+def build_dashboard_data_payload(db, trend_days: int, metrics: dict) -> dict:
+    work_date = dashboard_query(metrics, db, "inventory_latest_work_date", select(func.max(InventoryDaily.work_date)), "scalar") or date.today()
+    inventory_summary = build_dashboard_inventory_summary_optimized(db, work_date, metrics)
+    purchase_summary = build_dashboard_purchase_summary_optimized(db, work_date, trend_days, metrics)
+    production_rows = dashboard_query(
+        metrics,
+        db,
+        "production_week_rows",
+        select(ProductionPlan)
+        .where(
+            ProductionPlan.due_date >= week_start_date(work_date),
+            ProductionPlan.due_date <= week_start_date(work_date) + timedelta(days=6),
+            ProductionPlan.status != "취소",
+            ProductionPlan.plan_qty > 0,
+        )
+        .order_by(ProductionPlan.due_date, ProductionPlan.id),
+        "scalars",
+    ) if ProductionPlan is not None else []
+    return {
+        "inventory_summary": inventory_summary,
+        "purchase_summary": purchase_summary,
+        "production_rows": production_rows,
+    }
+
+
+def week_start_date(value: date) -> date:
+    return value - timedelta(days=value.weekday())
+
+
+def build_dashboard_inventory_summary_optimized(db, work_date: date, metrics: dict) -> dict:
+    summary_row = dashboard_query(
+        metrics,
+        db,
+        "inventory_kpi_summary",
+        select(
+            func.count(InventoryDaily.id),
+            func.coalesce(func.sum(InventoryDaily.current_stock), 0),
+            func.coalesce(func.sum(InventoryDaily.available_stock), 0),
+            func.coalesce(func.sum(InventoryDaily.outbound_qty), 0),
+            func.coalesce(func.sum(InventoryDaily.inbound_qty), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
+        ).where(InventoryDaily.work_date == work_date),
+        "one",
+    )
+    source_rows = dashboard_query(
+        metrics,
+        db,
+        "inventory_source_group",
+        select(
+            InventoryDaily.source_type,
+            func.coalesce(func.sum(InventoryDaily.current_stock), 0),
+            func.coalesce(func.sum(InventoryDaily.available_stock), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
+        )
+        .where(InventoryDaily.work_date == work_date)
+        .group_by(InventoryDaily.source_type),
+    )
+    source_lookup = {str(row[0] or ""): row for row in source_rows}
+    source_status = []
+    for source_type in SOURCE_TYPES:
+        row = source_lookup.get(source_type)
+        current_stock = int(row[1] or 0) if row else 0
+        available_stock = int(row[2] or 0) if row else 0
+        problem_count = (int(row[3] or 0) + int(row[4] or 0) + int(row[5] or 0)) if row else 0
+        ratio = round((available_stock / current_stock) * 100) if current_stock > 0 else 0
+        source_status.append(
+            {
+                "name": source_type,
+                "rate": max(0, min(ratio, 100)),
+                "qty": current_stock,
+                "problem_count": problem_count,
+                "tone": source_status_tone(current_stock, ratio, problem_count),
+            }
+        )
+
+    return {
+        "sku_count": int(summary_row[0] or 0),
+        "current_stock": int(summary_row[1] or 0),
+        "available_stock": int(summary_row[2] or 0),
+        "outbound_qty": int(summary_row[3] or 0),
+        "inbound_qty": int(summary_row[4] or 0),
+        "need_inbound_count": int(summary_row[5] or 0),
+        "soldout_count": int(summary_row[6] or 0),
+        "short_count": int(summary_row[7] or 0),
+        "work_date": work_date,
+        "charts": {
+            "stock_by_source": [{"label": str(row[0] or "미분류"), "value": int(row[1] or 0)} for row in source_rows],
+            "stock_by_category": [],
+            "outbound_by_category": [],
+            "stock_trend": [],
+            "outbound_trend": [],
+            "need_inbound_top10": [],
+        },
+        "source_status": source_status,
+        "weekly_3pl_inbound": [],
+        "recent_inbound": [],
+    }
+
+
+def build_dashboard_purchase_summary_optimized(db, work_date: date, trend_days: int, metrics: dict) -> dict:
+    month_start = work_date.replace(day=1)
+    prev_month_end = month_start - timedelta(days=1)
+    prev_month_start = prev_month_end.replace(day=1)
+    progress_filter = (PurchaseOrder.inbound_status != PO_INBOUND_DONE, PurchaseOrder.progress_status != PO_PROGRESS_CANCELED)
+
+    pending_count = dashboard_query(
+        metrics,
+        db,
+        "purchase_pending_pr_count",
+        select(func.count(PurchaseRequest.id)).where(PurchaseRequest.approval_status.in_(PURCHASE_PR_PENDING_STATUSES)),
+        "scalar",
+    ) or 0
+    pending_amount = dashboard_query(
+        metrics,
+        db,
+        "purchase_pending_pr_amount",
+        select(func.coalesce(func.sum(quote_total_expr()), 0))
+        .select_from(PurchaseRequest)
+        .join(RfqQuote, RfqQuote.pr_number == PurchaseRequest.pr_number)
+        .where(PurchaseRequest.approval_status.in_(PURCHASE_PR_PENDING_STATUSES)),
+        "scalar",
+    ) or 0
+    purchase_aggregate = dashboard_query(
+        metrics,
+        db,
+        "purchase_order_aggregate",
+        select(
+            func.coalesce(func.sum(case(((PurchaseOrder.inbound_status != PO_INBOUND_DONE) & (PurchaseOrder.progress_status != PO_PROGRESS_CANCELED), 1), else_=0)), 0),
+            func.coalesce(func.sum(case(((PurchaseOrder.inbound_status != PO_INBOUND_DONE) & (PurchaseOrder.progress_status != PO_PROGRESS_CANCELED), PurchaseOrder.order_amount), else_=0)), 0),
+            func.coalesce(func.sum(case(((PurchaseOrder.inbound_status != PO_INBOUND_DONE) & (PurchaseOrder.progress_status != PO_PROGRESS_CANCELED) & (PurchaseOrder.expected_inbound_date < work_date), 1), else_=0)), 0),
+            func.min(case(((PurchaseOrder.inbound_status != PO_INBOUND_DONE) & (PurchaseOrder.progress_status != PO_PROGRESS_CANCELED) & (PurchaseOrder.expected_inbound_date < work_date), PurchaseOrder.expected_inbound_date), else_=None)),
+            func.coalesce(func.sum(case((PurchaseOrder.order_date >= month_start, PurchaseOrder.order_amount), else_=0)), 0),
+            func.coalesce(func.sum(case(((PurchaseOrder.order_date >= prev_month_start) & (PurchaseOrder.order_date <= prev_month_end), PurchaseOrder.order_amount), else_=0)), 0),
+            func.coalesce(func.sum(case((PurchaseOrder.progress_status == PO_PROGRESS_DONE, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((PurchaseOrder.progress_status == PO_PROGRESS_DONE, PurchaseOrder.order_amount), else_=0)), 0),
+            func.coalesce(func.sum(case(((PurchaseOrder.inbound_status.in_(PO_INBOUND_WAITING_STATUSES)) & (PurchaseOrder.progress_status != PO_PROGRESS_CANCELED), 1), else_=0)), 0),
+            func.coalesce(func.sum(case(((PurchaseOrder.inbound_status.in_(PO_INBOUND_WAITING_STATUSES)) & (PurchaseOrder.progress_status != PO_PROGRESS_CANCELED), PurchaseOrder.order_amount), else_=0)), 0),
+        ).where((PurchaseOrder.order_date <= work_date) | (PurchaseOrder.order_date.is_(None))),
+        "one",
+    )
+    month_amount = purchase_aggregate[4] or 0
+    prev_month_amount = purchase_aggregate[5] or 0
+    rfq_count = dashboard_query(
+        metrics,
+        db,
+        "purchase_rfq_distinct_pr_count",
+        select(func.count(distinct(RfqQuote.pr_number))),
+        "scalar",
+    ) or 0
+    progress_rows = build_purchase_progress_rows_from_aggregate(work_date, pending_count, pending_amount, rfq_count, purchase_aggregate)
+    recent_rows = get_recent_po_inbound_rows_optimized(db, metrics)
+    priority_rows = []
+    trend_rows = []
+    min_delayed_date = purchase_aggregate[3]
+    max_delay_days = (work_date - min_delayed_date).days if hasattr(min_delayed_date, "toordinal") else 0
+    change_rate = ((float(month_amount or 0) - float(prev_month_amount or 0)) / float(prev_month_amount) * 100) if prev_month_amount else (100.0 if month_amount else 0.0)
+    return {
+        "pending_pr_count": int(pending_count or 0),
+        "pending_pr_amount": int(pending_amount or 0),
+        "po_progress_count": int(purchase_aggregate[0] or 0),
+        "uninbound_amount": int(purchase_aggregate[1] or 0),
+        "delayed_count": int(purchase_aggregate[2] or 0),
+        "max_delay_days": max_delay_days,
+        "month_amount": int(month_amount or 0),
+        "month_change_rate": change_rate,
+        "trend_days": trend_days,
+        "trend_rows": trend_rows,
+        "progress_rows": progress_rows,
+        "priority_rows": priority_rows,
+        "recent_po_inbound": recent_rows,
+    }
+
+
+def quote_total_expr():
+    order_qty = case((PurchaseRequest.quantity >= RfqQuote.moq, PurchaseRequest.quantity), else_=RfqQuote.moq)
+    return order_qty * RfqQuote.unit_price + RfqQuote.shipping_fee
+
+
+def build_purchase_progress_rows_from_aggregate(work_date: date, pending_count: int, pending_amount: int, rfq_count: int, row) -> list[dict]:
+    delayed_count = int(row[2] or 0)
+    min_delayed_date = row[3]
+    max_delay_days = (work_date - min_delayed_date).days if hasattr(min_delayed_date, "toordinal") else 0
+    return [
+        {"label": "구매요청 대기", "value": int(pending_count or 0), "caption": f"{int(pending_amount or 0):,}원", "tone": "orange", "href": purchase_link("구매요청(PR)", "pr_pending")},
+        {"label": "견적 진행", "value": int(rfq_count or 0), "caption": "RFQ 등록", "tone": "cyan", "href": purchase_link("견적관리(RFQ)", "rfq_progress")},
+        {"label": "발주 완료", "value": int(row[6] or 0), "caption": f"{int(row[7] or 0):,}원", "tone": "blue", "href": purchase_link("발주관리(PO)", "po_progress")},
+        {"label": "입고 대기", "value": int(row[8] or 0), "caption": f"{int(row[9] or 0):,}원", "tone": "green", "href": purchase_link("발주관리(PO)", "inbound_waiting")},
+        {"label": "납기 지연", "value": delayed_count, "caption": f"최대 {max_delay_days}일", "tone": "red" if delayed_count else "cyan", "href": purchase_link("발주관리(PO)", "po_delay")},
+    ]
+
+
+def get_recent_po_inbound_rows_optimized(db, metrics: dict, limit: int = 5) -> list[dict]:
+    rows = dashboard_query(
+        metrics,
+        db,
+        "purchase_recent_po_5",
+        select(PurchaseOrder)
+        .order_by(PurchaseOrder.updated_at.desc(), PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc())
+        .limit(limit),
+        "scalars",
+    )
+    return recent_po_inbound_rows(rows, limit)
+
+
+def default_core_tasks_summary() -> dict:
+    today = pd.Timestamp(date.today())
+    current_week_start = today - pd.Timedelta(days=today.weekday())
+    return {
+        "week_start": current_week_start,
+        "week_end": current_week_start + pd.Timedelta(days=6),
+        "rows": [],
+        "source": "current",
+    }
+
+
+def build_weekly_schedule_html_from_production(production_rows: list) -> str:
+    week_start, days = get_dashboard_week_schedule_without_production()
+    week_end = week_start + pd.Timedelta(days=6)
+    merge_week_schedule_items(days_to_schedule_map(days), production_schedule_items_from_rows(production_rows, week_start.date()))
+    schedule_by_day = days_to_schedule_map(days)
+    weekdays = ["월", "화", "수", "목", "금", "토", "일"]
+    today = pd.Timestamp(date.today())
+    rebuilt_days = []
+    for index, weekday in enumerate(weekdays):
+        day = week_start + pd.Timedelta(days=index)
+        state = "active" if day.date() == today.date() else ""
+        if index == 5:
+            state = f"{state} blue".strip()
+        if index == 6:
+            state = f"{state} red".strip()
+        rebuilt_days.append((f"{day:%m.%d} ({weekday})", schedule_by_day.get(index) or [], state))
+    cells = "".join(
+        f"""
+        <div class="week-cell {state}">
+            <div class="week-date">{label}</div>
+            <ul>{''.join(f'<li>{escape(str(item))}</li>' for item in items)}</ul>
+        </div>
+        """
+        for label, items, state in rebuilt_days
+    )
+    return f"""
+    <section class="panel schedule-panel">
+        <div class="panel-title-row">
+            <h2>물류 주간 일정표</h2>
+            <div class="week-range">
+                <span>월</span>
+                <strong>{week_start:%Y.%m.%d} ~ {week_end:%Y.%m.%d}</strong>
+                <span>주</span>
+                <span>차</span>
+            </div>
+        </div>
+        <div class="week-board">{cells}</div>
+    </section>
+    """
+
+
+def get_dashboard_week_schedule_without_production() -> tuple[pd.Timestamp, list[tuple[str, list[str], str]]]:
+    today = pd.Timestamp(date.today())
+    current_week_start = today - pd.Timedelta(days=today.weekday())
+    week_start = current_week_start
+    schedule_by_day = {index: [] for index in range(7)}
+    if legacy_store_available is not None and connect_sqlite_compatible is not None and legacy_store_available(SCHEDULE_DB_PATH):
+        try:
+            with connect_sqlite_compatible(SCHEDULE_DB_PATH) as conn:
+                conn.row_factory = sqlite3.Row
+                week_row = conn.execute(
+                    "SELECT id, week_start FROM schedule_weeks WHERE week_start = ?",
+                    (current_week_start.date().isoformat(),),
+                ).fetchone()
+                if week_row is None:
+                    week_row = conn.execute("SELECT id, week_start FROM schedule_weeks ORDER BY week_start DESC LIMIT 1").fetchone()
+                if week_row is not None:
+                    week_start = pd.Timestamp(week_row["week_start"])
+                    rows = conn.execute(
+                        """
+                        SELECT time_label, mon, tue, wed, thu, fri
+                        FROM schedule_slots
+                        WHERE week_id = ?
+                        ORDER BY sort_order, id
+                        """,
+                        (week_row["id"],),
+                    ).fetchall()
+                    schedule_by_day.update(summarize_schedule_slots(rows))
+        except sqlite3.Error:
+            schedule_by_day = {index: [] for index in range(7)}
+    weekdays = ["월", "화", "수", "목", "금", "토", "일"]
+    days = []
+    for index, weekday in enumerate(weekdays):
+        day = week_start + pd.Timedelta(days=index)
+        state = "active" if day.date() == today.date() else ""
+        if index == 5:
+            state = f"{state} blue".strip()
+        if index == 6:
+            state = f"{state} red".strip()
+        days.append((f"{day:%m.%d} ({weekday})", schedule_by_day.get(index) or [], state))
+    return week_start, days
+
+
+def days_to_schedule_map(days: list[tuple[str, list[str], str]]) -> dict[int, list[str]]:
+    return {index: list(items) for index, (_label, items, _state) in enumerate(days)}
+
+
+def production_schedule_items_from_rows(rows: list, week_start: date) -> dict[int, list[str]]:
+    items_by_day = {index: [] for index in range(7)}
+    for row in rows or []:
+        due_date = row.due_date
+        if not due_date:
+            continue
+        day_index = (due_date - week_start).days
+        if 0 <= day_index <= 6:
+            items_by_day[day_index].append(production_schedule_label(row))
+    return {index: compact_schedule_items(items) for index, items in items_by_day.items()}
+
+
+def build_core_tasks_summary_from_schedule(production_rows: list, limit: int = 8) -> dict:
+    summary = get_dashboard_core_tasks_without_production(limit)
+    add_dashboard_production_tasks_from_rows(summary, production_rows, limit)
+    return summary
+
+
+def get_dashboard_core_tasks_without_production(limit: int = 8) -> dict:
+    summary = default_core_tasks_summary()
+    current_week_start = summary["week_start"]
+    if legacy_store_available is None or connect_sqlite_compatible is None or not legacy_store_available(SCHEDULE_DB_PATH):
+        return summary
+    try:
+        with connect_sqlite_compatible(SCHEDULE_DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            week_row = conn.execute(
+                "SELECT id, week_start FROM schedule_weeks WHERE week_start = ?",
+                (current_week_start.date().isoformat(),),
+            ).fetchone()
+            if week_row is None:
+                week_row = conn.execute(
+                    """
+                    SELECT id, week_start
+                    FROM schedule_weeks
+                    WHERE EXISTS (
+                        SELECT 1 FROM schedule_highlights
+                        WHERE schedule_highlights.week_id = schedule_weeks.id
+                    )
+                    ORDER BY week_start DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+                summary["source"] = "latest"
+            if week_row is None:
+                return summary
+            rows = conn.execute(
+                """
+                SELECT title, checked
+                FROM schedule_highlights
+                WHERE week_id = ?
+                ORDER BY checked ASC, sort_order, id
+                LIMIT ?
+                """,
+                (week_row["id"], limit),
+            ).fetchall()
+            week_start = pd.Timestamp(week_row["week_start"])
+            summary.update(
+                {
+                    "week_start": week_start,
+                    "week_end": week_start + pd.Timedelta(days=6),
+                    "rows": [
+                        {"title": str(row["title"] or "").strip(), "checked": bool(row["checked"])}
+                        for row in rows
+                        if str(row["title"] or "").strip()
+                    ],
+                }
+            )
+    except sqlite3.Error:
+        return summary
+    return summary
+
+
+def add_dashboard_production_tasks_from_rows(summary: dict, production_rows: list, limit: int) -> None:
+    rows = summary.setdefault("rows", [])
+    remaining = max(limit - len(rows), 0)
+    if remaining <= 0:
+        return
+    for row in (production_rows or [])[:remaining]:
+        rows.append(
+            {
+                "title": production_core_task_label(row),
+                "checked": str(row.status or "").strip() == "완료",
+            }
+        )
 
 
 def with_db(action, label: str = "db_action"):
