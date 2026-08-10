@@ -85,10 +85,15 @@ LEGACY_LOCATION_MAP = {"밑창고1": "창고1", "옆창고2": "창고2"}
 CANONICAL_LOCATION_BY_LEGACY = {legacy: current for current, legacy in LEGACY_LOCATION_MAP.items()}
 WAREHOUSE_LAYOUT_STORE_NAME = "warehouse3d_layouts.json"
 THREE_VENDOR_DIR = Path(__file__).resolve().parents[1] / "assets" / "vendor" / "three-0.160.0"
+WAREHOUSE3D_COMPONENT_DIR = Path(__file__).resolve().parents[1] / "components" / "warehouse3d_component"
 WAREHOUSE_LAYOUT_API_PORTS = range(8765, 8775)
 _WAREHOUSE_LAYOUT_API_SERVER = None
 _WAREHOUSE_LAYOUT_API_PORT = None
 _WAREHOUSE_LAYOUT_API_LOCK = threading.RLock()
+warehouse3d_scene_component = components.declare_component(
+    "warehouse3d_scene",
+    path=str(WAREHOUSE3D_COMPONENT_DIR),
+)
 
 
 @st.cache_data(show_spinner=False)
@@ -633,6 +638,35 @@ def render_warehouse_layout_sync_tools() -> dict:
     return load_warehouse_layout_store()
 
 
+def handle_warehouse3d_layout_save_request(save_request: dict | None) -> bool:
+    if not isinstance(save_request, dict):
+        return False
+    if save_request.get("action") != "save_layout":
+        return False
+
+    request_id = str(save_request.get("request_id") or "").strip()
+    if not request_id:
+        return False
+    if st.session_state.get("warehouse3d_last_save_request_id") == request_id:
+        return False
+
+    st.session_state["warehouse3d_last_save_request_id"] = request_id
+    payload = save_request.get("payload")
+    if not isinstance(payload, dict) or not warehouse_layout_has_data(payload):
+        st.session_state["warehouse3d_save_notice"] = ("error", "저장할 3D 창고 배치 데이터가 없습니다.")
+        return True
+
+    try:
+        save_warehouse_layout_store(payload)
+    except Exception as exc:
+        write_warehouse_layout_log(f"Streamlit component save failed: {exc}")
+        st.session_state["warehouse3d_save_notice"] = ("error", f"Supabase 저장 실패: {exc}")
+        return True
+
+    st.session_state["warehouse3d_save_notice"] = ("success", "Supabase 저장 완료")
+    return True
+
+
 def warehouse_layout_supabase_browser_config() -> dict:
     if config_text_value is None:
         return {"enabled": False, "url": "", "key": "", "postgresql": app_database_is_postgresql()}
@@ -782,11 +816,18 @@ def render_warehouse3d_page() -> None:
     racks = build_rack_layout(inventory_rows, floor)
     summary = warehouse_summary(racks, inventory_rows)
     render_summary(summary, work_date)
+    save_notice = st.session_state.pop("warehouse3d_save_notice", None)
+    if isinstance(save_notice, tuple) and len(save_notice) == 2:
+        tone, message = save_notice
+        if tone == "success":
+            st.success(message)
+        else:
+            st.error(message)
 
     selected_view = lazy_tab_selector(["3D 배치", "재고 위치표"], "warehouse3d_view")
     if selected_view == "3D 배치":
-        components.html(
-            warehouse_scene3d_html(
+        save_request = warehouse3d_scene_component(
+            html=warehouse_scene3d_html(
                 building=building,
                 floor=floor,
                 drawing_mode=drawing_mode,
@@ -797,8 +838,11 @@ def render_warehouse3d_page() -> None:
                 shared_layout_store=shared_layout_store,
             ),
             height=860,
-            scrolling=True,
+            key=f"warehouse3d_scene_{building}",
+            default=None,
         )
+        if handle_warehouse3d_layout_save_request(save_request):
+            st.rerun()
     else:
         components.html(
             warehouse_stock_position_html(
@@ -2441,7 +2485,7 @@ def warehouse_scene3d_html(
     vendor_sources = warehouse3d_vendor_sources()
     three_source_payload = json.dumps(vendor_sources.get("three", ""))
     controls_source_payload = json.dumps(vendor_sources.get("controls", ""))
-    layout_api_port = ensure_warehouse_layout_api_server()
+    layout_api_port = None
     layout_api_port_payload = json.dumps(layout_api_port)
     inventory_payload = json.dumps(
         [
@@ -3578,9 +3622,7 @@ def warehouse_scene3d_html(
             }}
 
             function scheduleServerLayoutSave(delay = 520) {{
-                if ((!layoutApiUrls.length && !supabaseBrowserConfig?.enabled) || layoutSaveInProgress) return;
-                window.clearTimeout(layoutSaveTimer);
-                layoutSaveTimer = window.setTimeout(persistWarehouseLayoutToServer, delay);
+                return;
             }}
 
             async function persistWarehouseLayoutToServer() {{
@@ -3592,33 +3634,15 @@ def warehouse_scene3d_html(
                 setLayoutSaveStatus("Supabase 저장 중...", "muted");
                 try {{
                     const payload = collectWarehouseLayoutBackup();
-                    const serverSynced = await persistWarehouseLayoutToLocalApi(payload);
-                    if (serverSynced) {{
-                        sharedLayoutStore = payload;
-                        setLayoutSaveStatus(supabaseBrowserConfig?.postgresql ? "Supabase 저장됨" : "로컬 저장됨", "ok");
-                        return true;
-                    }}
-
-                    const requiresSupabase = Boolean(supabaseBrowserConfig?.enabled || supabaseBrowserConfig?.postgresql);
-                    if (requiresSupabase) {{
-                        if (!supabaseBrowserConfig?.enabled) {{
-                            throw new Error("서버 저장 API 연결 실패");
-                        }}
-                        const synced = await persistWarehouseLayoutToSupabase(payload);
-                        if (!synced) {{
-                            throw new Error("Supabase 저장 응답을 확인하지 못했습니다.");
-                        }}
-                        sharedLayoutStore = payload;
-                        setLayoutSaveStatus("Supabase 저장됨", "ok");
-                        return true;
-                    }}
-
-                    const localSynced = await persistWarehouseLayoutToLocalApi(payload, true);
-                    if (!localSynced) {{
-                        throw new Error("로컬 저장 API 응답을 확인하지 못했습니다.");
-                    }}
+                    const requestId = `${{Date.now()}}-${{Math.random().toString(16).slice(2)}}`;
+                    window.parent.postMessage({{
+                        type: "warehouse3d:save_layout",
+                        request_id: requestId,
+                        requested_at: new Date().toISOString(),
+                        payload,
+                    }}, "*");
                     sharedLayoutStore = payload;
-                    setLayoutSaveStatus("로컬 저장됨", "ok");
+                    setLayoutSaveStatus("Supabase 저장 요청 전송됨", "ok");
                     return true;
                 }} catch (error) {{
                     console.warn("Warehouse layout Supabase save failed", error);

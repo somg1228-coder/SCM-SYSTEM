@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <style>
+    html,
+    body {
+      background: transparent;
+      margin: 0;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    iframe {
+      border: 0;
+      display: block;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <iframe id="warehouse3dFrame" title="3D 창고관리"></iframe>
+  <script>
+    const frame = document.getElementById("warehouse3dFrame");
+
+    function sendToStreamlit(type, data = {}) {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type,
+        ...data,
+      }, "*");
+    }
+
+    function setFrameHeight(height) {
+      sendToStreamlit("streamlit:setFrameHeight", { height });
+    }
+
+    function setComponentValue(value) {
+      sendToStreamlit("streamlit:setComponentValue", {
+        value,
+        dataType: "json",
+      });
+    }
+
+    function render(args = {}) {
+      const height = Number(args.height || 860);
+      frame.style.height = `${height}px`;
+      frame.srcdoc = String(args.html || "");
+      setFrameHeight(height);
+    }
+
+    window.addEventListener("message", (event) => {
+      const data = event.data || {};
+      if (data.type === "streamlit:render") {
+        render(data.args || {});
+        return;
+      }
+      if (data.type === "warehouse3d:save_layout") {
+        setComponentValue({
+          action: "save_layout",
+          request_id: data.request_id || `${Date.now()}`,
+          requested_at: data.requested_at || new Date().toISOString(),
+          payload: data.payload || {},
+        });
+      }
+    });
+
+    sendToStreamlit("streamlit:componentReady", { apiVersion: 1 });
+    setFrameHeight(860);
+  </script>
+</body>
+</html>
