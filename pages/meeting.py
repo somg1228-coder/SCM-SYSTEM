@@ -175,16 +175,28 @@ def render_meeting_page() -> None:
             st.rerun()
 
     if st.session_state.get("meeting_pdf_requested"):
-        pdf_bytes = create_meeting_pdf(meta, production_df, events_df, issues, action_df, kpis)
+        st.session_state["meeting_pdf_requested"] = False
+        try:
+            pdf_bytes = create_meeting_pdf(meta, production_df, events_df, issues, action_df, kpis)
+        except Exception as exc:
+            pdf_bytes = None
+            st.error(f"PDF 생성 중 오류가 발생했습니다: {exc}")
         if pdf_bytes:
-            meta["pdf_download_slot"].download_button(
-                "PDF 다운로드",
-                data=pdf_bytes,
-                file_name=f"물류_{meta['meeting_date'].strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
-                key="meeting_pdf_download",
-                use_container_width=True,
-            )
+            st.session_state["meeting_pdf_payload"] = {
+                "bytes": pdf_bytes,
+                "file_name": f"물류_{meta['meeting_date'].strftime('%Y%m%d')}.pdf",
+            }
+
+    pdf_payload = st.session_state.get("meeting_pdf_payload")
+    if isinstance(pdf_payload, dict) and pdf_payload.get("bytes"):
+        meta["pdf_download_slot"].download_button(
+            "PDF 다운로드",
+            data=pdf_payload["bytes"],
+            file_name=pdf_payload.get("file_name") or f"물류_{meta['meeting_date'].strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            key="meeting_pdf_download",
+            use_container_width=True,
+        )
 
     st.markdown("</main>", unsafe_allow_html=True)
 
@@ -242,6 +254,7 @@ def render_control_card() -> dict:
             st.write("")
             if st.button("PDF 생성", key="meeting_pdf_button", type="primary", use_container_width=True):
                 st.session_state.meeting_pdf_requested = True
+                st.session_state.pop("meeting_pdf_payload", None)
             pdf_download_slot = st.empty()
         with history_col:
             st.write("")
@@ -2936,6 +2949,11 @@ def register_korean_pdf_fonts() -> tuple[str, str] | None:
         Path(r"C:\Windows\Fonts"),
         Path.home() / "AppData" / "Local" / "Microsoft" / "Windows" / "Fonts",
         BASE_DIR / "assets" / "fonts",
+        Path("/usr/share/fonts"),
+        Path("/usr/local/share/fonts"),
+        Path("/usr/share/fonts/truetype/nanum"),
+        Path("/usr/share/fonts/opentype/noto"),
+        Path("/usr/share/fonts/truetype/noto"),
     ]
     candidates = [
         ("MalgunGothic", "MalgunGothicBold", "malgun.ttf", "malgunbd.ttf"),
