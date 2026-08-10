@@ -14785,3 +14785,55 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
         display: none !important;
     }
 }
+
+/* Final Streamlit form submit contrast override. Keep this at the very end. */
+.stApp [data-testid="stFormSubmitButton"] button,
+.stApp .stFormSubmitButton > button,
+.stApp .stFormSubmitButton button {
+    background: #F7F3ED !important;
+    border: 1px solid #B8A998 !important;
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+    opacity: 1 !important;
+    font-weight: 850 !important;
+    text-shadow: none !important;
+}
+
+.stApp [data-testid="stFormSubmitButton"] button *,
+.stApp .stFormSubmitButton > button *,
+.stApp .stFormSubmitButton button *,
+.stApp [data-testid="stFormSubmitButton"] button p,
+.stApp .stFormSubmitButton > button p,
+.stApp .stFormSubmitButton button p,
+.stApp [data-testid="stFormSubmitButton"] button span,
+.stApp .stFormSubmitButton > button span,
+.stApp .stFormSubmitButton button span {
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+    opacity: 1 !important;
+    text-shadow: none !important;
+}
+
+.stApp [data-testid="stFormSubmitButton"] button[kind="primary"],
+.stApp .stFormSubmitButton > button[kind="primary"],
+.stApp .stFormSubmitButton button[kind="primary"],
+.stApp [data-testid="stFormSubmitButton"] button[data-testid="stBaseButton-primary"],
+.stApp .stFormSubmitButton > button[data-testid="stBaseButton-primary"],
+.stApp .stFormSubmitButton button[data-testid="stBaseButton-primary"] {
+    background: #E8E1D6 !important;
+    border-color: #A99786 !important;
+    color: #102033 !important;
+    -webkit-text-fill-color: #102033 !important;
+}
+
+.stApp [data-testid="stFormSubmitButton"] button[kind="primary"] *,
+.stApp .stFormSubmitButton > button[kind="primary"] *,
+.stApp .stFormSubmitButton button[kind="primary"] *,
+.stApp [data-testid="stFormSubmitButton"] button[data-testid="stBaseButton-primary"] *,
+.stApp .stFormSubmitButton > button[data-testid="stBaseButton-primary"] *,
+.stApp .stFormSubmitButton button[data-testid="stBaseButton-primary"] * {
+    color: #102033 !important;
+    -webkit-text-fill-color: #102033 !important;
+    opacity: 1 !important;
+    text-shadow: none !important;
+}
