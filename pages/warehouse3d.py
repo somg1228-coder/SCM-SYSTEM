@@ -2608,13 +2608,20 @@ def warehouse_scene3d_html(
                 align-items: center;
                 color: #50645f;
                 display: inline-flex;
-                flex: 1 1 120px;
+                flex: 1 0 100%;
                 font-size: 0.74rem;
                 font-weight: 900;
-                min-height: 34px;
-                min-width: 110px;
-                padding: 0 0.28rem;
-                white-space: nowrap;
+                line-height: 1.35;
+                min-height: 0;
+                min-width: 0;
+                overflow-wrap: anywhere;
+                padding: 0.04rem 0.28rem 0.1rem;
+                white-space: normal;
+                width: 100%;
+                word-break: break-word;
+            }}
+            .layout-save-status:empty {{
+                display: none;
             }}
             .fixture-name-toggle {{
                 align-items: center;
@@ -3551,6 +3558,7 @@ def warehouse_scene3d_html(
             function setLayoutSaveStatus(message, tone = "muted") {{
                 if (!layoutSaveStatus) return;
                 layoutSaveStatus.textContent = message || "";
+                layoutSaveStatus.title = message || "";
                 layoutSaveStatus.style.color = tone === "error" ? "#9f3d3d" : tone === "ok" ? "#3d684f" : "#50645f";
             }}
 

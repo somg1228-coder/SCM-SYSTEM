@@ -17,7 +17,6 @@ try:
     from sqlalchemy import create_engine, inspect
     from sqlalchemy.engine import make_url
     from sqlalchemy.orm import declarative_base, sessionmaker
-    from sqlalchemy.pool import NullPool
     from sqlalchemy.schema import CreateColumn
 except ModuleNotFoundError as exc:
     raise RuntimeError("sqlalchemy가 설치되어 있지 않습니다. `pip install -r requirements.txt` 후 다시 실행해주세요.") from exc
@@ -500,10 +499,9 @@ def database_engine_options(database_url: str) -> dict:
             url = make_url(database_url)
         except Exception:
             url = None
-        if url is not None and url.port == 6543:
-            options["poolclass"] = NullPool
-        else:
-            options.update({"pool_size": 3, "max_overflow": 2, "pool_timeout": 5})
+        pool_size = 5 if url is not None and url.port == 6543 else 3
+        max_overflow = 5 if url is not None and url.port == 6543 else 2
+        options.update({"pool_size": pool_size, "max_overflow": max_overflow, "pool_timeout": 5})
     return options
 
 

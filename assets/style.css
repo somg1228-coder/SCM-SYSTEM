@@ -14476,7 +14476,8 @@ div[class*="st-key-meeting_issue_"] textarea {
 /* BOM/sidebar final priority: this must remain at the end of the stylesheet. */
 :root {
     --portal-sidebar-width: clamp(210px, 14.2vw, 230px);
-    --portal-sidebar-button-h: clamp(48px, 4.9vh, 52px);
+    --portal-sidebar-button-h: clamp(32px, 3.8vh, 36px);
+    --portal-sidebar-gap: clamp(2px, 0.38vh, 4px);
 }
 
 @media (min-width: 761px) {
@@ -14505,11 +14506,21 @@ div[class*="st-key-meeting_issue_"] textarea {
     }
 
     [data-testid="stSidebar"] .block-container {
-        padding: 0.45rem 0.72rem 0.9rem !important;
+        padding: 0.22rem 0.46rem 0.22rem !important;
     }
 
     [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
-        gap: 0.55rem !important;
+        gap: var(--portal-sidebar-gap) !important;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stElementContainer"],
+    [data-testid="stSidebar"] .stButton {
+        margin: 0 !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_group_"],
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] {
+        margin: 0 !important;
     }
 
     [data-testid="stSidebar"] .stButton > button {
@@ -14517,11 +14528,46 @@ div[class*="st-key-meeting_issue_"] textarea {
         border: 1px solid #D8D2C8 !important;
         border-radius: 8px !important;
         color: #26384A !important;
-        font-size: 0.9rem !important;
+        font-size: 0.76rem !important;
         font-weight: 850 !important;
         height: var(--portal-sidebar-button-h) !important;
         min-height: var(--portal-sidebar-button-h) !important;
-        padding: 0 0.72rem !important;
+        padding: 0 0.42rem !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_group_"] button,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button {
+        border-radius: 8px !important;
+        font-size: 0.76rem !important;
+        height: var(--portal-sidebar-button-h) !important;
+        min-height: var(--portal-sidebar-button-h) !important;
+        padding: 0 1.55rem 0 2rem !important;
+    }
+
+    [data-testid="stSidebar"] .stButton > button::before {
+        height: 18px !important;
+        left: 8px !important;
+        width: 18px !important;
+    }
+
+    [data-testid="stSidebar"] .stButton > button::after {
+        height: 12px !important;
+        left: 11px !important;
+        width: 12px !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_group_"] button::before,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button::before {
+        height: 12px !important;
+        left: 12px !important;
+        width: 12px !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_group_"] button::after,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button::after {
+        height: 12px !important;
+        right: 9px !important;
+        width: 12px !important;
     }
 
     [data-testid="stSidebar"] .stButton > button[kind="primary"] {
@@ -14530,5 +14576,40 @@ div[class*="st-key-meeting_issue_"] textarea {
         box-shadow: inset 4px 0 0 #58799A !important;
         color: #26384A !important;
         font-weight: 950 !important;
+    }
+
+    [data-testid="stSidebar"] .stButton > button p,
+    [data-testid="stSidebar"] .stButton > button span,
+    [data-testid="stSidebar"] div[class*="sidebar_group_"] button p,
+    [data-testid="stSidebar"] div[class*="sidebar_group_"] button span,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button p,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button span {
+        font-size: 0.76rem !important;
+        line-height: 1.1 !important;
+    }
+
+    [data-testid="stSidebar"] .sidebar-brand {
+        border-radius: 8px !important;
+        margin-bottom: 0.2rem !important;
+        min-height: 30px !important;
+        padding: 0.18rem 0.42rem !important;
+    }
+
+    [data-testid="stSidebar"] .sidebar-brand-mark {
+        display: none !important;
+    }
+
+    [data-testid="stSidebar"] .sidebar-brand-title,
+    [data-testid="stSidebar"] .sidebar-brand span:last-child {
+        font-size: 0.76rem !important;
+        text-align: center !important;
+    }
+
+    [data-testid="stSidebar"] .sidebar-divider {
+        display: none !important;
+    }
+
+    [data-testid="stSidebar"] .sidebar-meta {
+        display: none !important;
     }
 }

@@ -1414,8 +1414,9 @@ def ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, d
 
 
 def migrate_event_months(conn: sqlite3.Connection) -> None:
+    current_month_expr = "strftime('%Y-%m', 'now')" if legacy_uses_local_sqlite() else "to_char(CURRENT_DATE, 'YYYY-MM')"
     conn.execute(
-        """
+        f"""
         UPDATE meeting_events
         SET event_month = COALESCE(
             (
@@ -1423,7 +1424,7 @@ def migrate_event_months(conn: sqlite3.Connection) -> None:
                 FROM meeting_reports report
                 WHERE report.id = meeting_events.report_id
             ),
-            strftime('%Y-%m', 'now')
+            {current_month_expr}
         )
         WHERE TRIM(COALESCE(event_month, '')) = ''
         """
@@ -1436,7 +1437,7 @@ def clear_seed_rows_once(conn: sqlite3.Connection) -> None:
         return
     clear_seed_rows(conn)
     conn.execute(
-        "INSERT OR REPLACE INTO meeting_meta (key, value) VALUES ('seed_cleanup_done', ?)",
+        "INSERT INTO meeting_meta (key, value) VALUES ('seed_cleanup_done', ?)",
         (datetime.now().isoformat(timespec="seconds"),),
     )
 
