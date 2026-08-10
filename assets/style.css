@@ -14578,6 +14578,33 @@ div[class*="st-key-meeting_issue_"] textarea {
         font-weight: 950 !important;
     }
 
+    [data-testid="stSidebar"] div[class*="sidebar_group_work"] button,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_work"] button {
+        background: #E8EEF7 !important;
+        border-color: #CAD4E0 !important;
+        box-shadow: inset 4px 0 0 #6F86A0 !important;
+        color: #344B63 !important;
+        -webkit-text-fill-color: #344B63 !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_group_ops"] button,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_ops"] button {
+        background: #E8EFE7 !important;
+        border-color: #CBD9CC !important;
+        box-shadow: inset 4px 0 0 #78927B !important;
+        color: #3F5949 !important;
+        -webkit-text-fill-color: #3F5949 !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_group_support"] button,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_support"] button {
+        background: #EFEAF6 !important;
+        border-color: #D7CEE3 !important;
+        box-shadow: inset 4px 0 0 #8B7A9B !important;
+        color: #584B66 !important;
+        -webkit-text-fill-color: #584B66 !important;
+    }
+
     [data-testid="stSidebar"] .stButton > button p,
     [data-testid="stSidebar"] .stButton > button span,
     [data-testid="stSidebar"] div[class*="sidebar_group_"] button p,
@@ -14586,6 +14613,24 @@ div[class*="st-key-meeting_issue_"] textarea {
     [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button span {
         font-size: 0.84rem !important;
         line-height: 1.1 !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_group_work"] button *,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_work"] button * {
+        color: #344B63 !important;
+        -webkit-text-fill-color: #344B63 !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_group_ops"] button *,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_ops"] button * {
+        color: #3F5949 !important;
+        -webkit-text-fill-color: #3F5949 !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_group_support"] button *,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_group_support"] button * {
+        color: #584B66 !important;
+        -webkit-text-fill-color: #584B66 !important;
     }
 
     [data-testid="stSidebar"] .sidebar-brand {
