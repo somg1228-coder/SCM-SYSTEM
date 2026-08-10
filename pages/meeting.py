@@ -239,7 +239,7 @@ def render_production_section(report_id: int) -> pd.DataFrame:
     preview_df = filter_filled_rows(strip_delete_marker_column(current_draft), PRODUCTION_COLUMNS)
     st.markdown(render_table_html(PRODUCTION_COLUMNS, preview_df, "production"), unsafe_allow_html=True)
 
-    with st.expander("생산요청 리스트 편집", expanded=False):
+    with st.expander("생산요청 리스트 편집", expanded=True):
         st.caption("입력한 내용은 생산요청 저장 또는 수정 저장을 눌렀을 때만 반영됩니다. 행 삭제는 삭제 칸을 체크한 뒤 선택 삭제를 누르세요.")
         editor_df = add_delete_marker_column(prepare_production_editor_df(edit_buffer), marker_source=edit_buffer)
         editor_columns = [EDIT_DELETE_COLUMN, *PRODUCTION_COLUMNS]
@@ -314,7 +314,7 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
     render_html(render_event_calendar_html(preview_df, calendar_month, meeting_date, report_id, selected_index))
     st.markdown(render_table_html(EVENT_SUMMARY_COLUMNS, preview_df, "events"), unsafe_allow_html=True)
 
-    with st.expander("행사 일정 편집", expanded=False):
+    with st.expander("행사 일정 편집", expanded=True):
         st.caption("입력한 내용은 행사일정 저장 또는 수정 저장을 눌렀을 때만 반영됩니다. 행 삭제는 삭제 칸을 체크한 뒤 선택 삭제를 누르세요.")
         render_event_product_quick_add(report_id, calendar_month)
         pending_rows = get_pending_event_rows(report_id, calendar_month)
@@ -828,7 +828,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
     preview_df = filter_filled_rows(strip_delete_marker_column(current_draft), ACTION_COLUMNS)
     st.markdown(render_table_html(ACTION_COLUMNS, preview_df, "actions"), unsafe_allow_html=True)
 
-    with st.expander("진행사항 편집", expanded=False):
+    with st.expander("진행사항 편집", expanded=True):
         st.caption("입력한 내용은 진행사항 저장 또는 수정 저장을 눌렀을 때만 반영됩니다. 행 삭제는 삭제 칸을 체크한 뒤 선택 삭제를 누르세요.")
         editor_df = add_delete_marker_column(prepare_action_editor_df(edit_buffer), marker_source=edit_buffer)
         editor_columns = [EDIT_DELETE_COLUMN, *ACTION_COLUMNS]

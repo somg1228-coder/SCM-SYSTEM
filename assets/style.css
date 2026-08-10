@@ -14387,6 +14387,21 @@ div[class*="st-key-meeting_issue_"] textarea {
     -webkit-text-fill-color: var(--beige-ink) !important;
 }
 
+div[class*="st-key-meeting_production_editor_"] [data-testid="stDataEditor"],
+div[class*="st-key-meeting_events_editor_"] [data-testid="stDataEditor"],
+div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] {
+    min-height: 220px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+div[class*="st-key-meeting_production_editor_"] [data-testid="stDataEditor"] canvas,
+div[class*="st-key-meeting_events_editor_"] [data-testid="stDataEditor"] canvas,
+div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] canvas {
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
 /* Dashboard purchase progress: keep all columns inside the card on laptop widths. */
 .dashboard-shell .purchase-progress-panel {
     box-sizing: border-box !important;
