@@ -14674,22 +14674,34 @@ div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] canvas 
     }
 
     [data-testid="stSidebar"] .sidebar-brand {
-        border-radius: 8px !important;
-        margin-bottom: 0.36rem !important;
-        min-height: 42px !important;
-        padding: 0.32rem 0.62rem !important;
+        background: transparent !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        justify-content: flex-start !important;
+        margin: 0 0 0.36rem !important;
+        min-height: 30px !important;
+        padding: 0 0.24rem !important;
     }
 
     [data-testid="stSidebar"] .sidebar-brand-mark {
-        display: block !important;
-        height: 26px !important;
-        width: 26px !important;
+        display: none !important;
+        height: 0 !important;
+        width: 0 !important;
     }
 
     [data-testid="stSidebar"] .sidebar-brand-title,
     [data-testid="stSidebar"] .sidebar-brand span:last-child {
-        font-size: 0.9rem !important;
+        color: #102033 !important;
+        font-size: 1.02rem !important;
+        font-weight: 950 !important;
+        letter-spacing: 0 !important;
         text-align: left !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_nav_settings"],
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_nav_settings"] {
+        display: none !important;
     }
 
     [data-testid="stSidebar"] .sidebar-divider {
