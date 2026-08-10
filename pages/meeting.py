@@ -25,6 +25,7 @@ EVENT_SUMMARY_COLUMNS = ["행사명", "행사기간", "행사품목", "요청수
 ACTION_COLUMNS = ["담당부서/담당자", "진행내용", "수량", "완료예정일", "납기일", "진행상태"]
 EDIT_DELETE_COLUMN = "삭제"
 EVENT_PRODUCT_OPTIONS = ["SKUA", "SKUB", "SKUC", "SKUD", "SKUE"]
+_MEETING_SCHEMA_READY = False
 ISSUE_KEYS = {
     "생산/재고 이슈": "issue_delay",
     "발주진행": "issue_inventory",
@@ -65,6 +66,7 @@ def render_meeting_page() -> None:
 
     if st.session_state.pop("meeting_delete_production_requested", False):
         delete_report_section(report["id"], "meeting_production_requests")
+        clear_meeting_history_cache()
         clear_editor_state(f"meeting_production_editor_{report['id']}")
         clear_editor_state(f"meeting_production_editor_v2_{report['id']}")
         clear_editor_state(f"meeting_production_editor_v3_{report['id']}")
@@ -78,6 +80,7 @@ def render_meeting_page() -> None:
 
     if st.session_state.pop("meeting_delete_events_requested", False):
         delete_event_month(event_month)
+        clear_meeting_history_cache()
         clear_editor_state(f"meeting_events_editor_{report['id']}_{month_key(event_month)}")
         clear_editor_state(f"meeting_events_editor_v2_{report['id']}_{month_key(event_month)}")
         clear_editor_state(f"meeting_events_editor_v3_{report['id']}_{month_key(event_month)}")
@@ -93,6 +96,7 @@ def render_meeting_page() -> None:
 
     if st.session_state.pop("meeting_delete_actions_requested", False):
         delete_report_section(report["id"], "meeting_action_items")
+        clear_meeting_history_cache()
         clear_editor_state(f"meeting_action_editor_v2_{report['id']}")
         clear_editor_state(f"meeting_action_editor_v3_{report['id']}")
         clear_editor_state(f"meeting_action_editor_v4_{report['id']}")
@@ -108,6 +112,7 @@ def render_meeting_page() -> None:
 
     if st.session_state.pop("meeting_save_requested", False):
         save_report_state(report["id"], meta, production_df, events_df, issues, action_df)
+        clear_meeting_history_cache()
         clear_pending_event_rows(report["id"], event_month)
         clear_editor_state(f"meeting_production_editor_{report['id']}")
         clear_editor_state(f"meeting_production_editor_v2_{report['id']}")
@@ -976,6 +981,9 @@ def format_kpi_delta_text(value: str, prefix: str = "전주 대비") -> str:
 
 
 def ensure_schema() -> None:
+    global _MEETING_SCHEMA_READY
+    if _MEETING_SCHEMA_READY:
+        return
     if legacy_uses_local_sqlite():
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with connect_sqlite_compatible(DB_PATH) as conn:
@@ -1054,6 +1062,7 @@ def ensure_schema() -> None:
         )
         migrate_event_months(conn)
         clear_seed_rows_once(conn)
+    _MEETING_SCHEMA_READY = True
 
 
 def get_or_create_report(meeting_date: date, author: str) -> dict:
@@ -1129,6 +1138,7 @@ def load_event_month_df(event_month: date) -> pd.DataFrame:
     return normalize_df(df, EVENT_COLUMNS)
 
 
+@st.cache_data(show_spinner=False, ttl=60)
 def meeting_history_excel_bytes() -> tuple[bytes, int]:
     frames = load_meeting_history_frames()
     output = BytesIO()
@@ -1178,6 +1188,12 @@ def meeting_history_excel_bytes() -> tuple[bytes, int]:
     return output.getvalue(), len(frames["요약"])
 
 
+def clear_meeting_history_cache() -> None:
+    clear_cache = getattr(meeting_history_excel_bytes, "clear", None)
+    if callable(clear_cache):
+        clear_cache()
+
+
 def load_meeting_history_frames() -> dict[str, pd.DataFrame]:
     with connect_sqlite_compatible(DB_PATH) as conn:
         report_ids = meaningful_report_ids(conn)
@@ -1198,10 +1214,10 @@ def load_meeting_history_frames() -> dict[str, pd.DataFrame]:
             SELECT
                 report.meeting_date AS 회의일,
                 report.author AS 작성자,
-                COUNT(DISTINCT production.id) AS '생산요청 건수',
-                COUNT(DISTINCT event.id) AS '행사 건수',
-                COUNT(DISTINCT action.id) AS '진행사항 건수',
-                report.issue_delay AS '생산/재고 이슈',
+                COUNT(DISTINCT production.id) AS "생산요청 건수",
+                COUNT(DISTINCT event.id) AS "행사 건수",
+                COUNT(DISTINCT action.id) AS "진행사항 건수",
+                report.issue_delay AS "생산/재고 이슈",
                 report.issue_inventory AS 발주진행,
                 report.issue_special AS 특이사항,
                 report.updated_at AS 수정일시

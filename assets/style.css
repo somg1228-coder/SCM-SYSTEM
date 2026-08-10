@@ -14495,6 +14495,24 @@ div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] canvas 
     --portal-sidebar-gap: clamp(4px, 0.58vh, 6px);
 }
 
+.stApp {
+    font-size: 15.5px !important;
+}
+
+.stApp label,
+.stApp input,
+.stApp textarea,
+.stApp [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stDataFrame"],
+.stApp [data-testid="stDataEditor"] {
+    font-size: 0.96rem !important;
+}
+
+.stApp .stButton > button,
+.stApp [data-testid="stDownloadButton"] button {
+    font-size: 0.94rem !important;
+}
+
 @media (min-width: 761px) {
     [data-testid="stSidebar"],
     [data-testid="stSidebar"][aria-expanded="true"],
@@ -14543,7 +14561,7 @@ div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] canvas 
         border: 1px solid #D8D2C8 !important;
         border-radius: 8px !important;
         color: #26384A !important;
-        font-size: 0.84rem !important;
+        font-size: 0.9rem !important;
         font-weight: 850 !important;
         height: var(--portal-sidebar-button-h) !important;
         min-height: var(--portal-sidebar-button-h) !important;
@@ -14553,7 +14571,7 @@ div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] canvas 
     [data-testid="stSidebar"] div[class*="sidebar_group_"] button,
     [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button {
         border-radius: 8px !important;
-        font-size: 0.84rem !important;
+        font-size: 0.9rem !important;
         height: var(--portal-sidebar-button-h) !important;
         min-height: var(--portal-sidebar-button-h) !important;
         padding: 0 1.9rem 0 2.55rem !important;
@@ -14651,7 +14669,7 @@ div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] canvas 
     [data-testid="stSidebar"] div[class*="sidebar_group_"] button span,
     [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button p,
     [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button span {
-        font-size: 0.84rem !important;
+        font-size: 0.9rem !important;
         line-height: 1.1 !important;
     }
 
@@ -14676,12 +14694,13 @@ div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] canvas 
     [data-testid="stSidebar"] .sidebar-brand {
         background: transparent !important;
         border: 0 !important;
+        border-bottom: 1px solid #DED6CA !important;
         border-radius: 0 !important;
         box-shadow: none !important;
         justify-content: flex-start !important;
-        margin: 0 0 0.36rem !important;
-        min-height: 30px !important;
-        padding: 0 0.24rem !important;
+        margin: 0.18rem 0 0.34rem !important;
+        min-height: 38px !important;
+        padding: 0.08rem 0.24rem 0.5rem !important;
     }
 
     [data-testid="stSidebar"] .sidebar-brand-mark {
@@ -14693,7 +14712,7 @@ div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] canvas 
     [data-testid="stSidebar"] .sidebar-brand-title,
     [data-testid="stSidebar"] .sidebar-brand span:last-child {
         color: #102033 !important;
-        font-size: 1.02rem !important;
+        font-size: 1.18rem !important;
         font-weight: 950 !important;
         letter-spacing: 0 !important;
         text-align: left !important;
