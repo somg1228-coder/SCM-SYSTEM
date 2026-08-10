@@ -62,6 +62,22 @@ def load_css() -> None:
         st.markdown(f"<style>{read_css_text(str(css_path), css_path.stat().st_mtime)}</style>", unsafe_allow_html=True)
 
 
+def run_sqlite_bootstrap_migration() -> None:
+    if st.session_state.get("sqlite_bootstrap_migration_checked"):
+        return
+    st.session_state["sqlite_bootstrap_migration_checked"] = True
+    try:
+        from backend.sqlite_bootstrap_migration import run_once
+
+        result = run_once()
+        st.session_state["sqlite_bootstrap_migration_result"] = result
+        if result.get("ok") and not result.get("skipped"):
+            st.success("SQLite 기존 업무 데이터 Supabase 이관 완료")
+    except Exception as exc:
+        log_app_exception(exc)
+        st.error(f"SQLite 기존 데이터 Supabase 이관 실패: {exc}")
+
+
 def database_status_nonblocking() -> dict:
     try:
         from backend.database import database_status
@@ -342,6 +358,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     load_css()
+    run_sqlite_bootstrap_migration()
     sync_query_params_to_state()
 
     page = sidebar_component.render_sidebar()
