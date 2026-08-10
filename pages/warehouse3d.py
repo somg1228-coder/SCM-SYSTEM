@@ -3592,19 +3592,23 @@ def warehouse_scene3d_html(
                 setLayoutSaveStatus("Supabase 저장 중...", "muted");
                 try {{
                     const payload = collectWarehouseLayoutBackup();
+                    const serverSynced = await persistWarehouseLayoutToLocalApi(payload);
+                    if (serverSynced) {{
+                        sharedLayoutStore = payload;
+                        setLayoutSaveStatus(supabaseBrowserConfig?.postgresql ? "Supabase 저장됨" : "로컬 저장됨", "ok");
+                        return true;
+                    }}
+
                     const requiresSupabase = Boolean(supabaseBrowserConfig?.enabled || supabaseBrowserConfig?.postgresql);
                     if (requiresSupabase) {{
                         if (!supabaseBrowserConfig?.enabled) {{
-                            throw new Error("SUPABASE_URL 또는 SUPABASE_KEY가 없어 브라우저 Supabase 저장을 실행할 수 없습니다.");
+                            throw new Error("서버 저장 API 연결 실패");
                         }}
                         const synced = await persistWarehouseLayoutToSupabase(payload);
                         if (!synced) {{
                             throw new Error("Supabase 저장 응답을 확인하지 못했습니다.");
                         }}
                         sharedLayoutStore = payload;
-                        persistWarehouseLayoutToLocalApi(payload).catch(error => {{
-                            console.warn("Warehouse layout local API mirror save failed", error);
-                        }});
                         setLayoutSaveStatus("Supabase 저장됨", "ok");
                         return true;
                     }}
