@@ -14555,6 +14555,18 @@ div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] {
     min-height: 260px !important;
 }
 
+div[class*="st-key-meeting_production_editor_"] [data-testid="stDataEditor"] canvas,
+div[class*="st-key-meeting_events_editor_"] [data-testid="stDataEditor"] canvas,
+div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] canvas,
+div[class*="st-key-meeting_production_editor_"] .glideDataEditor canvas,
+div[class*="st-key-meeting_events_editor_"] .glideDataEditor canvas,
+div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
+    background: #FFFEFC !important;
+    background-color: #FFFEFC !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
 @media (min-width: 761px) {
     [data-testid="stSidebar"],
     [data-testid="stSidebar"][aria-expanded="true"],

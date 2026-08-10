@@ -942,6 +942,7 @@ def prepare_event_editor_df(df: pd.DataFrame) -> pd.DataFrame:
     editor_df = normalize_event_editor_df(strip_delete_marker_column(df))
     if editor_df.empty:
         editor_df = blank_editor_display_df(EVENT_COLUMNS)
+        editor_df.insert(0, ROW_ID_COLUMN, [""] * len(editor_df))
     for column in ["행사명", "행사기간", "행사품목", "상세내용"]:
         editor_df[column] = editor_df[column].apply(normalize_cell_value)
     editor_df["요청수량"] = pd.to_numeric(editor_df["요청수량"], errors="coerce").fillna(0).astype(int)
@@ -1376,10 +1377,13 @@ def normalize_editor_df_with_id(df: pd.DataFrame, columns: list[str]) -> pd.Data
 
 
 def blank_editor_display_df(columns: list[str]) -> pd.DataFrame:
-    row = {}
-    for column in columns:
-        row[column] = 0 if column in {"현재수량", "요청수량", "수량"} else ""
-    return pd.DataFrame([row], columns=columns)
+    rows = []
+    for _ in range(3):
+        row = {}
+        for column in columns:
+            row[column] = 0 if column in {"현재수량", "요청수량", "수량"} else ""
+        rows.append(row)
+    return pd.DataFrame(rows, columns=columns)
 
 
 def editor_row_ids(df: pd.DataFrame, expected_length: int) -> list[str]:
