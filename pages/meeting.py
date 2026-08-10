@@ -281,8 +281,19 @@ def render_production_section(report_id: int) -> pd.DataFrame:
                 delete_label="생산요청 전체 삭제",
                 delete_flag="meeting_delete_production_requested",
             )
+            editor_action = edited.attrs.get("editor_row_action") if edited.attrs.get("editor_row_action") != "none" else editor_action
     production_source = current_draft
-    if editor_action == "add_row":
+    if editor_action == "row_plus":
+        production_source = prepare_production_editor_df(apply_editor_row_action(edited, editor_action, editor_key, PRODUCTION_COLUMNS))
+        st.session_state[draft_key] = prepare_production_editor_df(production_source)
+        st.session_state[edit_buffer_key] = add_delete_marker_column(production_source)
+        st.rerun()
+    elif editor_action == "row_minus":
+        production_source = prepare_production_editor_df(apply_editor_row_action(edited, editor_action, editor_key, PRODUCTION_COLUMNS))
+        st.session_state[draft_key] = prepare_production_editor_df(production_source)
+        st.session_state[edit_buffer_key] = add_delete_marker_column(production_source)
+        st.rerun()
+    elif editor_action == "add_row":
         production_source = prepare_production_editor_df(strip_delete_marker_column(edited))
         st.session_state[draft_key] = prepare_production_editor_df(production_source)
         st.session_state[edit_buffer_key] = add_delete_marker_column(production_source)
@@ -356,9 +367,20 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
                 delete_label="행사일정 전체 삭제",
                 delete_flag="meeting_delete_events_requested",
             )
+            editor_action = edited.attrs.get("editor_row_action") if edited.attrs.get("editor_row_action") != "none" else editor_action
     events_source = current_draft
     buffer_source = prepare_event_editor_df(strip_delete_marker_column(edit_buffer))
-    if editor_action == "add_row":
+    if editor_action == "row_plus":
+        events_source = prepare_event_editor_df(merge_event_details(apply_editor_row_action(edited, editor_action, editor_key, EVENT_SUMMARY_COLUMNS), buffer_source))
+        st.session_state[draft_key] = prepare_event_editor_df(events_source)
+        st.session_state[edit_buffer_key] = add_delete_marker_column(events_source)
+        st.rerun()
+    elif editor_action == "row_minus":
+        events_source = prepare_event_editor_df(merge_event_details(apply_editor_row_action(edited, editor_action, editor_key, EVENT_SUMMARY_COLUMNS), buffer_source))
+        st.session_state[draft_key] = prepare_event_editor_df(events_source)
+        st.session_state[edit_buffer_key] = add_delete_marker_column(events_source)
+        st.rerun()
+    elif editor_action == "add_row":
         events_source = prepare_event_editor_df(merge_event_details(strip_delete_marker_column(edited), buffer_source))
         st.session_state[draft_key] = prepare_event_editor_df(events_source)
         st.session_state[edit_buffer_key] = add_delete_marker_column(events_source)
@@ -460,28 +482,25 @@ def render_visible_spreadsheet_editor(
     row_count_key = editor_row_count_key(key_prefix)
     current_row_count = max(blank_rows, len(rows), int(st.session_state.get(row_count_key, 0) or 0))
     st.session_state[row_count_key] = current_row_count
-    for _ in range(max(0, current_row_count - len(rows))):
-        rows.append({EDIT_DELETE_COLUMN: False, ROW_ID_COLUMN: "", **{column: 0 if column in number_columns else "" for column in columns}})
 
     render_spreadsheet_css_once()
     st.markdown('<div class="meeting-visible-editor">', unsafe_allow_html=True)
-    control_cols = st.columns([0.95, 0.95, 4.0], gap="small")
-    next_row_count = control_cols[0].number_input(
-        "표 행 수",
-        min_value=blank_rows,
-        max_value=80,
-        step=1,
-        value=current_row_count,
-        key=f"{key_prefix}_row_count_input",
+    row_action = "none"
+    control_cols = st.columns([0.9, 0.36, 0.36, 4.3], gap="small")
+    control_cols[0].markdown(
+        f'<div class="meeting-row-count-label">입력칸 {current_row_count}행</div>',
+        unsafe_allow_html=True,
     )
-    st.session_state[row_count_key] = int(next_row_count)
-    control_cols[1].caption("기본 3행")
-    control_cols[2].empty()
-    if int(next_row_count) > len(rows):
-        for _ in range(int(next_row_count) - len(rows)):
-            rows.append({EDIT_DELETE_COLUMN: False, ROW_ID_COLUMN: "", **{column: 0 if column in number_columns else "" for column in columns}})
-    elif int(next_row_count) < len(rows):
-        rows = rows[: int(next_row_count)]
+    if control_cols[1].form_submit_button("-", use_container_width=True):
+        row_action = "row_minus"
+    if control_cols[2].form_submit_button("+", use_container_width=True):
+        current_row_count = min(current_row_count + 1, 80)
+        st.session_state[row_count_key] = current_row_count
+        row_action = "row_plus"
+    control_cols[3].caption("기본 3행")
+
+    for _ in range(max(0, current_row_count - len(rows))):
+        rows.append({EDIT_DELETE_COLUMN: False, ROW_ID_COLUMN: "", **{column: 0 if column in number_columns else "" for column in columns}})
 
     header_weights = spreadsheet_column_weights(columns)
     header_cols = st.columns(header_weights, gap="small")
@@ -536,7 +555,9 @@ def render_visible_spreadsheet_editor(
                 )
         edited_rows.append(edited_row)
     st.markdown("</div>", unsafe_allow_html=True)
-    return pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
+    edited_df = pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
+    edited_df.attrs["editor_row_action"] = row_action
+    return edited_df
 
 
 def editor_row_count_key(key_prefix: str) -> str:
@@ -548,6 +569,46 @@ def grow_editor_row_count(key_prefix: str, minimum_count: int) -> None:
     current = int(st.session_state.get(row_count_key, 3) or 3)
     st.session_state[row_count_key] = max(current + 1, minimum_count, 3)
     st.session_state.pop(f"{key_prefix}_row_count_input", None)
+
+
+def apply_editor_row_action(edited: pd.DataFrame, action: str, key_prefix: str, columns: list[str]) -> pd.DataFrame:
+    source = strip_delete_marker_column(edited)
+    if action == "row_plus":
+        st.session_state[editor_row_count_key(key_prefix)] = max(
+            int(st.session_state.get(editor_row_count_key(key_prefix), 3) or 3),
+            len(source),
+            3,
+        )
+        return source
+    if action != "row_minus":
+        return source
+
+    rows = source.to_dict("records")
+    removable_index = None
+    for index in range(len(rows) - 1, 2, -1):
+        if is_blank_editor_row(rows[index], columns):
+            removable_index = index
+            break
+    if removable_index is not None:
+        rows.pop(removable_index)
+    else:
+        st.warning("내용이 있는 행은 - 버튼으로 삭제하지 않습니다. 삭제 체크 후 선택 삭제를 눌러주세요.")
+    st.session_state[editor_row_count_key(key_prefix)] = max(len(rows), 3)
+    return pd.DataFrame(rows, columns=[ROW_ID_COLUMN, *columns])
+
+
+def is_blank_editor_row(row: dict, columns: list[str]) -> bool:
+    if normalize_row_id(row.get(ROW_ID_COLUMN, "")):
+        return False
+    for column in columns:
+        value = row.get(column, "")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if int(value or 0) != 0:
+                return False
+            continue
+        if normalize_cell_value(value):
+            return False
+    return True
 
 
 def spreadsheet_column_weights(columns: list[str]) -> list[float]:
@@ -609,6 +670,19 @@ def render_spreadsheet_css_once() -> None:
             display: flex;
             justify-content: center;
             min-height: 38px;
+        }
+        .meeting-visible-editor .meeting-row-count-label {
+            align-items: center;
+            background: #EDE8E1;
+            border: 1px solid #D8D2C8;
+            border-radius: 6px;
+            color: #102033;
+            display: flex;
+            font-size: 0.86rem;
+            font-weight: 900;
+            min-height: 36px;
+            padding: 0 0.58rem;
+            white-space: nowrap;
         }
         </style>
         """,
@@ -1050,8 +1124,19 @@ def render_action_section(report_id: int) -> pd.DataFrame:
                 delete_label="진행사항 전체 삭제",
                 delete_flag="meeting_delete_actions_requested",
             )
+            editor_action = edited.attrs.get("editor_row_action") if edited.attrs.get("editor_row_action") != "none" else editor_action
     action_source = current_draft
-    if editor_action == "add_row":
+    if editor_action == "row_plus":
+        action_source = prepare_action_editor_df(apply_editor_row_action(edited, editor_action, editor_key, ACTION_COLUMNS))
+        st.session_state[draft_key] = prepare_action_editor_df(action_source)
+        st.session_state[edit_buffer_key] = add_delete_marker_column(action_source)
+        st.rerun()
+    elif editor_action == "row_minus":
+        action_source = prepare_action_editor_df(apply_editor_row_action(edited, editor_action, editor_key, ACTION_COLUMNS))
+        st.session_state[draft_key] = prepare_action_editor_df(action_source)
+        st.session_state[edit_buffer_key] = add_delete_marker_column(action_source)
+        st.rerun()
+    elif editor_action == "add_row":
         action_source = prepare_action_editor_df(strip_delete_marker_column(edited))
         st.session_state[draft_key] = prepare_action_editor_df(action_source)
         st.session_state[edit_buffer_key] = add_delete_marker_column(action_source)
