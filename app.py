@@ -352,7 +352,6 @@ def main() -> None:
     if page != "반품/AS 관리":
         render_header(page)
     render_page(page)
-    render_sidebar_status_placeholder()
     st.session_state["last_app_render_seconds"] = round(time.perf_counter() - started_at, 3)
 
 
