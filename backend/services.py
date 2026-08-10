@@ -589,7 +589,7 @@ def find_product_master_any(
     return preferred_source or "창고", None
 
 
-def purchase_inventory_metrics(db: Session, source_type: str | None = None) -> dict[tuple[str, str], dict]:
+def purchase_inventory_metrics(db: Session, source_type: str | None = None, products: list | None = None) -> dict[tuple[str, str], dict]:
     source_types = [source_type] if source_type else PURCHASE_METRIC_SOURCE_ORDER
     products_by_key: dict[tuple[str, str], object] = {}
     sku_lookup: dict[str, list[tuple[str, object]]] = {}
@@ -597,8 +597,12 @@ def purchase_inventory_metrics(db: Session, source_type: str | None = None) -> d
     barcode_lookup: dict[str, list[tuple[str, object]]] = {}
 
     for product_source in source_types:
-        model = product_master_model(product_source)
-        for product in db.execute(select(model)).scalars():
+        if products is not None and source_type and product_source == source_type:
+            source_products = products
+        else:
+            model = product_master_model(product_source)
+            source_products = db.execute(select(model)).scalars()
+        for product in source_products:
             key = (product_source, product.sku)
             products_by_key[key] = product
             if product.sku:
@@ -663,13 +667,62 @@ def purchase_inventory_metrics(db: Session, source_type: str | None = None) -> d
     return metrics
 
 
-def latest_inbound_metrics(db: Session, source_type: str | None = None) -> dict[tuple[str, str], dict]:
+def product_lookup_maps(products: list) -> tuple[dict[str, object], dict[tuple[str, str], object], dict[str, list], dict[str, list]]:
+    by_sku = {clean_text(product.sku): product for product in products if clean_text(product.sku)}
+    by_barcode_name = {
+        (clean_text(product.barcode), clean_text(product.product_name)): product
+        for product in products
+        if clean_text(product.barcode) and clean_text(product.product_name)
+    }
+    by_barcode: dict[str, list] = {}
+    by_name: dict[str, list] = {}
+    for product in products:
+        barcode = clean_text(product.barcode)
+        name = clean_text(product.product_name)
+        if barcode:
+            by_barcode.setdefault(barcode, []).append(product)
+        if name:
+            by_name.setdefault(name, []).append(product)
+    return by_sku, by_barcode_name, by_barcode, by_name
+
+
+def match_product_from_maps(
+    product_code: str,
+    barcode: str,
+    product_name: str,
+    by_sku: dict[str, object],
+    by_barcode_name: dict[tuple[str, str], object],
+    by_barcode: dict[str, list],
+    by_name: dict[str, list],
+):
+    sku = clean_text(product_code)
+    barcode = clean_text(barcode)
+    product_name = clean_text(product_name)
+    product = by_sku.get(sku)
+    if product is None and barcode and product_name:
+        product = by_barcode_name.get((barcode, product_name))
+    if product is None and barcode and len(by_barcode.get(barcode, [])) == 1:
+        product = by_barcode[barcode][0]
+    if product is None and product_name and len(by_name.get(product_name, [])) == 1:
+        product = by_name[product_name][0]
+    return product
+
+
+def latest_inbound_metrics(db: Session, source_type: str | None = None, products: list | None = None) -> dict[tuple[str, str], dict]:
     query = select(InventoryInbound)
     if source_type:
         query = query.where(InventoryInbound.source_type == source_type)
+    lookup_by_source: dict[str, tuple[dict[str, object], dict[tuple[str, str], object], dict[str, list], dict[str, list]]] = {}
+    if products is not None and source_type:
+        lookup_by_source[source_type] = product_lookup_maps(products)
     metrics: dict[tuple[str, str], dict] = {}
     for inbound in db.execute(query.order_by(InventoryInbound.inbound_date)).scalars():
-        product = find_product_master(db, inbound.source_type, inbound.product_code, inbound.barcode, inbound.product_name)
+        maps = lookup_by_source.get(inbound.source_type)
+        product = (
+            match_product_from_maps(inbound.product_code, inbound.barcode, inbound.product_name, *maps)
+            if maps is not None
+            else find_product_master(db, inbound.source_type, inbound.product_code, inbound.barcode, inbound.product_name)
+        )
         if not product:
             continue
         key = (inbound.source_type, product.sku)
@@ -1736,21 +1789,7 @@ def daily_rows_by_product(db: Session, source_type: str, work_date: date, produc
 
 
 def pending_inbound_qty_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, int]:
-    by_sku = {clean_text(product.sku): product for product in products if clean_text(product.sku)}
-    by_barcode_name = {
-        (clean_text(product.barcode), clean_text(product.product_name)): product
-        for product in products
-        if clean_text(product.barcode) and clean_text(product.product_name)
-    }
-    by_barcode: dict[str, list] = {}
-    by_name: dict[str, list] = {}
-    for product in products:
-        barcode = clean_text(product.barcode)
-        name = clean_text(product.product_name)
-        if barcode:
-            by_barcode.setdefault(barcode, []).append(product)
-        if name:
-            by_name.setdefault(name, []).append(product)
+    by_sku, by_barcode_name, by_barcode, by_name = product_lookup_maps(products)
 
     aggregate_rows = db.execute(
         select(
@@ -1769,16 +1808,7 @@ def pending_inbound_qty_by_product(db: Session, source_type: str, work_date: dat
 
     pending: dict[str, int] = {}
     for product_code, barcode, product_name, quantity in aggregate_rows:
-        sku = clean_text(product_code)
-        barcode = clean_text(barcode)
-        product_name = clean_text(product_name)
-        product = by_sku.get(sku)
-        if product is None and barcode and product_name:
-            product = by_barcode_name.get((barcode, product_name))
-        if product is None and barcode and len(by_barcode.get(barcode, [])) == 1:
-            product = by_barcode[barcode][0]
-        if product is None and product_name and len(by_name.get(product_name, [])) == 1:
-            product = by_name[product_name][0]
+        product = match_product_from_maps(product_code, barcode, product_name, by_sku, by_barcode_name, by_barcode, by_name)
         if product is None:
             continue
         matched_sku = clean_text(product.sku)
@@ -1799,8 +1829,8 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     if active_only:
         query = query.where(model.is_active == "사용")
     products = list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
-    purchase_metrics = purchase_inventory_metrics(db, source_type)
-    inbound_metrics = latest_inbound_metrics(db, source_type)
+    purchase_metrics = purchase_inventory_metrics(db, source_type, products)
+    inbound_metrics = latest_inbound_metrics(db, source_type, products)
     daily_by_sku = daily_rows_by_product(db, source_type, work_date, products)
     pending_by_sku = pending_inbound_qty_by_product(db, source_type, work_date, products)
     rows = []

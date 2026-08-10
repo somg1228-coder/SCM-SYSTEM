@@ -13,7 +13,6 @@ import streamlit as st
 
 from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available, legacy_uses_local_sqlite
 from backend.perf import perf_span
-import streamlit.components.v1 as components
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -1141,6 +1140,8 @@ def render_issue_section(report: dict) -> dict[str, str]:
 
 
 def inject_order_numbering_script(label: str, placeholder: str) -> None:
+    import streamlit.components.v1 as components
+
     components.html(
         f"""
         <script>

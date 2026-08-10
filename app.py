@@ -68,6 +68,18 @@ def load_css() -> None:
 
 
 def run_sqlite_bootstrap_migration() -> None:
+    try:
+        from backend.config import config_bool_value
+
+        supabase_enabled, _ = config_bool_value("SCM_USE_SUPABASE_DB", default=False)
+    except Exception:
+        supabase_enabled = False
+    if supabase_enabled:
+        st.session_state["sqlite_bootstrap_migration_checked"] = True
+        st.session_state["sqlite_bootstrap_migration_result"] = {"ok": True, "skipped": True, "reason": "supabase-production-skip"}
+        log_perf("sqlite_bootstrap_migration SKIP reason=supabase-production")
+        return
+
     if st.session_state.get("sqlite_bootstrap_migration_checked"):
         return
     st.session_state["sqlite_bootstrap_migration_checked"] = True

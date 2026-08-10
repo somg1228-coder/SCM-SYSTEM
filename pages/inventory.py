@@ -763,11 +763,16 @@ def render_daily_tab(source_type: str) -> None:
     download_source_df = filtered_df if download_scope == "현재 필터 결과 다운로드" else base_df
     output_df = download_source_df.drop(columns=["선택"], errors="ignore")
     output_filters = filters if download_scope == "현재 필터 결과 다운로드" else {}
+    output_signature = inventory_output_signature(output_df, output_filters)
     upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
     uploaded_inventory_key = f"{source_type}_uploaded_inventory_df_{work_date.isoformat()}"
     inventory_preview_df_key = f"{source_type}_inventory_preview_df_{work_date.isoformat()}"
     applied_inventory_df_key = f"{source_type}_applied_inventory_df_{work_date.isoformat()}"
     excluded_inventory_df_key = f"{source_type}_excluded_inventory_df_{work_date.isoformat()}"
+    output_payload_key = f"{source_type}_daily_output_payload_{work_date.isoformat()}"
+    payload = st.session_state.get(output_payload_key)
+    if isinstance(payload, dict) and payload.get("signature") != output_signature:
+        st.session_state.pop(output_payload_key, None)
     st.session_state.setdefault("uploaded_inventory_df", None)
     st.session_state.setdefault("inventory_preview_df", None)
     st.session_state.setdefault("applied_inventory_df", None)
@@ -827,35 +832,54 @@ def render_daily_tab(source_type: str) -> None:
             )
             st.rerun()
     with action_cols[3]:
-        pdf_error = ""
-        try:
-            pdf_bytes = inventory_pdf_bytes(output_df, source_type, work_date, output_filters)
-        except Exception as exc:
-            pdf_bytes = b""
-            pdf_error = f"PDF 생성 준비 중 오류가 발생했습니다: {exc}"
-            st.error(pdf_error)
-        st.download_button(
-            "PDF 생성",
-            data=pdf_bytes,
-            file_name=inventory_file_name("pdf", output_df, output_filters),
-            mime="application/pdf",
-            use_container_width=True,
-            key=f"{source_type}_daily_pdf_download_{work_date}",
-            disabled=bool(pdf_error),
-            on_click=record_inventory_output,
-            args=(source_type, work_date, "PDF", output_filters, len(output_df)),
-        )
+        payload = st.session_state.get(output_payload_key, {})
+        if st.button("PDF 준비", key=f"{source_type}_daily_pdf_prepare_{work_date}", use_container_width=True):
+            try:
+                with perf_span("inventory.output_pdf_build", source=source_type, rows=len(output_df)):
+                    payload = {
+                        **payload,
+                        "signature": output_signature,
+                        "pdf": inventory_pdf_bytes(output_df, source_type, work_date, output_filters),
+                        "pdf_filters": output_filters,
+                        "pdf_count": len(output_df),
+                    }
+                st.session_state[output_payload_key] = payload
+            except Exception as exc:
+                st.error(f"PDF 생성 준비 중 오류가 발생했습니다: {exc}")
+        if isinstance(payload, dict) and payload.get("pdf"):
+            st.download_button(
+                "PDF 다운로드",
+                data=payload["pdf"],
+                file_name=inventory_file_name("pdf", output_df, output_filters),
+                mime="application/pdf",
+                use_container_width=True,
+                key=f"{source_type}_daily_pdf_download_{work_date}",
+                on_click=record_inventory_output,
+                args=(source_type, work_date, "PDF", payload.get("pdf_filters", output_filters), int(payload.get("pdf_count") or len(output_df))),
+            )
     with action_cols[4]:
-        st.download_button(
-            "엑셀 다운로드",
-            data=dataframe_to_excel(output_df),
-            file_name=inventory_file_name("xlsx", output_df, output_filters),
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key=f"{source_type}_daily_download_{work_date}",
-            on_click=record_inventory_output,
-            args=(source_type, work_date, "EXCEL", output_filters, len(output_df)),
-        )
+        payload = st.session_state.get(output_payload_key, {})
+        if st.button("엑셀 준비", key=f"{source_type}_daily_excel_prepare_{work_date}", use_container_width=True):
+            with perf_span("inventory.output_excel_build", source=source_type, rows=len(output_df)):
+                payload = {
+                    **payload,
+                    "signature": output_signature,
+                    "excel": dataframe_to_excel(output_df),
+                    "excel_filters": output_filters,
+                    "excel_count": len(output_df),
+                }
+            st.session_state[output_payload_key] = payload
+        if isinstance(payload, dict) and payload.get("excel"):
+            st.download_button(
+                "엑셀 다운로드",
+                data=payload["excel"],
+                file_name=inventory_file_name("xlsx", output_df, output_filters),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"{source_type}_daily_download_{work_date}",
+                on_click=record_inventory_output,
+                args=(source_type, work_date, "EXCEL", payload.get("excel_filters", output_filters), int(payload.get("excel_count") or len(output_df))),
+            )
     with action_cols[5]:
         st.caption(f"전체 {len(base_df):,}개 중 {len(filtered_df):,}개 표시 · {page}/{total_pages} 페이지")
 
@@ -1200,6 +1224,17 @@ def fetch_daily(source_type: str, work_date: date) -> list[dict]:
 
 def fetch_master_inventory(source_type: str, work_date: date) -> list[dict]:
     return with_db(lambda db: services.master_based_inventory_rows(db, source_type, work_date)) or []
+
+
+def inventory_output_signature(df: pd.DataFrame, filters: dict) -> tuple:
+    if df is None or df.empty:
+        row_marker = ("empty", 0)
+    else:
+        sample_columns = [column for column in ("바코드", "상품명", "현재고", "가용재고") if column in df.columns]
+        sample = tuple(tuple(clean_cell(value) for value in row) for row in df[sample_columns].head(5).fillna("").to_numpy())
+        row_marker = (len(df), sample)
+    filter_marker = tuple(sorted((str(key), str(value)) for key, value in (filters or {}).items()))
+    return row_marker, filter_marker
 
 
 def inventory_filter_multiselect(container, label: str, options: list[str], key: str) -> list[str]:
