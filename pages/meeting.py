@@ -226,15 +226,6 @@ def inject_page_css() -> None:
         .meeting-shell .meeting-table-wrap td {
             padding: 0.52rem 0.62rem !important;
         }
-        .meeting-shell .meeting-calendar {
-            font-size: 0.92rem !important;
-        }
-        .meeting-shell .meeting-calendar-day strong {
-            font-size: 0.96rem !important;
-        }
-        .meeting-shell .meeting-event-chip {
-            font-size: 0.78rem !important;
-        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -394,7 +385,7 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
     preview_df = filter_filled_rows(strip_delete_marker_column(current_draft), EVENT_COLUMNS)
     selected_index = selected_event_index(report_id, preview_df, calendar_month)
     selected_index = apply_event_selection_query(report_id, preview_df, calendar_month, selected_index)
-    st.markdown(render_event_calendar_html(preview_df, calendar_month, meeting_date, selected_index, report_id), unsafe_allow_html=True)
+    render_html(render_event_calendar_html(preview_df, calendar_month, meeting_date, selected_index, report_id))
     selected_index = render_event_selection_pills(report_id, preview_df, calendar_month, selected_index)
     st.markdown(render_table_html(EVENT_SUMMARY_COLUMNS, preview_df, "events"), unsafe_allow_html=True)
 
@@ -2533,17 +2524,14 @@ def render_event_calendar_controls(report_id: int, meeting_date: date) -> date:
         if st.button("‹ 이전월", key=f"meeting_event_calendar_prev_{report_id}", use_container_width=True):
             calendar_month = add_months(calendar_month, -1)
             st.session_state[state_key] = calendar_month.isoformat()
-            st.rerun()
     with reset_col:
         if st.button("당월", key=f"meeting_event_calendar_reset_{report_id}", use_container_width=True):
             calendar_month = default_month
             st.session_state[state_key] = calendar_month.isoformat()
-            st.rerun()
     with next_col:
         if st.button("다음월 ›", key=f"meeting_event_calendar_next_{report_id}", use_container_width=True):
             calendar_month = add_months(calendar_month, 1)
             st.session_state[state_key] = calendar_month.isoformat()
-            st.rerun()
     with spacer:
         st.empty()
     return calendar_month
@@ -2664,25 +2652,18 @@ def render_event_calendar_html(
             if more_count:
                 chips += f'<span class="meeting-event-chip muted">+{more_count}</span>'
             state = "today" if display_month.year == meeting_date.year and display_month.month == meeting_date.month and day == meeting_date.day else ""
-            cells.append(
-                f"""
-                <div class="meeting-calendar-day {state}">
-                    <strong>{day}</strong>
-                    <div>{chips}</div>
-                </div>
-                """
-            )
+            cells.append(f'<div class="meeting-calendar-day {state}"><strong>{day}</strong><div>{chips}</div></div>')
 
-    return f"""
-    <section class="meeting-calendar">
-        <div class="meeting-calendar-head">
-            <h3>{display_month:%Y년 %m월} 행사 캘린더</h3>
-            <span>회의일 {format_korean_date(meeting_date)}</span>
-        </div>
-        <div class="meeting-calendar-week">{week_labels}</div>
-        <div class="meeting-calendar-grid">{''.join(cells)}</div>
-    </section>
-    """
+    return (
+        '<section class="meeting-calendar">'
+        '<div class="meeting-calendar-head">'
+        f"<h3>{display_month:%Y년 %m월} 행사 캘린더</h3>"
+        f"<span>회의일 {format_korean_date(meeting_date)}</span>"
+        "</div>"
+        f'<div class="meeting-calendar-week">{week_labels}</div>'
+        f'<div class="meeting-calendar-grid">{"".join(cells)}</div>'
+        "</section>"
+    )
 
 
 def extract_event_days(period: str, display_month: date) -> list[int]:
