@@ -216,6 +216,25 @@ def inject_page_css() -> None:
         div[data-testid="stButton"] > button[kind="primary"] {
             color: #FFFFFF !important;
         }
+        .meeting-shell .meeting-section-title h2 {
+            font-size: 1.12rem !important;
+        }
+        .meeting-shell .meeting-table-wrap table {
+            font-size: 0.9rem !important;
+        }
+        .meeting-shell .meeting-table-wrap th,
+        .meeting-shell .meeting-table-wrap td {
+            padding: 0.52rem 0.62rem !important;
+        }
+        .meeting-shell .meeting-calendar {
+            font-size: 0.92rem !important;
+        }
+        .meeting-shell .meeting-calendar-day strong {
+            font-size: 0.96rem !important;
+        }
+        .meeting-shell .meeting-event-chip {
+            font-size: 0.78rem !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -312,7 +331,7 @@ def render_production_section(report_id: int) -> pd.DataFrame:
             editor_action = render_editor_actions(
                 "meeting_production",
                 save_label="변경사항 저장",
-                add_label="행 추가",
+                add_label=None,
                 selected_delete_label="선택 삭제",
                 selected_delete_count=None,
                 delete_label="생산요청 전체 삭제",
@@ -402,7 +421,7 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
             editor_action = render_editor_actions(
                 "meeting_events",
                 save_label="변경사항 저장",
-                add_label="행 추가",
+                add_label=None,
                 selected_delete_label="선택 삭제",
                 selected_delete_count=None,
                 delete_label="행사일정 전체 삭제",
@@ -552,18 +571,17 @@ def render_visible_spreadsheet_editor(
         render_spreadsheet_css_once()
         st.markdown('<div class="meeting-visible-editor">', unsafe_allow_html=True)
         row_action = "none"
-        control_cols = st.columns([0.9, 0.36, 0.36, 4.3], gap="small")
-        control_cols[0].markdown(
-            f'<div class="meeting-row-count-label">입력칸 {current_row_count}행</div>',
-            unsafe_allow_html=True,
-        )
-        if control_cols[1].form_submit_button("-", use_container_width=True):
+        control_cols = st.columns([0.34, 0.34, 0.72, 5.0], gap="small")
+        if control_cols[0].form_submit_button("-", use_container_width=True):
             row_action = "row_minus"
-        if control_cols[2].form_submit_button("+", use_container_width=True):
+        if control_cols[1].form_submit_button("+", use_container_width=True):
             current_row_count = min(current_row_count + 1, 80)
             st.session_state[row_count_key] = current_row_count
             row_action = "row_plus"
-        control_cols[3].caption("기본 3행")
+        if control_cols[2].form_submit_button("행 추가", use_container_width=True):
+            row_action = "add_row"
+        with control_cols[3]:
+            st.empty()
 
         for _ in range(max(0, current_row_count - len(rows))):
             rows.append({EDIT_DELETE_COLUMN: False, ROW_ID_COLUMN: "", **{column: 0 if column in number_columns else "" for column in columns}})
@@ -728,7 +746,7 @@ def render_spreadsheet_css_once() -> None:
             white-space: nowrap;
         }
         .meeting-visible-editor [data-testid="stHorizontalBlock"] {
-            min-width: 980px;
+            min-width: 1040px;
         }
         .meeting-visible-editor [data-testid="stTextInput"] input,
         .meeting-visible-editor [data-testid="stNumberInput"] input,
@@ -736,15 +754,15 @@ def render_spreadsheet_css_once() -> None:
             background: #FFFFFF !important;
             border-color: #C9BFB1 !important;
             color: #172033 !important;
-            font-size: 0.86rem !important;
+            font-size: 0.92rem !important;
             font-weight: 760 !important;
-            min-height: 36px !important;
+            min-height: 38px !important;
         }
         .meeting-visible-editor [data-testid="stCheckbox"] {
             align-items: center;
             display: flex;
             justify-content: center;
-            min-height: 38px;
+            min-height: 40px;
         }
         .meeting-visible-editor .meeting-row-count-label {
             align-items: center;
@@ -777,12 +795,20 @@ def render_editor_actions(
 ) -> str:
     st.markdown('<div class="meeting-editor-actions">', unsafe_allow_html=True)
     action = "none"
-    action_columns = st.columns([0.9, 0.72, 0.9, 0.9, 2.4], gap="small")
-    save_col = action_columns[0]
-    add_col = action_columns[1]
-    selected_delete_col = action_columns[2]
-    delete_col = action_columns[3]
-    spacer = action_columns[4]
+    if add_label:
+        action_columns = st.columns([0.9, 0.72, 0.9, 0.9, 2.4], gap="small")
+        save_col = action_columns[0]
+        add_col = action_columns[1]
+        selected_delete_col = action_columns[2]
+        delete_col = action_columns[3]
+        spacer = action_columns[4]
+    else:
+        action_columns = st.columns([0.9, 0.9, 0.9, 3.12], gap="small")
+        save_col = action_columns[0]
+        add_col = None
+        selected_delete_col = action_columns[1]
+        delete_col = action_columns[2]
+        spacer = action_columns[3]
     secondary_save_col = None
     full_delete_confirm = st.checkbox("전체 삭제 확인", key=f"{key_prefix}_full_delete_confirm")
     with save_col:
@@ -1195,7 +1221,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
             editor_action = render_editor_actions(
                 "meeting_actions",
                 save_label="변경사항 저장",
-                add_label="행 추가",
+                add_label=None,
                 selected_delete_label="선택 삭제",
                 selected_delete_count=None,
                 delete_label="진행사항 전체 삭제",
@@ -1672,7 +1698,7 @@ def meeting_history_column_width(series: pd.Series, column: str) -> int:
         "생산/재고 이슈": 38,
         "발주진행": 38,
         "특이사항": 38,
-        "비고": 30,
+        "비고": 42,
         "수정일시": 22,
     }
     if column in base_widths:
@@ -2507,14 +2533,17 @@ def render_event_calendar_controls(report_id: int, meeting_date: date) -> date:
         if st.button("‹ 이전월", key=f"meeting_event_calendar_prev_{report_id}", use_container_width=True):
             calendar_month = add_months(calendar_month, -1)
             st.session_state[state_key] = calendar_month.isoformat()
+            st.rerun()
     with reset_col:
         if st.button("당월", key=f"meeting_event_calendar_reset_{report_id}", use_container_width=True):
             calendar_month = default_month
             st.session_state[state_key] = calendar_month.isoformat()
+            st.rerun()
     with next_col:
         if st.button("다음월 ›", key=f"meeting_event_calendar_next_{report_id}", use_container_width=True):
             calendar_month = add_months(calendar_month, 1)
             st.session_state[state_key] = calendar_month.isoformat()
+            st.rerun()
     with spacer:
         st.empty()
     return calendar_month
@@ -2818,15 +2847,15 @@ def create_meeting_pdf(
         "title": ParagraphStyle("title", fontName=bold_font_name, fontSize=24, alignment=TA_CENTER, leading=30),
         "meta": ParagraphStyle("meta", fontName=font_name, fontSize=12, alignment=TA_CENTER, leading=16),
         "section": ParagraphStyle("section", fontName=bold_font_name, fontSize=14, textColor=colors.HexColor("#075aa8"), leading=18),
-        "cell": ParagraphStyle("cell", fontName=font_name, fontSize=10.2, leading=13, alignment=TA_CENTER),
-        "cell_left": ParagraphStyle("cell_left", fontName=font_name, fontSize=10.2, leading=13, alignment=TA_LEFT),
-        "cell_nowrap": ParagraphStyle("cell_nowrap", fontName=font_name, fontSize=8.6, leading=11, alignment=TA_CENTER, splitLongWords=0),
-        "issue_title": ParagraphStyle("issue_title", fontName=bold_font_name, fontSize=10.2, leading=13, alignment=TA_CENTER),
+        "cell": ParagraphStyle("cell", fontName=font_name, fontSize=10.6, leading=13.6, alignment=TA_CENTER),
+        "cell_left": ParagraphStyle("cell_left", fontName=font_name, fontSize=10.6, leading=13.6, alignment=TA_LEFT),
+        "cell_nowrap": ParagraphStyle("cell_nowrap", fontName=font_name, fontSize=9.0, leading=11.5, alignment=TA_CENTER, splitLongWords=0),
+        "issue_title": ParagraphStyle("issue_title", fontName=bold_font_name, fontSize=10.6, leading=13.6, alignment=TA_CENTER),
         "issue_body": ParagraphStyle(
             "issue_body",
             fontName=font_name,
-            fontSize=9,
-            leading=12,
+            fontSize=9.6,
+            leading=12.8,
             alignment=TA_LEFT,
             splitLongWords=1,
             wordWrap="CJK",
@@ -2865,7 +2894,7 @@ def create_meeting_pdf(
             PRODUCTION_COLUMNS,
             styles,
             status_column="상태",
-            col_widths=[30 * mm, 48 * mm, 18 * mm, 18 * mm, 27 * mm, 20 * mm, 22 * mm],
+            col_widths=[25 * mm, 45 * mm, 16 * mm, 17 * mm, 25 * mm, 17 * mm, 41 * mm],
         )
     )
     story.append(Spacer(1, 4.5 * mm))
@@ -2924,7 +2953,7 @@ def create_meeting_pdf(
                 ACTION_COLUMNS,
                 styles,
                 status_column="진행상태",
-                col_widths=[23 * mm, 62 * mm, 16 * mm, 28 * mm, 28 * mm, 29 * mm],
+                col_widths=[30 * mm, 70 * mm, 14 * mm, 25 * mm, 25 * mm, 22 * mm],
             )
         )
         story.append(Spacer(1, 4.5 * mm))
