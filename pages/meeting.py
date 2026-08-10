@@ -24,6 +24,7 @@ EVENT_COLUMNS = ["행사명", "행사기간", "행사품목", "요청수량", "�
 EVENT_SUMMARY_COLUMNS = ["행사명", "행사기간", "행사품목", "요청수량"]
 ACTION_COLUMNS = ["담당부서/담당자", "진행내용", "수량", "완료예정일", "납기일", "진행상태"]
 EDIT_DELETE_COLUMN = "삭제"
+ROW_ID_COLUMN = "_row_id"
 EVENT_PRODUCT_OPTIONS = ["SKUA", "SKUB", "SKUC", "SKUD", "SKUE"]
 _MEETING_SCHEMA_READY = False
 ISSUE_KEYS = {
@@ -52,6 +53,9 @@ def render_meeting_page() -> None:
 
     meta = render_control_card()
     report = get_or_create_report(meta["meeting_date"], meta["author"])
+    save_notice = st.session_state.pop("meeting_save_notice", None)
+    if isinstance(save_notice, str) and save_notice:
+        st.success(save_notice)
     kpi_slot = st.empty()
 
     production_df = render_production_section(report["id"])
@@ -144,6 +148,7 @@ def render_meeting_page() -> None:
         clear_editor_state(f"meeting_action_editor_v10_{report['id']}")
         clear_editor_state(f"meeting_action_edit_buffer_{report['id']}")
         clear_editor_state(action_draft_state_key(report["id"]))
+        st.session_state["meeting_save_notice"] = "회의자료 변경사항 저장 완료"
         st.rerun()
 
     if st.session_state.get("meeting_pdf_requested"):
@@ -231,7 +236,7 @@ def render_control_card() -> dict:
 
 def render_production_section(report_id: int) -> pd.DataFrame:
     st.markdown(section_title("01", "생산요청 리스트"), unsafe_allow_html=True)
-    saved_df = filter_filled_rows(load_table_df("meeting_production_requests", report_id, PRODUCTION_COLUMNS), PRODUCTION_COLUMNS)
+    saved_df = load_table_df("meeting_production_requests", report_id, PRODUCTION_COLUMNS, include_id=True)
     draft_key = table_draft_state_key(report_id, "production")
     edit_buffer_key = f"meeting_production_edit_buffer_{report_id}"
     if draft_key not in st.session_state:
@@ -245,7 +250,7 @@ def render_production_section(report_id: int) -> pd.DataFrame:
     st.markdown(render_table_html(PRODUCTION_COLUMNS, preview_df, "production"), unsafe_allow_html=True)
 
     with st.expander("생산요청 리스트 편집", expanded=True):
-        st.caption("입력한 내용은 생산요청 저장 또는 수정 저장을 눌렀을 때만 반영됩니다. 행 삭제는 삭제 칸을 체크한 뒤 선택 삭제를 누르세요.")
+        st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 선택 삭제는 화면에서만 제외되며, Supabase 반영은 변경사항 저장을 눌렀을 때만 실행됩니다.")
         editor_df = add_delete_marker_column(prepare_production_editor_df(edit_buffer), marker_source=edit_buffer)
         editor_columns = [EDIT_DELETE_COLUMN, *PRODUCTION_COLUMNS]
         editor_key = f"meeting_production_editor_v7_{report_id}"
@@ -258,6 +263,7 @@ def render_production_section(report_id: int) -> pd.DataFrame:
                 hide_index=True,
                 column_order=editor_columns,
                 column_config={
+                    ROW_ID_COLUMN: None,
                     EDIT_DELETE_COLUMN: st.column_config.CheckboxColumn("삭제", default=False),
                     "바코드": st.column_config.TextColumn("바코드", default=""),
                     "상품명": st.column_config.TextColumn("상품명", default=""),
@@ -270,8 +276,7 @@ def render_production_section(report_id: int) -> pd.DataFrame:
             )
             editor_action = render_editor_actions(
                 "meeting_production",
-                save_label="생산요청 저장",
-                secondary_save_label="수정 저장",
+                save_label="변경사항 저장",
                 selected_delete_label="선택 삭제",
                 selected_delete_count=None,
                 delete_label="생산요청 전체 삭제",
@@ -296,13 +301,13 @@ def render_production_section(report_id: int) -> pd.DataFrame:
         st.session_state[edit_buffer_key] = add_delete_marker_column(production_source)
     else:
         st.session_state[edit_buffer_key] = edited
-    return normalize_df(production_source, PRODUCTION_COLUMNS)
+    return normalize_editor_df_with_id(production_source, PRODUCTION_COLUMNS)
 
 
 def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFrame, date]:
     st.markdown(section_title("02", "행사 일정", anchor_id="meeting-events-section"), unsafe_allow_html=True)
     calendar_month = render_event_calendar_controls(report_id, meeting_date)
-    saved_df = filter_filled_rows(load_event_month_df(calendar_month), EVENT_COLUMNS)
+    saved_df = load_event_month_df(calendar_month, include_id=True)
     draft_key = table_draft_state_key(report_id, f"events_{month_key(calendar_month)}")
     edit_buffer_key = f"meeting_events_edit_buffer_{report_id}_{month_key(calendar_month)}"
     if draft_key not in st.session_state:
@@ -320,7 +325,7 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
     st.markdown(render_table_html(EVENT_SUMMARY_COLUMNS, preview_df, "events"), unsafe_allow_html=True)
 
     with st.expander("행사 일정 편집", expanded=True):
-        st.caption("입력한 내용은 행사일정 저장 또는 수정 저장을 눌렀을 때만 반영됩니다. 행 삭제는 삭제 칸을 체크한 뒤 선택 삭제를 누르세요.")
+        st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 선택 삭제는 화면에서만 제외되며, Supabase 반영은 변경사항 저장을 눌렀을 때만 실행됩니다.")
         render_event_product_quick_add(report_id, calendar_month)
         pending_rows = get_pending_event_rows(report_id, calendar_month)
         if pending_rows:
@@ -330,7 +335,7 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
             st.session_state[edit_buffer_key] = edit_buffer
             clear_pending_event_rows(report_id, calendar_month)
         buffer_full = prepare_event_editor_df(strip_delete_marker_column(edit_buffer))
-        editor_df = add_delete_marker_column(buffer_full[EVENT_SUMMARY_COLUMNS], marker_source=edit_buffer)
+        editor_df = add_delete_marker_column(buffer_full[[ROW_ID_COLUMN, *EVENT_SUMMARY_COLUMNS]], marker_source=edit_buffer)
         editor_columns = [EDIT_DELETE_COLUMN, *EVENT_SUMMARY_COLUMNS]
         editor_key = f"meeting_events_editor_v7_{report_id}_{month_key(calendar_month)}"
         with st.form(key=f"meeting_events_editor_form_{report_id}_{month_key(calendar_month)}", clear_on_submit=False):
@@ -342,6 +347,7 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
                 hide_index=True,
                 column_order=editor_columns,
                 column_config={
+                    ROW_ID_COLUMN: None,
                     EDIT_DELETE_COLUMN: st.column_config.CheckboxColumn("삭제", default=False),
                     "행사명": st.column_config.TextColumn("행사명", default=""),
                     "행사기간": st.column_config.TextColumn("행사기간", help="예: 2026-07-10 ~ 2026-07-15", default=""),
@@ -351,8 +357,7 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
             )
             editor_action = render_editor_actions(
                 "meeting_events",
-                save_label="행사일정 저장",
-                secondary_save_label="수정 저장",
+                save_label="변경사항 저장",
                 selected_delete_label="선택 삭제",
                 selected_delete_count=None,
                 delete_label="행사일정 전체 삭제",
@@ -458,6 +463,7 @@ def render_editor_actions(
     else:
         save_col, delete_col, spacer = st.columns([0.9, 0.9, 3.2], gap="small")
         selected_delete_col = None
+    full_delete_confirm = st.checkbox("전체 삭제 확인", key=f"{key_prefix}_full_delete_confirm")
     with save_col:
         if st.form_submit_button(save_label, type="primary", use_container_width=True):
             st.session_state.meeting_save_requested = True
@@ -471,14 +477,16 @@ def render_editor_actions(
         with selected_delete_col:
             if st.form_submit_button(selected_delete_label, use_container_width=True):
                 if selected_delete_count is None or selected_delete_count > 0:
-                    st.session_state.meeting_save_requested = True
                     action = "selected_delete"
                 else:
                     st.warning("삭제 체크된 행이 없습니다.")
     with delete_col:
         if st.form_submit_button(delete_label, use_container_width=True):
-            st.session_state[delete_flag] = True
-            action = "full_delete"
+            if full_delete_confirm:
+                st.session_state[delete_flag] = True
+                action = "full_delete"
+            else:
+                st.warning("전체 삭제는 '전체 삭제 확인'을 체크한 뒤 실행하세요.")
     with spacer:
         st.empty()
     st.markdown("</div>", unsafe_allow_html=True)
@@ -644,16 +652,17 @@ def render_event_product_quick_add(report_id: int, event_month: date) -> None:
 
 
 def build_event_editor_df(df: pd.DataFrame, report_id: int, event_month: date) -> pd.DataFrame:
-    editor_df = normalize_df(df, EVENT_COLUMNS)
+    editor_df = normalize_editor_df_with_id(df, EVENT_COLUMNS)
     pending_df = pd.DataFrame(get_pending_event_rows(report_id, event_month), columns=EVENT_COLUMNS)
     if not pending_df.empty:
-        editor_df = pd.concat([editor_df, normalize_df(pending_df, EVENT_COLUMNS)], ignore_index=True)
-    return editor_df[EVENT_COLUMNS]
+        pending_df.insert(0, ROW_ID_COLUMN, "")
+        editor_df = pd.concat([editor_df, normalize_editor_df_with_id(pending_df, EVENT_COLUMNS)], ignore_index=True)
+    return editor_df[[ROW_ID_COLUMN, *EVENT_COLUMNS]]
 
 
 def normalize_event_editor_df(df: pd.DataFrame, apply_delete: bool = False) -> pd.DataFrame:
     if df is None or df.empty:
-        return pd.DataFrame(columns=EVENT_COLUMNS)
+        return pd.DataFrame(columns=[ROW_ID_COLUMN, *EVENT_COLUMNS])
 
     df = drop_marked_rows(df) if apply_delete else strip_delete_marker_column(df)
     rows = []
@@ -663,6 +672,7 @@ def normalize_event_editor_df(df: pd.DataFrame, apply_delete: bool = False) -> p
         merged_products = merge_unique_values(typed_products)
         rows.append(
             {
+                ROW_ID_COLUMN: normalize_row_id(row.get(ROW_ID_COLUMN, "")),
                 "행사명": normalize_cell_value(row.get("행사명", "")),
                 "행사기간": typed_period,
                 "행사품목": ", ".join(merged_products),
@@ -671,20 +681,22 @@ def normalize_event_editor_df(df: pd.DataFrame, apply_delete: bool = False) -> p
             }
         )
 
-    return filter_filled_rows(pd.DataFrame(rows), EVENT_COLUMNS)
+    return filter_filled_editor_rows(pd.DataFrame(rows), EVENT_COLUMNS)
 
 
 def merge_event_details(edited_df: pd.DataFrame, source_df: pd.DataFrame) -> pd.DataFrame:
-    edited = normalize_df(edited_df, EVENT_SUMMARY_COLUMNS)
-    source = normalize_df(source_df, EVENT_COLUMNS)
+    edited_source = normalize_editor_df_with_id(edited_df, EVENT_SUMMARY_COLUMNS)
+    edited = normalize_df(edited_source, EVENT_SUMMARY_COLUMNS)
+    source = normalize_editor_df_with_id(source_df, EVENT_COLUMNS)
     if edited.empty:
-        return pd.DataFrame(columns=EVENT_COLUMNS)
+        return pd.DataFrame(columns=[ROW_ID_COLUMN, *EVENT_COLUMNS])
 
     used_source_indexes: set[int] = set()
     merged_rows = []
     for position, (_, row) in enumerate(edited.iterrows()):
+        row_id = normalize_row_id(edited_source.iloc[position].get(ROW_ID_COLUMN, "") if position < len(edited_source) else "")
         detail = ""
-        match_index = find_matching_event_detail_index(row, source, used_source_indexes)
+        match_index = find_matching_event_detail_index(row, source, used_source_indexes, row_id=row_id)
         if match_index is not None:
             used_source_indexes.add(match_index)
             detail = normalize_cell_value(source.iloc[match_index].get("상세내용", ""))
@@ -693,6 +705,7 @@ def merge_event_details(edited_df: pd.DataFrame, source_df: pd.DataFrame) -> pd.
 
         merged_rows.append(
             {
+                ROW_ID_COLUMN: row_id,
                 "행사명": row.get("행사명", ""),
                 "행사기간": row.get("행사기간", ""),
                 "행사품목": row.get("행사품목", ""),
@@ -700,10 +713,16 @@ def merge_event_details(edited_df: pd.DataFrame, source_df: pd.DataFrame) -> pd.
                 "상세내용": detail,
             }
         )
-    return pd.DataFrame(merged_rows, columns=EVENT_COLUMNS)
+    return pd.DataFrame(merged_rows, columns=[ROW_ID_COLUMN, *EVENT_COLUMNS])
 
 
-def find_matching_event_detail_index(row: pd.Series, source: pd.DataFrame, used_indexes: set[int]) -> int | None:
+def find_matching_event_detail_index(row: pd.Series, source: pd.DataFrame, used_indexes: set[int], row_id: str = "") -> int | None:
+    if row_id:
+        for index, (_, source_row) in enumerate(source.iterrows()):
+            if index in used_indexes:
+                continue
+            if normalize_row_id(source_row.get(ROW_ID_COLUMN, "")) == row_id:
+                return index
     target_key = event_summary_key(row)
     for index, (_, source_row) in enumerate(source.iterrows()):
         if index in used_indexes:
@@ -820,7 +839,7 @@ def inject_order_numbering_script(label: str, placeholder: str) -> None:
 
 def render_action_section(report_id: int) -> pd.DataFrame:
     st.markdown(section_title("04", "진행사항", anchor_id="meeting-actions-section"), unsafe_allow_html=True)
-    saved_df = filter_filled_rows(load_table_df("meeting_action_items", report_id, ACTION_COLUMNS), ACTION_COLUMNS)
+    saved_df = load_table_df("meeting_action_items", report_id, ACTION_COLUMNS, include_id=True)
     draft_key = action_draft_state_key(report_id)
     edit_buffer_key = f"meeting_action_edit_buffer_{report_id}"
     if draft_key not in st.session_state:
@@ -834,7 +853,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
     st.markdown(render_table_html(ACTION_COLUMNS, preview_df, "actions"), unsafe_allow_html=True)
 
     with st.expander("진행사항 편집", expanded=True):
-        st.caption("입력한 내용은 진행사항 저장 또는 수정 저장을 눌렀을 때만 반영됩니다. 행 삭제는 삭제 칸을 체크한 뒤 선택 삭제를 누르세요.")
+        st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 선택 삭제는 화면에서만 제외되며, Supabase 반영은 변경사항 저장을 눌렀을 때만 실행됩니다.")
         editor_df = add_delete_marker_column(prepare_action_editor_df(edit_buffer), marker_source=edit_buffer)
         editor_columns = [EDIT_DELETE_COLUMN, *ACTION_COLUMNS]
         editor_key = f"meeting_action_editor_v10_{report_id}"
@@ -847,6 +866,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
                 hide_index=True,
                 column_order=editor_columns,
                 column_config={
+                    ROW_ID_COLUMN: None,
                     EDIT_DELETE_COLUMN: st.column_config.CheckboxColumn("삭제", default=False),
                     "담당부서/담당자": st.column_config.TextColumn("담당부서/담당자", default=""),
                     "진행내용": st.column_config.TextColumn("진행내용", default=""),
@@ -858,8 +878,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
             )
             editor_action = render_editor_actions(
                 "meeting_actions",
-                save_label="진행사항 저장",
-                secondary_save_label="수정 저장",
+                save_label="변경사항 저장",
                 selected_delete_label="선택 삭제",
                 selected_delete_count=None,
                 delete_label="진행사항 전체 삭제",
@@ -884,7 +903,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
         st.session_state[edit_buffer_key] = add_delete_marker_column(action_source)
     else:
         st.session_state[edit_buffer_key] = edited
-    return normalize_df(action_source, ACTION_COLUMNS)
+    return normalize_editor_df_with_id(action_source, ACTION_COLUMNS)
 
 
 def table_draft_state_key(report_id: int, table_key: str) -> str:
@@ -892,15 +911,18 @@ def table_draft_state_key(report_id: int, table_key: str) -> str:
 
 
 def prepare_production_editor_df(df: pd.DataFrame) -> pd.DataFrame:
-    editor_df = normalize_df(strip_delete_marker_column(df), PRODUCTION_COLUMNS)
+    source_df = normalize_editor_df_with_id(strip_delete_marker_column(df), PRODUCTION_COLUMNS)
+    editor_df = normalize_df(source_df, PRODUCTION_COLUMNS)
     if editor_df.empty:
         editor_df = pd.DataFrame(columns=PRODUCTION_COLUMNS)
+    row_ids = editor_row_ids(source_df, len(editor_df))
     for column in ["바코드", "상품명", "상태", "비고"]:
         editor_df[column] = editor_df[column].apply(normalize_cell_value)
     editor_df["현재수량"] = pd.to_numeric(editor_df["현재수량"], errors="coerce").fillna(0).astype(int)
     editor_df["요청수량"] = pd.to_numeric(editor_df["요청수량"], errors="coerce").fillna(0).astype(int)
     editor_df["납기일"] = editor_df["납기일"].apply(normalize_editor_date_value)
-    return editor_df[PRODUCTION_COLUMNS]
+    editor_df.insert(0, ROW_ID_COLUMN, row_ids)
+    return editor_df[[ROW_ID_COLUMN, *PRODUCTION_COLUMNS]]
 
 
 def normalize_editor_date_value(value):
@@ -916,11 +938,11 @@ def normalize_editor_date_value(value):
 def prepare_event_editor_df(df: pd.DataFrame) -> pd.DataFrame:
     editor_df = normalize_event_editor_df(strip_delete_marker_column(df))
     if editor_df.empty:
-        editor_df = pd.DataFrame(columns=EVENT_COLUMNS)
+        editor_df = pd.DataFrame(columns=[ROW_ID_COLUMN, *EVENT_COLUMNS])
     for column in ["행사명", "행사기간", "행사품목", "상세내용"]:
         editor_df[column] = editor_df[column].apply(normalize_cell_value)
     editor_df["요청수량"] = pd.to_numeric(editor_df["요청수량"], errors="coerce").fillna(0).astype(int)
-    return editor_df[EVENT_COLUMNS]
+    return editor_df[[ROW_ID_COLUMN, *EVENT_COLUMNS]]
 
 
 def action_draft_state_key(report_id: int) -> str:
@@ -928,15 +950,18 @@ def action_draft_state_key(report_id: int) -> str:
 
 
 def prepare_action_editor_df(df: pd.DataFrame) -> pd.DataFrame:
-    editor_df = normalize_df(strip_delete_marker_column(df), ACTION_COLUMNS)
+    source_df = normalize_editor_df_with_id(strip_delete_marker_column(df), ACTION_COLUMNS)
+    editor_df = normalize_df(source_df, ACTION_COLUMNS)
     if editor_df.empty:
         editor_df = pd.DataFrame(columns=ACTION_COLUMNS)
+    row_ids = editor_row_ids(source_df, len(editor_df))
     for column in ["담당부서/담당자", "진행내용", "진행상태"]:
         editor_df[column] = editor_df[column].apply(normalize_cell_value)
     editor_df["수량"] = pd.to_numeric(editor_df["수량"], errors="coerce").fillna(0).astype(int)
     editor_df["완료예정일"] = editor_df["완료예정일"].apply(normalize_editor_date_value)
     editor_df["납기일"] = editor_df["납기일"].apply(normalize_editor_date_value)
-    return editor_df[ACTION_COLUMNS]
+    editor_df.insert(0, ROW_ID_COLUMN, row_ids)
+    return editor_df[[ROW_ID_COLUMN, *ACTION_COLUMNS]]
 
 
 def render_kpi_cards(kpis: list[dict], section_number: str = "05") -> None:
@@ -1094,25 +1119,26 @@ def get_or_create_report(meeting_date: date, author: str) -> dict:
         return dict(row)
 
 
-def load_table_df(table_name: str, report_id: int, columns: list[str]) -> pd.DataFrame:
+def load_table_df(table_name: str, report_id: int, columns: list[str], include_id: bool = False) -> pd.DataFrame:
+    id_select = f'id AS "{ROW_ID_COLUMN}", ' if include_id else ""
     query_map = {
-        "meeting_production_requests": """
-            SELECT production_code AS 바코드, product_name AS 상품명,
+        "meeting_production_requests": f"""
+            SELECT {id_select}production_code AS 바코드, product_name AS 상품명,
                    current_qty AS 현재수량, request_qty AS 요청수량,
                    due_date AS 납기일, status AS 상태, memo AS 비고
             FROM meeting_production_requests
             WHERE report_id = ?
             ORDER BY sort_order, id
         """,
-        "meeting_events": """
-            SELECT event_name AS 행사명, period AS 행사기간, affected_products AS 행사품목,
+        "meeting_events": f"""
+            SELECT {id_select}event_name AS 행사명, period AS 행사기간, affected_products AS 행사품목,
                    request_qty AS 요청수량, memo AS 상세내용
             FROM meeting_events
             WHERE report_id = ?
             ORDER BY sort_order, id
         """,
-        "meeting_action_items": """
-            SELECT owner AS "담당부서/담당자", content AS 진행내용,
+        "meeting_action_items": f"""
+            SELECT {id_select}owner AS "담당부서/담당자", content AS 진행내용,
                    quantity AS 수량, due_date AS 완료예정일,
                    delivery_date AS 납기일, status AS 진행상태
             FROM meeting_action_items
@@ -1122,12 +1148,13 @@ def load_table_df(table_name: str, report_id: int, columns: list[str]) -> pd.Dat
     }
     with connect_sqlite_compatible(DB_PATH) as conn:
         df = pd.read_sql_query(query_map[table_name], conn, params=(report_id,))
-    return normalize_df(df, columns)
+    return normalize_editor_df_with_id(df, columns) if include_id else normalize_df(df, columns)
 
 
-def load_event_month_df(event_month: date) -> pd.DataFrame:
-    query = """
-        SELECT event_name AS 행사명, period AS 행사기간, affected_products AS 행사품목,
+def load_event_month_df(event_month: date, include_id: bool = False) -> pd.DataFrame:
+    id_select = f'id AS "{ROW_ID_COLUMN}", ' if include_id else ""
+    query = f"""
+        SELECT {id_select}event_name AS 행사명, period AS 행사기간, affected_products AS 행사품목,
                request_qty AS 요청수량, memo AS 상세내용
         FROM meeting_events
         WHERE event_month = ?
@@ -1135,7 +1162,7 @@ def load_event_month_df(event_month: date) -> pd.DataFrame:
     """
     with connect_sqlite_compatible(DB_PATH) as conn:
         df = pd.read_sql_query(query, conn, params=(month_key(event_month),))
-    return normalize_df(df, EVENT_COLUMNS)
+    return normalize_editor_df_with_id(df, EVENT_COLUMNS) if include_id else normalize_df(df, EVENT_COLUMNS)
 
 
 @st.cache_data(show_spinner=False, ttl=60)
@@ -1333,6 +1360,49 @@ def normalize_df(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return normalized
 
 
+def normalize_editor_df_with_id(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame(columns=[ROW_ID_COLUMN, *columns])
+    normalized = df.copy()
+    if ROW_ID_COLUMN not in normalized.columns:
+        normalized[ROW_ID_COLUMN] = ""
+    normalized[ROW_ID_COLUMN] = normalized[ROW_ID_COLUMN].apply(normalize_row_id)
+    display_df = normalize_df(normalized, columns)
+    display_df.insert(0, ROW_ID_COLUMN, editor_row_ids(normalized, len(display_df)))
+    return display_df[[ROW_ID_COLUMN, *columns]]
+
+
+def editor_row_ids(df: pd.DataFrame, expected_length: int) -> list[str]:
+    if df is None or ROW_ID_COLUMN not in df.columns:
+        return [""] * expected_length
+    values = [normalize_row_id(value) for value in df[ROW_ID_COLUMN].tolist()]
+    if len(values) < expected_length:
+        values.extend([""] * (expected_length - len(values)))
+    return values[:expected_length]
+
+
+def normalize_row_id(value) -> str:
+    text = normalize_cell_value(value)
+    if not text:
+        return ""
+    try:
+        return str(int(float(text)))
+    except ValueError:
+        return text
+
+
+def filter_filled_editor_rows(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    normalized = normalize_editor_df_with_id(df, columns)
+    if normalized.empty:
+        return normalized
+    meaningful_columns = [column for column in columns if column != "수량"] or columns
+    keep_rows = []
+    for _, row in normalized.iterrows():
+        has_value = any(normalize_cell_value(row[column]).strip() for column in meaningful_columns)
+        keep_rows.append(has_value)
+    return normalized.loc[keep_rows].reset_index(drop=True)
+
+
 def filter_filled_rows(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     normalized = normalize_df(df, columns)
     if normalized.empty:
@@ -1516,9 +1586,12 @@ def save_report_state(
                 report_id,
             ),
         )
-        replace_rows(conn, "meeting_production_requests", report_id, production_df, PRODUCTION_COLUMNS)
-        replace_event_month_rows(conn, report_id, meta.get("event_month") or month_start(meta["meeting_date"]), events_df)
-        replace_rows(conn, "meeting_action_items", report_id, action_df, ACTION_COLUMNS)
+        sync_report_rows(conn, "meeting_production_requests", report_id, production_df, PRODUCTION_COLUMNS)
+        sync_event_month_rows(conn, report_id, meta.get("event_month") or month_start(meta["meeting_date"]), events_df)
+        sync_report_rows(conn, "meeting_action_items", report_id, action_df, ACTION_COLUMNS)
+        verify_section_saved(conn, "meeting_production_requests", report_id, production_df, PRODUCTION_COLUMNS)
+        verify_event_month_saved(conn, meta.get("event_month") or month_start(meta["meeting_date"]), events_df)
+        verify_section_saved(conn, "meeting_action_items", report_id, action_df, ACTION_COLUMNS)
 
 
 def delete_report_section(report_id: int, table_name: str) -> None:
@@ -1526,7 +1599,8 @@ def delete_report_section(report_id: int, table_name: str) -> None:
     if table_name not in allowed_tables:
         return
     with connect_sqlite_compatible(DB_PATH) as conn:
-        conn.execute(f"DELETE FROM {table_name} WHERE report_id = ?", (report_id,))
+        row_ids = sorted(existing_row_ids(conn, table_name, "report_id = ?", (report_id,)))
+        delete_rows_by_ids(conn, table_name, "report_id = ?", (report_id,), row_ids)
 
 
 def clear_editor_state(key: str) -> None:
@@ -1558,119 +1632,158 @@ def update_event_detail_draft(
 
 def delete_event_month(event_month: date) -> None:
     with connect_sqlite_compatible(DB_PATH) as conn:
-        conn.execute("DELETE FROM meeting_events WHERE event_month = ?", (month_key(event_month),))
+        row_ids = sorted(existing_row_ids(conn, "meeting_events", "event_month = ?", (month_key(event_month),)))
+        delete_rows_by_ids(conn, "meeting_events", "event_month = ?", (month_key(event_month),), row_ids)
 
 
-def replace_event_month_rows(conn: sqlite3.Connection, report_id: int, event_month: date, df: pd.DataFrame) -> None:
-    conn.execute("DELETE FROM meeting_events WHERE event_month = ?", (month_key(event_month),))
-    cleaned = filter_filled_rows(df, EVENT_COLUMNS)
-    if cleaned.empty:
-        return
-    rows = [
-        (
+def sync_event_month_rows(conn: sqlite3.Connection, report_id: int, event_month: date, df: pd.DataFrame) -> None:
+    cleaned = filter_filled_editor_rows(df, EVENT_COLUMNS)
+    existing_ids = existing_row_ids(conn, "meeting_events", "event_month = ?", (month_key(event_month),))
+    submitted_existing_ids = submitted_row_ids(cleaned, existing_ids)
+    delete_ids = sorted(existing_ids - submitted_existing_ids)
+    delete_rows_by_ids(conn, "meeting_events", "event_month = ?", (month_key(event_month),), delete_ids)
+
+    for index, row in cleaned.iterrows():
+        row_id = normalize_row_id(row.get(ROW_ID_COLUMN, ""))
+        values = (
             report_id,
             month_key(event_month),
             index,
-            row["행사명"],
+            normalize_cell_value(row["행사명"]),
             normalize_date_value(row["행사기간"]),
-            row["행사품목"],
+            normalize_cell_value(row["행사품목"]),
             parse_int(row["요청수량"]),
             "",
             "",
-            row["상세내용"],
+            normalize_cell_value(row["상세내용"]),
         )
-        for index, row in cleaned.iterrows()
-        if any(normalize_cell_value(row[column]) for column in EVENT_COLUMNS)
-    ]
-    conn.executemany(
-        """
-        INSERT INTO meeting_events
-            (report_id, event_month, sort_order, event_name, period, affected_products, request_qty, summary, owner, memo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        rows,
-    )
+        if row_id:
+            if row_id not in existing_ids:
+                raise sqlite3.Error(f"행사일정 수정 대상 ID 검증 실패: {row_id}")
+            conn.execute(
+                """
+                UPDATE meeting_events
+                SET report_id = ?, event_month = ?, sort_order = ?, event_name = ?, period = ?,
+                    affected_products = ?, request_qty = ?, summary = ?, owner = ?, memo = ?
+                WHERE id = ?
+                """,
+                (*values, row_id),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO meeting_events
+                    (report_id, event_month, sort_order, event_name, period, affected_products, request_qty, summary, owner, memo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                values,
+            )
 
 
-def replace_rows(conn: sqlite3.Connection, table_name: str, report_id: int, df: pd.DataFrame, columns: list[str]) -> None:
-    conn.execute(f"DELETE FROM {table_name} WHERE report_id = ?", (report_id,))
-    cleaned = filter_filled_rows(df, columns)
-    if cleaned.empty:
-        return
-    if table_name == "meeting_production_requests":
-        rows = [
-            (
+def sync_report_rows(conn: sqlite3.Connection, table_name: str, report_id: int, df: pd.DataFrame, columns: list[str]) -> None:
+    cleaned = filter_filled_editor_rows(df, columns)
+    existing_ids = existing_row_ids(conn, table_name, "report_id = ?", (report_id,))
+    submitted_existing_ids = submitted_row_ids(cleaned, existing_ids)
+    delete_ids = sorted(existing_ids - submitted_existing_ids)
+    delete_rows_by_ids(conn, table_name, "report_id = ?", (report_id,), delete_ids)
+
+    for index, row in cleaned.iterrows():
+        row_id = normalize_row_id(row.get(ROW_ID_COLUMN, ""))
+        if table_name == "meeting_production_requests":
+            values = (
                 report_id,
                 index,
                 normalize_cell_value(row["바코드"]),
-                row["상품명"],
+                normalize_cell_value(row["상품명"]),
                 parse_int(row["현재수량"]),
                 parse_int(row["요청수량"]),
                 normalize_date_value(row["납기일"]),
-                row["상태"],
-                row["비고"],
+                normalize_cell_value(row["상태"]),
+                normalize_cell_value(row["비고"]),
             )
-            for index, row in cleaned.iterrows()
-            if any(normalize_cell_value(row[column]) for column in columns)
-        ]
-        conn.executemany(
+            update_sql = """
+                UPDATE meeting_production_requests
+                SET report_id = ?, sort_order = ?, production_code = ?, product_name = ?,
+                    current_qty = ?, request_qty = ?, due_date = ?, status = ?, memo = ?
+                WHERE id = ?
             """
-            INSERT INTO meeting_production_requests
-                (report_id, sort_order, production_code, product_name, current_qty, request_qty, due_date, status, memo)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
-    elif table_name == "meeting_events":
-        report_month_row = conn.execute("SELECT substr(meeting_date, 1, 7) FROM meeting_reports WHERE id = ?", (report_id,)).fetchone()
-        event_month = report_month_row[0] if report_month_row and report_month_row[0] else month_key(date.today())
-        rows = [
-            (
-                report_id,
-                event_month,
-                index,
-                row["행사명"],
-                normalize_date_value(row["행사기간"]),
-                row["행사품목"],
-                parse_int(row["요청수량"]),
-                "",
-                "",
-                row["상세내용"],
-            )
-            for index, row in cleaned.iterrows()
-            if any(normalize_cell_value(row[column]) for column in columns)
-        ]
-        conn.executemany(
+            insert_sql = """
+                INSERT INTO meeting_production_requests
+                    (report_id, sort_order, production_code, product_name, current_qty, request_qty, due_date, status, memo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
-            INSERT INTO meeting_events
-                (report_id, event_month, sort_order, event_name, period, affected_products, request_qty, summary, owner, memo)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
-    else:
-        rows = [
-            (
+        elif table_name == "meeting_action_items":
+            values = (
                 report_id,
                 index,
-                row["담당부서/담당자"],
-                row["진행내용"],
+                normalize_cell_value(row["담당부서/담당자"]),
+                normalize_cell_value(row["진행내용"]),
                 parse_int(row["수량"]),
                 normalize_date_value(row["완료예정일"]),
                 normalize_date_value(row["납기일"]),
-                row["진행상태"],
+                normalize_cell_value(row["진행상태"]),
             )
-            for index, row in cleaned.iterrows()
-            if any(normalize_cell_value(row[column]) for column in columns)
-        ]
-        conn.executemany(
+            update_sql = """
+                UPDATE meeting_action_items
+                SET report_id = ?, sort_order = ?, owner = ?, content = ?, quantity = ?,
+                    due_date = ?, delivery_date = ?, status = ?
+                WHERE id = ?
             """
-            INSERT INTO meeting_action_items
-                (report_id, sort_order, owner, content, quantity, due_date, delivery_date, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
+            insert_sql = """
+                INSERT INTO meeting_action_items
+                    (report_id, sort_order, owner, content, quantity, due_date, delivery_date, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """
+        else:
+            raise sqlite3.Error(f"허용되지 않은 회의자료 저장 테이블입니다: {table_name}")
+
+        if row_id:
+            if row_id not in existing_ids:
+                raise sqlite3.Error(f"{table_name} 수정 대상 ID 검증 실패: {row_id}")
+            conn.execute(update_sql, (*values, row_id))
+        else:
+            conn.execute(insert_sql, values)
+
+
+def existing_row_ids(conn: sqlite3.Connection, table_name: str, where_sql: str, params: tuple) -> set[str]:
+    rows = conn.execute(f"SELECT id FROM {table_name} WHERE {where_sql}", params).fetchall()
+    return {normalize_row_id(row[0]) for row in rows if normalize_row_id(row[0])}
+
+
+def submitted_row_ids(df: pd.DataFrame, existing_ids: set[str]) -> set[str]:
+    ids = set()
+    for value in df.get(ROW_ID_COLUMN, pd.Series(dtype=str)).tolist():
+        row_id = normalize_row_id(value)
+        if not row_id:
+            continue
+        if row_id not in existing_ids:
+            raise sqlite3.Error(f"삭제/수정 대상 ID 검증 실패: {row_id}")
+        ids.add(row_id)
+    return ids
+
+
+def delete_rows_by_ids(conn: sqlite3.Connection, table_name: str, where_sql: str, params: tuple, row_ids: list[str]) -> None:
+    if not row_ids:
+        return
+    placeholders = ",".join("?" for _ in row_ids)
+    conn.execute(
+        f"DELETE FROM {table_name} WHERE {where_sql} AND id IN ({placeholders})",
+        (*params, *row_ids),
+    )
+
+
+def verify_section_saved(conn: sqlite3.Connection, table_name: str, report_id: int, df: pd.DataFrame, columns: list[str]) -> None:
+    expected = len(filter_filled_editor_rows(df, columns))
+    actual = conn.execute(f"SELECT COUNT(*) FROM {table_name} WHERE report_id = ?", (report_id,)).fetchone()[0]
+    if int(actual) != expected:
+        raise sqlite3.Error(f"{table_name} 저장 검증 실패: expected={expected}, actual={actual}")
+
+
+def verify_event_month_saved(conn: sqlite3.Connection, event_month: date, df: pd.DataFrame) -> None:
+    expected = len(filter_filled_editor_rows(df, EVENT_COLUMNS))
+    actual = conn.execute("SELECT COUNT(*) FROM meeting_events WHERE event_month = ?", (month_key(event_month),)).fetchone()[0]
+    if int(actual) != expected:
+        raise sqlite3.Error(f"meeting_events 저장 검증 실패: expected={expected}, actual={actual}")
 
 
 def normalize_date_value(value) -> str:
