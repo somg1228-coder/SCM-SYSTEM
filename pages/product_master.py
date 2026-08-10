@@ -100,6 +100,7 @@ def render_product_master_page() -> None:
 def render_master_tab(source_type: str, title: str) -> None:
     key = source_key(source_type)
     st.markdown(f'<div class="product-master-subtitle">{title}</div>', unsafe_allow_html=True)
+    render_product_master_save_result(key)
 
     if uses_threepl_master_form(source_type):
         render_threepl_master_tab(source_type, title, key)
@@ -657,7 +658,20 @@ def save_product_master_rows(source_type: str, key: str, payload: list[dict]) ->
     if outcome and outcome.get("ok", True):
         clear_master_editor_buffer(key)
         clear_inventory_view_state_for_source(key)
+        st.session_state[f"product_master_{key}_save_result"] = outcome
+        st.rerun()
     show_result(outcome)
+
+
+def render_product_master_save_result(key: str) -> None:
+    result_key = f"product_master_{key}_save_result"
+    result = st.session_state.get(result_key)
+    if not result:
+        return
+    show_result(result)
+    if st.button("저장 결과 닫기", key=f"{result_key}_close"):
+        st.session_state.pop(result_key, None)
+        st.rerun()
 
 
 def render_single_product_form(source_type: str, key: str) -> None:
@@ -898,6 +912,9 @@ def render_threepl_category_toggle(key: str, category_options: list[str]) -> lis
     current = current_values[0] if len(current_values) == 1 else "전체"
     if current not in options:
         current = "전체"
+    widget_value = clean_value(st.session_state.get(widget_key))
+    if widget_value and widget_value not in options:
+        st.session_state.pop(widget_key, None)
     if hasattr(st, "segmented_control"):
         selected = st.segmented_control(
             "카테고리",
