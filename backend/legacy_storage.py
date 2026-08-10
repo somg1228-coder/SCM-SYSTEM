@@ -12,6 +12,7 @@ from backend import database
 
 
 _LEGACY_SCHEMA_READY = False
+_TABLE_HAS_ID_COLUMN_CACHE: dict[str, bool] = {}
 
 
 class CompatRow:
@@ -158,7 +159,8 @@ class PostgresSqliteCompatConnection:
 
             converted_sql, bind_params = convert_sqlite_query(sql, parameters)
             converted_sql = convert_sqlite_dialect_sql(converted_sql)
-            if is_insert_without_returning(converted_sql):
+            returns_generated_id = should_return_generated_id(converted_sql)
+            if returns_generated_id:
                 converted_sql = f"{converted_sql} RETURNING id"
 
             result = self._conn.execute(text(converted_sql), bind_params)
@@ -168,7 +170,7 @@ class PostgresSqliteCompatConnection:
                 rows = [CompatRow(keys, row) for row in fetched]
                 cursor.description = [(key, None, None, None, None, None, None) for key in keys]
                 cursor._rows = rows
-                if is_insert_without_returning(sql) and rows:
+                if returns_generated_id and rows:
                     self._last_insert_id = rows[0][0]
                     cursor.lastrowid = self._last_insert_id
                     cursor._rows = []
@@ -183,6 +185,28 @@ class PostgresSqliteCompatConnection:
 def is_insert_without_returning(sql: str) -> bool:
     normalized = sql.strip().lower()
     return normalized.startswith("insert into ") and " returning " not in normalized
+
+
+def inserted_table_name(sql: str) -> str | None:
+    match = re.match(r'^\s*insert\s+into\s+(?:"([^"]+)"|([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?))', sql, re.IGNORECASE)
+    if not match:
+        return None
+    table_name = match.group(1) or match.group(2) or ""
+    return table_name.rsplit(".", 1)[-1].strip('"') or None
+
+
+def table_has_id_column(table_name: str) -> bool:
+    if table_name not in _TABLE_HAS_ID_COLUMN_CACHE:
+        columns = inspect(database.engine).get_columns(table_name)
+        _TABLE_HAS_ID_COLUMN_CACHE[table_name] = any(column["name"].lower() == "id" for column in columns)
+    return _TABLE_HAS_ID_COLUMN_CACHE[table_name]
+
+
+def should_return_generated_id(sql: str) -> bool:
+    if not is_insert_without_returning(sql):
+        return False
+    table_name = inserted_table_name(sql)
+    return bool(table_name and table_has_id_column(table_name))
 
 
 def convert_sqlite_dialect_sql(statement: str) -> str:
