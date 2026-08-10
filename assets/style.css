@@ -14605,6 +14605,31 @@ div[class*="st-key-meeting_issue_"] textarea {
         -webkit-text-fill-color: #584B66 !important;
     }
 
+    [data-testid="stSidebar"] div[class*="sidebar_nav_"] button,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button {
+        background: transparent !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        justify-content: flex-start !important;
+        padding: 0 0.42rem 0 2.55rem !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_nav_"] button:hover,
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button:hover {
+        background: rgba(47, 70, 89, 0.045) !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+    }
+
+    [data-testid="stSidebar"] div[class*="sidebar_nav_"] button[kind="primary"],
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[kind="primary"],
+    [data-testid="stSidebar"] div[class*="sidebar_nav_"] button[data-testid="stBaseButton-primary"],
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[data-testid="stBaseButton-primary"] {
+        background: rgba(88, 121, 154, 0.1) !important;
+        border-color: transparent !important;
+        box-shadow: inset 4px 0 0 var(--menu-accent, #58799A) !important;
+    }
+
     [data-testid="stSidebar"] .stButton > button p,
     [data-testid="stSidebar"] .stButton > button span,
     [data-testid="stSidebar"] div[class*="sidebar_group_"] button p,
