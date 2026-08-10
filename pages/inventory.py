@@ -635,11 +635,16 @@ def render_material_inventory_tab() -> None:
     metric_cols[2].metric("부족 품목", f"{shortage_count:,}")
     metric_cols[3].metric("관리 제품", f'{df["연결제품"].replace("", pd.NA).dropna().nunique() if not df.empty else 0:,}')
 
-    filter_cols = st.columns([1.2, 1.0, 1.0, 2.6], gap="small")
+    category_filter = inventory_single_category_toggle(
+        category_options,
+        state_key="material_inventory_category_filter",
+        widget_key="material_inventory_category_toggle",
+    )
+
+    filter_cols = st.columns([1.2, 1.0, 3.6], gap="small")
     keyword = filter_cols[0].text_input("검색", placeholder="품목명 / 품목코드 / 연결제품 / 공급처", key="material_inventory_keyword")
     type_filter = filter_cols[1].selectbox("유형", ["전체", "자재", "반제품"], key="material_inventory_type_filter")
-    category_filter = filter_cols[2].selectbox("카테고리", ["전체", *category_options], key="material_inventory_category_filter")
-    with filter_cols[3]:
+    with filter_cols[2]:
         st.caption("완제품과 연결되는 원부자재, 반제품 재고를 별도 관리합니다. MRP와 구매요청 기준 자료로 사용할 수 있습니다.")
 
     view_df = filter_material_editor_df(df, keyword, type_filter, category_filter)
@@ -1205,56 +1210,56 @@ def inventory_filter_multiselect(container, label: str, options: list[str], key:
     return container.multiselect(label, options, key=key, placeholder="선택하세요")
 
 
-def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
-    state_key = f"{filter_key}_category_toggle"
-    filter_state_key = f"{filter_key}_category_filter"
+def inventory_single_category_toggle(options: list[str], state_key: str, widget_key: str) -> str:
     choices = ["전체", *options]
-    selected_toggle = st.session_state.get(state_key)
-    selected_values = st.session_state.get(filter_state_key) or []
-    current = selected_toggle or (selected_values[0] if selected_values else "전체")
+    current = clean_cell(st.session_state.get(state_key)) or "전체"
     if current not in choices:
         current = "전체"
-    st.session_state[state_key] = current
 
     if not options:
         st.caption("카테고리: 데이터 없음")
-        st.session_state[filter_state_key] = []
-        return []
+        st.session_state[state_key] = "전체"
+        return "전체"
 
     st.caption("카테고리")
-    previous = current
     if hasattr(st, "segmented_control"):
         selected = st.segmented_control(
             "카테고리",
             choices,
             default=current,
-            key=state_key,
+            key=widget_key,
             label_visibility="collapsed",
             width="stretch",
         )
-        selected = selected or "전체"
-        if selected != previous:
-            st.session_state[f"{filter_key}_page"] = 1
-        categories = [] if selected == "전체" else [selected]
-        st.session_state[filter_state_key] = categories
-        return categories
+        selected = clean_cell(selected) or "전체"
+    else:
+        selected = current
+        rows = [choices[index : index + 6] for index in range(0, len(choices), 6)]
+        for row_index, row_choices in enumerate(rows):
+            cols = st.columns(len(row_choices), gap="small")
+            for col, label in zip(cols, row_choices, strict=True):
+                if col.button(
+                    label,
+                    key=f"{widget_key}_{row_index}_{label}",
+                    type="primary" if label == current else "secondary",
+                    use_container_width=True,
+                ):
+                    selected = label
+                    st.session_state[state_key] = selected
+                    st.rerun()
 
-    rows = [choices[index : index + 6] for index in range(0, len(choices), 6)]
-    selected = current
-    for row_index, row_choices in enumerate(rows):
-        cols = st.columns(len(row_choices), gap="small")
-        for col, label in zip(cols, row_choices, strict=True):
-            if col.button(
-                label,
-                key=f"{filter_key}_category_toggle_{row_index}_{label}",
-                type="primary" if label == current else "secondary",
-                use_container_width=True,
-            ):
-                selected = label
-                st.session_state[state_key] = selected
-                st.session_state[filter_state_key] = [] if selected == "전체" else [selected]
-                st.session_state[f"{filter_key}_page"] = 1
-                st.rerun()
+    st.session_state[state_key] = selected
+    return selected
+
+
+def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
+    state_key = f"{filter_key}_category_toggle"
+    filter_state_key = f"{filter_key}_category_filter"
+    selected_values = st.session_state.get(filter_state_key) or []
+    previous = clean_cell(st.session_state.get(state_key)) or (selected_values[0] if selected_values else "전체")
+    selected = inventory_single_category_toggle(options, state_key, f"{filter_key}_category_toggle_widget")
+    if selected != previous:
+        st.session_state[f"{filter_key}_page"] = 1
     categories = [] if selected == "전체" else [selected]
     st.session_state[filter_state_key] = categories
     return categories
@@ -1468,6 +1473,7 @@ def clear_inventory_filter(filter_key: str, suffix: str, value: str | None = Non
     elif suffix in {"category_filter"}:
         st.session_state[f"{filter_key}_{suffix}"] = []
         st.session_state[f"{filter_key}_category_toggle"] = "전체"
+        st.session_state.pop(f"{filter_key}_category_toggle_widget", None)
     elif suffix in {"stock_presence"}:
         st.session_state[f"{filter_key}_{suffix}"] = "전체"
     elif suffix in {"inbound_expected", "outbound_expected", "below_safe"}:

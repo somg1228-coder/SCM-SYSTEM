@@ -885,20 +885,48 @@ def render_threepl_category_toggle(key: str, category_options: list[str]) -> lis
     state_key = f"product_master_{key}_categories"
     widget_key = f"{state_key}_toggle"
     options = ["전체", *category_options]
+    previous_categories = [
+        clean_value(value)
+        for value in st.session_state.get(state_key, [])
+        if clean_value(value) in category_options
+    ]
     current_values = [
         clean_value(value)
         for value in st.session_state.get(state_key, [])
         if clean_value(value) in category_options
     ]
-    default = current_values[0] if len(current_values) == 1 else "전체"
-    selected = st.pills(
-        "카테고리",
-        options,
-        selection_mode="single",
-        default=default,
-        key=widget_key,
-    )
+    current = current_values[0] if len(current_values) == 1 else "전체"
+    if current not in options:
+        current = "전체"
+    if hasattr(st, "segmented_control"):
+        selected = st.segmented_control(
+            "카테고리",
+            options,
+            default=current,
+            key=widget_key,
+            label_visibility="visible",
+            width="stretch",
+        )
+    else:
+        st.caption("카테고리")
+        selected = current
+        rows = [options[index : index + 6] for index in range(0, len(options), 6)]
+        for row_index, row_options in enumerate(rows):
+            cols = st.columns(len(row_options), gap="small")
+            for col, label in zip(cols, row_options, strict=True):
+                if col.button(
+                    label,
+                    key=f"{widget_key}_{row_index}_{label}",
+                    type="primary" if label == current else "secondary",
+                    use_container_width=True,
+                ):
+                    selected = label
+                    st.session_state[state_key] = [] if selected == "전체" else [selected]
+                    st.session_state[f"product_master_{key}_page"] = 1
+                    st.rerun()
     categories = [] if not selected or selected == "전체" else [str(selected)]
+    if categories != previous_categories:
+        st.session_state[f"product_master_{key}_page"] = 1
     st.session_state[state_key] = categories
     return categories
 
