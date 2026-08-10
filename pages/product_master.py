@@ -829,15 +829,16 @@ def render_threepl_master_filters(key: str, df: pd.DataFrame) -> dict:
     lead_time_options = sorted({to_int_value(value) for value in df.get("리드타임", pd.Series(dtype=int)).dropna().unique() if to_int_value(value) > 0})
 
     with st.expander("검색 및 필터", expanded=True):
-        row1 = st.columns([1.5, 1.0, 1.0, 1.0], gap="small")
+        categories = render_threepl_category_toggle(key, category_options)
+
+        row1 = st.columns([1.5, 1.0, 1.0], gap="small")
         keyword = row1[0].text_input(
             "통합 검색",
             placeholder="바코드 / 상품명 / 업체명 / 담당자",
             key=f"product_master_{key}_keyword",
         )
-        categories = row1[1].multiselect("카테고리", category_options, key=f"product_master_{key}_categories")
-        suppliers = row1[2].multiselect("업체명", supplier_options, key=f"product_master_{key}_suppliers")
-        managers = row1[3].multiselect("담당자", manager_options, key=f"product_master_{key}_managers")
+        suppliers = row1[1].multiselect("업체명", supplier_options, key=f"product_master_{key}_suppliers")
+        managers = row1[2].multiselect("담당자", manager_options, key=f"product_master_{key}_managers")
 
         row2 = st.columns([1.0, 1.0, 1.0, 0.8, 0.7, 0.9], gap="small")
         lead_times = row2[0].multiselect("리드타임", lead_time_options, key=f"product_master_{key}_lead_times")
@@ -878,6 +879,28 @@ def render_threepl_master_filters(key: str, df: pd.DataFrame) -> dict:
         "page_size": int(page_size),
         "page": int(st.session_state.get(page_key, 1)),
     }
+
+
+def render_threepl_category_toggle(key: str, category_options: list[str]) -> list[str]:
+    state_key = f"product_master_{key}_categories"
+    widget_key = f"{state_key}_toggle"
+    options = ["전체", *category_options]
+    current_values = [
+        clean_value(value)
+        for value in st.session_state.get(state_key, [])
+        if clean_value(value) in category_options
+    ]
+    default = current_values[0] if len(current_values) == 1 else "전체"
+    selected = st.pills(
+        "카테고리",
+        options,
+        selection_mode="single",
+        default=default,
+        key=widget_key,
+    )
+    categories = [] if not selected or selected == "전체" else [str(selected)]
+    st.session_state[state_key] = categories
+    return categories
 
 
 def active_threepl_master_filter_badges(keyword, categories, suppliers, managers, lead_times, active) -> list[tuple[str, str]]:
@@ -923,12 +946,15 @@ def clear_filter_key(prefix: str, code: str) -> None:
         return
     session_key = f"{prefix}_{suffix}"
     st.session_state[session_key] = "" if suffix == "keyword" else "전체" if suffix == "active" else []
+    if suffix == "categories":
+        st.session_state.pop(f"{session_key}_toggle", None)
 
 
 def reset_threepl_master_filters(key: str) -> None:
     for suffix in [
         "keyword",
         "categories",
+        "categories_toggle",
         "suppliers",
         "managers",
         "lead_times",
@@ -1521,6 +1547,25 @@ def inject_product_master_css() -> None:
         }
         div[class*="st-key-product_master_"][class*="_controls"] [data-testid="stFileUploaderDropzone"] small {
             display: none !important;
+        }
+        div[class*="st-key-product_master_"][class*="_controls"] [data-testid="stPills"] div[role="radiogroup"],
+        div[class*="st-key-product_master_"][class*="_controls"] [data-testid="stPills"] div[role="group"] {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            align-items: center !important;
+            gap: 0.22rem !important;
+        }
+        div[class*="st-key-product_master_"][class*="_controls"] [data-testid="stPills"] label {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+        }
+        div[class*="st-key-product_master_"][class*="_controls"] [data-testid="stPills"] label > div {
+            min-height: 30px !important;
+            padding: 0.32rem 0.72rem !important;
+            border-radius: 7px !important;
+            white-space: nowrap !important;
         }
         div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="stExpander"] {
             border-color: #C9D5DF;
