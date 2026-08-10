@@ -11,6 +11,7 @@ import streamlit as st
 from sqlalchemy import delete, func, select
 
 from components.lazy_tabs import lazy_tab_selector
+from backend.perf import perf_span
 from pages import product_master as product_master_page
 
 try:
@@ -80,15 +81,20 @@ DASHBOARD_FILTER_LABELS = {
 
 
 def render_inventory_page() -> None:
-    inject_inventory_css()
-    product_master_page.inject_product_master_css()
+    with perf_span("inventory.inject_css"):
+        inject_inventory_css()
+        product_master_page.inject_product_master_css()
 
-    if not inventory_available():
+    with perf_span("inventory.available_check"):
+        available = inventory_available()
+    if not available:
         st.error(INVENTORY_IMPORT_ERROR or "재고관리 DB를 초기화하지 못했습니다. requirements.txt 설치 상태를 확인해주세요.")
         return
 
-    sync_inventory_filter_from_query()
-    render_inventory_page_lazy()
+    with perf_span("inventory.session_state.query_sync"):
+        sync_inventory_filter_from_query()
+    with perf_span("inventory.page_lazy_render"):
+        render_inventory_page_lazy()
     return
 
     current_tab, safe_tab, history_tab, mrp_tab, recommend_tab, material_tab = st.tabs(
@@ -139,15 +145,20 @@ def inventory_available() -> bool:
 
 def render_inventory_page_lazy() -> None:
     main_sections = ["현재재고", "안전재고", "재고이력", "MRP", "발주추천", "자재/반제품"]
-    selected_section = lazy_tab_selector(main_sections, "inventory_main_section")
+    with perf_span("inventory.main_section_select"):
+        selected_section = lazy_tab_selector(main_sections, "inventory_main_section")
 
     if selected_section == "현재재고":
-        render_inventory_list_panel()
-        render_outbound_history_linked_panel()
+        with perf_span("inventory.list_panel_render"):
+            render_inventory_list_panel()
+        with perf_span("inventory.outbound_linked_panel_render"):
+            render_outbound_history_linked_panel()
         source_sections = ["3PL", "오프라인", "창고관리"]
-        selected_source = lazy_tab_selector(source_sections, "inventory_current_source")
+        with perf_span("inventory.source_select"):
+            selected_source = lazy_tab_selector(source_sections, "inventory_current_source")
         source_map = {"3PL": "3PL", "오프라인": "오프라인", "창고관리": "창고"}
-        render_source_inventory_tabs_lazy(source_map[selected_source])
+        with perf_span("inventory.source_tabs_render", source=source_map[selected_source]):
+            render_source_inventory_tabs_lazy(source_map[selected_source])
     elif selected_section == "안전재고":
         render_safe_stock_tab()
     elif selected_section == "재고이력":
@@ -162,7 +173,8 @@ def render_inventory_page_lazy() -> None:
 
 def render_source_inventory_tabs_lazy(source_type: str) -> None:
     tab_sections = ["재고조회", "입고내역", "출고내역", "대시보드", "마스터 관리"]
-    selected_tab = lazy_tab_selector(tab_sections, f"inventory_{source_key(source_type)}_section")
+    with perf_span("inventory.subtab_select", source=source_type):
+        selected_tab = lazy_tab_selector(tab_sections, f"inventory_{source_key(source_type)}_section")
     if selected_tab == "재고조회":
         render_daily_tab(source_type)
     elif selected_tab == "입고내역":
@@ -702,23 +714,29 @@ def render_material_inventory_tab() -> None:
 def render_daily_tab(source_type: str) -> None:
     st.markdown(f'<div class="inventory-tab-title">{source_type} 재고조회</div>', unsafe_allow_html=True)
     today = date.today()
-    saved_work_dates = fetch_work_dates(source_type)
+    with perf_span("inventory.fetch_work_dates", source=source_type):
+        saved_work_dates = fetch_work_dates(source_type)
     default_work_date = saved_work_dates[0] if saved_work_dates else today
     daily_date_key = f"{source_type}_daily_date"
     pending_daily_date_key = f"{source_type}_daily_date_sync"
-    if pending_daily_date_key in st.session_state:
-        st.session_state[daily_date_key] = st.session_state.pop(pending_daily_date_key)
-    elif daily_date_key not in st.session_state:
-        st.session_state[daily_date_key] = default_work_date
+    with perf_span("inventory.daily_session_state", source=source_type):
+        if pending_daily_date_key in st.session_state:
+            st.session_state[daily_date_key] = st.session_state.pop(pending_daily_date_key)
+        elif daily_date_key not in st.session_state:
+            st.session_state[daily_date_key] = default_work_date
     work_date = st.date_input("기준일자", value=default_work_date, key=daily_date_key)
 
-    rows = fetch_master_inventory(source_type, work_date)
-    base_df = daily_to_editor(rows)
+    with perf_span("inventory.fetch_master_inventory", source=source_type, work_date=work_date):
+        rows = fetch_master_inventory(source_type, work_date)
+    with perf_span("inventory.daily_dataframe", source=source_type, rows=len(rows)):
+        base_df = daily_to_editor(rows)
     if rows and saved_work_dates and work_date not in set(saved_work_dates):
         st.caption(f"{work_date:%Y-%m-%d} 기준 저장된 현재고가 없어 마스터 품목을 0재고로 표시합니다. 최신 저장일자는 {saved_work_dates[0]:%Y-%m-%d}입니다.")
-    filters = render_inventory_filters(source_type, base_df)
-    filtered_df = apply_inventory_filters(base_df, filters)
-    paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
+    with perf_span("inventory.filters_render", source=source_type, rows=len(base_df)):
+        filters = render_inventory_filters(source_type, base_df)
+    with perf_span("inventory.data_processing.filter", source=source_type, rows=len(base_df)):
+        filtered_df = apply_inventory_filters(base_df, filters)
+        paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
     with st.container(key=f"{source_key(source_type)}_daily_summary_metrics"):
         summary_cols = st.columns(6, gap="small")
         summary_cols[0].metric("필터 결과", f"{len(filtered_df):,}개")
@@ -1490,21 +1508,22 @@ def style_inventory_dataframe(df: pd.DataFrame):
 
 
 def render_inventory_visible_table(df: pd.DataFrame, height: int = 520) -> None:
-    if df is None or df.empty:
-        st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
-        return
-    safe_df = df.fillna("").copy()
-    for column in safe_df.columns:
-        safe_df[column] = safe_df[column].map(lambda value: value.isoformat() if hasattr(value, "isoformat") else value)
-    html = safe_df.to_html(index=False, escape=True, classes="inventory-visible-table")
-    st.markdown(
-        f"""
-        <div class="inventory-visible-table-wrap" style="max-height:{int(height)}px;">
-            {html}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    with perf_span("inventory.table_render", rows=0 if df is None else len(df), height=height):
+        if df is None or df.empty:
+            st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
+            return
+        safe_df = df.fillna("").copy()
+        for column in safe_df.columns:
+            safe_df[column] = safe_df[column].map(lambda value: value.isoformat() if hasattr(value, "isoformat") else value)
+        html = safe_df.to_html(index=False, escape=True, classes="inventory-visible-table")
+        st.markdown(
+            f"""
+            <div class="inventory-visible-table-wrap" style="max-height:{int(height)}px;">
+                {html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def render_stock_upload_preview(

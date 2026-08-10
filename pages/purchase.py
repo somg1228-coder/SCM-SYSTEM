@@ -30,6 +30,7 @@ from reportlab.platypus import (
 )
 
 from components.lazy_tabs import lazy_tab_selector
+from backend.perf import perf_span
 
 try:
     from backend import services
@@ -197,15 +198,19 @@ BUDGET_APPROVED_PO_PROGRESS = {"발주완료", "입고진행", "종결"}
 
 
 def render_purchase_page() -> None:
-    inject_purchase_css()
+    with perf_span("purchase.inject_css"):
+        inject_purchase_css()
     st.markdown('<div class="purchase-title">구매관리</div>', unsafe_allow_html=True)
     st.caption("PR → RFQ → PO → 입고 → 재고반영 흐름으로 연결되는 ERP형 구매 업무 화면입니다.")
 
-    if not purchase_available():
+    with perf_span("purchase.available_check"):
+        available = purchase_available()
+    if not available:
         st.error(PURCHASE_IMPORT_ERROR or "구매관리 DB를 초기화하지 못했습니다.")
         return
 
-    render_purchase_page_lazy()
+    with perf_span("purchase.page_lazy_render"):
+        render_purchase_page_lazy()
     return
 
     pr_tab, rfq_tab, po_tab, supplier_tab, budget_tab, price_tab, kpi_tab, doc_tab = st.tabs(
@@ -252,8 +257,10 @@ def render_purchase_page_lazy() -> None:
         "구매 KPI": render_kpi_tab,
         "문서/다운로드": render_document_tab,
     }
-    selected_section = lazy_tab_selector(list(sections), "purchase_main_section")
-    sections[selected_section]()
+    with perf_span("purchase.main_section_select"):
+        selected_section = lazy_tab_selector(list(sections), "purchase_main_section")
+    with perf_span("purchase.section_render", section=selected_section):
+        sections[selected_section]()
 
 
 def with_db(action):
@@ -282,7 +289,9 @@ def with_db(action):
 
 def render_pr_tab() -> None:
     st.markdown('<div class="purchase-section-title">구매요청 등록</div>', unsafe_allow_html=True)
-    with st.form("purchase_pr_form", clear_on_submit=True):
+    with perf_span("purchase.pr_form_render"):
+        pr_form = st.form("purchase_pr_form", clear_on_submit=True)
+    with pr_form:
         cols = st.columns([1.0, 0.95, 1.75, 1.05], gap="small")
         department = cols[0].text_input("요청부서", placeholder="예: 생산팀")
         item_code = cols[1].text_input("품목코드", placeholder="SKU")
@@ -336,28 +345,31 @@ def render_pr_tab() -> None:
                     st.success(f"{result.pr_number} 구매요청을 저장했습니다.")
                     st.rerun()
 
-    rows = with_db(lambda db: [pr_to_dict(row) for row in list_purchase_requests(db)]) or []
+    with perf_span("purchase.pr_list_query"):
+        rows = with_db(lambda db: [pr_to_dict(row) for row in list_purchase_requests(db)]) or []
     st.markdown('<div class="purchase-section-title">구매요청 목록</div>', unsafe_allow_html=True)
-    if rows:
-        df = pd.DataFrame(rows)
-        df.insert(0, "선택", False)
-        df = df.reindex(columns=PR_EDITOR_COLUMNS)
-    else:
-        st.caption("등록된 구매요청이 없어도 목록 구조는 유지됩니다. 재고관리 MRP/발주추천에서도 PR을 생성할 수 있습니다.")
-        df = pd.DataFrame(columns=PR_EDITOR_COLUMNS)
-    edited = st.data_editor(
-        df,
-        hide_index=True,
-        use_container_width=True,
-        column_order=PR_EDITOR_COLUMNS,
-        column_config={
-            "선택": st.column_config.CheckboxColumn("선택", default=False),
-            "승인상태": st.column_config.SelectboxColumn("승인상태", options=PR_STATUS),
-        },
-        disabled=["구매요청번호", "발주번호"],
-        key="purchase_pr_editor",
-        height=340,
-    )
+    with perf_span("purchase.pr_dataframe", rows=len(rows)):
+        if rows:
+            df = pd.DataFrame(rows)
+            df.insert(0, "선택", False)
+            df = df.reindex(columns=PR_EDITOR_COLUMNS)
+        else:
+            st.caption("등록된 구매요청이 없어도 목록 구조는 유지됩니다. 재고관리 MRP/발주추천에서도 PR을 생성할 수 있습니다.")
+            df = pd.DataFrame(columns=PR_EDITOR_COLUMNS)
+    with perf_span("purchase.pr_data_editor", rows=len(df)):
+        edited = st.data_editor(
+            df,
+            hide_index=True,
+            use_container_width=True,
+            column_order=PR_EDITOR_COLUMNS,
+            column_config={
+                "선택": st.column_config.CheckboxColumn("선택", default=False),
+                "승인상태": st.column_config.SelectboxColumn("승인상태", options=PR_STATUS),
+            },
+            disabled=["구매요청번호", "발주번호"],
+            key="purchase_pr_editor",
+            height=340,
+        )
     action_cols = st.columns([0.95, 0.95, 4.5], gap="small")
     with action_cols[0]:
         if st.button("선택 승인", type="primary", use_container_width=True, key="purchase_pr_approve", disabled=not rows):

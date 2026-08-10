@@ -15,6 +15,7 @@ import streamlit.components.v1 as components
 from sqlalchemy import select
 
 from components.lazy_tabs import lazy_tab_selector
+from backend.perf import perf_span
 
 try:
     from backend.config import config_text_value
@@ -794,28 +795,35 @@ FLOOR_MODELS = {
 
 
 def render_warehouse3d_page() -> None:
-    inject_warehouse3d_css()
+    with perf_span("warehouse3d.inject_css"):
+        inject_warehouse3d_css()
     st.markdown('<div class="warehouse3d-title">3D 창고관리</div>', unsafe_allow_html=True)
 
-    if not warehouse_available():
+    with perf_span("warehouse3d.available_check"):
+        available = warehouse_available()
+    if not available:
         st.error(WAREHOUSE_IMPORT_ERROR or "창고관리 DB를 초기화하지 못했습니다.")
         return
 
-    inventory_rows, work_date = fetch_latest_warehouse_inventory()
+    with perf_span("warehouse3d.fetch_inventory"):
+        inventory_rows, work_date = fetch_latest_warehouse_inventory()
     building_col, _ = st.columns([1.05, 2.3], gap="small")
     building_options = list(LOCATIONS)
     if st.session_state.get("warehouse3d_building") not in building_options:
         st.session_state["warehouse3d_building"] = building_options[0]
     with building_col:
         building = st.selectbox("위치 선택", building_options, key="warehouse3d_building")
-    shared_layout_store = render_warehouse_layout_sync_tools()
+    with perf_span("warehouse3d.layout_sync_tools"):
+        shared_layout_store = render_warehouse_layout_sync_tools()
     default_floor = LOCATIONS[building]["default_floor"]
     floor = default_floor
     drawing_mode = "3D 배치"
     drawing = {"name": "", "source": "", "src": "", "kind": "", "available": False}
-    racks = build_rack_layout(inventory_rows, floor)
-    summary = warehouse_summary(racks, inventory_rows)
-    render_summary(summary, work_date)
+    with perf_span("warehouse3d.data_processing.layout"):
+        racks = build_rack_layout(inventory_rows, floor)
+        summary = warehouse_summary(racks, inventory_rows)
+    with perf_span("warehouse3d.summary_render"):
+        render_summary(summary, work_date)
     save_notice = st.session_state.pop("warehouse3d_save_notice", None)
     if isinstance(save_notice, tuple) and len(save_notice) == 2:
         tone, message = save_notice
@@ -826,8 +834,8 @@ def render_warehouse3d_page() -> None:
 
     selected_view = lazy_tab_selector(["3D 배치", "재고 위치표"], "warehouse3d_view")
     if selected_view == "3D 배치":
-        save_request = warehouse3d_scene_component(
-            html=warehouse_scene3d_html(
+        with perf_span("warehouse3d.component_html_build", component="scene3d"):
+            scene_html = warehouse_scene3d_html(
                 building=building,
                 floor=floor,
                 drawing_mode=drawing_mode,
@@ -836,23 +844,29 @@ def render_warehouse3d_page() -> None:
                 zones=FLOOR_ZONES.get(floor, []),
                 inventory_rows=inventory_rows,
                 shared_layout_store=shared_layout_store,
-            ),
-            height=860,
-            key=f"warehouse3d_scene_{building}",
-            default=None,
-        )
+            )
+        with perf_span("warehouse3d.component_render", component="scene3d"):
+            save_request = warehouse3d_scene_component(
+                html=scene_html,
+                height=860,
+                key=f"warehouse3d_scene_{building}",
+                default=None,
+            )
         if handle_warehouse3d_layout_save_request(save_request):
             st.rerun()
     else:
-        components.html(
-            warehouse_stock_position_html(
+        with perf_span("warehouse3d.component_html_build", component="stock_position"):
+            stock_html = warehouse_stock_position_html(
                 building=building,
                 inventory_rows=inventory_rows,
                 shared_layout_store=shared_layout_store,
-            ),
-            height=760,
-            scrolling=True,
-        )
+            )
+        with perf_span("warehouse3d.component_render", component="stock_position"):
+            components.html(
+                stock_html,
+                height=760,
+                scrolling=True,
+            )
     return
 
     scene_tab, stock_tab = st.tabs(["3D 배치", "재고 위치표"])

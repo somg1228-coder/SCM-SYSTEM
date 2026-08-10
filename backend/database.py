@@ -1008,6 +1008,13 @@ def install_query_profiler(target_engine) -> None:
     @event.listens_for(target_engine, "before_cursor_execute")
     def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
         context._scm_query_started_at = time.perf_counter()
+        operation, table_name = describe_sql_statement(statement)
+        try:
+            from backend.perf import log_perf
+
+            log_perf(f"sqlalchemy_execute START page={_PAGE_PROFILE.get('page') or ''} table={table_name} operation={operation}")
+        except Exception:
+            pass
 
     @event.listens_for(target_engine, "after_cursor_execute")
     def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
@@ -1052,6 +1059,20 @@ def record_query_profile(statement: str, elapsed_seconds: float, success: bool, 
         rows = list(st.session_state.get("db_query_profile_events", []))
         rows.append(event_row)
         st.session_state["db_query_profile_events"] = rows[-_QUERY_PROFILE_MAX_EVENTS:]
+    except Exception:
+        pass
+    try:
+        from backend.perf import record_perf_event
+
+        record_perf_event(
+            "sqlalchemy_execute",
+            elapsed_seconds,
+            page=page,
+            table=table_name,
+            operation=operation,
+            success=success,
+            error=error,
+        )
     except Exception:
         pass
     if not success or float(elapsed_seconds or 0.0) >= 0.05:

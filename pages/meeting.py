@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available, legacy_uses_local_sqlite
+from backend.perf import perf_span
 import streamlit.components.v1 as components
 
 
@@ -42,31 +43,43 @@ ACTION_STATUS = ["진행중", "대기", "완료"]
 
 
 def render_meeting_page() -> None:
-    ensure_schema()
-    inject_page_css()
+    with perf_span("meeting.ensure_schema"):
+        ensure_schema()
+    with perf_span("meeting.inject_css"):
+        inject_page_css()
 
     default_date = next_tuesday(date.today())
-    if "meeting_date" not in st.session_state:
-        st.session_state.meeting_date = default_date
+    with perf_span("meeting.session_state"):
+        if "meeting_date" not in st.session_state:
+            st.session_state.meeting_date = default_date
 
     st.markdown('<main class="meeting-shell">', unsafe_allow_html=True)
 
-    meta = render_control_card()
-    report = get_or_create_report(meta["meeting_date"], meta["author"])
+    with perf_span("meeting.control_card_render"):
+        meta = render_control_card()
+    with perf_span("meeting.get_or_create_report"):
+        report = get_or_create_report(meta["meeting_date"], meta["author"])
     save_notice = st.session_state.pop("meeting_save_notice", None)
     if isinstance(save_notice, str) and save_notice:
         st.success(save_notice)
     kpi_slot = st.empty()
 
-    production_df = render_production_section(report["id"])
-    events_df, event_month = render_events_section(report["id"], meta["meeting_date"])
+    with perf_span("meeting.production_section"):
+        production_df = render_production_section(report["id"])
+    with perf_span("meeting.events_section"):
+        events_df, event_month = render_events_section(report["id"], meta["meeting_date"])
     meta["event_month"] = event_month
-    events_df = render_event_detail_section(report, events_df, event_month)
-    issues = render_issue_section(report)
-    action_df = render_action_section(report["id"])
-    kpis = build_kpis(meta["meeting_date"], event_month, production_df, events_df, issues, action_df)
+    with perf_span("meeting.event_detail_section"):
+        events_df = render_event_detail_section(report, events_df, event_month)
+    with perf_span("meeting.issue_section"):
+        issues = render_issue_section(report)
+    with perf_span("meeting.action_section"):
+        action_df = render_action_section(report["id"])
+    with perf_span("meeting.data_processing.kpis"):
+        kpis = build_kpis(meta["meeting_date"], event_month, production_df, events_df, issues, action_df)
     with kpi_slot.container():
-        render_kpi_cards(kpis, section_number="00")
+        with perf_span("meeting.kpi_render"):
+            render_kpi_cards(kpis, section_number="00")
 
     if st.session_state.pop("meeting_delete_production_requested", False):
         delete_report_section(report["id"], "meeting_production_requests")
@@ -469,92 +482,94 @@ def render_visible_spreadsheet_editor(
     select_options: dict[str, list[str]] | None = None,
     blank_rows: int = 3,
 ) -> pd.DataFrame:
-    number_columns = number_columns or set()
-    date_columns = date_columns or set()
-    select_options = select_options or {}
-    source = df.copy() if df is not None else pd.DataFrame(columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
-    for column in [EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns]:
-        if column not in source.columns:
-            source[column] = False if column == EDIT_DELETE_COLUMN else ""
-    source = source[[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns]].reset_index(drop=True)
+    with perf_span("meeting.spreadsheet_prepare", editor=key_prefix):
+        number_columns = number_columns or set()
+        date_columns = date_columns or set()
+        select_options = select_options or {}
+        source = df.copy() if df is not None else pd.DataFrame(columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
+        for column in [EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns]:
+            if column not in source.columns:
+                source[column] = False if column == EDIT_DELETE_COLUMN else ""
+        source = source[[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns]].reset_index(drop=True)
 
-    rows = source.to_dict("records")
-    row_count_key = editor_row_count_key(key_prefix)
-    current_row_count = max(blank_rows, len(rows), int(st.session_state.get(row_count_key, 0) or 0))
-    st.session_state[row_count_key] = current_row_count
-
-    render_spreadsheet_css_once()
-    st.markdown('<div class="meeting-visible-editor">', unsafe_allow_html=True)
-    row_action = "none"
-    control_cols = st.columns([0.9, 0.36, 0.36, 4.3], gap="small")
-    control_cols[0].markdown(
-        f'<div class="meeting-row-count-label">입력칸 {current_row_count}행</div>',
-        unsafe_allow_html=True,
-    )
-    if control_cols[1].form_submit_button("-", use_container_width=True):
-        row_action = "row_minus"
-    if control_cols[2].form_submit_button("+", use_container_width=True):
-        current_row_count = min(current_row_count + 1, 80)
+        rows = source.to_dict("records")
+        row_count_key = editor_row_count_key(key_prefix)
+        current_row_count = max(blank_rows, len(rows), int(st.session_state.get(row_count_key, 0) or 0))
         st.session_state[row_count_key] = current_row_count
-        row_action = "row_plus"
-    control_cols[3].caption("기본 3행")
 
-    for _ in range(max(0, current_row_count - len(rows))):
-        rows.append({EDIT_DELETE_COLUMN: False, ROW_ID_COLUMN: "", **{column: 0 if column in number_columns else "" for column in columns}})
+    with perf_span("meeting.spreadsheet_render", editor=key_prefix):
+        render_spreadsheet_css_once()
+        st.markdown('<div class="meeting-visible-editor">', unsafe_allow_html=True)
+        row_action = "none"
+        control_cols = st.columns([0.9, 0.36, 0.36, 4.3], gap="small")
+        control_cols[0].markdown(
+            f'<div class="meeting-row-count-label">입력칸 {current_row_count}행</div>',
+            unsafe_allow_html=True,
+        )
+        if control_cols[1].form_submit_button("-", use_container_width=True):
+            row_action = "row_minus"
+        if control_cols[2].form_submit_button("+", use_container_width=True):
+            current_row_count = min(current_row_count + 1, 80)
+            st.session_state[row_count_key] = current_row_count
+            row_action = "row_plus"
+        control_cols[3].caption("기본 3행")
 
-    header_weights = spreadsheet_column_weights(columns)
-    header_cols = st.columns(header_weights, gap="small")
-    header_cols[0].markdown('<div class="sheet-header">삭제</div>', unsafe_allow_html=True)
-    for index, column in enumerate(columns, start=1):
-        header_cols[index].markdown(f'<div class="sheet-header">{escape_html(column)}</div>', unsafe_allow_html=True)
+        for _ in range(max(0, current_row_count - len(rows))):
+            rows.append({EDIT_DELETE_COLUMN: False, ROW_ID_COLUMN: "", **{column: 0 if column in number_columns else "" for column in columns}})
 
-    edited_rows = []
-    for row_index, row in enumerate(rows):
-        row_cols = st.columns(header_weights, gap="small")
-        edited_row = {
-            ROW_ID_COLUMN: normalize_row_id(row.get(ROW_ID_COLUMN, "")),
-            EDIT_DELETE_COLUMN: row_cols[0].checkbox(
-                "삭제",
-                value=is_delete_checked(row.get(EDIT_DELETE_COLUMN)),
-                key=f"{key_prefix}_delete_{row_index}",
-                label_visibility="collapsed",
-            ),
-        }
-        for column_index, column in enumerate(columns, start=1):
-            value = row.get(column, "")
-            cell_key = f"{key_prefix}_{row_index}_{column_index}_{safe_widget_key(column)}"
-            if column in number_columns:
-                edited_row[column] = row_cols[column_index].number_input(
-                    column,
-                    min_value=0,
-                    step=1,
-                    value=max(0, parse_int(value)),
-                    key=cell_key,
+        header_weights = spreadsheet_column_weights(columns)
+        header_cols = st.columns(header_weights, gap="small")
+        header_cols[0].markdown('<div class="sheet-header">삭제</div>', unsafe_allow_html=True)
+        for index, column in enumerate(columns, start=1):
+            header_cols[index].markdown(f'<div class="sheet-header">{escape_html(column)}</div>', unsafe_allow_html=True)
+
+        edited_rows = []
+        for row_index, row in enumerate(rows):
+            row_cols = st.columns(header_weights, gap="small")
+            edited_row = {
+                ROW_ID_COLUMN: normalize_row_id(row.get(ROW_ID_COLUMN, "")),
+                EDIT_DELETE_COLUMN: row_cols[0].checkbox(
+                    "삭제",
+                    value=is_delete_checked(row.get(EDIT_DELETE_COLUMN)),
+                    key=f"{key_prefix}_delete_{row_index}",
                     label_visibility="collapsed",
-                )
-            elif column in select_options:
-                options = list(select_options[column])
-                current = normalize_cell_value(value)
-                if current and current not in options:
-                    options.append(current)
-                edited_row[column] = row_cols[column_index].selectbox(
-                    column,
-                    options=options,
-                    index=options.index(current) if current in options else 0,
-                    key=cell_key,
-                    label_visibility="collapsed",
-                )
-            else:
-                placeholder = "YYYY-MM-DD" if column in date_columns else ""
-                edited_row[column] = row_cols[column_index].text_input(
-                    column,
-                    value=normalize_date_value(value) if column in date_columns else normalize_cell_value(value),
-                    placeholder=placeholder,
-                    key=cell_key,
-                    label_visibility="collapsed",
-                )
-        edited_rows.append(edited_row)
-    st.markdown("</div>", unsafe_allow_html=True)
+                ),
+            }
+            for column_index, column in enumerate(columns, start=1):
+                value = row.get(column, "")
+                cell_key = f"{key_prefix}_{row_index}_{column_index}_{safe_widget_key(column)}"
+                if column in number_columns:
+                    edited_row[column] = row_cols[column_index].number_input(
+                        column,
+                        min_value=0,
+                        step=1,
+                        value=max(0, parse_int(value)),
+                        key=cell_key,
+                        label_visibility="collapsed",
+                    )
+                elif column in select_options:
+                    options = list(select_options[column])
+                    current = normalize_cell_value(value)
+                    if current and current not in options:
+                        options.append(current)
+                    edited_row[column] = row_cols[column_index].selectbox(
+                        column,
+                        options=options,
+                        index=options.index(current) if current in options else 0,
+                        key=cell_key,
+                        label_visibility="collapsed",
+                    )
+                else:
+                    placeholder = "YYYY-MM-DD" if column in date_columns else ""
+                    edited_row[column] = row_cols[column_index].text_input(
+                        column,
+                        value=normalize_date_value(value) if column in date_columns else normalize_cell_value(value),
+                        placeholder=placeholder,
+                        key=cell_key,
+                        label_visibility="collapsed",
+                    )
+            edited_rows.append(edited_row)
+        st.markdown("</div>", unsafe_allow_html=True)
     edited_df = pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
     edited_df.attrs["editor_row_action"] = row_action
     return edited_df

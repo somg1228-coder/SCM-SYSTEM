@@ -6,6 +6,7 @@ from typing import Any
 import streamlit as st
 
 from backend.config import config_text_value
+from backend.perf import perf_span, profile_supabase_client
 
 
 @dataclass(frozen=True)
@@ -31,9 +32,11 @@ def get_supabase_client() -> tuple[Any | None, SupabaseStatus]:
         return None, SupabaseStatus(False, False, f"Supabase REST API 설정 누락: {missing}", source)
 
     try:
-        client = create_client(url, key)
-        result = client.table("warehouse_layouts").select("id", count="exact").limit(1).execute()
-        return client, SupabaseStatus(
+        with perf_span("supabase_create_client"):
+            client = create_client(url, key)
+        profiled_client = profile_supabase_client(client)
+        result = profiled_client.table("warehouse_layouts").select("id", count="exact").limit(1).execute()
+        return profiled_client, SupabaseStatus(
             True,
             True,
             f"Supabase REST API 연결 성공: warehouse_layouts 조회 OK (count={result.count})",

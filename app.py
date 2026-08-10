@@ -8,6 +8,7 @@ import streamlit as st
 
 from components.header import render_header
 from components import sidebar as sidebar_component
+from backend.perf import log_perf, perf_span, record_perf_event, start_streamlit_run
 
 
 BASE_DIR = Path(__file__).parent
@@ -17,7 +18,8 @@ APP_ROUTING_LOG_PATH = BASE_DIR / "data" / "app_routing.log"
 
 def import_page_module(module_name: str, label: str):
     try:
-        return importlib.import_module(module_name)
+        with perf_span("import_page_module", module=module_name, label=label):
+            return importlib.import_module(module_name)
     except Exception as exc:
         log_app_exception(exc)
         st.error(f"{label} 화면을 불러오지 못했습니다. 배포 로그와 아래 오류를 확인해주세요.")
@@ -251,6 +253,13 @@ def render_page(page: str) -> None:
         f"current_page={st.session_state.get('current_page')!r}"
     )
     log_route_event(f"render_page_start {route_context}")
+    log_perf(f"{page} START")
+    try:
+        from backend.database import begin_page_query_profile
+
+        begin_page_query_profile(page)
+    except Exception:
+        pass
     started_at = time.perf_counter()
     try:
         if page in {"홈", "대시보드"}:
@@ -297,6 +306,14 @@ def render_page(page: str) -> None:
     finally:
         elapsed = time.perf_counter() - started_at
         st.session_state["last_page_render_seconds"] = round(elapsed, 3)
+        record_perf_event("page_render_total", elapsed, page=page)
+        try:
+            from backend.database import finish_page_query_profile
+
+            finish_page_query_profile(page, elapsed)
+        except Exception:
+            pass
+        log_perf(f"{page} TOTAL: {elapsed:.3f}s")
         log_route_event(f"render_page_done {page!r} seconds={elapsed:.3f}")
 
 
@@ -357,19 +374,29 @@ def main() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    load_css()
-    run_sqlite_bootstrap_migration()
-    sync_query_params_to_state()
+    start_streamlit_run(str(st.session_state.get("current_page") or st.session_state.get("selected_menu") or "unknown"))
+    with perf_span("load_css"):
+        load_css()
+    with perf_span("sqlite_bootstrap_migration"):
+        run_sqlite_bootstrap_migration()
+    with perf_span("sync_query_params"):
+        sync_query_params_to_state()
 
-    page = sidebar_component.render_sidebar()
+    with perf_span("sidebar_render"):
+        page = sidebar_component.render_sidebar()
     st.session_state["page"] = page
     st.session_state["selected_menu"] = page
     st.session_state["current_page"] = page
+    log_perf(f"{st.session_state.get('perf_run_id')} selected_page={page}")
 
     if page != "반품/AS 관리":
-        render_header(page)
-    render_page(page)
-    st.session_state["last_app_render_seconds"] = round(time.perf_counter() - started_at, 3)
+        with perf_span("header_render", page=page):
+            render_header(page)
+    with perf_span("route_render", page=page):
+        render_page(page)
+    total_elapsed = time.perf_counter() - started_at
+    st.session_state["last_app_render_seconds"] = round(total_elapsed, 3)
+    record_perf_event("app_render_total", total_elapsed, page=page)
 
 
 if __name__ == "__main__":

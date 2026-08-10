@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from backend.legacy_storage import connect_sqlite_compatible, legacy_uses_local_sqlite
+from backend.perf import perf_span
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -47,26 +48,38 @@ DEFAULT_SLOTS = [
 
 
 def render_schedule_page() -> None:
-    ensure_schema()
-    ensure_weeks_through_current()
-    clear_unsaved_seeded_highlights_from_current()
-    inject_schedule_css()
+    with perf_span("schedule.ensure_schema"):
+        ensure_schema()
+    with perf_span("schedule.ensure_weeks"):
+        ensure_weeks_through_current()
+    with perf_span("schedule.clear_seed_rows"):
+        clear_unsaved_seeded_highlights_from_current()
+    with perf_span("schedule.inject_css"):
+        inject_schedule_css()
 
     default_week = monday_of(date.today())
-    if "schedule_week_start" not in st.session_state:
-        st.session_state.schedule_week_start = default_week
+    with perf_span("schedule.session_state"):
+        if "schedule_week_start" not in st.session_state:
+            st.session_state.schedule_week_start = default_week
 
     st.markdown('<main class="weekly-schedule-shell">', unsafe_allow_html=True)
     st.markdown('<h1 class="weekly-schedule-title">주간 캘린더</h1>', unsafe_allow_html=True)
 
-    week_start = render_week_controls()
-    week = get_or_create_week(week_start)
+    with perf_span("schedule.controls_render"):
+        week_start = render_week_controls()
+    with perf_span("schedule.get_or_create_week"):
+        week = get_or_create_week(week_start)
 
-    highlights_df = render_highlights(week["id"])
-    slots_df = render_week_table(week["id"])
-    comment = render_comment(week)
-    render_save_actions(week["id"], week_start, highlights_df, slots_df, comment)
-    render_history()
+    with perf_span("schedule.highlights_section"):
+        highlights_df = render_highlights(week["id"])
+    with perf_span("schedule.slots_section"):
+        slots_df = render_week_table(week["id"])
+    with perf_span("schedule.comment_render"):
+        comment = render_comment(week)
+    with perf_span("schedule.save_actions_render"):
+        render_save_actions(week["id"], week_start, highlights_df, slots_df, comment)
+    with perf_span("schedule.history_render"):
+        render_history()
 
     st.markdown("</main>", unsafe_allow_html=True)
 
@@ -151,25 +164,28 @@ def render_week_controls() -> date:
 
 def render_highlights(week_id: int) -> pd.DataFrame:
     st.markdown('<h2 class="weekly-section-title">이번 주 핵심</h2>', unsafe_allow_html=True)
-    df = load_highlights_df(week_id)
-    buffer_key = f"schedule_highlights_buffer_{week_id}"
-    if buffer_key not in st.session_state:
-        st.session_state[buffer_key] = df
+    with perf_span("schedule.highlights_dataframe"):
+        df = load_highlights_df(week_id)
+    with perf_span("schedule.highlights_session_state"):
+        buffer_key = f"schedule_highlights_buffer_{week_id}"
+        if buffer_key not in st.session_state:
+            st.session_state[buffer_key] = df
     st.markdown('<div class="schedule-highlight-editor">', unsafe_allow_html=True)
     with st.form(key=f"schedule_highlights_form_{week_id}", clear_on_submit=False):
-        edited = st.data_editor(
-            st.session_state[buffer_key],
-            hide_index=True,
-            use_container_width=False,
-            num_rows="dynamic",
-            height=212,
-            key=f"schedule_highlights_editor_{week_id}",
-            column_order=HIGHLIGHT_COLUMNS,
-            column_config={
-                "완료": st.column_config.CheckboxColumn("✓", default=False, width=56),
-                "이번 주 핵심": st.column_config.TextColumn("이번 주 핵심", width=520),
-            },
-        )
+        with perf_span("schedule.highlights_data_editor"):
+            edited = st.data_editor(
+                st.session_state[buffer_key],
+                hide_index=True,
+                use_container_width=False,
+                num_rows="dynamic",
+                height=212,
+                key=f"schedule_highlights_editor_{week_id}",
+                column_order=HIGHLIGHT_COLUMNS,
+                column_config={
+                    "완료": st.column_config.CheckboxColumn("✓", default=False, width=56),
+                    "이번 주 핵심": st.column_config.TextColumn("이번 주 핵심", width=520),
+                },
+            )
         if st.form_submit_button("핵심 반영", type="primary", use_container_width=True):
             st.session_state[buffer_key] = normalize_highlights_df(edited)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -178,24 +194,27 @@ def render_highlights(week_id: int) -> pd.DataFrame:
 
 def render_week_table(week_id: int) -> pd.DataFrame:
     st.markdown('<h2 class="weekly-section-title">월~금 시간대별 일정</h2>', unsafe_allow_html=True)
-    df = load_slots_df(week_id)
-    render_schedule_table_html(df)
+    with perf_span("schedule.slots_dataframe"):
+        df = load_slots_df(week_id)
+    with perf_span("schedule.slots_table_render"):
+        render_schedule_table_html(df)
     with st.expander("시간대별 일정 편집", expanded=True):
         slot_column_config = {
             "시간": st.column_config.TextColumn("시간", width=180),
             **{weekday: st.column_config.TextColumn(weekday, width=310) for weekday in WEEKDAYS},
         }
         with st.form(key=f"schedule_slots_form_{week_id}", clear_on_submit=False):
-            edited = st.data_editor(
-                df,
-                hide_index=True,
-                use_container_width=True,
-                num_rows="dynamic",
-                height=380,
-                key=f"schedule_slots_editor_{week_id}",
-                column_order=SLOT_COLUMNS,
-                column_config=slot_column_config,
-            )
+            with perf_span("schedule.slots_data_editor"):
+                edited = st.data_editor(
+                    df,
+                    hide_index=True,
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    height=380,
+                    key=f"schedule_slots_editor_{week_id}",
+                    column_order=SLOT_COLUMNS,
+                    column_config=slot_column_config,
+                )
             if st.form_submit_button("일정 저장", type="primary", use_container_width=True):
                 normalized = normalize_slots_df(edited)
                 save_slots_only(week_id, normalized)
