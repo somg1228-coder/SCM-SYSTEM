@@ -906,6 +906,8 @@ def normalize_product_master_row(row: dict) -> dict:
 
 
 PRODUCT_MASTER_CATEGORY_FIELDS = ("large_category", "medium_category", "small_category")
+PRODUCT_MASTER_TEXT_REFERENCE_FIELDS = (*PRODUCT_MASTER_CATEGORY_FIELDS, "memo")
+PRODUCT_MASTER_NUMBER_REFERENCE_FIELDS = ("pack_qty", "box_qty")
 PRODUCT_MASTER_CATEGORY_HEADERS = {"카테고리", "중분류", "소분류"}
 
 
@@ -947,12 +949,19 @@ def keep_existing_product_master_categories(product, row: dict) -> dict:
         return row
     next_row = dict(row)
     changed = False
-    for field in PRODUCT_MASTER_CATEGORY_FIELDS:
+    for field in PRODUCT_MASTER_TEXT_REFERENCE_FIELDS:
         if clean_text(next_row.get(field)):
             continue
-        existing_category = clean_text(getattr(product, field, ""))
-        if existing_category:
-            next_row[field] = existing_category
+        existing_value = clean_text(getattr(product, field, ""))
+        if existing_value:
+            next_row[field] = existing_value
+            changed = True
+    for field in PRODUCT_MASTER_NUMBER_REFERENCE_FIELDS:
+        if to_int(next_row.get(field)) > 0:
+            continue
+        existing_value = to_int(getattr(product, field, 0))
+        if existing_value > 0:
+            next_row[field] = existing_value
             changed = True
     return next_row if changed else row
 
@@ -1648,7 +1657,7 @@ def parse_box_pallet_unit(value) -> tuple[int, int]:
     if box_prefix_match:
         box_qty = to_int(box_prefix_match.group(1))
     box_match = re.search(r"(?:박스당|박스|BOX)\s*(\d+)\s*EA", text) or re.search(r"(\d+)\s*EA", text)
-    pallet_match = re.search(r"(?:파렛트당|파렛트|PALLET|PL)\D*(\d+)\s*BOX", text) or re.search(r"/[^/]*(\d+)\s*BOX", text)
+    pallet_match = re.search(r"(?:파렛트당|파렛트|PALLET|PL)\D*(\d+)\s*BOX", text) or re.search(r"/[^/]*?(\d+)\s*BOX", text)
     if box_match and not box_qty:
         box_qty = to_int(box_match.group(1))
     if pallet_match:

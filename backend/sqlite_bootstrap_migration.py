@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 MIGRATION_KEY = "sqlite-bootstrap-2026-08-10"
+REFERENCE_BACKFILL_KEY = "sqlite-product-master-reference-backfill-2026-08-10"
 SQLITE_SOURCES = [
     BASE_DIR / "data" / "scm.db",
     BASE_DIR / "data" / "schedule.db",
@@ -19,6 +20,21 @@ SQLITE_SOURCES = [
     BASE_DIR / "data" / "scm_inventory.db",
     BASE_DIR / "ReturnCaseSystem" / "cases.db",
 ]
+PRODUCT_MASTER_REFERENCE_TABLES = (
+    "offline_product_master",
+    "thirdparty_product_master",
+    "warehouse_product_master",
+)
+PRODUCT_MASTER_TEXT_REFERENCE_FIELDS = (
+    "large_category",
+    "medium_category",
+    "small_category",
+    "memo",
+)
+PRODUCT_MASTER_NUMBER_REFERENCE_FIELDS = (
+    "pack_qty",
+    "box_qty",
+)
 
 
 def run_once() -> dict[str, Any]:
@@ -32,7 +48,8 @@ def run_once() -> dict[str, Any]:
     with engine.begin() as target_conn:
         ensure_migration_table(target_conn)
         if migration_already_done(target_conn):
-            return {"ok": True, "skipped": True, "reason": "already-done"}
+            reference_backfill = backfill_product_master_references_once(target_conn, Base.metadata.tables)
+            return {"ok": True, "skipped": True, "reason": "already-done", "reference_backfill": reference_backfill}
 
         target_tables = Base.metadata.tables
         summaries = []
@@ -40,9 +57,11 @@ def run_once() -> dict[str, Any]:
             summaries.extend(migrate_sqlite_file(sqlite_path, target_conn, target_tables))
         source_total = sum(int(row.get("source_rows") or 0) for row in summaries)
         if source_total <= 0:
-            return {"ok": True, "skipped": True, "reason": "no-source-sqlite-rows", "summaries": summaries}
+            reference_backfill = backfill_product_master_references_once(target_conn, target_tables)
+            return {"ok": True, "skipped": True, "reason": "no-source-sqlite-rows", "summaries": summaries, "reference_backfill": reference_backfill}
         record_migration_done(target_conn, summaries)
-        return {"ok": True, "skipped": False, "summaries": summaries}
+        reference_backfill = backfill_product_master_references_once(target_conn, target_tables)
+        return {"ok": True, "skipped": False, "summaries": summaries, "reference_backfill": reference_backfill}
 
 
 def ensure_migration_table(conn) -> None:
@@ -83,6 +102,153 @@ def record_migration_done(conn, summaries: list[dict[str, Any]]) -> None:
             "summary": json.dumps(summaries, ensure_ascii=False, default=str),
         },
     )
+
+
+def reference_backfill_already_done(conn) -> bool:
+    row = conn.execute(
+        text("SELECT 1 FROM sqlite_migration_runs WHERE migration_key = :key"),
+        {"key": REFERENCE_BACKFILL_KEY},
+    ).fetchone()
+    return row is not None
+
+
+def record_reference_backfill_done(conn, summaries: list[dict[str, Any]]) -> None:
+    conn.execute(
+        text(
+            """
+            INSERT INTO sqlite_migration_runs (migration_key, ran_at, summary)
+            VALUES (:key, :ran_at, CAST(:summary AS jsonb))
+            ON CONFLICT (migration_key)
+            DO UPDATE SET ran_at = EXCLUDED.ran_at, summary = EXCLUDED.summary
+            """
+        ),
+        {
+            "key": REFERENCE_BACKFILL_KEY,
+            "ran_at": datetime.now().isoformat(timespec="seconds"),
+            "summary": json.dumps(summaries, ensure_ascii=False, default=str),
+        },
+    )
+
+
+def backfill_product_master_references_once(target_conn, target_tables) -> dict[str, Any]:
+    if reference_backfill_already_done(target_conn):
+        return {"ok": True, "skipped": True, "reason": "already-done"}
+
+    summaries = []
+    for sqlite_path in SQLITE_SOURCES:
+        summaries.extend(backfill_product_master_references_from_sqlite(sqlite_path, target_conn, target_tables))
+
+    source_rows = sum(int(row.get("source_rows") or 0) for row in summaries)
+    updated_rows = sum(int(row.get("updated_rows") or 0) for row in summaries)
+    if source_rows <= 0:
+        return {"ok": True, "skipped": True, "reason": "no-source-product-master-rows", "summaries": summaries}
+
+    record_reference_backfill_done(target_conn, summaries)
+    return {"ok": True, "skipped": False, "updated_rows": updated_rows, "summaries": summaries}
+
+
+def backfill_product_master_references_from_sqlite(sqlite_path: Path, target_conn, target_tables) -> list[dict[str, Any]]:
+    if not sqlite_path.exists() or sqlite_path.stat().st_size == 0:
+        return []
+
+    sqlite_conn = sqlite3.connect(sqlite_path)
+    sqlite_conn.row_factory = sqlite3.Row
+    try:
+        source_tables = set(sqlite_table_names(sqlite_conn))
+        summaries = []
+        for table_name in PRODUCT_MASTER_REFERENCE_TABLES:
+            table = target_tables.get(table_name)
+            if table is None or table_name not in source_tables:
+                continue
+            summaries.append(backfill_product_master_reference_table(sqlite_conn, target_conn, table, sqlite_path))
+        return summaries
+    finally:
+        sqlite_conn.close()
+
+
+def backfill_product_master_reference_table(sqlite_conn: sqlite3.Connection, target_conn, table, sqlite_path: Path) -> dict[str, Any]:
+    source_columns = sqlite_column_names(sqlite_conn, table.name)
+    identity_columns = [column for column in ("sku", "barcode", "product_name") if column in source_columns]
+    reference_columns = [
+        column
+        for column in (*PRODUCT_MASTER_TEXT_REFERENCE_FIELDS, *PRODUCT_MASTER_NUMBER_REFERENCE_FIELDS)
+        if column in source_columns and column in table.columns
+    ]
+    if not identity_columns or not reference_columns:
+        return {
+            "source": str(sqlite_path.relative_to(BASE_DIR)),
+            "table": table.name,
+            "source_rows": 0,
+            "updated_rows": 0,
+            "skipped": "columns-missing",
+        }
+
+    selected_columns = ", ".join(f'"{column}"' for column in [*identity_columns, *reference_columns])
+    rows = sqlite_conn.execute(f'SELECT {selected_columns} FROM "{table.name}"').fetchall()
+    updated_rows = 0
+    for row in rows:
+        updated_rows += backfill_product_master_reference_row(target_conn, table, dict(row), reference_columns)
+
+    return {
+        "source": str(sqlite_path.relative_to(BASE_DIR)),
+        "table": table.name,
+        "source_rows": len(rows),
+        "updated_rows": updated_rows,
+        "skipped": "",
+    }
+
+
+def backfill_product_master_reference_row(target_conn, table, row: dict[str, Any], reference_columns: list[str]) -> int:
+    sku = clean_migration_text(row.get("sku"))
+    barcode = clean_migration_text(row.get("barcode"))
+    product_name = clean_migration_text(row.get("product_name"))
+    if not sku and not (barcode and product_name):
+        return 0
+
+    values: dict[str, Any] = {}
+    missing_conditions = []
+    set_parts = []
+    for field in reference_columns:
+        if field in PRODUCT_MASTER_TEXT_REFERENCE_FIELDS:
+            value = clean_migration_text(row.get(field))
+            if not value:
+                continue
+            values[field] = value
+            set_parts.append(f'"{field}" = CASE WHEN COALESCE("{field}", \'\') = \'\' THEN :{field} ELSE "{field}" END')
+            missing_conditions.append(f'COALESCE("{field}", \'\') = \'\'')
+        elif field in PRODUCT_MASTER_NUMBER_REFERENCE_FIELDS:
+            value = int(row.get(field) or 0)
+            if value <= 0:
+                continue
+            values[field] = value
+            set_parts.append(f'"{field}" = CASE WHEN COALESCE("{field}", 0) = 0 THEN :{field} ELSE "{field}" END')
+            missing_conditions.append(f'COALESCE("{field}", 0) = 0')
+
+    if not set_parts:
+        return 0
+    if "updated_at" in table.columns:
+        set_parts.append('"updated_at" = CURRENT_TIMESTAMP')
+
+    values.update({"sku": sku, "barcode": barcode, "product_name": product_name})
+    table_name = '"' + table.name.replace('"', '""') + '"'
+    if sku:
+        identity_condition = '"sku" = :sku'
+    else:
+        identity_condition = '"barcode" = :barcode AND "product_name" = :product_name'
+    stmt = text(
+        f"""
+        UPDATE {table_name}
+        SET {", ".join(set_parts)}
+        WHERE {identity_condition}
+          AND ({" OR ".join(missing_conditions)})
+        """
+    )
+    result = target_conn.execute(stmt, values)
+    return int(result.rowcount or 0)
+
+
+def clean_migration_text(value) -> str:
+    return "" if value is None else str(value).strip()
 
 
 def migrate_sqlite_file(sqlite_path: Path, target_conn, target_tables) -> list[dict[str, Any]]:

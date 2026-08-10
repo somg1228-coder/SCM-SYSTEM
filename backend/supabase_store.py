@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 import hashlib
+import re
 from types import SimpleNamespace
 from typing import Any
 
@@ -36,6 +37,39 @@ def to_int(value) -> int:
         return int(float(text))
     except ValueError:
         return 0
+
+
+def parse_box_pallet_unit(value) -> tuple[int, int]:
+    text = clean(value).upper().replace(",", "")
+    if not text:
+        return 0, 0
+    box_qty = 0
+    pallet_qty = 0
+    box_prefix_match = re.search(r"\d+\s*(?:박스|BOX)\s*(\d+)\s*(?:EA|개)?", text)
+    if box_prefix_match:
+        box_qty = to_int(box_prefix_match.group(1))
+    box_match = re.search(r"(?:박스당|박스|BOX)\s*(\d+)\s*EA", text) or re.search(r"(\d+)\s*EA", text)
+    pallet_match = re.search(r"(?:파렛트당|파렛트|PALLET|PL)\D*(\d+)\s*BOX", text) or re.search(r"/[^/]*?(\d+)\s*BOX", text)
+    if box_match and not box_qty:
+        box_qty = to_int(box_match.group(1))
+    if pallet_match:
+        pallet_qty = to_int(pallet_match.group(1))
+    if not box_qty or not pallet_qty:
+        numbers = [to_int(number) for number in re.findall(r"\d+", text)]
+        if numbers and not box_qty:
+            box_qty = numbers[0]
+        if len(numbers) > 1 and not pallet_qty:
+            pallet_qty = numbers[-1]
+    return box_qty, pallet_qty
+
+
+def format_box_pallet_unit(box_qty: int | None, pallet_qty: int | None) -> str:
+    parts = []
+    if int(box_qty or 0):
+        parts.append(f"박스당 {int(box_qty or 0)}EA")
+    if int(pallet_qty or 0):
+        parts.append(f"파렛트당 {int(pallet_qty or 0)}BOX")
+    return " / ".join(parts)
 
 
 def iso(value) -> str | None:
@@ -168,6 +202,8 @@ def namespace(row: dict) -> SimpleNamespace:
 
 def product_to_row(item: dict) -> dict:
     metadata = item.get("metadata") or {}
+    box_qty = to_int(item.get("box_qty"))
+    pack_qty = to_int(item.get("pack_qty"))
     return {
         "id": item.get("id"),
         "sku": clean(item.get("sku")),
@@ -179,13 +215,14 @@ def product_to_row(item: dict) -> dict:
         "small_category": clean(item.get("small_category")),
         "brand": clean(item.get("brand")),
         "supplier": clean(item.get("supplier_name")),
-        "pack_qty": to_int(item.get("pack_qty")),
-        "box_qty": to_int(item.get("box_qty")),
+        "pack_qty": pack_qty,
+        "box_qty": box_qty,
+        "box_pallet_unit": clean(metadata.get("box_pallet_unit")) or format_box_pallet_unit(box_qty, pack_qty),
         "default_lead_time": to_int(item.get("default_lead_time")),
         "min_stock": to_int(item.get("min_stock")),
         "sort_order": to_int(item.get("sort_order")),
         "is_active": "사용" if item.get("is_active", True) else "미사용",
-        "memo": clean(item.get("memo") or metadata.get("memo")),
+        "memo": clean(item.get("memo") or metadata.get("memo") or metadata.get("manager")),
         "created_at": item.get("created_at"),
         "updated_at": item.get("updated_at"),
     }
@@ -259,6 +296,15 @@ def first_clean(row: dict, *keys: str) -> str:
 def normalize_product_payload(source_type: str, row: dict, used_skus: set[str]) -> dict:
     supplier_name = clean(row.get("supplier") or row.get("공급처") or row.get("업체명"))
     sku = auto_sku(row, used_skus, source_type)
+    box_unit, pallet_unit = parse_box_pallet_unit(
+        row.get("box_pallet_unit")
+        or row.get("박스/파렛트 단위")
+        or row.get("박스파렛트단위")
+        or row.get("파렛트,박스단위")
+    )
+    pack_qty = pallet_unit or to_int(row.get("pack_qty") or row.get("입수"))
+    box_qty = box_unit or to_int(row.get("box_qty") or row.get("박스입수"))
+    memo = clean(row.get("memo") or row.get("비고") or row.get("담당자") or row.get("manager"))
     return {
         "source_type": source_type,
         "sku": sku,
@@ -284,21 +330,39 @@ def normalize_product_payload(source_type: str, row: dict, used_skus: set[str]) 
         "brand": clean(row.get("brand") or row.get("브랜드")),
         "supplier_id": supplier_id_for_name(supplier_name),
         "supplier_name": supplier_name,
-        "pack_qty": to_int(row.get("pack_qty") or row.get("입수")),
-        "box_qty": to_int(row.get("box_qty") or row.get("박스입수")),
+        "pack_qty": pack_qty,
+        "box_qty": box_qty,
         "default_lead_time": to_int(row.get("default_lead_time") or row.get("기본 리드타임") or row.get("리드타임")),
         "min_stock": to_int(row.get("min_stock") or row.get("최소재고") or row.get("안전재고")),
         "sort_order": to_int(row.get("sort_order") or row.get("정렬순서")),
         "is_active": clean(row.get("is_active") or row.get("사용여부") or "사용") != "미사용",
-        "memo": clean(row.get("memo") or row.get("비고") or row.get("담당자")),
+        "memo": memo,
     }
+
+
+def keep_existing_product_payload(existing_row: dict | None, normalized: dict) -> dict:
+    if not existing_row:
+        return normalized
+    next_payload = dict(normalized)
+    for target, source in (
+        ("category", "category"),
+        ("medium_category", "medium_category"),
+        ("small_category", "small_category"),
+        ("memo", "memo"),
+    ):
+        if not clean(next_payload.get(target)) and clean(existing_row.get(source)):
+            next_payload[target] = clean(existing_row.get(source))
+    for target in ("pack_qty", "box_qty"):
+        if to_int(next_payload.get(target)) <= 0 and to_int(existing_row.get(target)) > 0:
+            next_payload[target] = to_int(existing_row.get(target))
+    return next_payload
 
 
 def bulk_save_product_master(source_type: str, rows: list[dict]) -> dict:
     sb = client()
     existing = (
         sb.table(SOURCE_TABLE)
-        .select("sku,barcode,product_name,category,medium_category,small_category")
+        .select("sku,barcode,product_name,category,medium_category,small_category,pack_qty,box_qty,memo")
         .eq("source_type", source_type)
         .execute()
         .data
@@ -318,14 +382,7 @@ def bulk_save_product_master(source_type: str, rows: list[dict]) -> dict:
         if existing_row:
             normalized["sku"] = clean(existing_row.get("sku")) or normalized["sku"]
         existing_row = existing_row or existing_by_sku.get(normalized["sku"])
-        if existing_row:
-            for target, source in (
-                ("category", "category"),
-                ("medium_category", "medium_category"),
-                ("small_category", "small_category"),
-            ):
-                if not clean(normalized.get(target)) and clean(existing_row.get(source)):
-                    normalized[target] = clean(existing_row.get(source))
+        normalized = keep_existing_product_payload(existing_row, normalized)
         if not normalized["product_name"] or not normalized["barcode"] or not normalized["sku"]:
             errors.append(f"{index}행: SKU/바코드/상품명 생성 실패")
             continue
