@@ -17,8 +17,13 @@ class SupabaseStatus:
     source: str = ""
 
 
-@st.cache_resource(show_spinner=False)
 def get_supabase_client() -> tuple[Any | None, SupabaseStatus]:
+    with perf_span("get_supabase_client"):
+        return _get_supabase_client_cached()
+
+
+@st.cache_resource(show_spinner=False)
+def _get_supabase_client_cached() -> tuple[Any | None, SupabaseStatus]:
     try:
         from supabase import create_client
     except Exception as exc:

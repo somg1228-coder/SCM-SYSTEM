@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import traceback
+import inspect as py_inspect
 
 from backend.config import config_bool_value, config_key_diagnostics, config_text_value, is_deployed_environment, streamlit_secret_value, truthy_config_value
 
@@ -997,6 +998,22 @@ def finish_page_query_profile(page: str, render_seconds: float) -> None:
         db_seconds,
         render_seconds,
     )
+    try:
+        from backend.perf import log_perf
+
+        log_perf(
+            f"DB SUMMARY page={page} api_calls={call_count} "
+            f"db_seconds={db_seconds:.3f}s render_seconds={render_seconds:.3f}s"
+        )
+        for item in slowest[:8]:
+            log_perf(
+                "DB SLOW "
+                f"page={page} table={item.get('table', '')} operation={item.get('operation', '')} "
+                f"elapsed={float(item.get('elapsed_seconds', 0.0) or 0.0):.3f}s "
+                f"function={item.get('function', '')}"
+            )
+    except Exception:
+        pass
 
 
 def install_query_profiler(target_engine) -> None:
@@ -1009,10 +1026,16 @@ def install_query_profiler(target_engine) -> None:
     def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
         context._scm_query_started_at = time.perf_counter()
         operation, table_name = describe_sql_statement(statement)
+        caller = query_caller()
+        context._scm_query_caller = caller
         try:
             from backend.perf import log_perf
 
-            log_perf(f"sqlalchemy_execute START page={_PAGE_PROFILE.get('page') or ''} table={table_name} operation={operation}")
+            log_perf(
+                "sqlalchemy_execute START "
+                f"page={_PAGE_PROFILE.get('page') or ''} table={table_name} "
+                f"operation={operation} function={caller}"
+            )
         except Exception:
             pass
 
@@ -1020,7 +1043,7 @@ def install_query_profiler(target_engine) -> None:
     def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
         started_at = getattr(context, "_scm_query_started_at", None)
         elapsed = time.perf_counter() - started_at if started_at else 0.0
-        record_query_profile(statement, elapsed, True, "")
+        record_query_profile(statement, elapsed, True, "", getattr(context, "_scm_query_caller", ""))
 
     @event.listens_for(target_engine, "handle_error")
     def _handle_error(exception_context):
@@ -1031,10 +1054,11 @@ def install_query_profiler(target_engine) -> None:
             elapsed,
             False,
             sanitize_database_text(exception_context.original_exception),
+            getattr(exception_context.execution_context, "_scm_query_caller", ""),
         )
 
 
-def record_query_profile(statement: str, elapsed_seconds: float, success: bool, error: str) -> None:
+def record_query_profile(statement: str, elapsed_seconds: float, success: bool, error: str, caller: str = "") -> None:
     operation, table_name = describe_sql_statement(statement)
     page = str(_PAGE_PROFILE.get("page") or "")
     if not page:
@@ -1046,7 +1070,7 @@ def record_query_profile(statement: str, elapsed_seconds: float, success: bool, 
             page = ""
     event_row = {
         "page": page,
-        "function": "sqlalchemy",
+        "function": caller or "sqlalchemy",
         "table": table_name,
         "operation": operation,
         "elapsed_seconds": round(float(elapsed_seconds or 0.0), 4),
@@ -1068,6 +1092,7 @@ def record_query_profile(statement: str, elapsed_seconds: float, success: bool, 
             "sqlalchemy_execute",
             elapsed_seconds,
             page=page,
+            function=caller or "sqlalchemy",
             table=table_name,
             operation=operation,
             success=success,
@@ -1105,6 +1130,25 @@ def describe_sql_statement(statement: str) -> tuple[str, str]:
             table_name = match.group(1).strip('"')
             break
     return operation, table_name
+
+
+def query_caller() -> str:
+    try:
+        for frame in py_inspect.stack(context=0)[3:18]:
+            filename = Path(frame.filename)
+            normalized = str(filename).replace("\\", "/")
+            if "/site-packages/" in normalized:
+                continue
+            if filename.name in {"database.py", "perf.py"} and "backend" in filename.parts:
+                continue
+            try:
+                rel_path = filename.resolve().relative_to(BASE_DIR)
+            except Exception:
+                rel_path = filename
+            return f"{rel_path}:{frame.function}:{frame.lineno}"
+    except Exception:
+        return ""
+    return ""
 
 
 try:

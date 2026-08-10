@@ -1,3 +1,6 @@
+import time as _app_import_timer
+_APP_IMPORT_STARTED_AT = _app_import_timer.perf_counter()
+
 from pathlib import Path
 import importlib
 import logging
@@ -8,7 +11,7 @@ import streamlit as st
 
 from components.header import render_header
 from components import sidebar as sidebar_component
-from backend.perf import log_perf, perf_span, record_perf_event, start_streamlit_run
+from backend.perf import log_perf, perf_span, record_perf_event, start_streamlit_run, summarize_current_run
 
 
 BASE_DIR = Path(__file__).parent
@@ -375,6 +378,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     start_streamlit_run(str(st.session_state.get("current_page") or st.session_state.get("selected_menu") or "unknown"))
+    record_perf_event("app_import", time.perf_counter() - _APP_IMPORT_STARTED_AT)
     with perf_span("load_css"):
         load_css()
     with perf_span("sqlite_bootstrap_migration"):
@@ -397,6 +401,8 @@ def main() -> None:
     total_elapsed = time.perf_counter() - started_at
     st.session_state["last_app_render_seconds"] = round(total_elapsed, 3)
     record_perf_event("app_render_total", total_elapsed, page=page)
+    summarize_current_run(total_elapsed, page=page)
+    log_perf(f"{st.session_state.get('perf_run_id')} APP TOTAL: {total_elapsed:.3f}s page={page}")
 
 
 if __name__ == "__main__":

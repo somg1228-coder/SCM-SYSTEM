@@ -3,12 +3,14 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime
 import logging
+from pathlib import Path
 import time
 from typing import Any
 
 
 LOGGER = logging.getLogger("scm.perf")
 MAX_EVENTS = 600
+PERF_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "perf_trace.log"
 
 
 def _session_state():
@@ -38,6 +40,12 @@ def log_perf(message: str) -> None:
     text = f"[PERF] {message}"
     LOGGER.info(text)
     print(text, flush=True)
+    try:
+        PERF_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with PERF_LOG_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(f"{datetime.now().isoformat(timespec='seconds')} {text}\n")
+    except Exception:
+        pass
 
 
 def record_perf_event(stage: str, elapsed_seconds: float, **fields: Any) -> None:
@@ -76,8 +84,48 @@ def start_streamlit_run(page: str) -> str:
     state["perf_run_id"] = run_id
     state["perf_events"] = []
     state["perf_run_started_at"] = datetime.now().isoformat(timespec="seconds")
-    log_perf(f"{run_id} page={page} started_at={state['perf_run_started_at']}")
+    log_perf(f"[{run_id}] APP START page={page} started_at={state['perf_run_started_at']}")
     return run_id
+
+
+def summarize_current_run(total_seconds: float | None = None, page: str | None = None) -> dict[str, Any]:
+    state = _session_state()
+    events = list(state.get("perf_events", [])) if state is not None else []
+    db_events = [item for item in events if str(item.get("stage")) in {"sqlalchemy_execute", "supabase_execute"}]
+    render_events = [
+        item
+        for item in events
+        if any(token in str(item.get("stage", "")).lower() for token in ("render", "data_editor", "dataframe", "table", "component", "html", "css"))
+    ]
+    db_seconds = sum(float(item.get("elapsed_seconds", 0.0) or 0.0) for item in db_events)
+    render_seconds = sum(float(item.get("elapsed_seconds", 0.0) or 0.0) for item in render_events)
+    slowest = sorted(events, key=lambda item: float(item.get("elapsed_seconds", 0.0) or 0.0), reverse=True)[:12]
+    summary = {
+        "run_id": _current_run_id(),
+        "page": page or _current_page(),
+        "total_seconds": round(float(total_seconds or 0.0), 4),
+        "db_seconds": round(db_seconds, 4),
+        "render_event_seconds": round(render_seconds, 4),
+        "api_calls": len(db_events),
+        "event_count": len(events),
+        "slowest": slowest,
+    }
+    if state is not None:
+        state["perf_last_summary"] = summary
+    log_perf(
+        "SUMMARY "
+        f"run_id={summary['run_id']} page={summary['page']} total={summary['total_seconds']:.3f}s "
+        f"db={summary['db_seconds']:.3f}s render_events={summary['render_event_seconds']:.3f}s "
+        f"api_calls={summary['api_calls']} events={summary['event_count']}"
+    )
+    for item in slowest[:8]:
+        log_perf(
+            "SLOW "
+            f"run_id={summary['run_id']} page={summary['page']} "
+            f"stage={item.get('stage')} elapsed={float(item.get('elapsed_seconds', 0.0) or 0.0):.3f}s "
+            f"table={item.get('table', '')} operation={item.get('operation', '')} function={item.get('function', '')}"
+        )
+    return summary
 
 
 def infer_supabase_operation(operation: str, method_name: str) -> str:
