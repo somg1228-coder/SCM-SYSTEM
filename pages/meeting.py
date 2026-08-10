@@ -329,6 +329,8 @@ def render_production_section(report_id: int) -> pd.DataFrame:
             production_source = prepare_production_editor_df(strip_delete_marker_column(edited))
             st.session_state[draft_key] = prepare_production_editor_df(production_source)
             st.session_state[edit_buffer_key] = add_delete_marker_column(production_source)
+            reset_visible_editor_state(editor_key, len(production_source))
+            st.rerun()
     elif editor_action == "save":
         production_source = prepare_production_editor_df(strip_delete_marker_column(edited))
         st.session_state[draft_key] = prepare_production_editor_df(production_source)
@@ -417,6 +419,8 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
             events_source = prepare_event_editor_df(merge_event_details(strip_delete_marker_column(edited), buffer_source))
             st.session_state[draft_key] = prepare_event_editor_df(events_source)
             st.session_state[edit_buffer_key] = add_delete_marker_column(events_source)
+            reset_visible_editor_state(editor_key, len(events_source))
+            st.rerun()
     elif editor_action == "save":
         events_source = prepare_event_editor_df(merge_event_details(strip_delete_marker_column(edited), buffer_source))
         st.session_state[draft_key] = prepare_event_editor_df(events_source)
@@ -611,6 +615,15 @@ def grow_editor_row_count(key_prefix: str, minimum_count: int) -> None:
     current = int(st.session_state.get(row_count_key, 3) or 3)
     st.session_state[row_count_key] = max(current + 1, minimum_count, 3)
     st.session_state.pop(f"{key_prefix}_row_count_input", None)
+
+
+def reset_visible_editor_state(key_prefix: str, row_count: int) -> None:
+    key_prefix_text = f"{key_prefix}_"
+    for key in list(st.session_state.keys()):
+        key_text = str(key)
+        if key_text == key_prefix or key_text.startswith(key_prefix_text):
+            st.session_state.pop(key, None)
+    st.session_state[editor_row_count_key(key_prefix)] = max(int(row_count or 0), 3)
 
 
 def apply_editor_row_action(edited: pd.DataFrame, action: str, key_prefix: str, columns: list[str]) -> pd.DataFrame:
@@ -1196,6 +1209,8 @@ def render_action_section(report_id: int) -> pd.DataFrame:
             action_source = prepare_action_editor_df(strip_delete_marker_column(edited))
             st.session_state[draft_key] = prepare_action_editor_df(action_source)
             st.session_state[edit_buffer_key] = add_delete_marker_column(action_source)
+            reset_visible_editor_state(editor_key, len(action_source))
+            st.rerun()
     elif editor_action == "save":
         action_source = prepare_action_editor_df(strip_delete_marker_column(edited))
         st.session_state[draft_key] = prepare_action_editor_df(action_source)
