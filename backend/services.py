@@ -1327,7 +1327,7 @@ def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dic
     }
 
 
-def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
+def apply_threepl_master_import_preview(db: Session, preview: dict, sync_inventory: bool = True) -> dict:
     if use_legacy_supabase_rest_store():
         rows = [detail.get("_data") or {} for detail in preview.get("details", []) if detail.get("_apply")]
         result = supabase_store.bulk_save_product_master("3PL", rows)
@@ -1404,20 +1404,25 @@ def apply_threepl_master_import_preview(db: Session, preview: dict) -> dict:
         elif result_detail.get("처리 유형") == "변경 없음":
             result_text = "변경 없음"
         result_detail["처리 결과"] = result_text
+        result_detail.pop("_data", None)
         result_details.append(result_detail)
     db.commit()
-    sync_inventory_from_product_master(db, "3PL")
+    synced_count = sync_inventory_from_product_master(db, "3PL") if sync_inventory else 0
     summary = dict(preview.get("summary") or {})
+    message = "3PL 마스터 기준정보 일괄 등록/업데이트 완료"
+    if not sync_inventory:
+        message = f"{message} - 재고 동기화는 필요 시 버튼으로 실행하세요"
     return {
         "ok": True,
-        "message": "3PL 마스터 기준정보 일괄 등록/업데이트 완료",
+        "message": message,
         "count": count,
+        "synced_count": synced_count,
         "summary": summary,
         "details": result_details,
     }
 
 
-def bulk_save_product_master(db: Session, source_type: str, rows: list[dict]) -> dict:
+def bulk_save_product_master(db: Session, source_type: str, rows: list[dict], sync_inventory: bool = True) -> dict:
     if use_legacy_supabase_rest_store():
         normalized = [normalize_product_master_row(row) for row in rows]
         return supabase_store.bulk_save_product_master(source_type, normalized)
@@ -1438,8 +1443,11 @@ def bulk_save_product_master(db: Session, source_type: str, rows: list[dict]) ->
                 setattr(product, key, value)
         count += 1
     db.commit()
-    sync_inventory_from_product_master(db, source_type)
-    return {"ok": True, "message": f"{source_type} 상품 마스터 저장 완료", "count": count}
+    synced_count = sync_inventory_from_product_master(db, source_type) if sync_inventory else 0
+    message = f"{source_type} 상품 마스터 저장 완료"
+    if not sync_inventory:
+        message = f"{message} - 재고 동기화는 필요 시 버튼으로 실행하세요"
+    return {"ok": True, "message": message, "count": count, "synced_count": synced_count}
 
 
 def add_product_master(db: Session, source_type: str, row: dict) -> dict:
@@ -1474,7 +1482,7 @@ def import_product_master_excel(db: Session, source_type: str, file_bytes: bytes
         if preview.get("summary", {}).get("실패 수", 0) and not any(detail.get("_apply") for detail in preview.get("details", [])):
             preview.update({"ok": False, "message": "반영 가능한 3PL 마스터 행이 없습니다.", "count": 0})
             return preview
-        return apply_threepl_master_import_preview(db, preview)
+        return apply_threepl_master_import_preview(db, preview, sync_inventory=False)
 
     df = read_excel(file_bytes)
     rename_map = {}
@@ -1487,7 +1495,7 @@ def import_product_master_excel(db: Session, source_type: str, file_bytes: bytes
     rows, warnings = prepare_product_master_import_rows(df, source_type)
     if not rows:
         return {"ok": False, "message": "등록 가능한 상품이 없습니다. SKU/상품코드, 바코드, 상품명 컬럼을 확인해주세요.", "count": 0}
-    result = bulk_save_product_master(db, source_type, rows)
+    result = bulk_save_product_master(db, source_type, rows, sync_inventory=False)
     extra_messages = []
     if warnings:
         extra_messages.append(" / ".join(warnings[:5]))

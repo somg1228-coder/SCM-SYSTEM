@@ -368,7 +368,7 @@ def render_threepl_import_preview(source_type: str, key: str, preview_key: str, 
     with apply_col:
         if st.button("미리보기 내용 반영", type="primary", key=f"product_master_{key}_preview_apply", disabled=applyable_count == 0, use_container_width=True):
             if show_sqlite_write_status("3PL 마스터 업로드 반영"):
-                result = with_db(lambda db: services.apply_threepl_master_import_preview(db, preview))
+                result = with_db(lambda db: services.apply_threepl_master_import_preview(db, preview, sync_inventory=False))
                 st.session_state[result_key] = result
                 st.session_state.pop(preview_key, None)
                 if result and result.get("ok", True):
@@ -420,6 +420,8 @@ def render_threepl_import_details(payload: dict) -> None:
     details = payload.get("details") or []
     if not details:
         return
+    display_limit = 80
+    visible_details = details[:display_limit]
     display_rows = [
         {
             "행 번호": detail.get("행 번호", ""),
@@ -429,8 +431,10 @@ def render_threepl_import_details(payload: dict) -> None:
             "변경 항목": detail.get("변경 항목", ""),
             "처리 결과": detail.get("처리 결과", ""),
         }
-        for detail in details
+        for detail in visible_details
     ]
+    if len(details) > display_limit:
+        st.caption(f"결과 상세는 렌더링 속도를 위해 {display_limit:,}건만 표시합니다. 전체 {len(details):,}건은 처리 결과 요약에 반영되어 있습니다.")
     render_product_master_visible_table(pd.DataFrame(display_rows), height=260)
 
 
@@ -782,7 +786,7 @@ def parse_box_pallet_unit(value) -> tuple[int, int]:
     ]
     pallet_patterns = [
         r"(?:파렛트당|파렛트|PALLET|PL)\D*(\d+)\s*BOX",
-        r"/[^/]*(\d+)\s*BOX",
+        r"/[^/]*?(\d+)\s*BOX",
     ]
     for pattern in box_patterns:
         match = re.search(pattern, normalized)
