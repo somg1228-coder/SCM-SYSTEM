@@ -58,18 +58,21 @@ def render_bom_page() -> None:
     categories = fetch_categories()
     category = render_category_controls(categories)
     draft_key = f"bom_editor_draft_{category}"
+    saved_rows = fetch_bom_rows(category)
+    saved_df = rows_to_editor(saved_rows)
 
     if draft_key not in st.session_state:
-        st.session_state[draft_key] = rows_to_editor(fetch_bom_rows(category))
+        st.session_state[draft_key] = saved_df
 
     current_df = prepare_editor_df(st.session_state[draft_key])
+    render_bom_download_controls(category, saved_df)
     render_bom_editor(category, draft_key, current_df)
 
 
 def render_category_controls(categories: list[str]) -> str:
     options = merge_unique([DEFAULT_CATEGORY, *categories])
-    select_col, input_col, upload_col, template_col, download_col = st.columns(
-        [1.1, 1.35, 1.1, 0.95, 0.95],
+    select_col, input_col, upload_col, template_col = st.columns(
+        [1.1, 1.35, 1.1, 0.95],
         gap="small",
     )
     with input_col:
@@ -107,6 +110,7 @@ def render_category_controls(categories: list[str]) -> str:
                     if result["ok"]:
                         st.session_state[f"bom_editor_draft_{category}"] = imported
                         clear_bom_editor_buffer(category)
+                        clear_bom_download_payload(category)
                         st.success(f'엑셀 데이터를 저장하고 편집표에 반영했습니다. ({result["count"]}행)')
                         st.rerun()
                     else:
@@ -121,18 +125,30 @@ def render_category_controls(categories: list[str]) -> str:
             use_container_width=True,
             key="bom_template_download",
         )
-    with download_col:
-        st.write("")
-        saved_df = rows_to_editor(fetch_bom_rows(category)).drop(columns=["삭제"], errors="ignore")
+    return category
+
+
+def render_bom_download_controls(category: str, saved_df: pd.DataFrame) -> None:
+    download_key = f"bom_download_payload_{safe_key(category)}"
+    cols = st.columns([4.8, 1.1, 1.1], gap="small")
+    with cols[1]:
+        if st.button("다운로드 준비", key=f"bom_download_prepare_{safe_key(category)}", use_container_width=True):
+            download_df = saved_df.drop(columns=["삭제"], errors="ignore")
+            st.session_state[download_key] = bom_excel(
+                download_df if not download_df.empty else sample_template_df(),
+                f"{category} BOM",
+            )
+    with cols[2]:
+        download_bytes = st.session_state.get(download_key, b"")
         st.download_button(
             "BOM 다운로드",
-            data=bom_excel(saved_df if not saved_df.empty else sample_template_df(), f"{category} BOM"),
+            data=download_bytes,
             file_name=f"{safe_filename(category)}_BOM.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
             key="bom_download",
+            disabled=not download_bytes,
         )
-    return category
 
 
 def render_bom_editor(category: str, draft_key: str, current_df: pd.DataFrame) -> None:
@@ -172,6 +188,7 @@ def render_bom_editor(category: str, draft_key: str, current_df: pd.DataFrame) -
                     delete_category_bom(category)
                     st.session_state[draft_key] = prepare_editor_df(pd.DataFrame(columns=BOM_COLUMNS))
                     clear_bom_editor_buffer(category)
+                    clear_bom_download_payload(category)
                     st.success("현재 카테고리 BOM을 전체 삭제했습니다.")
                     st.rerun()
 
@@ -210,6 +227,7 @@ def render_bom_editor(category: str, draft_key: str, current_df: pd.DataFrame) -
                     if result["ok"]:
                         st.session_state[draft_key] = next_df
                         st.session_state[edit_buffer_key] = next_df
+                        clear_bom_download_payload(category)
                         st.success(f'{result["message"]} ({result["count"]}행)')
                         st.rerun()
                     else:
@@ -222,6 +240,7 @@ def render_bom_editor(category: str, draft_key: str, current_df: pd.DataFrame) -
                         st.session_state[draft_key] = next_df
                         st.session_state[edit_buffer_key] = next_df
                         save_category_bom(category, strip_delete_column(next_df))
+                        clear_bom_download_payload(category)
                         st.success(f"선택한 행을 삭제했습니다. ({deleted}행)")
                         st.rerun()
                     else:
@@ -454,12 +473,14 @@ def save_bom_draft(category: str, draft_key: str, df: pd.DataFrame, success_mess
         delete_category_bom(category)
         st.session_state[draft_key] = prepare_editor_df(pd.DataFrame(columns=BOM_COLUMNS))
         clear_bom_editor_buffer(category)
+        clear_bom_download_payload(category)
         st.success(f"{success_message} (0행)")
         st.rerun()
     result = save_category_bom(category, strip_delete_column(prepared))
     if result["ok"]:
         st.session_state[draft_key] = prepared
         clear_bom_editor_buffer(category)
+        clear_bom_download_payload(category)
         st.success(f'{success_message} ({result["count"]}행)')
         st.rerun()
     else:
@@ -468,6 +489,10 @@ def save_bom_draft(category: str, draft_key: str, df: pd.DataFrame, success_mess
 
 def clear_bom_editor_buffer(category: str) -> None:
     st.session_state.pop(f"bom_editor_buffer_{safe_key(category)}", None)
+
+
+def clear_bom_download_payload(category: str) -> None:
+    st.session_state.pop(f"bom_download_payload_{safe_key(category)}", None)
 
 
 def bom_available() -> bool:

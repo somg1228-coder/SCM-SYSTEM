@@ -278,6 +278,8 @@ def dashboard_filter_work_date() -> date:
     session_date = parse_date_value(st.session_state.get("inventory_filter_date"))
     if session_date:
         return session_date
+    if not st.session_state.get("inventory_filter"):
+        return date.today()
     all_dates = []
     for source_type in SOURCE_TYPES:
         all_dates.extend(fetch_work_dates(source_type))
@@ -286,11 +288,12 @@ def dashboard_filter_work_date() -> date:
 
 def render_inventory_list_panel() -> None:
     linked_filter = st.session_state.get("inventory_filter", "")
+    if not linked_filter:
+        return
     default_filter = linked_filter if linked_filter in DASHBOARD_FILTER_LABELS else "all"
     default_date = dashboard_filter_work_date()
-    if linked_filter:
-        st.session_state["inventory_list_filter"] = default_filter
-        st.session_state["inventory_list_work_date"] = default_date
+    st.session_state["inventory_list_filter"] = default_filter
+    st.session_state["inventory_list_work_date"] = default_date
 
     with st.expander("재고 목록", expanded=bool(linked_filter)):
         with st.container(key="inventory_dashboard_linked_panel"):

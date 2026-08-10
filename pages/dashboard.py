@@ -1273,19 +1273,44 @@ def get_return_case_summary(work_date: date) -> dict:
                 LIMIT 5
                 """
             ).fetchall()
-            occurrence_rows = conn.execute(
+            occurrence_recent_rows = conn.execute(
                 """
                 SELECT case_id, category, product, action, repair_method, prevention
                 FROM cases
                 ORDER BY case_id DESC, id DESC
+                LIMIT 4
                 """
             ).fetchall()
+            today_key = work_date.strftime("%Y%m%d") if hasattr(work_date, "strftime") else date.today().strftime("%Y%m%d")
+            week_start_key = (work_date - timedelta(days=work_date.weekday())).strftime("%Y%m%d") if hasattr(work_date, "weekday") else date.today().strftime("%Y%m%d")
+            delayed_cutoff_key = (work_date - timedelta(days=7)).strftime("%Y%m%d") if hasattr(work_date, "strftime") else date.today().strftime("%Y%m%d")
+            status_counts = conn.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN substr(COALESCE(case_id, ''), 1, 8) = ? THEN 1 ELSE 0 END) AS today_count,
+                    SUM(CASE WHEN substr(COALESCE(case_id, ''), 1, 8) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS week_count,
+                    SUM(CASE WHEN TRIM(COALESCE(action, '')) != ''
+                               OR TRIM(COALESCE(repair_method, '')) != ''
+                               OR TRIM(COALESCE(prevention, '')) != ''
+                             THEN 1 ELSE 0 END) AS done_count,
+                    SUM(CASE WHEN TRIM(COALESCE(action, '')) = ''
+                               AND TRIM(COALESCE(repair_method, '')) = ''
+                               AND TRIM(COALESCE(prevention, '')) = ''
+                             THEN 1 ELSE 0 END) AS in_progress_count,
+                    SUM(CASE WHEN TRIM(COALESCE(action, '')) = ''
+                               AND TRIM(COALESCE(repair_method, '')) = ''
+                               AND TRIM(COALESCE(prevention, '')) = ''
+                               AND substr(COALESCE(case_id, ''), 1, 8) <= ?
+                               AND length(substr(COALESCE(case_id, ''), 1, 8)) = 8
+                             THEN 1 ELSE 0 END) AS delayed_count
+                FROM cases
+                """,
+                (today_key, week_start_key, today_key, delayed_cutoff_key),
+            ).fetchone()
     except sqlite3.Error:
         return summary
 
-    today = work_date if hasattr(work_date, "strftime") else date.today()
-    week_start = today - timedelta(days=today.weekday())
-    occurrence_summary = summarize_return_occurrence_rows(occurrence_rows, today, week_start)
+    occurrence_summary = summarize_return_occurrence_status(status_counts, occurrence_recent_rows)
     colors = ["#66849C", "#5F8F7B", "#A98755", "#8A94A3", "#A86464", "#7B8794"]
     return {
         "total_count": int(total_count or 0),
@@ -1308,6 +1333,26 @@ def get_return_case_summary(work_date: date) -> dict:
         ],
         **occurrence_summary,
         "year": current_year,
+    }
+
+
+def summarize_return_occurrence_status(status_counts, recent_rows: list) -> dict:
+    return {
+        "today_count": int(status_counts[0] or 0) if status_counts else 0,
+        "week_count": int(status_counts[1] or 0) if status_counts else 0,
+        "done_count": int(status_counts[2] or 0) if status_counts else 0,
+        "in_progress_count": int(status_counts[3] or 0) if status_counts else 0,
+        "delayed_count": int(status_counts[4] or 0) if status_counts else 0,
+        "recent_cases": [
+            {
+                "case_id": case_id or "-",
+                "category": category or "-",
+                "product": product or "-",
+                "date": format_case_id_date(case_id),
+                "done": any(str(value or "").strip() for value in (action, repair_method, prevention)),
+            }
+            for case_id, category, product, action, repair_method, prevention in recent_rows
+        ],
     }
 
 

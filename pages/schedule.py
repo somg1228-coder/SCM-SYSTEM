@@ -239,11 +239,13 @@ def render_save_actions(week_id: int, week_start: date, highlights_df: pd.DataFr
     with save_col:
         if st.button("저장", key=f"schedule_save_{week_id}", type="primary", use_container_width=True):
             save_week(week_id, week_start, highlights_df, slots_df, comment)
+            st.session_state.pop("schedule_history_download_payload", None)
             st.success("주간 일정 저장 완료")
             st.rerun()
     with copy_col:
         if st.button("전주 일정 복사", key=f"schedule_copy_previous_{week_id}", use_container_width=True):
             copied = copy_previous_week(week_id, week_start)
+            st.session_state.pop("schedule_history_download_payload", None)
             st.success(f"전주 일정 복사 완료 ({copied}건)")
             st.rerun()
     with spacer:
@@ -252,19 +254,24 @@ def render_save_actions(week_id: int, week_start: date, highlights_df: pd.DataFr
 
 def render_history() -> None:
     rows = load_history_rows(recent_days=31)
-    all_rows = load_history_rows(recent_days=None)
+    history_state_key = "schedule_history_download_payload"
     title_col, download_col = st.columns([4.8, 1.0], gap="small")
     with title_col:
         st.caption("최근 한 달간 저장된 일정과 히스토리입니다. 이전 기록은 DB에 계속 보관됩니다.")
     with download_col:
+        if st.button("다운로드 준비", key="schedule_history_prepare", use_container_width=True):
+            all_rows = load_history_rows(recent_days=None)
+            st.session_state[history_state_key] = (history_excel_bytes(all_rows), len(all_rows))
+        payload = st.session_state.get(history_state_key)
+        history_bytes, history_count = payload if isinstance(payload, tuple) and len(payload) == 2 else (b"", 0)
         st.download_button(
             "히스토리 다운로드",
-            data=history_excel_bytes(all_rows),
+            data=history_bytes,
             file_name=f"물류히스토리_전체요약_{date.today():%Y%m%d}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
             key="schedule_history_download",
-            disabled=not all_rows,
+            disabled=history_count == 0,
         )
     if not rows:
         st.info("최근 한 달간 저장된 히스토리가 없습니다.")

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from components.lazy_tabs import lazy_tab_selector
 from backend.perf import perf_span
@@ -28,7 +28,7 @@ try:
         record_save_success,
         writable_runtime_data_dir,
     )
-    from backend.models import WarehouseInventoryPosition, WarehouseLayout, WarehouseRack
+    from backend.models import InventoryDaily, WarehouseInventoryPosition, WarehouseLayout, WarehouseRack
     from backend import services, supabase_store
 except (ModuleNotFoundError, RuntimeError) as exc:
     DATABASE_URL = ""
@@ -39,6 +39,7 @@ except (ModuleNotFoundError, RuntimeError) as exc:
     record_save_failure = None
     record_save_success = None
     writable_runtime_data_dir = None
+    InventoryDaily = None
     WarehouseInventoryPosition = None
     WarehouseLayout = None
     WarehouseRack = None
@@ -1339,11 +1340,21 @@ def with_db(action):
 
 def fetch_latest_warehouse_inventory() -> tuple[list[dict], str]:
     def action(db):
-        dates = services.list_work_dates(db, "창고")
-        if not dates:
+        if InventoryDaily is None:
             return [], ""
-        work_date = dates[0]
-        rows = [services.daily_to_dict(row) for row in services.list_daily(db, "창고", work_date)]
+        work_date = db.scalar(
+            select(func.max(InventoryDaily.work_date)).where(InventoryDaily.source_type == "창고")
+        )
+        if not work_date:
+            return [], ""
+        rows = [
+            services.daily_to_dict(row)
+            for row in db.execute(
+                select(InventoryDaily)
+                .where(InventoryDaily.source_type == "창고", InventoryDaily.work_date == work_date)
+                .order_by(InventoryDaily.category, InventoryDaily.product_name, InventoryDaily.barcode)
+            ).scalars()
+        ]
         return rows, work_date.isoformat()
 
     return with_db(action) or ([], "")
