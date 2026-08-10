@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from sqlalchemy import case, distinct, func, select
+from backend.perf import perf_span, record_perf_event
 
 try:
     from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available
@@ -84,10 +85,12 @@ def timed_dashboard_step(name: str, action):
         result = action()
         elapsed = time.perf_counter() - started_at
         log_dashboard_event(f"{name} done seconds={elapsed:.3f} {dashboard_result_size(result)}")
+        record_perf_event(f"dashboard.{name}", elapsed, result=dashboard_result_size(result))
         return result
     except Exception as exc:
         elapsed = time.perf_counter() - started_at
         log_dashboard_event(f"{name} error seconds={elapsed:.3f} {type(exc).__name__}: {exc}")
+        record_perf_event(f"dashboard.{name}", elapsed, success=False, error=str(exc))
         raise
 
 
@@ -118,12 +121,14 @@ def dashboard_query(metrics: dict, db, label: str, statement, mode: str = "all")
     elapsed = time.perf_counter() - started_at
     metrics["seconds"] = float(metrics.get("seconds", 0.0)) + elapsed
     log_dashboard_event(f"sql {label} done seconds={elapsed:.3f} {dashboard_query_result_size(value)}")
+    record_perf_event("dashboard.sql", elapsed, label=label, result=dashboard_query_result_size(value))
     return value
 
 
 def render_dashboard() -> None:
     log_dashboard_event("render_dashboard start")
-    trend_days = dashboard_purchase_trend_days()
+    with perf_span("dashboard.purchase_trend_param"):
+        trend_days = dashboard_purchase_trend_days()
     dashboard_data = timed_dashboard_step("dashboard_data", lambda: get_dashboard_data(trend_days))
     inventory_summary = dashboard_data.get("inventory_summary", {})
     work_date = inventory_summary.get("work_date") or date.today()
@@ -137,26 +142,27 @@ def render_dashboard() -> None:
         f"db_seconds={float(dashboard_data.get('db_seconds', 0.0)):.3f}"
     )
     log_dashboard_event("dashboard_html render start")
-    render_html(
-        f"""
-        <main class="dashboard-shell">
-            {weekly_markup}
-            {kpi_cards_html(inventory_summary, purchase_summary)}
-            <section class="dashboard-middle-grid">
-                <section class="status-grid">
-                    {issue_donut_html(return_case_summary.get("category_rows", []), return_case_summary.get("total_count", 0), return_case_summary.get("monthly_rows", []), return_case_summary.get("year", date.today().year))}
-                    {occurrence_status_html(return_case_summary)}
+    with perf_span("dashboard.html_build"):
+        markup = f"""
+            <main class="dashboard-shell">
+                {weekly_markup}
+                {kpi_cards_html(inventory_summary, purchase_summary)}
+                <section class="dashboard-middle-grid">
+                    <section class="status-grid">
+                        {issue_donut_html(return_case_summary.get("category_rows", []), return_case_summary.get("total_count", 0), return_case_summary.get("monthly_rows", []), return_case_summary.get("year", date.today().year))}
+                        {occurrence_status_html(return_case_summary)}
+                    </section>
+                    {recent_orders_html(purchase_summary.get("recent_po_inbound", []))}
                 </section>
-                {recent_orders_html(purchase_summary.get("recent_po_inbound", []))}
-            </section>
-            <section class="dashboard-bottom-grid">
-                {warehouse_status_html(inventory_summary.get("source_status", []))}
-                {purchase_progress_html(purchase_summary.get("progress_rows", []))}
-                {schedule_core_tasks_html(core_tasks_summary)}
-            </section>
-        </main>
-        """
-    )
+                <section class="dashboard-bottom-grid">
+                    {warehouse_status_html(inventory_summary.get("source_status", []))}
+                    {purchase_progress_html(purchase_summary.get("progress_rows", []))}
+                    {schedule_core_tasks_html(core_tasks_summary)}
+                </section>
+            </main>
+            """
+    with perf_span("dashboard.html_render"):
+        render_html(markup)
     log_dashboard_event("render_dashboard done")
 
 
@@ -250,19 +256,24 @@ def get_dashboard_data(trend_days: int = 7) -> dict:
             "db_seconds": 0.0,
         }
 
-    db = SessionLocal()
-    try:
-        payload = build_dashboard_data_payload(db, trend_days, metrics)
-    finally:
-        db.close()
+    with perf_span("dashboard.db_session_and_payload"):
+        db = SessionLocal()
+        try:
+            payload = build_dashboard_data_payload(db, trend_days, metrics)
+        finally:
+            db.close()
 
-    inventory_summary = {**inventory_summary, **payload.get("inventory_summary", {})}
-    work_date = inventory_summary.get("work_date") or date.today()
-    return_case_summary = get_return_case_summary(work_date)
-    inventory_summary["return_as_count"] = int(return_case_summary.get("week_count") or return_case_summary.get("total_count") or 0)
-    core_tasks_summary = build_core_tasks_summary_from_schedule(payload.get("production_rows", []))
-    weekly_markup = build_weekly_schedule_html_from_production(payload.get("production_rows", []))
-    purchase_summary = {**purchase_summary, **payload.get("purchase_summary", {})}
+    with perf_span("dashboard.data_processing.merge_payload"):
+        inventory_summary = {**inventory_summary, **payload.get("inventory_summary", {})}
+        work_date = inventory_summary.get("work_date") or date.today()
+    with perf_span("dashboard.return_case_summary"):
+        return_case_summary = get_return_case_summary(work_date)
+    with perf_span("dashboard.schedule_processing"):
+        inventory_summary["return_as_count"] = int(return_case_summary.get("week_count") or return_case_summary.get("total_count") or 0)
+        core_tasks_summary = build_core_tasks_summary_from_schedule(payload.get("production_rows", []))
+        weekly_markup = build_weekly_schedule_html_from_production(payload.get("production_rows", []))
+    with perf_span("dashboard.purchase_summary_merge"):
+        purchase_summary = {**purchase_summary, **payload.get("purchase_summary", {})}
     elapsed = time.perf_counter() - started_at
     log_dashboard_event(
         f"dashboard_payload done seconds={elapsed:.3f} "

@@ -129,11 +129,16 @@ def render_meeting_page() -> None:
 
     if st.session_state.pop("meeting_save_requested", False):
         try:
-            save_report_state(report["id"], meta, production_df, events_df, issues, action_df)
+            event_rows_valid = validate_event_rows_before_save(events_df)
+            if event_rows_valid:
+                save_report_state(report["id"], meta, production_df, events_df, issues, action_df)
         except Exception as exc:
             st.error(f"회의자료 저장 실패: {exc}")
             st.caption("편집 중인 표 내용은 화면에 유지됩니다. 오류를 확인한 뒤 변경사항 저장을 다시 누르세요.")
         else:
+            if not event_rows_valid:
+                st.markdown("</main>", unsafe_allow_html=True)
+                return
             clear_meeting_history_cache()
             clear_pending_event_rows(report["id"], event_month)
             clear_editor_state(f"meeting_production_editor_{report['id']}")
@@ -426,7 +431,7 @@ def render_event_detail_section(report: dict, events_df: pd.DataFrame, event_mon
         return events_df
 
     selected_row = events_df.iloc[selected_index]
-    selected_name = normalize_cell_value(selected_row.get("행사명")) or "행사"
+    selected_name = normalize_cell_value(selected_row.get("행사명")) or normalize_cell_value(selected_row.get("행사품목")) or "행사"
     selected_period = normalize_cell_value(selected_row.get("행사기간"))
     selected_detail = normalize_cell_value(selected_row.get("상세내용"))
     detail_key = f"meeting_event_detail_{report['id']}_{month_key(event_month)}_{selected_index}"
@@ -471,6 +476,27 @@ def render_event_detail_section(report: dict, events_df: pd.DataFrame, event_mon
     if detail_action == "save":
         return update_event_detail_draft(report["id"], event_month, updated_events_df, selected_index, edited_detail)
     return events_df
+
+
+def validate_event_rows_before_save(events_df: pd.DataFrame) -> bool:
+    rows = filter_filled_editor_rows(events_df, EVENT_COLUMNS)
+    invalid_rows = []
+    for index, row in rows.iterrows():
+        event_name = normalize_cell_value(row.get("행사명", ""))
+        event_period = normalize_cell_value(row.get("행사기간", ""))
+        event_products = normalize_cell_value(row.get("행사품목", ""))
+        event_detail = normalize_cell_value(row.get("상세내용", ""))
+        if not event_name and event_products:
+            rows.at[index, "행사명"] = event_products
+            event_name = event_products
+        if (event_name or event_products or event_detail) and not event_period:
+            invalid_rows.append(str(index + 1))
+
+    if invalid_rows:
+        st.session_state.meeting_save_requested = False
+        st.warning(f"행사 일정 {', '.join(invalid_rows)}행의 행사기간을 입력해야 캘린더 날짜에 표시됩니다.")
+        return False
+    return True
 
 
 def render_visible_spreadsheet_editor(
@@ -1926,11 +1952,12 @@ def sync_event_month_rows(conn: sqlite3.Connection, report_id: int, event_month:
 
     for index, row in cleaned.iterrows():
         row_id = normalize_row_id(row.get(ROW_ID_COLUMN, ""))
+        event_name = normalize_cell_value(row["행사명"]) or normalize_cell_value(row["행사품목"])
         values = (
             report_id,
             month_key(event_month),
             index,
-            normalize_cell_value(row["행사명"]),
+            event_name,
             normalize_date_value(row["행사기간"]),
             normalize_cell_value(row["행사품목"]),
             parse_int(row["요청수량"]),
@@ -2513,9 +2540,9 @@ def render_event_calendar_html(
     month_weeks = calendar.monthcalendar(display_month.year, display_month.month)
     events_by_day: dict[int, list[str]] = {}
     for row_position, (_, row) in enumerate(df.iterrows()):
-        label = str(row.get("행사명", "")).strip() or "행사"
         sku = str(row.get("행사품목", "")).strip()
         detail = truncate_text(normalize_cell_value(row.get("상세내용", row.get("비고", ""))), 42)
+        label = str(row.get("행사명", "")).strip() or truncate_text(sku, 32) or detail or "행사"
         for day in extract_event_days(str(row.get("행사기간", "")), display_month):
             chip_body = (
                 f"{escape_html(label)}"
