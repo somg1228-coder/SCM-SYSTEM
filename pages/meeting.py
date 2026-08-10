@@ -350,9 +350,10 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
     if edit_buffer_key not in st.session_state:
         st.session_state[edit_buffer_key] = add_delete_marker_column(current_draft)
     edit_buffer = st.session_state[edit_buffer_key]
-    selected_index = selected_event_index(report_id, filter_filled_rows(strip_delete_marker_column(current_draft), EVENT_COLUMNS), calendar_month)
     st.caption(f"{calendar_month:%Y년 %m월} 행사일정입니다. 같은 달 회의자료에서는 계속 이어지고, 이전월/다음월 버튼으로 지난 행사도 확인할 수 있습니다.")
     preview_df = filter_filled_rows(strip_delete_marker_column(current_draft), EVENT_COLUMNS)
+    selected_index = selected_event_index(report_id, preview_df, calendar_month)
+    selected_index = render_event_selection_pills(report_id, preview_df, calendar_month, selected_index)
     render_html(render_event_calendar_html(preview_df, calendar_month, meeting_date, report_id, selected_index))
     st.markdown(render_table_html(EVENT_SUMMARY_COLUMNS, preview_df, "events"), unsafe_allow_html=True)
 
@@ -2456,19 +2457,12 @@ def add_months(value: date, months: int) -> date:
 def render_event_calendar_controls(report_id: int, meeting_date: date) -> date:
     state_key = event_calendar_state_key(report_id)
     base_key = event_calendar_base_key(report_id)
-    query_key = f"meeting_event_calendar_query_{report_id}"
     current_base = meeting_date.isoformat()
     default_month = month_start(meeting_date)
-    query_month_value = meeting_query_value("meeting_event_month")
-    query_month = parse_query_month(query_month_value, default_month)
 
     if st.session_state.get(base_key) != current_base:
         st.session_state[base_key] = current_base
-        st.session_state[state_key] = query_month.isoformat()
-        st.session_state[query_key] = query_month_value
-    elif query_month_value and st.session_state.get(query_key) != query_month_value:
-        st.session_state[state_key] = query_month.isoformat()
-        st.session_state[query_key] = query_month_value
+        st.session_state[state_key] = default_month.isoformat()
 
     calendar_month = parse_stored_month(st.session_state.get(state_key), default_month)
     prev_col, reset_col, next_col, spacer = st.columns([0.72, 0.72, 0.72, 4.8], gap="small")
@@ -2496,31 +2490,8 @@ def parse_stored_month(value, default_month: date) -> date:
     return date(parsed.year, parsed.month, 1)
 
 
-def parse_query_month(value: str, default_month: date) -> date:
-    text = normalize_cell_value(value)
-    if re.fullmatch(r"\d{4}-\d{2}", text):
-        text = f"{text}-01"
-    return parse_stored_month(text, default_month)
-
-
-def meeting_query_value(name: str) -> str:
-    value = st.query_params.get(name)
-    if isinstance(value, list):
-        return value[0] if value else ""
-    return value or ""
-
-
 def selected_event_index(report_id: int, df: pd.DataFrame, event_month: date) -> int | None:
     state_key = f"meeting_selected_event_row_{report_id}_{month_key(event_month)}"
-    query_value = meeting_query_value("meeting_event_row")
-    query_month_value = meeting_query_value("meeting_event_month")
-    query_matches_month = not query_month_value or month_key(parse_query_month(query_month_value, event_month)) == month_key(event_month)
-    if query_value != "" and query_matches_month:
-        try:
-            st.session_state[state_key] = int(query_value)
-        except ValueError:
-            st.session_state.pop(state_key, None)
-
     selected = st.session_state.get(state_key)
     if not isinstance(selected, int) or df is None or df.empty:
         return None
@@ -2528,6 +2499,40 @@ def selected_event_index(report_id: int, df: pd.DataFrame, event_month: date) ->
         st.session_state.pop(state_key, None)
         return None
     return selected
+
+
+def render_event_selection_pills(report_id: int, df: pd.DataFrame, event_month: date, selected_index: int | None) -> int | None:
+    state_key = f"meeting_selected_event_row_{report_id}_{month_key(event_month)}"
+    widget_key = f"meeting_event_selector_{report_id}_{month_key(event_month)}"
+    if df is None or df.empty:
+        st.session_state.pop(state_key, None)
+        st.caption("선택할 행사 일정이 없습니다.")
+        return None
+
+    options = list(range(len(df)))
+    if selected_index not in options:
+        selected_index = None
+
+    selected = st.pills(
+        "상세내용 작성할 행사 선택",
+        options,
+        selection_mode="single",
+        default=selected_index,
+        format_func=lambda index: event_selection_label(df.iloc[int(index)], int(index)),
+        key=widget_key,
+    )
+    if selected is None:
+        return selected_index
+    selected_index = int(selected)
+    st.session_state[state_key] = selected_index
+    return selected_index
+
+
+def event_selection_label(row: pd.Series, index: int) -> str:
+    name = normalize_cell_value(row.get("행사명")) or normalize_cell_value(row.get("행사품목")) or "행사"
+    period = normalize_cell_value(row.get("행사기간"))
+    suffix = f" / {period}" if period else ""
+    return f"{index + 1}. {truncate_text(name, 18)}{suffix}"
 
 
 def render_event_calendar_html(
@@ -2552,16 +2557,7 @@ def render_event_calendar_html(
             chip_class = "meeting-event-chip"
             if selected_index == row_position:
                 chip_class += " selected"
-            if report_id is None:
-                chip = f'<span class="{chip_class}">{chip_body}</span>'
-            else:
-                params = {
-                    "page": "회의자료",
-                    "meeting_event_month": month_key(display_month),
-                    "meeting_event_row": str(row_position),
-                    "meeting_event_day": f"{display_month.year:04d}-{display_month.month:02d}-{day:02d}",
-                }
-                chip = f'<a class="{chip_class}" href="?{urlencode(params)}" target="_self">{chip_body}</a>'
+            chip = f'<span class="{chip_class}">{chip_body}</span>'
             events_by_day.setdefault(day, []).append(chip)
 
     week_labels = "".join(f"<b>{day}</b>" for day in ["월", "화", "수", "목", "금", "토", "일"])
