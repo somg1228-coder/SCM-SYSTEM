@@ -1675,6 +1675,101 @@ def pending_inbound_qty_for_product(db: Session, source_type: str, work_date: da
     return int(value or 0)
 
 
+def daily_rows_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, InventoryDaily]:
+    rows = list(
+        db.execute(
+            select(InventoryDaily).where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date == work_date,
+            )
+        ).scalars()
+    )
+    by_sku: dict[str, InventoryDaily] = {}
+    by_barcode_name: dict[tuple[str, str], InventoryDaily] = {}
+    by_barcode: dict[str, list[InventoryDaily]] = {}
+    by_name: dict[str, list[InventoryDaily]] = {}
+    for row in rows:
+        sku = clean_text(row.product_code)
+        barcode = clean_text(row.barcode)
+        name = clean_text(row.product_name)
+        if sku:
+            by_sku[sku] = row
+        if barcode and name:
+            by_barcode_name[(barcode, name)] = row
+        if barcode:
+            by_barcode.setdefault(barcode, []).append(row)
+        if name:
+            by_name.setdefault(name, []).append(row)
+
+    matched: dict[str, InventoryDaily] = {}
+    for product in products:
+        product_sku = clean_text(product.sku)
+        product_barcode = clean_text(product.barcode)
+        product_name = clean_text(product.product_name)
+        row = by_sku.get(product_sku)
+        if row is None and product_barcode and product_name:
+            row = by_barcode_name.get((product_barcode, product_name))
+        if row is None and product_barcode and len(by_barcode.get(product_barcode, [])) == 1:
+            row = by_barcode[product_barcode][0]
+        if row is None and product_name and len(by_name.get(product_name, [])) == 1:
+            row = by_name[product_name][0]
+        if row is not None and product_sku:
+            matched[product_sku] = row
+    return matched
+
+
+def pending_inbound_qty_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, int]:
+    by_sku = {clean_text(product.sku): product for product in products if clean_text(product.sku)}
+    by_barcode_name = {
+        (clean_text(product.barcode), clean_text(product.product_name)): product
+        for product in products
+        if clean_text(product.barcode) and clean_text(product.product_name)
+    }
+    by_barcode: dict[str, list] = {}
+    by_name: dict[str, list] = {}
+    for product in products:
+        barcode = clean_text(product.barcode)
+        name = clean_text(product.product_name)
+        if barcode:
+            by_barcode.setdefault(barcode, []).append(product)
+        if name:
+            by_name.setdefault(name, []).append(product)
+
+    aggregate_rows = db.execute(
+        select(
+            InventoryInbound.product_code,
+            InventoryInbound.barcode,
+            InventoryInbound.product_name,
+            func.sum(InventoryInbound.inbound_qty),
+        )
+        .where(
+            InventoryInbound.source_type == source_type,
+            InventoryInbound.inbound_date >= work_date,
+            InventoryInbound.is_applied == False,  # noqa: E712
+        )
+        .group_by(InventoryInbound.product_code, InventoryInbound.barcode, InventoryInbound.product_name)
+    ).all()
+
+    pending: dict[str, int] = {}
+    for product_code, barcode, product_name, quantity in aggregate_rows:
+        sku = clean_text(product_code)
+        barcode = clean_text(barcode)
+        product_name = clean_text(product_name)
+        product = by_sku.get(sku)
+        if product is None and barcode and product_name:
+            product = by_barcode_name.get((barcode, product_name))
+        if product is None and barcode and len(by_barcode.get(barcode, [])) == 1:
+            product = by_barcode[barcode][0]
+        if product is None and product_name and len(by_name.get(product_name, [])) == 1:
+            product = by_name[product_name][0]
+        if product is None:
+            continue
+        matched_sku = clean_text(product.sku)
+        if matched_sku:
+            pending[matched_sku] = pending.get(matched_sku, 0) + int(quantity or 0)
+    return pending
+
+
 def master_based_inventory_rows(db: Session, source_type: str, work_date: date, active_only: bool = False) -> list[dict]:
     if use_legacy_supabase_rest_store():
         rows = supabase_store.master_based_inventory_rows(source_type, work_date)
@@ -1689,9 +1784,12 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     products = list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
     purchase_metrics = purchase_inventory_metrics(db, source_type)
     inbound_metrics = latest_inbound_metrics(db, source_type)
+    daily_by_sku = daily_rows_by_product(db, source_type, work_date, products)
+    pending_by_sku = pending_inbound_qty_by_product(db, source_type, work_date, products)
     rows = []
     for product in products:
-        daily = daily_row_for_product(db, source_type, work_date, product)
+        product_sku = clean_text(product.sku)
+        daily = daily_by_sku.get(product_sku)
         current_stock = int(daily.current_stock or 0) if daily else 0
         safe_stock = int(product.min_stock or 0)
         status = stock_status_for_values(current_stock, safe_stock)
@@ -1699,7 +1797,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         inbound_metric = inbound_metrics.get((source_type, product.sku), {})
         measured_lead_time = int(purchase_metric.get("avg_lead_time") or 0)
         box_qty = int(product.box_qty or product.pack_qty or 0)
-        pending_inbound_qty = pending_inbound_qty_for_product(db, source_type, work_date, product)
+        pending_inbound_qty = int(pending_by_sku.get(product_sku, 0) or 0)
         pending_outbound_qty = int(daily.outbound_qty or 0) if daily else 0
         available_stock = current_stock + pending_inbound_qty - pending_outbound_qty
         shortage_qty = max(safe_stock - current_stock, 0)
