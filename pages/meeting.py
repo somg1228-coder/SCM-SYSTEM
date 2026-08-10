@@ -259,6 +259,7 @@ def render_production_section(report_id: int) -> pd.DataFrame:
                 editor_df,
                 num_rows="dynamic",
                 use_container_width=True,
+                height=260,
                 key=editor_key,
                 hide_index=True,
                 column_order=editor_columns,
@@ -343,6 +344,7 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
                 editor_df,
                 num_rows="dynamic",
                 use_container_width=True,
+                height=260,
                 key=editor_key,
                 hide_index=True,
                 column_order=editor_columns,
@@ -862,6 +864,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
                 editor_df,
                 num_rows="dynamic",
                 use_container_width=True,
+                height=260,
                 key=editor_key,
                 hide_index=True,
                 column_order=editor_columns,
@@ -914,7 +917,7 @@ def prepare_production_editor_df(df: pd.DataFrame) -> pd.DataFrame:
     source_df = normalize_editor_df_with_id(strip_delete_marker_column(df), PRODUCTION_COLUMNS)
     editor_df = normalize_df(source_df, PRODUCTION_COLUMNS)
     if editor_df.empty:
-        editor_df = pd.DataFrame(columns=PRODUCTION_COLUMNS)
+        editor_df = blank_editor_display_df(PRODUCTION_COLUMNS)
     row_ids = editor_row_ids(source_df, len(editor_df))
     for column in ["바코드", "상품명", "상태", "비고"]:
         editor_df[column] = editor_df[column].apply(normalize_cell_value)
@@ -938,7 +941,7 @@ def normalize_editor_date_value(value):
 def prepare_event_editor_df(df: pd.DataFrame) -> pd.DataFrame:
     editor_df = normalize_event_editor_df(strip_delete_marker_column(df))
     if editor_df.empty:
-        editor_df = pd.DataFrame(columns=[ROW_ID_COLUMN, *EVENT_COLUMNS])
+        editor_df = blank_editor_display_df(EVENT_COLUMNS)
     for column in ["행사명", "행사기간", "행사품목", "상세내용"]:
         editor_df[column] = editor_df[column].apply(normalize_cell_value)
     editor_df["요청수량"] = pd.to_numeric(editor_df["요청수량"], errors="coerce").fillna(0).astype(int)
@@ -953,7 +956,7 @@ def prepare_action_editor_df(df: pd.DataFrame) -> pd.DataFrame:
     source_df = normalize_editor_df_with_id(strip_delete_marker_column(df), ACTION_COLUMNS)
     editor_df = normalize_df(source_df, ACTION_COLUMNS)
     if editor_df.empty:
-        editor_df = pd.DataFrame(columns=ACTION_COLUMNS)
+        editor_df = blank_editor_display_df(ACTION_COLUMNS)
     row_ids = editor_row_ids(source_df, len(editor_df))
     for column in ["담당부서/담당자", "진행내용", "진행상태"]:
         editor_df[column] = editor_df[column].apply(normalize_cell_value)
@@ -1372,6 +1375,13 @@ def normalize_editor_df_with_id(df: pd.DataFrame, columns: list[str]) -> pd.Data
     return display_df[[ROW_ID_COLUMN, *columns]]
 
 
+def blank_editor_display_df(columns: list[str]) -> pd.DataFrame:
+    row = {}
+    for column in columns:
+        row[column] = 0 if column in {"현재수량", "요청수량", "수량"} else ""
+    return pd.DataFrame([row], columns=columns)
+
+
 def editor_row_ids(df: pd.DataFrame, expected_length: int) -> list[str]:
     if df is None or ROW_ID_COLUMN not in df.columns:
         return [""] * expected_length
@@ -1395,7 +1405,7 @@ def filter_filled_editor_rows(df: pd.DataFrame, columns: list[str]) -> pd.DataFr
     normalized = normalize_editor_df_with_id(df, columns)
     if normalized.empty:
         return normalized
-    meaningful_columns = [column for column in columns if column != "수량"] or columns
+    meaningful_columns = [column for column in columns if column not in {"현재수량", "요청수량", "수량"}] or columns
     keep_rows = []
     for _, row in normalized.iterrows():
         has_value = any(normalize_cell_value(row[column]).strip() for column in meaningful_columns)
@@ -1407,7 +1417,7 @@ def filter_filled_rows(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     normalized = normalize_df(df, columns)
     if normalized.empty:
         return normalized
-    meaningful_columns = [column for column in columns if column != "수량"] or columns
+    meaningful_columns = [column for column in columns if column not in {"현재수량", "요청수량", "수량"}] or columns
     keep_rows = []
     for _, row in normalized.iterrows():
         has_value = any(normalize_cell_value(row[column]).strip() for column in meaningful_columns)
