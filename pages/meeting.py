@@ -197,46 +197,6 @@ def inject_page_css() -> None:
         div[data-testid="stMarkdownContainer"]:has(.meeting-shell) {
             margin: 0 !important;
         }
-        .meeting-calendar-clickable {
-            background: #FAF8F5;
-            border: 1px solid #D8D2C8;
-            border-radius: 8px;
-            margin-top: 0.5rem;
-            padding: 0.7rem 0.85rem 0.15rem;
-        }
-        .meeting-calendar-week-label {
-            background: #EDE8E1;
-            border: 1px solid #D8D2C8;
-            border-radius: 6px;
-            color: #102033;
-            font-size: 0.82rem;
-            font-weight: 900;
-            margin-bottom: 0.25rem;
-            min-height: 28px;
-            padding: 0.35rem 0.25rem;
-            text-align: center;
-        }
-        .meeting-calendar-day-label,
-        .meeting-calendar-day-empty,
-        .meeting-calendar-no-event {
-            background: #FFFFFF;
-            border: 1px solid #E0D8CC;
-            border-radius: 6px;
-            color: #102033;
-            font-size: 0.84rem;
-            font-weight: 900;
-            min-height: 30px;
-            padding: 0.32rem 0.42rem;
-        }
-        .meeting-calendar-day-label.today {
-            border-color: #54718D;
-            box-shadow: inset 3px 0 0 #54718D;
-        }
-        .meeting-calendar-day-empty,
-        .meeting-calendar-no-event {
-            background: #F5F1EA;
-            color: transparent;
-        }
         div[data-testid="stButton"] > button {
             color: #102033 !important;
             font-weight: 850 !important;
@@ -401,7 +361,9 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
     st.caption(f"{calendar_month:%Y년 %m월} 행사일정입니다. 같은 달 회의자료에서는 계속 이어지고, 이전월/다음월 버튼으로 지난 행사도 확인할 수 있습니다.")
     preview_df = filter_filled_rows(strip_delete_marker_column(current_draft), EVENT_COLUMNS)
     selected_index = selected_event_index(report_id, preview_df, calendar_month)
-    selected_index = render_event_calendar(preview_df, calendar_month, meeting_date, report_id, selected_index)
+    selected_index = apply_event_selection_query(report_id, preview_df, calendar_month, selected_index)
+    st.markdown(render_event_calendar_html(preview_df, calendar_month, meeting_date, selected_index, report_id), unsafe_allow_html=True)
+    selected_index = render_event_selection_pills(report_id, preview_df, calendar_month, selected_index)
     st.markdown(render_table_html(EVENT_SUMMARY_COLUMNS, preview_df, "events"), unsafe_allow_html=True)
 
     with st.expander("행사 일정 편집", expanded=True):
@@ -474,7 +436,7 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
 
 
 def render_event_detail_section(report: dict, events_df: pd.DataFrame, event_month: date) -> pd.DataFrame:
-    st.markdown('<div class="meeting-subsection-title">행사 상세 내용</div>', unsafe_allow_html=True)
+    st.markdown('<div id="meeting-event-detail-section" class="meeting-subsection-title">행사 상세 내용</div>', unsafe_allow_html=True)
     selected_index = selected_event_index(report["id"], events_df, event_month)
     if selected_index is None:
         st.markdown('<div class="meeting-note-box empty">위 행사 캘린더에서 상세내용을 등록할 일정을 선택하세요.</div>', unsafe_allow_html=True)
@@ -2563,90 +2525,122 @@ def selected_event_index(report_id: int, df: pd.DataFrame, event_month: date) ->
     return selected
 
 
-def render_event_calendar(
-    df: pd.DataFrame,
-    display_month: date,
-    meeting_date: date,
-    report_id: int,
-    selected_index: int | None,
-) -> int | None:
-    month_text = month_key(display_month)
-    state_key = f"meeting_selected_event_row_{report_id}_{month_text}"
-    events_by_day = event_calendar_entries_by_day(df, display_month)
+def apply_event_selection_query(report_id: int, df: pd.DataFrame, event_month: date, selected_index: int | None) -> int | None:
+    try:
+        query_month = st.query_params.get("meeting_event_month")
+        query_row = st.query_params.get("meeting_event_row")
+    except Exception:
+        return selected_index
+    if isinstance(query_month, list):
+        query_month = query_month[0] if query_month else ""
+    if isinstance(query_row, list):
+        query_row = query_row[0] if query_row else ""
+    if query_month != month_key(event_month):
+        return selected_index
+    try:
+        row_position = int(query_row)
+    except (TypeError, ValueError):
+        return selected_index
+    if df is None or df.empty or row_position < 0 or row_position >= len(df):
+        return selected_index
+    state_key = f"meeting_selected_event_row_{report_id}_{month_key(event_month)}"
+    st.session_state[state_key] = row_position
+    return row_position
 
-    st.markdown(
-        f"""
-        <section class="meeting-calendar meeting-calendar-clickable">
-            <div class="meeting-calendar-head">
-                <h3>{display_month:%Y년 %m월} 행사 캘린더</h3>
-                <span>회의일 {format_korean_date(meeting_date)}</span>
-            </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
-    )
 
-    week_cols = st.columns(7, gap="small")
-    for column, day_name in zip(week_cols, ["월", "화", "수", "목", "금", "토", "일"]):
-        column.markdown(f'<div class="meeting-calendar-week-label">{day_name}</div>', unsafe_allow_html=True)
-
-    for week_index, week in enumerate(calendar.monthcalendar(display_month.year, display_month.month)):
-        day_cols = st.columns(7, gap="small")
-        for day_col, day in zip(day_cols, week):
-            with day_col:
-                if day == 0:
-                    st.markdown('<div class="meeting-calendar-day-empty"></div>', unsafe_allow_html=True)
-                    continue
-
-                day_state = " today" if (
-                    display_month.year == meeting_date.year
-                    and display_month.month == meeting_date.month
-                    and day == meeting_date.day
-                ) else ""
-                st.markdown(f'<div class="meeting-calendar-day-label{day_state}">{day}</div>', unsafe_allow_html=True)
-                day_events = events_by_day.get(day, [])
-                if not day_events:
-                    st.markdown('<div class="meeting-calendar-no-event"></div>', unsafe_allow_html=True)
-                    continue
-
-                for event_offset, event in enumerate(day_events[:3]):
-                    row_position = int(event["row_position"])
-                    selected = selected_index == row_position
-                    if st.button(
-                        event["button_label"],
-                        key=f"meeting_calendar_event_{report_id}_{month_text}_{week_index}_{day}_{row_position}_{event_offset}",
-                        help=event["help"],
-                        type="primary" if selected else "secondary",
-                        use_container_width=True,
-                    ):
-                        st.session_state[state_key] = row_position
-                        selected_index = row_position
-                if len(day_events) > 3:
-                    st.caption(f"+{len(day_events) - 3}")
-
+def render_event_selection_pills(report_id: int, df: pd.DataFrame, event_month: date, selected_index: int | None) -> int | None:
+    state_key = f"meeting_selected_event_row_{report_id}_{month_key(event_month)}"
+    widget_key = f"meeting_event_selector_{report_id}_{month_key(event_month)}"
     if df is None or df.empty:
+        st.session_state.pop(state_key, None)
         st.caption("선택할 행사 일정이 없습니다.")
+        return None
+
+    options = list(range(len(df)))
+    if selected_index not in options:
+        selected_index = None
+
+    selected = st.pills(
+        "상세내용 작성할 행사 선택",
+        options,
+        selection_mode="single",
+        default=selected_index,
+        format_func=lambda index: event_selection_label(df.iloc[int(index)], int(index)),
+        key=widget_key,
+    )
+    if selected is None:
+        return selected_index
+    selected_index = int(selected)
+    st.session_state[state_key] = selected_index
     return selected_index
 
 
-def event_calendar_entries_by_day(df: pd.DataFrame, display_month: date) -> dict[int, list[dict]]:
-    events_by_day: dict[int, list[dict]] = {}
-    if df is None or df.empty:
-        return events_by_day
+def event_selection_label(row: pd.Series, index: int) -> str:
+    name = normalize_cell_value(row.get("행사명")) or normalize_cell_value(row.get("행사품목")) or "행사"
+    period = normalize_cell_value(row.get("행사기간"))
+    suffix = f" / {period}" if period else ""
+    return f"{index + 1}. {truncate_text(name, 18)}{suffix}"
 
-    for row_position, (_, row) in enumerate(df.iterrows()):
-        sku = normalize_cell_value(row.get("행사품목", ""))
-        detail = truncate_text(normalize_cell_value(row.get("상세내용", row.get("비고", ""))), 42)
-        label = normalize_cell_value(row.get("행사명", "")) or truncate_text(sku, 32) or detail or "행사"
-        period = normalize_cell_value(row.get("행사기간", ""))
-        entry = {
-            "row_position": row_position,
-            "button_label": truncate_text(label, 18),
-            "help": " / ".join(part for part in [label, period, sku, detail] if part),
-        }
-        for day in extract_event_days(str(row.get("행사기간", "")), display_month):
-            events_by_day.setdefault(day, []).append(entry)
-    return events_by_day
+
+def render_event_calendar_html(
+    df: pd.DataFrame,
+    display_month: date,
+    meeting_date: date,
+    selected_index: int | None,
+    report_id: int | None = None,
+) -> str:
+    month_text = month_key(display_month)
+    month_weeks = calendar.monthcalendar(display_month.year, display_month.month)
+    events_by_day: dict[int, list[str]] = {}
+    if df is not None and not df.empty:
+        for row_position, (_, row) in enumerate(df.iterrows()):
+            sku = normalize_cell_value(row.get("행사품목", ""))
+            detail = truncate_text(normalize_cell_value(row.get("상세내용", row.get("비고", ""))), 42)
+            label = normalize_cell_value(row.get("행사명", "")) or truncate_text(sku, 32) or detail or "행사"
+            for day in extract_event_days(str(row.get("행사기간", "")), display_month):
+                chip_body = (
+                    f"{escape_html(label)}"
+                    + (f"<small>{escape_html(truncate_text(sku, 32))}</small>" if sku else "")
+                    + (f"<em>{escape_html(detail)}</em>" if detail else "")
+                )
+                chip_class = "meeting-event-chip"
+                if selected_index == row_position:
+                    chip_class += " selected"
+                query = urlencode({"page": "회의자료", "meeting_event_month": month_text, "meeting_event_row": row_position})
+                chip = f'<a class="{chip_class}" href="?{query}#meeting-event-detail-section">{chip_body}</a>'
+                events_by_day.setdefault(day, []).append(chip)
+
+    week_labels = "".join(f"<b>{day}</b>" for day in ["월", "화", "수", "목", "금", "토", "일"])
+    cells = []
+    for week in month_weeks:
+        for day in week:
+            if day == 0:
+                cells.append('<div class="meeting-calendar-day muted"></div>')
+                continue
+            chips = "".join(events_by_day.get(day, [])[:3])
+            more_count = max(len(events_by_day.get(day, [])) - 3, 0)
+            if more_count:
+                chips += f'<span class="meeting-event-chip muted">+{more_count}</span>'
+            state = "today" if display_month.year == meeting_date.year and display_month.month == meeting_date.month and day == meeting_date.day else ""
+            cells.append(
+                f"""
+                <div class="meeting-calendar-day {state}">
+                    <strong>{day}</strong>
+                    <div>{chips}</div>
+                </div>
+                """
+            )
+
+    return f"""
+    <section class="meeting-calendar">
+        <div class="meeting-calendar-head">
+            <h3>{display_month:%Y년 %m월} 행사 캘린더</h3>
+            <span>회의일 {format_korean_date(meeting_date)}</span>
+        </div>
+        <div class="meeting-calendar-week">{week_labels}</div>
+        <div class="meeting-calendar-grid">{''.join(cells)}</div>
+    </section>
+    """
 
 
 def extract_event_days(period: str, display_month: date) -> list[int]:
