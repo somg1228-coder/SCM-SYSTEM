@@ -14837,3 +14837,56 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
     opacity: 1 !important;
     text-shadow: none !important;
 }
+
+/* Final spreadsheet visibility override. Streamlit data_editor is canvas based. */
+.stApp [data-testid="stDataEditor"],
+.stApp .stDataEditor,
+.stApp .glideDataEditor {
+    background: #FFFFFF !important;
+    border: 1px solid #CFC7BC !important;
+    border-radius: 8px !important;
+    color: #172033 !important;
+    min-height: 180px !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    visibility: visible !important;
+}
+
+.stApp [data-testid="stDataEditor"] > div,
+.stApp [data-testid="stDataEditor"] [role="grid"],
+.stApp .glideDataEditor > div {
+    background: #FFFFFF !important;
+    color: #172033 !important;
+    min-height: 160px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.stApp [data-testid="stDataEditor"] canvas,
+.stApp .glideDataEditor canvas {
+    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
+    display: block !important;
+    min-height: 120px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.stApp [data-testid="stDataEditor"] *,
+.stApp .stDataEditor *,
+.stApp .glideDataEditor * {
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+    opacity: 1 !important;
+}
+
+.stApp [data-testid="stFormSubmitButton"] button:disabled,
+.stApp .stFormSubmitButton > button:disabled,
+.stApp .stFormSubmitButton button:disabled,
+.stApp [data-testid="stFormSubmitButton"] button:disabled *,
+.stApp .stFormSubmitButton > button:disabled *,
+.stApp .stFormSubmitButton button:disabled * {
+    color: #42526A !important;
+    -webkit-text-fill-color: #42526A !important;
+    opacity: 1 !important;
+}

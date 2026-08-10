@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+import re
 import shutil
 import sqlite3
 import stat
@@ -14,7 +15,7 @@ import traceback
 from backend.config import config_bool_value, config_key_diagnostics, config_text_value, is_deployed_environment, streamlit_secret_value, truthy_config_value
 
 try:
-    from sqlalchemy import create_engine, inspect
+    from sqlalchemy import create_engine, event, inspect
     from sqlalchemy.engine import make_url
     from sqlalchemy.orm import declarative_base, sessionmaker
     from sqlalchemy.schema import CreateColumn
@@ -55,6 +56,9 @@ _LAST_SELECT_1_CHECK_AT = 0.0
 _SELECT_1_TTL_SECONDS = 60.0
 _INIT_DB_DONE = False
 _INIT_DB_PROFILE: dict[str, float] = {}
+_QUERY_PROFILE_MAX_EVENTS = 240
+_QUERY_PROFILER_INSTALLED_ENGINE_IDS: set[int] = set()
+_PAGE_PROFILE: dict[str, object] = {"page": "", "started_at": 0.0}
 
 
 def _streamlit_cache_resource():
@@ -583,6 +587,7 @@ def switch_database_url(next_database_url: str) -> None:
     except NameError:
         pass
     engine = create_app_engine(DATABASE_URL)
+    install_query_profiler(engine)
     try:
         SessionLocal.configure(bind=engine)
     except NameError:
@@ -924,7 +929,6 @@ def record_save_success(item: str) -> None:
 
     _LAST_SAVE_SUCCESS_AT = datetime_now_iso()
     _LAST_SAVE_FAILURE_ITEM = ""
-    clear_streamlit_data_cache()
     LOGGER.info("DB save success: %s", sanitize_database_text(item))
 
 
@@ -951,6 +955,130 @@ def clear_streamlit_data_cache() -> None:
         pass
 
 
+def begin_page_query_profile(page: str) -> None:
+    _PAGE_PROFILE["page"] = str(page or "")
+    _PAGE_PROFILE["started_at"] = time.perf_counter()
+    try:
+        import streamlit as st
+
+        st.session_state["db_query_profile_events"] = []
+        st.session_state["db_query_profile_page"] = str(page or "")
+    except Exception:
+        pass
+
+
+def finish_page_query_profile(page: str, render_seconds: float) -> None:
+    try:
+        import streamlit as st
+
+        events = list(st.session_state.get("db_query_profile_events", []))
+    except Exception:
+        events = []
+    call_count = len(events)
+    db_seconds = sum(float(item.get("elapsed_seconds", 0.0) or 0.0) for item in events)
+    slowest = sorted(events, key=lambda item: float(item.get("elapsed_seconds", 0.0) or 0.0), reverse=True)[:10]
+    summary = {
+        "page": page,
+        "api_calls": call_count,
+        "db_seconds": round(db_seconds, 3),
+        "render_seconds": round(render_seconds, 3),
+        "slowest": slowest,
+    }
+    try:
+        import streamlit as st
+
+        st.session_state["db_query_profile_summary"] = summary
+    except Exception:
+        pass
+    LOGGER.info(
+        "page_profile page=%s api_calls=%s db_seconds=%.3f render_seconds=%.3f",
+        page,
+        call_count,
+        db_seconds,
+        render_seconds,
+    )
+
+
+def install_query_profiler(target_engine) -> None:
+    engine_id = id(target_engine)
+    if engine_id in _QUERY_PROFILER_INSTALLED_ENGINE_IDS:
+        return
+    _QUERY_PROFILER_INSTALLED_ENGINE_IDS.add(engine_id)
+
+    @event.listens_for(target_engine, "before_cursor_execute")
+    def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        context._scm_query_started_at = time.perf_counter()
+
+    @event.listens_for(target_engine, "after_cursor_execute")
+    def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        started_at = getattr(context, "_scm_query_started_at", None)
+        elapsed = time.perf_counter() - started_at if started_at else 0.0
+        record_query_profile(statement, elapsed, True, "")
+
+    @event.listens_for(target_engine, "handle_error")
+    def _handle_error(exception_context):
+        started_at = getattr(exception_context.execution_context, "_scm_query_started_at", None)
+        elapsed = time.perf_counter() - started_at if started_at else 0.0
+        record_query_profile(
+            str(exception_context.statement or ""),
+            elapsed,
+            False,
+            sanitize_database_text(exception_context.original_exception),
+        )
+
+
+def record_query_profile(statement: str, elapsed_seconds: float, success: bool, error: str) -> None:
+    operation, table_name = describe_sql_statement(statement)
+    page = str(_PAGE_PROFILE.get("page") or "")
+    event_row = {
+        "page": page,
+        "function": "sqlalchemy",
+        "table": table_name,
+        "operation": operation,
+        "elapsed_seconds": round(float(elapsed_seconds or 0.0), 4),
+        "success": bool(success),
+        "error": error,
+    }
+    try:
+        import streamlit as st
+
+        rows = list(st.session_state.get("db_query_profile_events", []))
+        rows.append(event_row)
+        st.session_state["db_query_profile_events"] = rows[-_QUERY_PROFILE_MAX_EVENTS:]
+    except Exception:
+        pass
+    if not success or float(elapsed_seconds or 0.0) >= 0.05:
+        LOGGER.info(
+            "query_profile page=%s operation=%s table=%s elapsed=%.4f success=%s",
+            page,
+            operation,
+            table_name,
+            elapsed_seconds,
+            success,
+        )
+
+
+def describe_sql_statement(statement: str) -> tuple[str, str]:
+    text = " ".join(str(statement or "").strip().split())
+    if not text:
+        return "", ""
+    operation = text.split(" ", 1)[0].upper()
+    table_name = ""
+    patterns = (
+        r"\bFROM\s+([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)",
+        r"\bJOIN\s+([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)",
+        r"\bINTO\s+([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)",
+        r"\bUPDATE\s+([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)",
+        r"\bDELETE\s+FROM\s+([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            table_name = match.group(1).strip('"')
+            break
+    return operation, table_name
+
+
 try:
     if is_sqlite_url(DATABASE_URL):
         log_sqlite_writability("module import")
@@ -958,6 +1086,7 @@ except Exception as exc:
     LOGGER.warning("SQLite write check skipped during import: %s", exc)
 
 engine = create_app_engine(DATABASE_URL)
+install_query_profiler(engine)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 Base = declarative_base()
 

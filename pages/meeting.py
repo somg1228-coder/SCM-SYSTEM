@@ -115,41 +115,47 @@ def render_meeting_page() -> None:
         st.rerun()
 
     if st.session_state.pop("meeting_save_requested", False):
-        save_report_state(report["id"], meta, production_df, events_df, issues, action_df)
-        clear_meeting_history_cache()
-        clear_pending_event_rows(report["id"], event_month)
-        clear_editor_state(f"meeting_production_editor_{report['id']}")
-        clear_editor_state(f"meeting_production_editor_v2_{report['id']}")
-        clear_editor_state(f"meeting_production_editor_v3_{report['id']}")
-        clear_editor_state(f"meeting_production_editor_v4_{report['id']}")
-        clear_editor_state(f"meeting_production_editor_v5_{report['id']}")
-        clear_editor_state(f"meeting_production_editor_v6_{report['id']}")
-        clear_editor_state(f"meeting_production_editor_v7_{report['id']}")
-        clear_editor_state(f"meeting_production_edit_buffer_{report['id']}")
-        clear_editor_state(f"meeting_events_editor_{report['id']}_{month_key(event_month)}")
-        clear_editor_state(f"meeting_events_editor_v2_{report['id']}_{month_key(event_month)}")
-        clear_editor_state(f"meeting_events_editor_v3_{report['id']}_{month_key(event_month)}")
-        clear_editor_state(f"meeting_events_editor_v4_{report['id']}_{month_key(event_month)}")
-        clear_editor_state(f"meeting_events_editor_v5_{report['id']}_{month_key(event_month)}")
-        clear_editor_state(f"meeting_events_editor_v6_{report['id']}_{month_key(event_month)}")
-        clear_editor_state(f"meeting_events_editor_v7_{report['id']}_{month_key(event_month)}")
-        clear_editor_state(f"meeting_events_edit_buffer_{report['id']}_{month_key(event_month)}")
-        clear_event_detail_editor_states(report["id"], event_month)
-        clear_editor_state(table_draft_state_key(report["id"], "production"))
-        clear_editor_state(table_draft_state_key(report["id"], f"events_{month_key(event_month)}"))
-        clear_editor_state(f"meeting_action_editor_v2_{report['id']}")
-        clear_editor_state(f"meeting_action_editor_v3_{report['id']}")
-        clear_editor_state(f"meeting_action_editor_v4_{report['id']}")
-        clear_editor_state(f"meeting_action_editor_v5_{report['id']}")
-        clear_editor_state(f"meeting_action_editor_v6_{report['id']}")
-        clear_editor_state(f"meeting_action_editor_v7_{report['id']}")
-        clear_editor_state(f"meeting_action_editor_v8_{report['id']}")
-        clear_editor_state(f"meeting_action_editor_v9_{report['id']}")
-        clear_editor_state(f"meeting_action_editor_v10_{report['id']}")
-        clear_editor_state(f"meeting_action_edit_buffer_{report['id']}")
-        clear_editor_state(action_draft_state_key(report["id"]))
-        st.session_state["meeting_save_notice"] = "회의자료 변경사항 저장 완료"
-        st.rerun()
+        try:
+            save_report_state(report["id"], meta, production_df, events_df, issues, action_df)
+        except Exception as exc:
+            st.error(f"회의자료 저장 실패: {exc}")
+            st.caption("편집 중인 표 내용은 화면에 유지됩니다. 오류를 확인한 뒤 변경사항 저장을 다시 누르세요.")
+        else:
+            clear_meeting_history_cache()
+            clear_pending_event_rows(report["id"], event_month)
+            clear_editor_state(f"meeting_production_editor_{report['id']}")
+            clear_editor_state(f"meeting_production_editor_v2_{report['id']}")
+            clear_editor_state(f"meeting_production_editor_v3_{report['id']}")
+            clear_editor_state(f"meeting_production_editor_v4_{report['id']}")
+            clear_editor_state(f"meeting_production_editor_v5_{report['id']}")
+            clear_editor_state(f"meeting_production_editor_v6_{report['id']}")
+            clear_editor_state(f"meeting_production_editor_v7_{report['id']}")
+            clear_editor_state(f"meeting_production_edit_buffer_{report['id']}")
+            clear_editor_state(f"meeting_events_editor_{report['id']}_{month_key(event_month)}")
+            clear_editor_state(f"meeting_events_editor_v2_{report['id']}_{month_key(event_month)}")
+            clear_editor_state(f"meeting_events_editor_v3_{report['id']}_{month_key(event_month)}")
+            clear_editor_state(f"meeting_events_editor_v4_{report['id']}_{month_key(event_month)}")
+            clear_editor_state(f"meeting_events_editor_v5_{report['id']}_{month_key(event_month)}")
+            clear_editor_state(f"meeting_events_editor_v6_{report['id']}_{month_key(event_month)}")
+            clear_editor_state(f"meeting_events_editor_v7_{report['id']}_{month_key(event_month)}")
+            clear_editor_state(f"meeting_events_edit_buffer_{report['id']}_{month_key(event_month)}")
+            clear_event_detail_editor_states(report["id"], event_month)
+            clear_editor_state(table_draft_state_key(report["id"], "production"))
+            clear_editor_state(table_draft_state_key(report["id"], f"events_{month_key(event_month)}"))
+            clear_editor_state(f"meeting_action_editor_v2_{report['id']}")
+            clear_editor_state(f"meeting_action_editor_v3_{report['id']}")
+            clear_editor_state(f"meeting_action_editor_v4_{report['id']}")
+            clear_editor_state(f"meeting_action_editor_v5_{report['id']}")
+            clear_editor_state(f"meeting_action_editor_v6_{report['id']}")
+            clear_editor_state(f"meeting_action_editor_v7_{report['id']}")
+            clear_editor_state(f"meeting_action_editor_v8_{report['id']}")
+            clear_editor_state(f"meeting_action_editor_v9_{report['id']}")
+            clear_editor_state(f"meeting_action_editor_v10_{report['id']}")
+            clear_editor_state(f"meeting_action_edit_buffer_{report['id']}")
+            clear_editor_state(action_draft_state_key(report["id"]))
+            st.session_state.pop("meeting_history_export_payload", None)
+            st.session_state["meeting_save_notice"] = "회의자료 변경사항 저장 완료"
+            st.rerun()
 
     if st.session_state.get("meeting_pdf_requested"):
         pdf_bytes = create_meeting_pdf(meta, production_df, events_df, issues, action_df, kpis)
@@ -216,7 +222,11 @@ def render_control_card() -> dict:
         with history_col:
             st.write("")
             st.write("")
-            history_bytes, history_count = meeting_history_excel_bytes()
+            history_state_key = "meeting_history_export_payload"
+            if st.button("지난내역 준비", key="meeting_history_prepare", use_container_width=True):
+                st.session_state[history_state_key] = meeting_history_excel_bytes()
+            history_payload = st.session_state.get(history_state_key)
+            history_bytes, history_count = history_payload if isinstance(history_payload, tuple) and len(history_payload) == 2 else (b"", 0)
             st.download_button(
                 "지난내역 다운로드",
                 data=history_bytes,
@@ -224,7 +234,7 @@ def render_control_card() -> dict:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
                 key="meeting_history_download",
-                disabled=history_count == 0,
+                disabled=history_payload is None or history_count == 0,
             )
 
     return {

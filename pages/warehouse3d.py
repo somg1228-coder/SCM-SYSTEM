@@ -660,10 +660,10 @@ def handle_warehouse3d_layout_save_request(save_request: dict | None) -> bool:
         save_warehouse_layout_store(payload)
     except Exception as exc:
         write_warehouse_layout_log(f"Streamlit component save failed: {exc}")
-        st.session_state["warehouse3d_save_notice"] = ("error", f"Supabase 저장 실패: {exc}")
+        st.session_state["warehouse3d_save_notice"] = ("error", f"서버 Supabase 저장 실패: {exc}")
         return True
 
-    st.session_state["warehouse3d_save_notice"] = ("success", "Supabase 저장 완료")
+    st.session_state["warehouse3d_save_notice"] = ("success", "서버 Supabase 저장 완료")
     return True
 
 
