@@ -230,12 +230,6 @@ def render_page(page: str) -> None:
     st.session_state["page"] = page
     st.session_state["selected_menu"] = page
     st.session_state["current_page"] = page
-    try:
-        from backend.database import begin_page_query_profile
-
-        begin_page_query_profile(page)
-    except Exception:
-        pass
     route_context = (
         f"page={page!r} selected_menu={st.session_state.get('selected_menu')!r} "
         f"current_page={st.session_state.get('current_page')!r}"
@@ -287,12 +281,6 @@ def render_page(page: str) -> None:
     finally:
         elapsed = time.perf_counter() - started_at
         st.session_state["last_page_render_seconds"] = round(elapsed, 3)
-        try:
-            from backend.database import finish_page_query_profile
-
-            finish_page_query_profile(page, elapsed)
-        except Exception:
-            pass
         log_route_event(f"render_page_done {page!r} seconds={elapsed:.3f}")
 
 

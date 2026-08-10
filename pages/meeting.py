@@ -262,28 +262,15 @@ def render_production_section(report_id: int) -> pd.DataFrame:
     with st.expander("생산요청 리스트 편집", expanded=True):
         st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 선택 삭제는 화면에서만 제외되며, Supabase 반영은 변경사항 저장을 눌렀을 때만 실행됩니다.")
         editor_df = add_delete_marker_column(prepare_production_editor_df(edit_buffer), marker_source=edit_buffer)
-        editor_columns = [EDIT_DELETE_COLUMN, *PRODUCTION_COLUMNS]
         editor_key = f"meeting_production_editor_v7_{report_id}"
         with st.form(key=f"meeting_production_editor_form_{report_id}", clear_on_submit=False):
-            edited = st.data_editor(
+            edited = render_visible_spreadsheet_editor(
                 editor_df,
-                num_rows="dynamic",
-                use_container_width=True,
-                height=260,
-                key=editor_key,
-                hide_index=True,
-                column_order=editor_columns,
-                column_config={
-                    ROW_ID_COLUMN: None,
-                    EDIT_DELETE_COLUMN: st.column_config.CheckboxColumn("삭제", default=False),
-                    "바코드": st.column_config.TextColumn("바코드", default=""),
-                    "상품명": st.column_config.TextColumn("상품명", default=""),
-                    "현재수량": st.column_config.NumberColumn("현재수량", min_value=0, step=1, default=0),
-                    "요청수량": st.column_config.NumberColumn("요청수량", min_value=0, step=1, default=0),
-                    "납기일": st.column_config.DateColumn("납기일", format="YYYY-MM-DD"),
-                    "상태": st.column_config.SelectboxColumn("상태", options=["", *PRODUCTION_STATUS], default=""),
-                    "비고": st.column_config.TextColumn("비고", default=""),
-                },
+                PRODUCTION_COLUMNS,
+                editor_key,
+                number_columns={"현재수량", "요청수량"},
+                date_columns={"납기일"},
+                select_options={"상태": ["", *PRODUCTION_STATUS]},
             )
             editor_action = render_editor_actions(
                 "meeting_production",
@@ -310,8 +297,6 @@ def render_production_section(report_id: int) -> pd.DataFrame:
         production_source = prepare_production_editor_df(strip_delete_marker_column(edited))
         st.session_state[draft_key] = prepare_production_editor_df(production_source)
         st.session_state[edit_buffer_key] = add_delete_marker_column(production_source)
-    else:
-        st.session_state[edit_buffer_key] = edited
     return normalize_editor_df_with_id(production_source, PRODUCTION_COLUMNS)
 
 
@@ -347,25 +332,13 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
             clear_pending_event_rows(report_id, calendar_month)
         buffer_full = prepare_event_editor_df(strip_delete_marker_column(edit_buffer))
         editor_df = add_delete_marker_column(buffer_full[[ROW_ID_COLUMN, *EVENT_SUMMARY_COLUMNS]], marker_source=edit_buffer)
-        editor_columns = [EDIT_DELETE_COLUMN, *EVENT_SUMMARY_COLUMNS]
         editor_key = f"meeting_events_editor_v7_{report_id}_{month_key(calendar_month)}"
         with st.form(key=f"meeting_events_editor_form_{report_id}_{month_key(calendar_month)}", clear_on_submit=False):
-            edited = st.data_editor(
+            edited = render_visible_spreadsheet_editor(
                 editor_df,
-                num_rows="dynamic",
-                use_container_width=True,
-                height=260,
-                key=editor_key,
-                hide_index=True,
-                column_order=editor_columns,
-                column_config={
-                    ROW_ID_COLUMN: None,
-                    EDIT_DELETE_COLUMN: st.column_config.CheckboxColumn("삭제", default=False),
-                    "행사명": st.column_config.TextColumn("행사명", default=""),
-                    "행사기간": st.column_config.TextColumn("행사기간", help="예: 2026-07-10 ~ 2026-07-15", default=""),
-                    "행사품목": st.column_config.TextColumn("행사품목", help="선택 추가 또는 직접 입력 가능, 여러 품목은 쉼표로 구분하세요.", default=""),
-                    "요청수량": st.column_config.NumberColumn("요청수량", min_value=0, step=1, default=0),
-                },
+                EVENT_SUMMARY_COLUMNS,
+                editor_key,
+                number_columns={"요청수량"},
             )
             editor_action = render_editor_actions(
                 "meeting_events",
@@ -393,9 +366,6 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
         events_source = prepare_event_editor_df(merge_event_details(strip_delete_marker_column(edited), buffer_source))
         st.session_state[draft_key] = prepare_event_editor_df(events_source)
         st.session_state[edit_buffer_key] = add_delete_marker_column(events_source)
-    else:
-        buffer_next = prepare_event_editor_df(merge_event_details(strip_delete_marker_column(edited), buffer_source))
-        st.session_state[edit_buffer_key] = add_delete_marker_column(buffer_next, marker_source=edited)
     return normalize_event_editor_df(events_source), calendar_month
 
 
@@ -452,6 +422,152 @@ def render_event_detail_section(report: dict, events_df: pd.DataFrame, event_mon
     if detail_action == "save":
         return update_event_detail_draft(report["id"], event_month, updated_events_df, selected_index, edited_detail)
     return events_df
+
+
+def render_visible_spreadsheet_editor(
+    df: pd.DataFrame,
+    columns: list[str],
+    key_prefix: str,
+    number_columns: set[str] | None = None,
+    date_columns: set[str] | None = None,
+    select_options: dict[str, list[str]] | None = None,
+    blank_rows: int = 3,
+) -> pd.DataFrame:
+    number_columns = number_columns or set()
+    date_columns = date_columns or set()
+    select_options = select_options or {}
+    source = df.copy() if df is not None else pd.DataFrame(columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
+    for column in [EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns]:
+        if column not in source.columns:
+            source[column] = False if column == EDIT_DELETE_COLUMN else ""
+    source = source[[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns]].reset_index(drop=True)
+
+    rows = source.to_dict("records")
+    for _ in range(blank_rows):
+        rows.append({EDIT_DELETE_COLUMN: False, ROW_ID_COLUMN: "", **{column: 0 if column in number_columns else "" for column in columns}})
+
+    render_spreadsheet_css_once()
+    st.markdown('<div class="meeting-visible-editor">', unsafe_allow_html=True)
+    header_weights = spreadsheet_column_weights(columns)
+    header_cols = st.columns(header_weights, gap="small")
+    header_cols[0].markdown('<div class="sheet-header">삭제</div>', unsafe_allow_html=True)
+    for index, column in enumerate(columns, start=1):
+        header_cols[index].markdown(f'<div class="sheet-header">{escape_html(column)}</div>', unsafe_allow_html=True)
+
+    edited_rows = []
+    for row_index, row in enumerate(rows):
+        row_cols = st.columns(header_weights, gap="small")
+        edited_row = {
+            ROW_ID_COLUMN: normalize_row_id(row.get(ROW_ID_COLUMN, "")),
+            EDIT_DELETE_COLUMN: row_cols[0].checkbox(
+                "삭제",
+                value=is_delete_checked(row.get(EDIT_DELETE_COLUMN)),
+                key=f"{key_prefix}_delete_{row_index}",
+                label_visibility="collapsed",
+            ),
+        }
+        for column_index, column in enumerate(columns, start=1):
+            value = row.get(column, "")
+            cell_key = f"{key_prefix}_{row_index}_{column_index}_{safe_widget_key(column)}"
+            if column in number_columns:
+                edited_row[column] = row_cols[column_index].number_input(
+                    column,
+                    min_value=0,
+                    step=1,
+                    value=max(0, parse_int(value)),
+                    key=cell_key,
+                    label_visibility="collapsed",
+                )
+            elif column in select_options:
+                options = list(select_options[column])
+                current = normalize_cell_value(value)
+                if current and current not in options:
+                    options.append(current)
+                edited_row[column] = row_cols[column_index].selectbox(
+                    column,
+                    options=options,
+                    index=options.index(current) if current in options else 0,
+                    key=cell_key,
+                    label_visibility="collapsed",
+                )
+            else:
+                placeholder = "YYYY-MM-DD" if column in date_columns else ""
+                edited_row[column] = row_cols[column_index].text_input(
+                    column,
+                    value=normalize_date_value(value) if column in date_columns else normalize_cell_value(value),
+                    placeholder=placeholder,
+                    key=cell_key,
+                    label_visibility="collapsed",
+                )
+        edited_rows.append(edited_row)
+    st.markdown("</div>", unsafe_allow_html=True)
+    return pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
+
+
+def spreadsheet_column_weights(columns: list[str]) -> list[float]:
+    weights = [0.42]
+    for column in columns:
+        if column in {"상품명", "진행내용", "행사품목", "비고"}:
+            weights.append(1.45)
+        elif column in {"담당부서/담당자", "행사기간"}:
+            weights.append(1.05)
+        elif column in {"현재수량", "요청수량", "수량", "상태", "진행상태"}:
+            weights.append(0.72)
+        else:
+            weights.append(1.0)
+    return weights
+
+
+def safe_widget_key(value: str) -> str:
+    return re.sub(r"[^0-9A-Za-z_]+", "_", str(value))
+
+
+def render_spreadsheet_css_once() -> None:
+    st.markdown(
+        """
+        <style>
+        .meeting-visible-editor {
+            background: #FAF8F5;
+            border: 1px solid #D8D2C8;
+            border-radius: 8px;
+            overflow-x: auto;
+            padding: 0.56rem;
+        }
+        .meeting-visible-editor .sheet-header {
+            background: #EDE8E1;
+            border: 1px solid #D8D2C8;
+            border-radius: 6px;
+            color: #102033;
+            font-size: 0.82rem;
+            font-weight: 900;
+            min-height: 32px;
+            padding: 0.46rem 0.5rem;
+            text-align: center;
+            white-space: nowrap;
+        }
+        .meeting-visible-editor [data-testid="stHorizontalBlock"] {
+            min-width: 980px;
+        }
+        .meeting-visible-editor [data-testid="stTextInput"] input,
+        .meeting-visible-editor [data-testid="stNumberInput"] input,
+        .meeting-visible-editor [data-baseweb="select"] > div {
+            background: #FFFFFF !important;
+            border-color: #C9BFB1 !important;
+            color: #172033 !important;
+            font-size: 0.86rem !important;
+            font-weight: 760 !important;
+            min-height: 36px !important;
+        }
+        .meeting-visible-editor [data-testid="stCheckbox"] {
+            align-items: center;
+            display: flex;
+            justify-content: center;
+            min-height: 38px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_editor_actions(
@@ -867,27 +983,15 @@ def render_action_section(report_id: int) -> pd.DataFrame:
     with st.expander("진행사항 편집", expanded=True):
         st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 선택 삭제는 화면에서만 제외되며, Supabase 반영은 변경사항 저장을 눌렀을 때만 실행됩니다.")
         editor_df = add_delete_marker_column(prepare_action_editor_df(edit_buffer), marker_source=edit_buffer)
-        editor_columns = [EDIT_DELETE_COLUMN, *ACTION_COLUMNS]
         editor_key = f"meeting_action_editor_v10_{report_id}"
         with st.form(key=f"meeting_action_editor_form_{report_id}", clear_on_submit=False):
-            edited = st.data_editor(
+            edited = render_visible_spreadsheet_editor(
                 editor_df,
-                num_rows="dynamic",
-                use_container_width=True,
-                height=260,
-                key=editor_key,
-                hide_index=True,
-                column_order=editor_columns,
-                column_config={
-                    ROW_ID_COLUMN: None,
-                    EDIT_DELETE_COLUMN: st.column_config.CheckboxColumn("삭제", default=False),
-                    "담당부서/담당자": st.column_config.TextColumn("담당부서/담당자", default=""),
-                    "진행내용": st.column_config.TextColumn("진행내용", default=""),
-                    "수량": st.column_config.NumberColumn("수량", min_value=0, step=1, format="%d"),
-                    "완료예정일": st.column_config.DateColumn("완료예정일", format="YYYY-MM-DD"),
-                    "납기일": st.column_config.DateColumn("납기일", format="YYYY-MM-DD"),
-                    "진행상태": st.column_config.SelectboxColumn("진행상태", options=["", *ACTION_STATUS], default=""),
-                },
+                ACTION_COLUMNS,
+                editor_key,
+                number_columns={"수량"},
+                date_columns={"완료예정일", "납기일"},
+                select_options={"진행상태": ["", *ACTION_STATUS]},
             )
             editor_action = render_editor_actions(
                 "meeting_actions",
@@ -914,8 +1018,6 @@ def render_action_section(report_id: int) -> pd.DataFrame:
         action_source = prepare_action_editor_df(strip_delete_marker_column(edited))
         st.session_state[draft_key] = prepare_action_editor_df(action_source)
         st.session_state[edit_buffer_key] = add_delete_marker_column(action_source)
-    else:
-        st.session_state[edit_buffer_key] = edited
     return normalize_editor_df_with_id(action_source, ACTION_COLUMNS)
 
 

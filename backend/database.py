@@ -1030,6 +1030,13 @@ def install_query_profiler(target_engine) -> None:
 def record_query_profile(statement: str, elapsed_seconds: float, success: bool, error: str) -> None:
     operation, table_name = describe_sql_statement(statement)
     page = str(_PAGE_PROFILE.get("page") or "")
+    if not page:
+        try:
+            import streamlit as st
+
+            page = str(st.session_state.get("current_page") or st.session_state.get("selected_menu") or "")
+        except Exception:
+            page = ""
     event_row = {
         "page": page,
         "function": "sqlalchemy",
