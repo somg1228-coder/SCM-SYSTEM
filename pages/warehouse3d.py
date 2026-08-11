@@ -2924,11 +2924,27 @@ def warehouse_scene3d_html(
                 display: flex;
                 flex-direction: column;
             }}
+            .detail-section {{
+                background: rgba(250, 248, 245, 0.72);
+                border: 1px solid #D8D2C8;
+                border-radius: 10px;
+                margin-bottom: 0.58rem;
+                padding: 0.62rem;
+            }}
+            .section-title {{
+                align-items: center;
+                color: #1F2933;
+                display: flex;
+                font-size: 0.78rem;
+                font-weight: 950;
+                justify-content: space-between;
+                line-height: 1.25;
+                margin-bottom: 0.48rem;
+            }}
             .rack-detail {{
                 background: #f8fafc;
                 border: 1px solid #e2e8f0;
                 border-radius: 10px;
-                margin-bottom: 0.58rem;
                 padding: 0.62rem;
             }}
             .rack-detail strong {{
@@ -2946,10 +2962,33 @@ def warehouse_scene3d_html(
             .assign-box {{
                 display: grid;
                 gap: 0.36rem;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-                margin-bottom: 0.5rem;
+                grid-template-columns: minmax(0, 1.15fr) minmax(92px, 0.75fr) minmax(72px, 0.55fr) minmax(84px, 0.65fr);
             }}
-            #manualItemName {{
+            .field {{
+                display: flex;
+                flex-direction: column;
+                gap: 0.18rem;
+                min-width: 0;
+            }}
+            .field span {{
+                color: #52616b;
+                font-size: 0.64rem;
+                font-weight: 900;
+                line-height: 1.1;
+                white-space: nowrap;
+            }}
+            .field input,
+            .field select {{
+                min-width: 0;
+                width: 100%;
+            }}
+            .field-name {{
+                grid-column: span 2;
+            }}
+            .field-package {{
+                grid-column: span 2;
+            }}
+            .field-total {{
                 grid-column: span 2;
             }}
             .assign-box .load-total-preview {{
@@ -2967,6 +3006,12 @@ def warehouse_scene3d_html(
                 text-overflow: ellipsis;
                 white-space: nowrap;
             }}
+            #addLoad {{
+                align-self: end;
+                min-width: 0;
+                white-space: nowrap;
+                width: 100%;
+            }}
             #itemSelect {{
                 display: none !important;
             }}
@@ -2981,7 +3026,7 @@ def warehouse_scene3d_html(
                 font-size: 0.7rem;
                 font-weight: 850;
                 line-height: 1.45;
-                margin-bottom: 0.5rem;
+                margin-top: 0.5rem;
                 padding: 0.52rem 0.62rem;
             }}
             .nudge-grid {{
@@ -3040,7 +3085,7 @@ def warehouse_scene3d_html(
                 overflow: auto;
             }}
             .item-list table {{
-                min-width: 820px;
+                min-width: 980px;
                 table-layout: fixed;
             }}
             .item-list th,
@@ -3049,32 +3094,42 @@ def warehouse_scene3d_html(
             }}
             .item-list th:nth-child(1),
             .item-list td:nth-child(1) {{
-                width: 12%;
+                width: 8%;
             }}
             .item-list th:nth-child(2),
             .item-list td:nth-child(2) {{
-                width: 15%;
+                width: 10%;
             }}
             .item-list th:nth-child(3),
             .item-list td:nth-child(3) {{
                 line-height: 1.35;
                 overflow-wrap: anywhere;
                 white-space: normal;
-                width: 26%;
+                width: 20%;
             }}
             .item-list th:nth-child(4),
             .item-list td:nth-child(4) {{
                 line-height: 1.35;
                 overflow-wrap: anywhere;
                 white-space: normal;
-                width: 20%;
+                width: 14%;
             }}
             .item-list th:nth-child(5),
             .item-list td:nth-child(5) {{
-                width: 16%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                width: 14%;
             }}
             .item-list th:nth-child(6),
             .item-list td:nth-child(6) {{
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                width: 13%;
+            }}
+            .item-list th:nth-child(7),
+            .item-list td:nth-child(7) {{
                 width: 20%;
             }}
             .row-actions input,
@@ -3260,6 +3315,9 @@ def warehouse_scene3d_html(
                 .detail-panel {{
                     min-height: 360px;
                 }}
+                .assign-box {{
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }}
                 .assign-box,
                 .fixture-box,
                 .move-to-rack-box,
@@ -3270,7 +3328,7 @@ def warehouse_scene3d_html(
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }}
                 .item-list table {{
-                    min-width: 620px;
+                    min-width: 920px;
                 }}
             }}
             @media (max-width: 560px) {{
@@ -3371,84 +3429,91 @@ def warehouse_scene3d_html(
                 </div>
             </section>
             <aside class="panel detail-panel">
-                <h3>랙 적재 품목</h3>
-                <div class="rack-detail" id="rackDetail">
-                    <strong>랙을 선택하세요</strong>
-                    <span>3D 모델에서 랙을 클릭하면 해당 랙의 적재 품목만 표시됩니다.</span>
+                <div class="detail-section rack-info-section">
+                    <div class="section-title">선택한 랙 정보</div>
+                    <div class="rack-detail" id="rackDetail">
+                        <strong>랙을 선택하세요</strong>
+                        <span>3D 모델에서 랙을 클릭하면 해당 랙의 적재 품목만 표시됩니다.</span>
+                    </div>
                 </div>
                 <div class="detail-tools">
-                    <div class="assign-box">
+                    <div class="detail-section load-section">
+                        <div class="section-title">상품 적재 설정</div>
+                        <div class="assign-box">
                         <select id="itemSelect"></select>
-                        <input id="manualItemName" type="text" placeholder="상품명 직접 입력" aria-label="상품명 직접 입력">
-                        <input id="manualItemBarcode" type="text" placeholder="바코드" aria-label="바코드">
-                        <input id="itemQty" type="number" min="1" value="1" aria-label="포장수량">
-                        <select id="partSelect" aria-label="랙 칸">
+                        <label class="field field-name"><span>상품명</span><input id="manualItemName" type="text" placeholder="상품명 직접 입력" aria-label="상품명 직접 입력"></label>
+                        <label class="field"><span>바코드</span><input id="manualItemBarcode" type="text" placeholder="바코드" aria-label="바코드"></label>
+                        <label class="field"><span>포장 수량</span><input id="itemQty" type="number" min="1" value="1" aria-label="포장수량"></label>
+                        <label class="field"><span>랙 단</span><select id="partSelect" aria-label="랙 칸">
                             <option value="1단">1단</option>
                             <option value="2단">2단</option>
                             <option value="3단">3단</option>
                             <option value="4단">4단</option>
-                        </select>
-                        <select id="loadShapeSelect" aria-label="적재 단위">
+                        </select></label>
+                        <label class="field"><span>적재 단위</span><select id="loadShapeSelect" aria-label="적재 단위">
                             <option value="ea">개별</option>
                             <option value="box" selected>박스</option>
                             <option value="pallet">파렛트</option>
-                        </select>
-                        <input id="qtyPerPackage" type="number" min="1" value="1" placeholder="EA/단위" aria-label="단위당 상품수량">
-                        <input id="boxesPerPallet" type="number" min="0" value="" placeholder="BOX/PLT" aria-label="파렛트당 박스수">
-                        <select id="displayModeSelect" aria-label="3D 표시 방식">
-                            <option value="ACTUAL">실제 개수</option>
-                            <option value="SINGLE">대표 1개</option>
-                        </select>
-                        <span id="loadTotalPreview" class="load-total-preview">총 1 EA</span>
-                        <button type="button" id="addLoad">추가</button>
+                        </select></label>
+                        <label class="field field-package"><span>박스·파렛트당 수량</span><input id="qtyPerPackage" type="number" min="1" value="1" placeholder="단위당 EA" aria-label="박스·파렛트당 수량"></label>
+                        <label class="field field-package"><span>파렛트 구성</span><input id="boxesPerPallet" type="number" min="0" value="" placeholder="박스·파렛트당 수량" aria-label="박스·파렛트당 수량"></label>
+                        <label class="field"><span>재고 계산 방식</span><select id="displayModeSelect" aria-label="재고 계산 방식">
+                            <option value="ACTUAL">실제 재고 기준</option>
+                            <option value="SINGLE">대표 1개 표시</option>
+                        </select></label>
+                        <label class="field field-total"><span>총 실제 재고</span><span id="loadTotalPreview" class="load-total-preview">총 실제 재고 1 EA</span></label>
+                        <button type="button" id="addLoad">적재 목록에 추가</button>
+                        </div>
+                        <div class="stock-guide">랙을 선택하면 해당 랙/단에 적재되고, 바닥 박스/파렛트는 시설물 배치에서 추가 후 랙에 넣기로 옮길 수 있습니다.</div>
                     </div>
-                    <div class="stock-guide">랙을 선택하면 해당 랙/단에 적재되고, 바닥 박스/파렛트는 시설물 배치에서 추가 후 랙에 넣기로 옮길 수 있습니다.</div>
-                    <div class="tool-label">시설물 배치</div>
-                    <div class="fixture-box">
-                        <select id="fixtureTypeSelect" aria-label="오브젝트 종류">
-                            <option value="box">박스</option>
-                            <option value="pallet">파렛트</option>
-                            <option value="wrapped_pallet">랩핑 파렛트</option>
-                            <option value="entrance">출입구</option>
-                            <option value="door">문</option>
-                            <option value="shutter">셔터</option>
-                            <option value="dock">상차도크</option>
-                            <option value="exit">비상구</option>
-                            <option value="elevator">엘리베이터</option>
-                            <option value="desk">책상</option>
-                            <option value="wall">벽/칸막이</option>
-                            <option value="aisle">통로</option>
-                            <option value="zone">작업구역</option>
-                        </select>
-                        <button type="button" id="addFixture">추가</button>
-                        <button type="button" id="rotateFixture">회전</button>
-                        <button type="button" id="lockFixture">고정</button>
-                        <button type="button" id="deleteFixture">삭제</button>
-                        <label class="fixture-name-toggle">
-                            <input id="toggleFixtureLabels" type="checkbox" checked>
-                            이름 표시
-                        </label>
-                    </div>
-                    <div class="move-to-rack-box">
-                        <select id="targetRackSelect" aria-label="이동할 랙"></select>
-                        <select id="targetRackPartSelect" aria-label="이동할 랙 단"></select>
-                        <button type="button" id="moveFixtureToRack">랙에 넣기</button>
-                    </div>
-                    <div class="move-floor-box">
-                        <select id="targetFloorSelect" aria-label="이동할 층"></select>
-                        <button type="button" id="moveSelectionFloor">층 이동</button>
-                    </div>
-                    <div class="nudge-grid">
-                        <button type="button" data-nudge="left">←</button>
-                        <button type="button" data-nudge="up">↑</button>
-                        <button type="button" data-nudge="down">↓</button>
-                        <button type="button" data-nudge="right">→</button>
+                    <div class="detail-section fixture-section">
+                        <div class="section-title">창고 시설물 배치</div>
+                        <div class="fixture-box">
+                            <select id="fixtureTypeSelect" aria-label="오브젝트 종류">
+                                <option value="box">박스</option>
+                                <option value="pallet">파렛트</option>
+                                <option value="wrapped_pallet">랩핑 파렛트</option>
+                                <option value="entrance">출입구</option>
+                                <option value="door">문</option>
+                                <option value="shutter">셔터</option>
+                                <option value="dock">상차도크</option>
+                                <option value="exit">비상구</option>
+                                <option value="elevator">엘리베이터</option>
+                                <option value="desk">책상</option>
+                                <option value="wall">벽/칸막이</option>
+                                <option value="aisle">통로</option>
+                                <option value="zone">작업구역</option>
+                            </select>
+                            <button type="button" id="addFixture">추가</button>
+                            <button type="button" id="rotateFixture">회전</button>
+                            <button type="button" id="lockFixture">고정</button>
+                            <button type="button" id="deleteFixture">삭제</button>
+                            <label class="fixture-name-toggle">
+                                <input id="toggleFixtureLabels" type="checkbox" checked>
+                                이름 표시
+                            </label>
+                        </div>
+                        <div class="move-to-rack-box">
+                            <select id="targetRackSelect" aria-label="이동할 랙"></select>
+                            <select id="targetRackPartSelect" aria-label="이동할 랙 단"></select>
+                            <button type="button" id="moveFixtureToRack">랙에 넣기</button>
+                        </div>
+                        <div class="move-floor-box">
+                            <select id="targetFloorSelect" aria-label="이동할 층"></select>
+                            <button type="button" id="moveSelectionFloor">층 이동</button>
+                        </div>
+                        <div class="nudge-grid">
+                            <button type="button" data-nudge="left">←</button>
+                            <button type="button" data-nudge="up">↑</button>
+                            <button type="button" data-nudge="down">↓</button>
+                            <button type="button" data-nudge="right">→</button>
+                        </div>
                     </div>
                 </div>
                 <div class="item-list">
                     <table>
-                        <thead><tr><th>칸</th><th>형태</th><th>상품명</th><th>바코드</th><th>적재</th><th></th></tr></thead>
-                        <tbody id="itemBody"><tr><td colspan="6" class="empty">선택된 랙이 없습니다.</td></tr></tbody>
+                        <thead><tr><th>칸</th><th>형태</th><th>상품명</th><th>바코드</th><th>표현 수량</th><th>총 실제 재고</th><th></th></tr></thead>
+                        <tbody id="itemBody"><tr><td colspan="7" class="empty">선택된 랙이 없습니다.</td></tr></tbody>
                     </table>
                 </div>
             </aside>
@@ -3896,15 +3961,30 @@ def warehouse_scene3d_html(
                 return "박스";
             }}
 
+            function packageDisplayText(item) {{
+                const unit = storageUnitForItem(item);
+                const countText = packageCount(item).toLocaleString("ko-KR");
+                if (unit === "EA") return `${{countText}} EA`;
+                if (unit === "BOX") return `${{countText}} 박스`;
+                const boxes = boxesPerPallet(item);
+                return boxes > 0
+                    ? `${{countText}} 파렛트 · ${{boxes.toLocaleString("ko-KR")}}박스/파렛트`
+                    : `${{countText}} 파렛트`;
+            }}
+
+            function actualStockText(item) {{
+                return `${{totalQuantity(item).toLocaleString("ko-KR")}} EA`;
+            }}
+
             function packageSummaryText(item) {{
                 const unit = storageUnitForItem(item);
                 const count = packageCount(item);
                 const total = totalQuantity(item);
                 if (unit === "EA") return `${{count.toLocaleString("ko-KR")}} EA`;
-                if (unit === "BOX") return `${{count.toLocaleString("ko-KR")}} BOX × ${{qtyPerPackage(item).toLocaleString("ko-KR")}} EA = ${{total.toLocaleString("ko-KR")}} EA`;
+                if (unit === "BOX") return `${{count.toLocaleString("ko-KR")}}박스 × ${{qtyPerPackage(item).toLocaleString("ko-KR")}}EA = ${{total.toLocaleString("ko-KR")}}EA`;
                 const boxes = boxesPerPallet(item);
-                if (boxes > 0) return `${{count.toLocaleString("ko-KR")}} PLT × ${{boxes.toLocaleString("ko-KR")}} BOX × ${{qtyPerPackage(item).toLocaleString("ko-KR")}} EA = ${{total.toLocaleString("ko-KR")}} EA`;
-                return `${{count.toLocaleString("ko-KR")}} PLT × ${{qtyPerPackage(item).toLocaleString("ko-KR")}} EA = ${{total.toLocaleString("ko-KR")}} EA`;
+                if (boxes > 0) return `${{count.toLocaleString("ko-KR")}}파렛트 × ${{boxes.toLocaleString("ko-KR")}}박스 × ${{qtyPerPackage(item).toLocaleString("ko-KR")}}EA = ${{total.toLocaleString("ko-KR")}}EA`;
+                return `${{count.toLocaleString("ko-KR")}}파렛트 × ${{qtyPerPackage(item).toLocaleString("ko-KR")}}EA = ${{total.toLocaleString("ko-KR")}}EA`;
             }}
 
             function labelQuantityText(item) {{
@@ -5560,15 +5640,15 @@ def warehouse_scene3d_html(
             function storageUnitOptionsHtml(selected) {{
                 return [
                     ["EA", "개별"],
-                    ["BOX", "BOX"],
-                    ["PALLET", "PALLET"],
+                    ["BOX", "박스"],
+                    ["PALLET", "파렛트"],
                 ].map(([value, label]) => `<option value="${{value}}" ${{selected === value ? "selected" : ""}}>${{label}}</option>`).join("");
             }}
 
             function displayModeOptionsHtml(selected) {{
                 return [
-                    ["ACTUAL", "실제 개수"],
-                    ["SINGLE", "대표 1개"],
+                    ["ACTUAL", "실제 재고 기준"],
+                    ["SINGLE", "대표 1개 표시"],
                 ].map(([value, label]) => `<option value="${{value}}" ${{selected === value ? "selected" : ""}}>${{label}}</option>`).join("");
             }}
 
@@ -5580,8 +5660,8 @@ def warehouse_scene3d_html(
                         <select data-package-field="storage_unit" class="wide" aria-label="적재 단위">${{storageUnitOptionsHtml(unit)}}</select>
                         <input data-package-field="package_count" type="number" min="1" value="${{packageCount(item)}}" aria-label="포장 개수">
                         <input data-package-field="qty_per_package" type="number" min="1" value="${{qtyPerPackage(item)}}" aria-label="단위당 수량">
-                        <input data-package-field="boxes_per_pallet" type="number" min="0" value="${{boxes || ""}}" placeholder="BOX/PLT" aria-label="파렛트당 박스수">
-                        <select data-package-field="display_mode" class="wide" aria-label="표시 방식">${{displayModeOptionsHtml(displayModeForItem(item))}}</select>
+                        <input data-package-field="boxes_per_pallet" type="number" min="0" value="${{boxes || ""}}" placeholder="박스·파렛트당 수량" aria-label="박스·파렛트당 수량">
+                        <select data-package-field="display_mode" class="wide" aria-label="재고 계산 방식">${{displayModeOptionsHtml(displayModeForItem(item))}}</select>
                         <button type="button" ${{actionName}}="${{escapeHtml(actionValue)}}">수정</button>
                         <button type="button" ${{deleteName}}="${{escapeHtml(actionValue)}}">삭제</button>
                     </div>
@@ -5646,12 +5726,12 @@ def warehouse_scene3d_html(
                 if (fixture.type === "pallet" || fixture.type === "wrapped_pallet") {{
                     const deleteFixtureRow = `
                         <tr>
-                            <td colspan="5">선택한 파렛트 전체</td>
+                            <td colspan="6">선택한 파렛트 전체</td>
                             <td><button type="button" data-fixture-delete="1">삭제</button></td>
                         </tr>
                     `;
                     if (!fixture.items.length) {{
-                        itemBody.innerHTML = deleteFixtureRow + '<tr><td colspan="6" class="empty">이 파렛트에 들어간 품목이 없습니다. 파렛트를 선택한 상태에서 상품명/바코드/수량을 입력하고 추가하세요.</td></tr>';
+                        itemBody.innerHTML = deleteFixtureRow + '<tr><td colspan="7" class="empty">이 파렛트에 들어간 품목이 없습니다. 파렛트를 선택한 상태에서 상품명/바코드/수량을 입력하고 추가하세요.</td></tr>';
                     }} else {{
                         itemBody.innerHTML = deleteFixtureRow + fixture.items.map((item, index) => `
                             <tr>
@@ -5659,7 +5739,8 @@ def warehouse_scene3d_html(
                                 <td>${{loadTypeLabel(item)}}</td>
                                 <td>${{escapeHtml(item.name)}}</td>
                                 <td>${{escapeHtml(item.barcode || "-")}}</td>
-                                <td>${{loadQtyText(item)}}</td>
+                                <td title="${{escapeHtml(loadQtyText(item))}}">${{packageDisplayText(item)}}</td>
+                                <td>${{actualStockText(item)}}</td>
                                 <td>${{packageEditorControls(item, "data-pallet-update", index, "data-pallet-remove")}}</td>
                             </tr>
                         `).join("");
@@ -5694,11 +5775,12 @@ def warehouse_scene3d_html(
                                 <td>${{loadTypeLabel(fixture)}}</td>
                                 <td>${{escapeHtml(fixture.label || fixture.name || "바닥 품목")}}</td>
                                 <td>${{escapeHtml(fixture.barcode || "-")}}</td>
-                                <td>${{loadQtyText(fixture)}}</td>
+                                <td title="${{escapeHtml(loadQtyText(fixture))}}">${{packageDisplayText(fixture)}}</td>
+                                <td>${{actualStockText(fixture)}}</td>
                                 <td>${{packageEditorControls(fixture, "data-fixture-update", "1", "data-fixture-delete")}}</td>
                             </tr>
-                            <tr><td colspan="6" class="empty">이 품목은 이동할 랙과 단을 선택한 뒤 랙에 넣기로 적재할 수 있습니다.</td></tr>`
-                        : '<tr><td colspan="6" class="empty">시설물은 선택 후 바로 드래그해서 위치를 옮기고, 시설물 배치 도구에서 회전/삭제할 수 있습니다.</td></tr>';
+                            <tr><td colspan="7" class="empty">이 품목은 이동할 랙과 단을 선택한 뒤 랙에 넣기로 적재할 수 있습니다.</td></tr>`
+                        : '<tr><td colspan="7" class="empty">시설물은 선택 후 바로 드래그해서 위치를 옮기고, 시설물 배치 도구에서 회전/삭제할 수 있습니다.</td></tr>';
                     itemBody.querySelector("[data-fixture-update]")?.addEventListener("click", event => {{
                         applyPackageEditor(event.currentTarget, fixture);
                         fixture.label = fixture.label || fixture.name || packageUnitLabel(storageUnitForItem(fixture));
@@ -5729,7 +5811,7 @@ def warehouse_scene3d_html(
             function renderRack(rack) {{
                 if (!rack) {{
                     rackDetail.innerHTML = "<strong>랙을 선택하세요</strong><span>선택된 랙이 없습니다.</span>";
-                    itemBody.innerHTML = '<tr><td colspan="6" class="empty">선택된 랙이 없습니다.</td></tr>';
+                    itemBody.innerHTML = '<tr><td colspan="7" class="empty">선택된 랙이 없습니다.</td></tr>';
                     renderPartSelect(null);
                     lockButton.disabled = true;
                     lockButton.textContent = "랙 고정";
@@ -5777,7 +5859,7 @@ def warehouse_scene3d_html(
                     <span>${{rackDisplayType(rack)}} · ${{directionText}} · 3D 위치 X ${{Number(renderPosition.x).toFixed(1)}}%, Y ${{Number(renderPosition.y).toFixed(1)}}%${{stackText}} · 적재 ${{loadedQty.toLocaleString("ko-KR")}}개 · ${{lockText}}</span>
                 `;
                 if (!rack.items.length) {{
-                    itemBody.innerHTML = '<tr><td colspan="6" class="empty">이 랙에 연결된 품목이 없습니다.</td></tr>';
+                    itemBody.innerHTML = '<tr><td colspan="7" class="empty">이 랙에 연결된 품목이 없습니다.</td></tr>';
                     return;
                 }}
                 itemBody.innerHTML = rack.items.map((item, index) => `
@@ -5786,7 +5868,8 @@ def warehouse_scene3d_html(
                         <td>${{loadTypeLabel(item)}}</td>
                         <td>${{escapeHtml(item.name)}}</td>
                         <td>${{escapeHtml(item.barcode || "-")}}</td>
-                        <td>${{loadQtyText(item)}}</td>
+                        <td title="${{escapeHtml(loadQtyText(item))}}">${{packageDisplayText(item)}}</td>
+                        <td>${{actualStockText(item)}}</td>
                         <td>${{packageEditorControls(item, "data-package-update", rackItemKey(item, index))}}</td>
                     </tr>
                 `).join("");
@@ -6031,8 +6114,9 @@ def warehouse_scene3d_html(
                 const unit = loadUnitFromInput();
                 qtyPerPackageInput.disabled = unit === "EA";
                 boxesPerPalletInput.disabled = unit !== "PALLET";
-                itemQty.placeholder = unit === "EA" ? "EA" : unit === "PALLET" ? "PLT" : "BOX";
-                qtyPerPackageInput.placeholder = unit === "PALLET" ? "EA/PLT 또는 EA/BOX" : "EA/BOX";
+                itemQty.placeholder = unit === "EA" ? "개수" : unit === "PALLET" ? "파렛트 수" : "박스 수";
+                qtyPerPackageInput.placeholder = unit === "PALLET" ? "단위당 EA" : "박스당 EA";
+                boxesPerPalletInput.placeholder = "박스·파렛트당 수량";
                 if (unit === "EA") {{
                     qtyPerPackageInput.value = "1";
                     boxesPerPalletInput.value = "";
@@ -6040,13 +6124,13 @@ def warehouse_scene3d_html(
                     boxesPerPalletInput.value = "";
                 }}
                 const values = packageValuesFromInputs();
-                loadTotalPreview.textContent = `총 ${{values.total_quantity.toLocaleString("ko-KR")}} EA`;
+                loadTotalPreview.textContent = `총 실제 재고 ${{values.total_quantity.toLocaleString("ko-KR")}} EA`;
                 loadTotalPreview.title = unit === "PALLET" && values.boxes_per_pallet > 0
-                    ? `${{values.package_count}} PLT × ${{values.boxes_per_pallet}} BOX × ${{values.qty_per_package}} EA`
+                    ? `${{values.package_count}}파렛트 × ${{values.boxes_per_pallet}}박스 × ${{values.qty_per_package}}EA`
                     : unit === "PALLET"
-                    ? `${{values.package_count}} PLT × ${{values.qty_per_package}} EA`
+                    ? `${{values.package_count}}파렛트 × ${{values.qty_per_package}}EA`
                     : unit === "BOX"
-                    ? `${{values.package_count}} BOX × ${{values.qty_per_package}} EA`
+                    ? `${{values.package_count}}박스 × ${{values.qty_per_package}}EA`
                     : `${{values.package_count}} EA`;
                 renderPartSelect(selectedRack());
             }}
