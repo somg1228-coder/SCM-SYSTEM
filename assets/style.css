@@ -14943,3 +14943,211 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
     -webkit-text-fill-color: #42526A !important;
     opacity: 1 !important;
 }
+
+/* Final dashboard fluid layout override.
+   Keep dashboard panels in normal document flow at every window ratio. */
+.stApp:has(.dashboard-shell),
+[data-testid="stAppViewContainer"]:has(.dashboard-shell),
+[data-testid="stMain"]:has(.dashboard-shell),
+[data-testid="stMainBlockContainer"]:has(.dashboard-shell),
+[data-testid="stAppViewBlockContainer"]:has(.dashboard-shell),
+.block-container:has(.dashboard-shell) {
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+}
+
+.dashboard-shell,
+.dashboard-shell > *,
+.dashboard-shell .panel,
+.dashboard-shell .kpi-row,
+.dashboard-shell .kpi-tile,
+.dashboard-middle-grid,
+.dashboard-bottom-grid,
+.status-grid,
+.dashboard-middle-grid > *,
+.dashboard-bottom-grid > *,
+.status-grid > *,
+.schedule-panel,
+.week-board,
+.week-cell,
+.order-panel,
+.warehouse-panel,
+.purchase-progress-panel,
+.core-task-panel {
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+.dashboard-shell {
+    align-content: start !important;
+    display: grid !important;
+    gap: clamp(10px, 1.1vw, 16px) !important;
+    grid-auto-flow: row !important;
+    grid-auto-rows: auto !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding-bottom: 18px !important;
+    width: 100% !important;
+}
+
+.dashboard-shell > .panel,
+.dashboard-shell .panel,
+.schedule-panel,
+.order-panel,
+.warehouse-panel,
+.purchase-progress-panel,
+.core-task-panel {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    position: relative !important;
+}
+
+.schedule-panel {
+    padding: clamp(14px, 1.45vw, 20px) !important;
+}
+
+.schedule-panel .panel-title-row {
+    align-items: center !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px 12px !important;
+    justify-content: space-between !important;
+    min-height: 0 !important;
+}
+
+.week-board {
+    display: grid !important;
+    gap: 0 !important;
+    grid-template-columns: repeat(7, minmax(96px, 1fr)) !important;
+    height: auto !important;
+    min-height: clamp(112px, 13vw, 160px) !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+}
+
+.week-cell {
+    height: auto !important;
+    min-height: clamp(110px, 12vw, 150px) !important;
+    overflow: hidden !important;
+    padding: clamp(9px, 1vw, 12px) !important;
+}
+
+.week-cell ul {
+    max-height: calc(clamp(110px, 12vw, 150px) - 34px) !important;
+    overflow: hidden !important;
+}
+
+.week-cell li {
+    line-height: 1.28 !important;
+    overflow-wrap: anywhere !important;
+}
+
+.dashboard-shell > .kpi-row {
+    display: grid !important;
+    gap: clamp(10px, 1.1vw, 14px) !important;
+    grid-auto-rows: minmax(76px, auto) !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)) !important;
+    grid-template-rows: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+
+.dashboard-shell .kpi-tile {
+    height: auto !important;
+    min-height: 76px !important;
+}
+
+.dashboard-middle-grid,
+.dashboard-bottom-grid,
+.status-grid {
+    align-items: stretch !important;
+    display: grid !important;
+    gap: clamp(10px, 1.1vw, 16px) !important;
+    grid-auto-flow: row !important;
+    grid-auto-rows: auto !important;
+    grid-template-rows: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+}
+
+.dashboard-middle-grid {
+    grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.9fr) !important;
+}
+
+.status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.dashboard-bottom-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.dashboard-middle-grid > *,
+.dashboard-bottom-grid > *,
+.status-grid > *,
+.dashboard-bottom-grid > .warehouse-panel,
+.dashboard-bottom-grid > .purchase-progress-panel,
+.dashboard-bottom-grid > .core-task-panel {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+
+.dashboard-shell .order-panel,
+.dashboard-shell .warehouse-panel,
+.dashboard-shell .purchase-progress-panel,
+.dashboard-shell .core-task-panel {
+    overflow: hidden !important;
+}
+
+.dashboard-shell .order-summary-table,
+.dashboard-shell .order-panel table {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+}
+
+@media (max-width: 1180px) {
+    .dashboard-middle-grid,
+    .dashboard-bottom-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .status-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .dashboard-middle-grid > .order-panel,
+    .dashboard-bottom-grid > .core-task-panel {
+        grid-column: 1 / -1 !important;
+    }
+}
+
+@media (max-width: 760px) {
+    .dashboard-shell > .kpi-row,
+    .dashboard-middle-grid,
+    .dashboard-bottom-grid,
+    .status-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .week-board {
+        grid-template-columns: repeat(7, minmax(104px, 1fr)) !important;
+    }
+
+    .schedule-panel .panel-title-row {
+        align-items: flex-start !important;
+        flex-direction: column !important;
+    }
+
+    .week-range {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+    }
+}
