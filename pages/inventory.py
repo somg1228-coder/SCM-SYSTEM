@@ -2939,3 +2939,681 @@ def inject_inventory_css() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+# Inventory page refresh overrides.
+# The original blocks above are kept for compatibility, but the inventory lookup
+# screen now uses the normalized Korean labels and the consolidated update flow.
+SOURCE_TYPES = ["3PL", "오프라인", "창고"]
+SOURCE_KEY_MAP = {"3PL": "threepl", "오프라인": "offline", "창고": "warehouse"}
+DAILY_COLUMNS = [
+    "선택",
+    "카테고리",
+    "바코드",
+    "상품명",
+    "업체명",
+    "박스/파렛트 단위",
+    "현재고",
+    "안전재고",
+    "최근2주 평균출고",
+    "가용재고",
+    "입고예정",
+    "출고예정",
+    "재고상태",
+    "발주필요일",
+    "최근재고반영일",
+    "담당자",
+    "리드타임",
+]
+INVENTORY_MAIN_SECTIONS = ["현재재고", "안전재고", "재고이력", "MRP", "발주추천", "자재/반제품"]
+INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "창고관리"]
+INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "창고관리": "창고"}
+INVENTORY_SOURCE_TABS = ["재고조회", "입고내역", "출고내역", "대시보드", "마스터관리"]
+
+
+def master_title(source_type: str) -> str:
+    return "창고관리 마스터" if source_type == "창고" else f"{source_type} 마스터"
+
+
+def render_inventory_page_lazy() -> None:
+    selected_section, selected_source, selected_tab = render_inventory_navigation()
+    if selected_section == "현재재고":
+        source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
+        if selected_tab == "재고조회":
+            render_daily_tab(source_type)
+        elif selected_tab == "입고내역":
+            render_inbound_tab(source_type)
+        elif selected_tab == "출고내역":
+            render_outbound_tab(source_type)
+        elif selected_tab == "대시보드":
+            render_inventory_dashboard_tab(source_type)
+        elif selected_tab == "마스터관리":
+            product_master_page.render_master_tab(source_type, master_title(source_type))
+    elif selected_section == "안전재고":
+        render_safe_stock_tab()
+    elif selected_section == "재고이력":
+        render_stock_history_tab()
+    elif selected_section == "MRP":
+        render_mrp_tab()
+    elif selected_section == "발주추천":
+        render_purchase_recommendation_tab()
+    elif selected_section == "자재/반제품":
+        render_material_inventory_tab()
+
+
+def render_inventory_navigation() -> tuple[str, str, str]:
+    st.markdown('<div class="inventory-nav-flat">', unsafe_allow_html=True)
+    selected_section = lazy_tab_selector(
+        INVENTORY_MAIN_SECTIONS,
+        "inventory_main_section",
+        default="현재재고",
+        compact=True,
+    )
+
+    selected_source = ""
+    selected_tab = ""
+    if selected_section == "현재재고":
+        selected_source = lazy_tab_selector(
+            INVENTORY_CURRENT_SOURCES,
+            "inventory_current_source",
+            default=st.session_state.get("inventory_active_source") or "3PL",
+            compact=True,
+        )
+        if selected_source not in INVENTORY_CURRENT_SOURCES:
+            selected_source = "3PL"
+        st.session_state["inventory_active_source"] = selected_source
+
+        source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
+        selected_tab = lazy_tab_selector(
+            INVENTORY_SOURCE_TABS,
+            f"inventory_{source_key(source_type)}_section",
+            default="재고조회",
+            compact=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+    return selected_section, selected_source, selected_tab
+
+
+def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None = None) -> None:
+    selected_tab = selected_tab or "재고조회"
+    if selected_tab == "재고조회":
+        render_daily_tab(source_type)
+    elif selected_tab == "입고내역":
+        render_inbound_tab(source_type)
+    elif selected_tab == "출고내역":
+        render_outbound_tab(source_type)
+    elif selected_tab == "대시보드":
+        render_inventory_dashboard_tab(source_type)
+    elif selected_tab == "마스터관리":
+        product_master_page.render_master_tab(source_type, master_title(source_type))
+
+
+def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
+    mapped = []
+    for row in rows:
+        update_date = row.get("last_inventory_update_date")
+        if hasattr(update_date, "isoformat"):
+            update_date = update_date.isoformat()
+        order_days = row.get("order_needed_days")
+        mapped.append(
+            {
+                "선택": False,
+                "카테고리": row.get("category", ""),
+                "바코드": row.get("barcode", ""),
+                "상품명": row.get("product_name", ""),
+                "업체명": row.get("supplier", ""),
+                "박스/파렛트 단위": row.get("box_pallet_unit", ""),
+                "현재고": row.get("current_stock", 0),
+                "안전재고": row.get("safe_stock", 0),
+                "최근2주 평균출고": row.get("avg_daily_outbound_2w", 0),
+                "가용재고": row.get("available_stock", 0),
+                "입고예정": row.get("pending_inbound_qty", 0),
+                "출고예정": row.get("pending_outbound_qty", 0),
+                "재고상태": row.get("stock_status", ""),
+                "발주필요일": "" if order_days is None else int(order_days),
+                "최근재고반영일": update_date or "",
+                "담당자": row.get("manager", ""),
+                "리드타임": row.get("inbound_cycle", 0) or 0,
+            }
+        )
+    return pd.DataFrame(mapped, columns=DAILY_COLUMNS)
+
+
+def inventory_output_signature(df: pd.DataFrame, filters: dict) -> tuple:
+    if df is None or df.empty:
+        row_marker = ("empty", 0)
+    else:
+        sample_columns = [column for column in ("바코드", "상품명", "현재고", "가용재고", "최근재고반영일") if column in df.columns]
+        sample = tuple(tuple(clean_cell(value) for value in row) for row in df[sample_columns].head(5).fillna("").to_numpy())
+        row_marker = (len(df), sample)
+    filter_marker = tuple(sorted((str(key), str(value)) for key, value in (filters or {}).items()))
+    return row_marker, filter_marker
+
+
+def inventory_single_category_toggle(options: list[str], state_key: str, widget_key: str) -> str:
+    choices = ["전체", *options]
+    current = clean_cell(st.session_state.get(state_key)) or "전체"
+    if current not in choices:
+        current = "전체"
+    if not options:
+        st.caption("카테고리: 데이터 없음")
+        st.session_state[state_key] = "전체"
+        return "전체"
+
+    label = "카테고리 선택 ▼" if current == "전체" else f"카테고리 : {current} ▼"
+    if hasattr(st, "popover"):
+        with st.popover(label, use_container_width=True):
+            for index, choice in enumerate(choices):
+                if st.button(choice, key=f"{widget_key}_option_{index}", type="primary" if choice == current else "secondary", use_container_width=True):
+                    st.session_state[state_key] = choice
+                    st.session_state.pop(f"{widget_key}_open", None)
+                    st.rerun()
+    else:
+        open_key = f"{widget_key}_open"
+        st.session_state.setdefault(open_key, False)
+        if st.button(label, key=f"{widget_key}_trigger", use_container_width=True):
+            st.session_state[open_key] = not st.session_state[open_key]
+            st.rerun()
+        if st.session_state[open_key]:
+            for index, choice in enumerate(choices):
+                if st.button(choice, key=f"{widget_key}_option_{index}", type="primary" if choice == current else "secondary", use_container_width=True):
+                    st.session_state[state_key] = choice
+                    st.session_state[open_key] = False
+                    st.rerun()
+    st.session_state[state_key] = current
+    return current
+
+
+def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
+    state_key = f"{filter_key}_category_toggle"
+    previous = clean_cell(st.session_state.get(state_key)) or "전체"
+    selected = inventory_single_category_toggle(options, state_key, f"{filter_key}_category_toggle_widget")
+    if selected != previous:
+        st.session_state[f"{filter_key}_page"] = 1
+    categories = [] if selected == "전체" else [selected]
+    st.session_state[f"{filter_key}_category_filter"] = categories
+    return categories
+
+
+def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
+    category_options = fetch_master_category_options(source_type, df)
+    supplier_options = sorted([value for value in df.get("업체명", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
+    manager_options = sorted([value for value in df.get("담당자", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
+    status_options = ["정상", "주의", "부족", "품절", "미집계"]
+    filter_key = source_key(source_type)
+    defaults = {
+        "search": "",
+        "category_filter": [],
+        "supplier_filter": [],
+        "manager_filter": [],
+        "status_filter": [],
+        "stock_presence": "전체",
+        "inbound_expected": False,
+        "outbound_expected": False,
+        "below_safe": False,
+        "lead_min": 0,
+        "lead_max": 0,
+        "sort_column": "카테고리",
+        "sort_order": "오름차순",
+        "page_size": 30,
+        "page": 1,
+    }
+    for suffix, value in defaults.items():
+        st.session_state.setdefault(f"{filter_key}_{suffix}", value)
+
+    with st.container(key=f"inventory_filter_{filter_key}_panel"):
+        cols = st.columns([1.45, 1.9, 1.0, 0.9, 0.75, 0.75], gap="small")
+        search = cols[0].text_input("통합검색", placeholder="바코드 / 상품명 / 업체명 / 담당자", key=f"{filter_key}_search")
+        with cols[1]:
+            categories = inventory_category_toggle(category_options, filter_key)
+        suppliers = inventory_filter_multiselect(cols[2], "업체명", supplier_options, key=f"{filter_key}_supplier_filter")
+        statuses = inventory_filter_multiselect(cols[3], "재고상태", status_options, key=f"{filter_key}_status_filter")
+        with cols[4]:
+            st.write("")
+            if st.button("검색", key=f"{filter_key}_search_button", type="primary", use_container_width=True):
+                st.session_state[f"{filter_key}_page"] = 1
+                st.rerun()
+        with cols[5]:
+            st.write("")
+            if st.button("초기화", key=f"{filter_key}_filter_reset", use_container_width=True):
+                reset_inventory_filters(filter_key)
+                st.rerun()
+
+        with st.expander("고급 필터", expanded=False):
+            adv_cols = st.columns(4, gap="small")
+            managers = inventory_filter_multiselect(adv_cols[0], "담당자", manager_options, key=f"{filter_key}_manager_filter")
+            stock_presence = adv_cols[1].selectbox("현재고 보유 여부", ["전체", "보유", "미보유"], key=f"{filter_key}_stock_presence")
+            inbound_expected = adv_cols[2].checkbox("입고예정", key=f"{filter_key}_inbound_expected")
+            outbound_expected = adv_cols[3].checkbox("출고예정", key=f"{filter_key}_outbound_expected")
+            adv_cols2 = st.columns(4, gap="small")
+            below_safe = adv_cols2[0].checkbox("안전재고 이하", key=f"{filter_key}_below_safe")
+            lead_min = adv_cols2[1].number_input("리드타임 최소", min_value=0, step=1, key=f"{filter_key}_lead_min")
+            lead_max = adv_cols2[2].number_input("리드타임 최대", min_value=0, step=1, key=f"{filter_key}_lead_max")
+            sort_column = adv_cols2[3].selectbox("정렬 컬럼", [column for column in DAILY_COLUMNS if column != "선택"], key=f"{filter_key}_sort_column")
+            adv_cols3 = st.columns([1, 1, 2, 2], gap="small")
+            sort_order = adv_cols3[0].selectbox("정렬", ["오름차순", "내림차순"], key=f"{filter_key}_sort_order")
+            page_size = adv_cols3[1].selectbox("페이지당 표시", [15, 30, 50, 100], key=f"{filter_key}_page_size")
+
+        render_inventory_filter_badges(
+            filter_key,
+            active_inventory_filter_badges(search, categories, suppliers, managers, statuses, stock_presence, inbound_expected, outbound_expected, below_safe, lead_min, lead_max),
+        )
+
+    if st.session_state.get(f"{filter_key}_last_page_size") != page_size:
+        st.session_state[f"{filter_key}_page"] = 1
+    st.session_state[f"{filter_key}_last_page_size"] = page_size
+    return {
+        "categories": categories,
+        "suppliers": suppliers,
+        "managers": managers,
+        "statuses": statuses,
+        "search": search,
+        "stock_presence": stock_presence,
+        "inbound_expected": inbound_expected,
+        "outbound_expected": outbound_expected,
+        "below_safe": below_safe,
+        "lead_min": int(lead_min or 0),
+        "lead_max": int(lead_max or 0),
+        "sort_column": sort_column,
+        "sort_order": sort_order,
+        "page_size": int(page_size),
+        "page": int(st.session_state.get(f"{filter_key}_page", 1)),
+    }
+
+
+def apply_inventory_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
+    if df.empty:
+        return df
+    filtered = df.copy()
+    categories = filters.get("categories") or []
+    suppliers = filters.get("suppliers") or []
+    managers = filters.get("managers") or []
+    statuses = filters.get("statuses") or []
+    search = clean_cell(filters.get("search")).lower()
+    if categories:
+        filtered = filtered[filtered["카테고리"].isin(categories)]
+    if suppliers:
+        filtered = filtered[filtered["업체명"].isin(suppliers)]
+    if managers:
+        filtered = filtered[filtered["담당자"].isin(managers)]
+    if statuses:
+        filtered = filtered[filtered["재고상태"].isin(statuses)]
+    if search:
+        search_columns = ["바코드", "상품명", "업체명", "담당자"]
+        search_text = filtered[search_columns].astype(str).agg(" ".join, axis=1).str.lower()
+        filtered = filtered[search_text.str.contains(re.escape(search), na=False)]
+    if filters.get("stock_presence") == "보유":
+        filtered = filtered[filtered["현재고"].apply(to_int) > 0]
+    elif filters.get("stock_presence") == "미보유":
+        filtered = filtered[filtered["현재고"].apply(to_int) <= 0]
+    if filters.get("inbound_expected"):
+        filtered = filtered[filtered["입고예정"].apply(to_int) > 0]
+    if filters.get("outbound_expected"):
+        filtered = filtered[filtered["출고예정"].apply(to_int) > 0]
+    if filters.get("below_safe"):
+        filtered = filtered[filtered["현재고"].apply(to_int) <= filtered["안전재고"].apply(to_int)]
+    lead_min = int(filters.get("lead_min") or 0)
+    lead_max = int(filters.get("lead_max") or 0)
+    if lead_min:
+        filtered = filtered[filtered["리드타임"].apply(to_int) >= lead_min]
+    if lead_max:
+        filtered = filtered[filtered["리드타임"].apply(to_int) <= lead_max]
+    sort_column = filters.get("sort_column") if filters.get("sort_column") in filtered.columns else "카테고리"
+    ascending = filters.get("sort_order") != "내림차순"
+    return filtered.sort_values([sort_column, "상품명", "바코드"], ascending=[ascending, True, True], kind="stable").reset_index(drop=True)
+
+
+def reset_inventory_filters(filter_key: str) -> None:
+    for suffix in [
+        "search",
+        "category_filter",
+        "supplier_filter",
+        "manager_filter",
+        "status_filter",
+        "stock_presence",
+        "inbound_expected",
+        "outbound_expected",
+        "below_safe",
+        "lead_min",
+        "lead_max",
+        "sort_column",
+        "sort_order",
+        "page_size",
+        "page",
+        "last_page_size",
+        "category_toggle",
+        "category_toggle_widget_open",
+    ]:
+        st.session_state.pop(f"{filter_key}_{suffix}", None)
+
+
+def active_inventory_filter_badges(search, categories, suppliers, managers, statuses, stock_presence, inbound_expected, outbound_expected, below_safe, lead_min, lead_max) -> list[tuple[str, str, str | None]]:
+    badges: list[tuple[str, str, str | None]] = []
+    if clean_cell(search):
+        badges.append(("search", f"검색 : {search}", None))
+    for code, values, label in [
+        ("category_filter", categories, "카테고리"),
+        ("supplier_filter", suppliers, "업체명"),
+        ("manager_filter", managers, "담당자"),
+        ("status_filter", statuses, "재고상태"),
+    ]:
+        for value in values or []:
+            badges.append((code, f"{label} : {value}", value))
+    if stock_presence != "전체":
+        badges.append(("stock_presence", f"현재고 : {stock_presence}", None))
+    if inbound_expected:
+        badges.append(("inbound_expected", "입고예정 있음", None))
+    if outbound_expected:
+        badges.append(("outbound_expected", "출고예정 있음", None))
+    if below_safe:
+        badges.append(("below_safe", "안전재고 이하", None))
+    if int(lead_min or 0):
+        badges.append(("lead_min", f"리드타임 {int(lead_min)}일 이상", None))
+    if int(lead_max or 0):
+        badges.append(("lead_max", f"리드타임 {int(lead_max)}일 이하", None))
+    return badges
+
+
+def render_inventory_filter_badges(filter_key: str, badges: list[tuple[str, str, str | None]]) -> None:
+    if not badges:
+        return
+    st.caption("적용 중인 필터")
+    cols = st.columns(min(len(badges), 6), gap="small")
+    for idx, (suffix, label, value) in enumerate(badges):
+        with cols[idx % len(cols)]:
+            if st.button(f"{label} X", key=f"{filter_key}_clear_{suffix}_{idx}", use_container_width=True):
+                clear_inventory_filter(filter_key, suffix, value)
+                st.rerun()
+
+
+def clear_inventory_filter(filter_key: str, suffix: str, value: str | None = None) -> None:
+    if suffix == "search":
+        st.session_state[f"{filter_key}_{suffix}"] = ""
+    elif suffix == "category_filter":
+        st.session_state[f"{filter_key}_{suffix}"] = []
+        st.session_state[f"{filter_key}_category_toggle"] = "전체"
+    elif suffix == "stock_presence":
+        st.session_state[f"{filter_key}_{suffix}"] = "전체"
+    elif suffix in {"inbound_expected", "outbound_expected", "below_safe"}:
+        st.session_state[f"{filter_key}_{suffix}"] = False
+    elif suffix in {"lead_min", "lead_max"}:
+        st.session_state[f"{filter_key}_{suffix}"] = 0
+    elif value is not None and isinstance(st.session_state.get(f"{filter_key}_{suffix}"), list):
+        st.session_state[f"{filter_key}_{suffix}"] = [item for item in st.session_state[f"{filter_key}_{suffix}"] if item != value]
+    else:
+        st.session_state[f"{filter_key}_{suffix}"] = []
+    st.session_state[f"{filter_key}_page"] = 1
+
+
+def render_stock_upload_preview(
+    source_type: str,
+    work_date: date,
+    preview_key: str,
+    preview: dict,
+    preview_df_key: str,
+    applied_df_key: str,
+    excluded_df_key: str,
+) -> None:
+    st.markdown('<div class="inventory-subsection-title">미리보기 결과</div>', unsafe_allow_html=True)
+    metric_cols = st.columns(5, gap="small")
+    metric_cols[0].metric("파일 행", f"{preview.get('total_rows', 0):,}")
+    metric_cols[1].metric("마스터 매칭", f"{preview.get('matched_count', 0):,}")
+    metric_cols[2].metric("미매칭/오류", f"{preview.get('failed_count', 0):,}")
+    metric_cols[3].metric("중복", f"{preview.get('duplicate_count', 0):,}")
+    metric_cols[4].metric("전체파일 0처리", f"{preview.get('zeroed_count', 0):,}")
+    st.caption(
+        f"빈 바코드 {preview.get('empty_barcode_count', 0):,}건 / "
+        f"숫자 오류 {preview.get('invalid_stock_count', 0):,}건 / "
+        f"음수 재고 {preview.get('negative_stock_count', 0):,}건"
+    )
+    render_stock_upload_debug(preview)
+    preview_df = st.session_state.get(preview_df_key)
+    if not isinstance(preview_df, pd.DataFrame):
+        preview_df = stock_preview_display_dataframe(preview)
+        st.session_state[preview_df_key] = preview_df
+    render_inventory_visible_table(preview_df, height=360)
+    apply_col, cancel_col, spacer = st.columns([1, 1, 4], gap="small")
+    with apply_col:
+        if st.button("재고 반영", type="primary", key=f"{preview_key}_apply", use_container_width=True):
+            applied_df = stock_applied_display_dataframe(preview)
+            excluded_df = stock_excluded_display_dataframe(preview)
+            outcome = with_db(lambda db: services.apply_stock_upload_preview(db, source_type, work_date, preview, current_user_name()))
+            if outcome and outcome.get("ok", True):
+                st.session_state[applied_df_key] = applied_df
+                st.session_state[excluded_df_key] = excluded_df
+                st.session_state.pop(preview_key, None)
+            show_result(outcome)
+    with cancel_col:
+        if st.button("미리보기 취소", key=f"{preview_key}_cancel", use_container_width=True):
+            st.session_state.pop(preview_key, None)
+            st.session_state.pop(preview_df_key, None)
+            st.rerun()
+    with spacer:
+        st.empty()
+
+
+def stock_preview_display_dataframe(preview: dict) -> pd.DataFrame:
+    preview_df = pd.DataFrame(preview.get("preview_rows", []))
+    if preview_df.empty:
+        return pd.DataFrame()
+    columns = {
+        "row_no": "엑셀 행",
+        "product_code": "SKU",
+        "category": "카테고리",
+        "product_name": "상품명",
+        "barcode": "바코드",
+        "previous_stock": "기존 현재고",
+        "new_stock": "변경 현재고",
+        "new_available_stock": "변경 가용재고",
+        "status": "검증결과",
+        "matched": "반영대상",
+    }
+    display_df = preview_df.rename(columns=columns)
+    ordered = ["엑셀 행", "SKU", "카테고리", "상품명", "바코드", "기존 현재고", "변경 현재고", "변경 가용재고", "검증결과", "반영대상"]
+    return display_df[[column for column in ordered if column in display_df.columns]]
+
+
+def stock_applied_display_dataframe(preview: dict) -> pd.DataFrame:
+    preview_df = stock_preview_display_dataframe(preview)
+    if preview_df.empty or "반영대상" not in preview_df.columns:
+        return pd.DataFrame()
+    applied = preview_df[preview_df["반영대상"].astype(bool)].copy()
+    if not applied.empty:
+        applied["반영 결과"] = "반영 완료"
+    return applied
+
+
+def stock_excluded_display_dataframe(preview: dict) -> pd.DataFrame:
+    preview_df = stock_preview_display_dataframe(preview)
+    if preview_df.empty or "반영대상" not in preview_df.columns:
+        return pd.DataFrame()
+    excluded = preview_df[~preview_df["반영대상"].astype(bool)].copy()
+    if not excluded.empty:
+        excluded["제외 사유"] = excluded.get("검증결과", "제외")
+    return excluded
+
+
+def render_daily_tab(source_type: str) -> None:
+    st.markdown(f'<div class="inventory-tab-title">{source_type} 재고조회</div>', unsafe_allow_html=True)
+    today = date.today()
+    saved_work_dates = fetch_work_dates(source_type)
+    default_work_date = saved_work_dates[0] if saved_work_dates else today
+    daily_date_key = f"{source_type}_daily_date"
+    st.session_state.setdefault(daily_date_key, default_work_date)
+    work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
+
+    rows = fetch_master_inventory(source_type, work_date)
+    base_df = daily_to_editor(rows)
+    filters = render_inventory_filters(source_type, base_df)
+    filtered_df = apply_inventory_filters(base_df, filters)
+    paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
+
+    summary_cols = st.columns(6, gap="small")
+    status_series = filtered_df.get("재고상태", pd.Series(dtype=str))
+    summary_cols[0].metric("필터 결과", f"{len(filtered_df):,}개")
+    summary_cols[1].metric("정상", f"{int((status_series == '정상').sum()):,}개")
+    summary_cols[2].metric("주의", f"{int((status_series == '주의').sum()):,}개")
+    summary_cols[3].metric("부족", f"{int((status_series == '부족').sum()):,}개")
+    summary_cols[4].metric("품절", f"{int((status_series == '품절').sum()):,}개")
+    summary_cols[5].metric("미집계", f"{int((status_series == '미집계').sum()):,}개")
+
+    upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
+    preview_df_key = f"{source_type}_inventory_preview_df_{work_date.isoformat()}"
+    applied_df_key = f"{source_type}_applied_inventory_df_{work_date.isoformat()}"
+    excluded_df_key = f"{source_type}_excluded_inventory_df_{work_date.isoformat()}"
+    output_payload_key = f"{source_type}_daily_output_payload_{work_date.isoformat()}"
+    output_scope_key = f"{source_type}_daily_download_scope_{work_date}"
+
+    with st.container(key=f"{source_key(source_type)}_inventory_update"):
+        st.markdown('<div class="inventory-update-card">', unsafe_allow_html=True)
+        st.markdown('<div class="inventory-subsection-title">재고 데이터 갱신</div>', unsafe_allow_html=True)
+        upload_cols = st.columns([1.6, 1.25, 0.9, 2.2], gap="small")
+        with upload_cols[0]:
+            uploaded = st.file_uploader("ERP 재고 Excel 선택", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
+        with upload_cols[1]:
+            upload_mode = st.radio("반영 범위", ["일부 재고 파일", "전체 재고 파일"], horizontal=True, key=f"{source_type}_stock_upload_mode")
+        with upload_cols[2]:
+            st.write("")
+            if st.button("미리보기", key=f"{source_type}_stock_preview_btn_{work_date}", use_container_width=True):
+                if uploaded is None:
+                    st.warning("먼저 ERP 재고 Excel 파일을 선택하세요.")
+                else:
+                    mode = "full" if upload_mode == "전체 재고 파일" else "partial"
+                    preview = with_db(lambda db: services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode))
+                    if preview:
+                        st.session_state[upload_preview_key] = preview
+                        st.session_state[preview_df_key] = stock_preview_display_dataframe(preview)
+        with upload_cols[3]:
+            st.caption("미리보기에서 바코드 우선 매칭, 미매칭, 중복을 확인한 뒤 재고 반영을 누르면 Supabase 저장과 재고 계산이 함께 실행됩니다.")
+        preview = st.session_state.get(upload_preview_key)
+        if preview:
+            render_stock_upload_preview(source_type, work_date, upload_preview_key, preview, preview_df_key, applied_df_key, excluded_df_key)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    download_scope = st.radio(
+        "다운로드 범위",
+        ["현재 필터 결과 다운로드", "전체 데이터 다운로드"],
+        horizontal=True,
+        key=output_scope_key,
+    )
+    output_df = filtered_df if download_scope == "현재 필터 결과 다운로드" else base_df
+    output_df = output_df.drop(columns=["선택"], errors="ignore")
+    output_filters = filters if download_scope == "현재 필터 결과 다운로드" else {}
+    output_signature = inventory_output_signature(output_df, output_filters)
+    payload = st.session_state.get(output_payload_key, {})
+    if isinstance(payload, dict) and payload.get("signature") != output_signature:
+        st.session_state.pop(output_payload_key, None)
+        payload = {}
+
+    action_cols = st.columns([1, 1, 4, 1.4], gap="small")
+    with action_cols[0]:
+        if st.button("PDF 준비", key=f"{source_type}_daily_pdf_prepare_{work_date}", use_container_width=True):
+            payload = {**payload, "signature": output_signature, "pdf": inventory_pdf_bytes(output_df, source_type, work_date, output_filters)}
+            st.session_state[output_payload_key] = payload
+        if isinstance(payload, dict) and payload.get("pdf"):
+            st.download_button("PDF 다운로드", data=payload["pdf"], file_name=inventory_file_name("pdf", output_df, output_filters), mime="application/pdf", use_container_width=True, key=f"{source_type}_daily_pdf_download_{work_date}")
+    with action_cols[1]:
+        if st.button("엑셀 준비", key=f"{source_type}_daily_excel_prepare_{work_date}", use_container_width=True):
+            payload = {**payload, "signature": output_signature, "excel": dataframe_to_excel(output_df)}
+            st.session_state[output_payload_key] = payload
+        if isinstance(payload, dict) and payload.get("excel"):
+            st.download_button("엑셀 다운로드", data=payload["excel"], file_name=inventory_file_name("xlsx", output_df, output_filters), mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key=f"{source_type}_daily_download_{work_date}")
+    with action_cols[2]:
+        st.empty()
+    with action_cols[3]:
+        st.caption(f"전체 {len(base_df):,}개 중 {len(filtered_df):,}개 표시 · {page}/{total_pages} 페이지")
+
+    if filtered_df.empty:
+        st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
+        if st.button("필터 전체 초기화", key=f"{source_type}_daily_empty_reset_{work_date}", use_container_width=True):
+            reset_inventory_filters(source_key(source_type))
+            st.rerun()
+    else:
+        render_inventory_visible_table(paged_df.drop(columns=["선택"], errors="ignore"), height=520)
+        nav_prev, nav_info, nav_next, spacer = st.columns([0.8, 1, 0.8, 4.6], gap="small")
+        filter_key = source_key(source_type)
+        with nav_prev:
+            if st.button("이전", key=f"{source_type}_daily_page_prev_{work_date}", disabled=page <= 1, use_container_width=True):
+                st.session_state[f"{filter_key}_page"] = max(page - 1, 1)
+                st.rerun()
+        with nav_info:
+            st.caption(f"{page:,} / {total_pages:,} 페이지")
+        with nav_next:
+            if st.button("다음", key=f"{source_type}_daily_page_next_{work_date}", disabled=page >= total_pages, use_container_width=True):
+                st.session_state[f"{filter_key}_page"] = min(page + 1, total_pages)
+                st.rerun()
+        with spacer:
+            st.empty()
+
+
+def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, filters: dict) -> bytes:
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    font_name = "HYGoThic-Medium"
+    bold_name = "HYGoThic-Medium"
+    if font_name not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(UnicodeCIDFont(font_name))
+
+    output = BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=landscape(A4), leftMargin=8 * mm, rightMargin=8 * mm, topMargin=10 * mm, bottomMargin=10 * mm)
+    styles = {
+        "title": ParagraphStyle("inventory_title_v2", fontName=bold_name, fontSize=15, leading=19, alignment=TA_CENTER),
+        "meta": ParagraphStyle("inventory_meta_v2", fontName=font_name, fontSize=8, leading=11, alignment=TA_LEFT),
+        "cell": ParagraphStyle("inventory_cell_v2", fontName=font_name, fontSize=6.7, leading=8.2, alignment=TA_LEFT),
+        "center": ParagraphStyle("inventory_center_v2", fontName=font_name, fontSize=6.7, leading=8.2, alignment=TA_CENTER),
+        "right": ParagraphStyle("inventory_right_v2", fontName=font_name, fontSize=6.7, leading=8.2, alignment=TA_RIGHT),
+    }
+    export_columns = ["카테고리", "바코드", "상품명", "업체명", "현재고", "안전재고", "최근2주 평균출고", "가용재고", "재고상태", "발주필요일", "최근재고반영일", "리드타임"]
+    export_df = df[[column for column in export_columns if column in df.columns]].copy()
+    meta = [
+        f"재고처: {source_type}",
+        f"기준일자: {work_date:%Y-%m-%d}",
+        f"생성일시: {pd.Timestamp.now():%Y-%m-%d %H:%M}",
+        f"카테고리: {', '.join(filters.get('categories') or ['전체'])}",
+        f"상품 수: {len(export_df):,}",
+    ]
+    story = [Paragraph("SCM 재고관리", styles["title"]), Spacer(1, 4 * mm), Paragraph(" / ".join(meta), styles["meta"]), Spacer(1, 4 * mm)]
+    table_data = [[Paragraph(column, styles["center"]) for column in export_df.columns]]
+    numeric_columns = {"현재고", "안전재고", "최근2주 평균출고", "가용재고", "발주필요일", "리드타임"}
+    for _, row in export_df.iterrows():
+        cells = []
+        for column in export_df.columns:
+            value = row.get(column, "")
+            if column in numeric_columns and clean_cell(value) != "":
+                style = styles["right"]
+                text = f"{float(value):,.2f}" if column == "최근2주 평균출고" else f"{to_int(value):,}"
+            elif column in {"바코드", "재고상태", "최근재고반영일"}:
+                style = styles["center"]
+                text = clean_cell(value)
+            else:
+                style = styles["cell"]
+                text = clean_cell(value)
+            cells.append(Paragraph(text, style))
+        table_data.append(cells)
+    widths = [18 * mm, 25 * mm, 48 * mm, 25 * mm, 15 * mm, 15 * mm, 20 * mm, 15 * mm, 17 * mm, 16 * mm, 22 * mm, 14 * mm]
+    table = Table(table_data, repeatRows=1, colWidths=widths[: len(export_df.columns)])
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#516F8C")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D8D0C4")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7F5F1")]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2.5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2.5),
+                ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+            ]
+        )
+    )
+    story.append(table)
+    doc.build(story)
+    return output.getvalue()

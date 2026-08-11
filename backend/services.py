@@ -1682,20 +1682,6 @@ def sync_inventory_from_product_master(db: Session, source_type: str | None = No
             apply_product_master_to_inbound(item, product)
             count += 1
 
-    sync_sources = [source_type] if source_type else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
-    for product_source in sync_sources:
-        target_date = db.scalar(
-            select(func.max(InventoryDaily.work_date)).where(InventoryDaily.source_type == product_source)
-        ) or date.today()
-        model = product_master_model(product_source)
-        products = db.execute(
-            select(model).order_by(model.sort_order, model.large_category, model.product_name, model.sku)
-        ).scalars()
-        for product in products:
-            item = ensure_daily_for_product(db, product_source, target_date, product)
-            stock_value = int(item.available_stock if item.available_stock is not None else item.current_stock or 0)
-            item.stock_status = stock_status_for_values(stock_value, int(product.min_stock or 0))
-            count += 1
     db.commit()
     return count
 
@@ -1912,6 +1898,80 @@ def daily_rows_by_product(db: Session, source_type: str, work_date: date, produc
     return matched
 
 
+def latest_daily_rows_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, InventoryDaily]:
+    rows = list(
+        db.execute(
+            select(InventoryDaily)
+            .where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date <= work_date,
+            )
+            .order_by(InventoryDaily.work_date.desc(), InventoryDaily.id.desc())
+        ).scalars()
+    )
+    by_sku, by_barcode_name, by_barcode, by_name = product_lookup_maps(products)
+    matched: dict[str, InventoryDaily] = {}
+    for row in rows:
+        product = match_product_from_maps(row.product_code, row.barcode, row.product_name, by_sku, by_barcode_name, by_barcode, by_name)
+        if product is None:
+            continue
+        sku = clean_text(product.sku)
+        if sku and sku not in matched:
+            matched[sku] = row
+    return matched
+
+
+def recent_business_days(target: date, count: int = 10) -> list[date]:
+    days: list[date] = []
+    current = target
+    while len(days) < count:
+        if is_business_day(current):
+            days.append(current)
+        current -= timedelta(days=1)
+    return days
+
+
+def recent_outbound_average_by_product(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    products: list,
+    business_day_count: int = 10,
+) -> dict[str, float]:
+    days = recent_business_days(work_date, business_day_count)
+    if not days:
+        return {}
+    by_sku, by_barcode_name, by_barcode, by_name = product_lookup_maps(products)
+    totals: dict[str, int] = {}
+    rows = list(
+        db.execute(
+            select(InventoryDaily)
+            .where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date.in_(days),
+                InventoryDaily.outbound_qty != 0,
+            )
+        ).scalars()
+    )
+    for row in rows:
+        product = match_product_from_maps(row.product_code, row.barcode, row.product_name, by_sku, by_barcode_name, by_barcode, by_name)
+        if product is None:
+            continue
+        sku = clean_text(product.sku)
+        if sku:
+            totals[sku] = totals.get(sku, 0) + int(row.outbound_qty or 0)
+    divisor = max(len(days), 1)
+    return {sku: round(total / divisor, 2) for sku, total in totals.items()}
+
+
+def order_needed_days(current_stock: int, safe_stock: int, avg_daily_outbound: float) -> int | None:
+    if avg_daily_outbound <= 0:
+        return None
+    if current_stock <= safe_stock:
+        return 0
+    return max(ceil((current_stock - safe_stock) / avg_daily_outbound), 0)
+
+
 def pending_inbound_qty_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, int]:
     by_sku, by_barcode_name, by_barcode, by_name = product_lookup_maps(products)
 
@@ -1955,23 +2015,27 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     products = list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
     purchase_metrics = purchase_inventory_metrics(db, source_type, products)
     inbound_metrics = latest_inbound_metrics(db, source_type, products)
-    daily_by_sku = daily_rows_by_product(db, source_type, work_date, products)
+    latest_daily_by_sku = latest_daily_rows_by_product(db, source_type, work_date, products)
+    avg_outbound_by_sku = recent_outbound_average_by_product(db, source_type, work_date, products)
     pending_by_sku = pending_inbound_qty_by_product(db, source_type, work_date, products)
     rows = []
     for product in products:
         product_sku = clean_text(product.sku)
-        daily = daily_by_sku.get(product_sku)
-        current_stock = int(daily.current_stock or 0) if daily else 0
+        daily = latest_daily_by_sku.get(product_sku)
+        has_snapshot = daily is not None
+        current_stock = int(daily.current_stock or 0) if has_snapshot else 0
         safe_stock = int(product.min_stock or 0)
-        status = stock_status_for_values(current_stock, safe_stock)
+        status = stock_status_for_values(current_stock, safe_stock) if has_snapshot else "미집계"
         purchase_metric = purchase_metrics.get((source_type, product.sku), {})
         inbound_metric = inbound_metrics.get((source_type, product.sku), {})
         measured_lead_time = int(purchase_metric.get("avg_lead_time") or 0)
         box_qty = int(product.box_qty or product.pack_qty or 0)
         pending_inbound_qty = int(pending_by_sku.get(product_sku, 0) or 0)
-        pending_outbound_qty = int(daily.outbound_qty or 0) if daily else 0
-        available_stock = current_stock + pending_inbound_qty - pending_outbound_qty
+        pending_outbound_qty = int(daily.outbound_qty or 0) if has_snapshot else 0
+        available_stock = current_stock + pending_inbound_qty - pending_outbound_qty if has_snapshot else 0
         shortage_qty = max(safe_stock - current_stock, 0)
+        avg_outbound = float(avg_outbound_by_sku.get(product_sku, 0) or 0)
+        needed_days = order_needed_days(available_stock, safe_stock, avg_outbound)
         rows.append(
             {
                 "source_type": source_type,
@@ -1993,6 +2057,10 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "pack_qty": int(product.pack_qty or 0),
                 "box_pallet_unit": format_box_pallet_unit(product.box_qty, product.pack_qty),
                 "recommended_boxes": ceil(shortage_qty / box_qty) if box_qty and shortage_qty > 0 else 0,
+                "avg_daily_outbound_2w": avg_outbound,
+                "order_needed_days": needed_days,
+                "last_inventory_update_date": daily.work_date if has_snapshot else None,
+                "has_inventory_snapshot": has_snapshot,
                 "measured_lead_time": measured_lead_time,
                 "last_purchase_order_date": purchase_metric.get("last_order_date"),
                 "last_purchase_inbound_date": purchase_metric.get("last_inbound_date") or inbound_metric.get("last_inbound_date"),
@@ -2313,6 +2381,7 @@ def apply_stock_upload_preview(
             )
             item.current_stock = new_stock
             item.available_stock = new_available_stock
+            item.outbound_qty = max(previous_stock + int(item.inbound_qty or 0) - new_available_stock, 0)
             item.stock_status = stock_status_for_values(new_available_stock, product.min_stock or 0)
             verification_targets.append(
                 {
@@ -2325,6 +2394,9 @@ def apply_stock_upload_preview(
             )
             count += 1
         db.commit()
+        calculate_safe_stock(db, source_type, work_date)
+        update_status(db, source_type, work_date)
+        calculate_inbound_cycle(db, source_type)
         verification = verify_stock_upload_saved(db, source_type, work_date, verification_targets)
     except Exception as exc:
         db.rollback()
@@ -2343,7 +2415,7 @@ def apply_stock_upload_preview(
     record_save_success(f"inventory upload {source_type} {work_date}")
     return {
         "ok": True,
-        "message": f"재고 업로드 반영 완료 / DB 저장 검증 {verification['verified_count']:,}건",
+        "message": f"재고 반영 완료 / 출고량·최근 10영업일 평균·안전재고·재고상태 재계산 / DB 저장 검증 {verification['verified_count']:,}건",
         "count": count,
         "history_id": history.id,
         "verified_count": verification["verified_count"],
@@ -2888,19 +2960,19 @@ def outbound_sum_by_product(db: Session, source_type: str, start: date, end: dat
 
 
 def calculate_safe_stock(db: Session, source_type: str, work_date: date) -> int:
-    last_start, last_end = week_range(work_date, 1)
-    prev_start, prev_end = week_range(work_date, 2)
-    last_map = outbound_sum_by_product(db, source_type, last_start, last_end)
-    prev_map = outbound_sum_by_product(db, source_type, prev_start, prev_end)
+    products = list(db.execute(select(product_master_model(source_type))).scalars())
+    avg_map = recent_outbound_average_by_product(db, source_type, work_date, products)
+    product_by_sku = {clean_text(product.sku): product for product in products if clean_text(product.sku)}
     count = 0
     for item in list_daily(db, source_type, work_date):
-        key = (item.product_name, item.barcode or "")
-        base = max(last_map.get(key, 0), prev_map.get(key, 0))
-        safe_stock = ceil(base * 6 / 5)
-        item.safe_stock = safe_stock
         product = find_product_master(db, source_type, item.product_code, item.barcode, item.product_name)
-        if product:
-            product.min_stock = safe_stock
+        if product is None:
+            continue
+        avg_daily = float(avg_map.get(clean_text(product.sku), 0) or 0)
+        lead_time_days = int(product.default_lead_time or item.inbound_cycle or 1)
+        safe_stock = ceil(avg_daily * max(lead_time_days, 1) * 1.2)
+        item.safe_stock = safe_stock
+        product_by_sku.get(clean_text(product.sku), product).min_stock = safe_stock
         count += 1
     db.commit()
     return count
