@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import delete, func, select
 
+from components.lazy_tabs import lazy_tab_selector
 from backend.perf import perf_span
 from pages import product_master as product_master_page
 
@@ -113,71 +114,29 @@ def inventory_available() -> bool:
     return True
 
 
-def menu_button_key(menu_key: str, label: str) -> str:
-    safe_label = re.sub(r"[^0-9A-Za-z가-힣_]+", "_", label).strip("_")
-    return f"{menu_key}_button_{safe_label or 'item'}"
-
-
-def inventory_menu_selector(
-    options: list[str],
-    menu_key: str,
-    default: str | None = None,
-    allow_unset: bool = False,
-) -> tuple[str, bool]:
-    state_key = f"{menu_key}_selected"
-    current = clean_cell(st.session_state.get(state_key))
-    if current not in options:
-        current = "" if allow_unset and default is None else (default or options[0])
-    st.session_state[state_key] = current
-
-    selected = current
-    changed = False
-    cols = st.columns(len(options), gap="small")
-    for col, label in zip(cols, options, strict=True):
-        active = label == selected
-        if col.button(
-            label,
-            key=menu_button_key(menu_key, label),
-            type="primary" if active else "secondary",
-            use_container_width=True,
-        ):
-            changed = label != current
-            selected = label
-            st.session_state[state_key] = selected
-    return selected, changed
-
-
 def render_inventory_page_lazy() -> None:
     with perf_span("inventory.main_section_select"):
-        selected_section, _ = inventory_menu_selector(
+        selected_section = lazy_tab_selector(
             INVENTORY_MAIN_SECTIONS,
             "inventory_main_section",
             default="현재재고",
         )
     if selected_section == "현재재고":
         with perf_span("inventory.source_select"):
-            selected_source, source_changed = inventory_menu_selector(
+            selected_source = lazy_tab_selector(
                 INVENTORY_CURRENT_SOURCES,
                 "inventory_current_source",
-                default=None,
-                allow_unset=True,
+                default=st.session_state.get("inventory_active_source") or "3PL",
             )
-        if source_changed:
-            st.session_state["inventory_active_source"] = selected_source
-        active_source = st.session_state.get("inventory_active_source") if selected_source else ""
-        if active_source not in INVENTORY_CURRENT_SOURCES:
-            active_source = ""
-            st.session_state.pop("inventory_active_source", None)
-
-        if not active_source:
-            st.info("현재재고 하위 구분을 선택하세요.")
-            return
+        if selected_source not in INVENTORY_CURRENT_SOURCES:
+            selected_source = "3PL"
+        st.session_state["inventory_active_source"] = selected_source
 
         with perf_span("inventory.list_panel_render"):
             render_inventory_list_panel()
         with perf_span("inventory.outbound_linked_panel_render"):
             render_outbound_history_linked_panel()
-        source_type = INVENTORY_SOURCE_MAP[active_source]
+        source_type = INVENTORY_SOURCE_MAP[selected_source]
         with perf_span("inventory.source_tabs_render", source=source_type):
             render_source_inventory_tabs_lazy(source_type)
     elif selected_section == "안전재고":
@@ -194,7 +153,7 @@ def render_inventory_page_lazy() -> None:
 
 def render_source_inventory_tabs_lazy(source_type: str) -> None:
     with perf_span("inventory.subtab_select", source=source_type):
-        selected_tab, _ = inventory_menu_selector(
+        selected_tab = lazy_tab_selector(
             INVENTORY_SOURCE_TABS,
             f"inventory_{source_key(source_type)}_section",
             default="재고조회",
