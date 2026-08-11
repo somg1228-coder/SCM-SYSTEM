@@ -3229,7 +3229,6 @@ def warehouse_scene3d_html(
                     <button type="button" id="rotateRack">방향전환</button>
                     <button type="button" id="lockRack">랙 고정</button>
                     <button type="button" id="resetRack">배치 초기화</button>
-                    <button type="button" id="fitRack">기본배치</button>
                     <button type="button" id="printScene">모델 출력</button>
                     <button type="button" id="saveLayoutFile">배치저장</button>
                     <span id="layoutSaveStatus" class="layout-save-status"></span>
@@ -6319,15 +6318,6 @@ def warehouse_scene3d_html(
             document.getElementById("resetRack").addEventListener("click", () => {{
                 racks = [];
                 selectedRackId = "";
-                selectedRackItemKey = "";
-                saveLayout();
-                rebuildScene();
-            }});
-
-            document.getElementById("fitRack").addEventListener("click", () => {{
-                racks = defaultLayout(activeFloor);
-                selectedRackId = racks[0]?.id || "";
-                selectedFixtureId = "";
                 selectedRackItemKey = "";
                 saveLayout();
                 rebuildScene();
