@@ -262,7 +262,8 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                     st.warning(f"먼저 {title} 엑셀을 업로드하세요.")
                 else:
                     if show_sqlite_write_status("3PL 마스터 업로드 미리보기"):
-                        preview = with_db(lambda db: services.prepare_threepl_master_import_preview(db, uploaded.getvalue()))
+                        with st.spinner("3PL 마스터 엑셀을 분석하는 중입니다..."):
+                            preview = with_db(lambda db: services.prepare_threepl_master_import_preview(db, uploaded.getvalue()))
                         if preview and preview.get("ok", True):
                             st.session_state[preview_key] = preview
                             st.session_state.pop(result_key, None)
@@ -276,13 +277,14 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                     st.warning(f"먼저 {title} 엑셀을 업로드하세요.")
                 else:
                     if show_sqlite_write_status("3PL 마스터 엑셀 반영"):
-                        result = with_db(
-                            lambda db: services.import_product_master_excel(
-                                db,
-                                source_type,
-                                uploaded.getvalue(),
+                        with st.spinner("3PL 마스터 엑셀을 반영하는 중입니다..."):
+                            result = with_db(
+                                lambda db: services.import_product_master_excel(
+                                    db,
+                                    source_type,
+                                    uploaded.getvalue(),
+                                )
                             )
-                        )
                         st.session_state[result_key] = result
                         st.session_state.pop(preview_key, None)
                         if result and result.get("ok", True):

@@ -2665,6 +2665,8 @@ def inject_inventory_css() -> None:
             font-weight: 850;
             margin: 0.5rem 0 0.65rem;
         }
+        div[data-testid="stPills"] div[role="radiogroup"],
+        div[data-testid="stPills"] div[role="group"],
         div[data-testid="stSegmentedControl"] div[role="radiogroup"],
         div[data-testid="stSegmentedControl"] div[role="group"] {
             align-items: center !important;
@@ -2673,12 +2675,14 @@ def inject_inventory_css() -> None:
             gap: 0.32rem !important;
             justify-content: flex-start !important;
         }
+        div[data-testid="stPills"] label,
         div[data-testid="stSegmentedControl"] label {
             flex: 0 0 auto !important;
             width: auto !important;
             min-width: 0 !important;
             margin: 0 !important;
         }
+        div[data-testid="stPills"] label > div,
         div[data-testid="stSegmentedControl"] label > div {
             min-height: 32px !important;
             padding: 0.34rem 0.85rem !important;

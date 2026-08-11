@@ -359,7 +359,7 @@ def keep_existing_product_payload(existing_row: dict | None, normalized: dict) -
     return next_payload
 
 
-def bulk_save_product_master(source_type: str, rows: list[dict]) -> dict:
+def bulk_save_product_master(source_type: str, rows: list[dict], chunk_size: int = 300) -> dict:
     sb = client()
     existing = (
         sb.table(SOURCE_TABLE)
@@ -391,7 +391,15 @@ def bulk_save_product_master(source_type: str, rows: list[dict]) -> dict:
     if errors:
         return {"ok": False, "message": "\n".join(errors[:5]), "count": 0}
     if payloads:
-        sb.table(SOURCE_TABLE).upsert(payloads, on_conflict="source_type,sku").execute()
+        deduped_payloads: dict[tuple[str, str], dict] = {}
+        for payload in payloads:
+            deduped_payloads[(clean(payload.get("source_type")), clean(payload.get("sku")))] = payload
+        payloads = list(deduped_payloads.values())
+    if payloads:
+        safe_chunk_size = max(1, int(chunk_size or 300))
+        for start in range(0, len(payloads), safe_chunk_size):
+            chunk = payloads[start : start + safe_chunk_size]
+            sb.table(SOURCE_TABLE).upsert(chunk, on_conflict="source_type,sku").execute()
     log_audit("product_master_upsert", source_type, {"count": len(payloads)})
     return {"ok": True, "message": f"{source_type} 상품 마스터 Supabase 저장 완료", "count": len(payloads)}
 

@@ -18,24 +18,37 @@ def lazy_tab_selector(options: Sequence[str], key: str, default: str | None = No
         current = labels[0]
     st.session_state[state_key] = current
 
-    try:
-        selected = st.segmented_control(
+    if hasattr(st, "pills"):
+        selected = st.pills(
             "section",
             labels,
+            selection_mode="single",
             default=current,
             key=widget_key,
             label_visibility="collapsed",
+            width="content",
         )
-    except Exception:
-        selected = st.radio(
-            "section",
-            labels,
-            index=labels.index(current),
-            horizontal=True,
-            key=widget_key,
-            label_visibility="collapsed",
-        )
+    else:
+        try:
+            selected = st.segmented_control(
+                "section",
+                labels,
+                default=current,
+                key=widget_key,
+                label_visibility="collapsed",
+            )
+        except Exception:
+            selected = st.radio(
+                "section",
+                labels,
+                index=labels.index(current),
+                horizontal=True,
+                key=widget_key,
+                label_visibility="collapsed",
+            )
 
+    if isinstance(selected, list):
+        selected = selected[0] if selected else None
     if selected in labels:
         st.session_state[state_key] = selected
         return selected
