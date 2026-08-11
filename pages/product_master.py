@@ -915,35 +915,48 @@ def render_threepl_category_toggle(key: str, category_options: list[str]) -> lis
     current = current_values[0] if len(current_values) == 1 else "전체"
     if current not in options:
         current = "전체"
-    widget_value = clean_value(st.session_state.get(widget_key))
-    if widget_value and widget_value not in options:
-        st.session_state.pop(widget_key, None)
-    if hasattr(st, "segmented_control"):
-        selected = st.segmented_control(
-            "카테고리",
-            options,
-            default=current,
-            key=widget_key,
-            label_visibility="visible",
-            width="stretch",
-        )
+    selected = current
+
+    if not category_options:
+        st.caption("카테고리: 데이터 없음")
+    elif hasattr(st, "popover"):
+        trigger_label = "카테고리 선택" if current == "전체" else f"카테고리 : {current}"
+        with st.container(key=f"{widget_key}_dropdown"):
+            with st.popover(f"{trigger_label} ▼", use_container_width=True):
+                for index, label in enumerate(options):
+                    if st.button(
+                        label,
+                        key=f"{widget_key}_option_{index}",
+                        type="primary" if label == current else "secondary",
+                        use_container_width=True,
+                    ):
+                        selected = label
+                        st.session_state[state_key] = [] if selected == "전체" else [selected]
+                        st.session_state[f"product_master_{key}_page"] = 1
+                        st.rerun()
     else:
-        st.caption("카테고리")
-        selected = current
-        rows = [options[index : index + 6] for index in range(0, len(options), 6)]
-        for row_index, row_options in enumerate(rows):
-            cols = st.columns(len(row_options), gap="small")
-            for col, label in zip(cols, row_options, strict=True):
-                if col.button(
-                    label,
-                    key=f"{widget_key}_{row_index}_{label}",
-                    type="primary" if label == current else "secondary",
-                    use_container_width=True,
-                ):
-                    selected = label
-                    st.session_state[state_key] = [] if selected == "전체" else [selected]
-                    st.session_state[f"product_master_{key}_page"] = 1
-                    st.rerun()
+        open_key = f"{widget_key}_open"
+        st.session_state.setdefault(open_key, False)
+        trigger_label = "카테고리 선택" if current == "전체" else f"카테고리 : {current}"
+        trigger_label = f"{trigger_label} {'▲' if st.session_state[open_key] else '▼'}"
+        with st.container(key=f"{widget_key}_dropdown"):
+            if st.button(trigger_label, key=f"{widget_key}_trigger", use_container_width=True):
+                st.session_state[open_key] = not st.session_state[open_key]
+                st.rerun()
+            if st.session_state[open_key]:
+                with st.container(key=f"{widget_key}_options"):
+                    for index, label in enumerate(options):
+                        if st.button(
+                            label,
+                            key=f"{widget_key}_option_{index}",
+                            type="primary" if label == current else "secondary",
+                            use_container_width=True,
+                        ):
+                            selected = label
+                            st.session_state[state_key] = [] if selected == "전체" else [selected]
+                            st.session_state[f"product_master_{key}_page"] = 1
+                            st.session_state[open_key] = False
+                            st.rerun()
     categories = [] if not selected or selected == "전체" else [str(selected)]
     if categories != previous_categories:
         st.session_state[f"product_master_{key}_page"] = 1

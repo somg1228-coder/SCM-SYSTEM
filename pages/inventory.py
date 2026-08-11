@@ -1236,15 +1236,10 @@ def inventory_single_category_toggle(options: list[str], state_key: str, widget_
     st.session_state.setdefault(open_key, False)
     selected = current
     trigger_label = "카테고리 선택" if current == "전체" else f"카테고리 : {current}"
-    trigger_label = f"{trigger_label} {'▲' if st.session_state[open_key] else '▼'}"
 
     with st.container(key=f"{widget_key}_dropdown"):
-        if st.button(trigger_label, key=f"{widget_key}_trigger", use_container_width=True):
-            st.session_state[open_key] = not st.session_state[open_key]
-            st.rerun()
-
-        if st.session_state[open_key]:
-            with st.container(key=f"{widget_key}_options"):
+        if hasattr(st, "popover"):
+            with st.popover(f"{trigger_label} ▼", use_container_width=True):
                 for index, label in enumerate(choices):
                     if st.button(
                         label,
@@ -1254,9 +1249,28 @@ def inventory_single_category_toggle(options: list[str], state_key: str, widget_
                     ):
                         selected = label
                         st.session_state[state_key] = selected
-                        st.session_state[open_key] = False
                         st.session_state.pop(widget_key, None)
                         st.rerun()
+        else:
+            fallback_label = f"{trigger_label} {'▲' if st.session_state[open_key] else '▼'}"
+            if st.button(fallback_label, key=f"{widget_key}_trigger", use_container_width=True):
+                st.session_state[open_key] = not st.session_state[open_key]
+                st.rerun()
+
+            if st.session_state[open_key]:
+                with st.container(key=f"{widget_key}_options"):
+                    for index, label in enumerate(choices):
+                        if st.button(
+                            label,
+                            key=f"{widget_key}_option_{index}",
+                            type="primary" if label == current else "secondary",
+                            use_container_width=True,
+                        ):
+                            selected = label
+                            st.session_state[state_key] = selected
+                            st.session_state[open_key] = False
+                            st.session_state.pop(widget_key, None)
+                            st.rerun()
 
     st.session_state[state_key] = selected
     return selected
@@ -2650,6 +2664,26 @@ def inject_inventory_css() -> None:
             font-size: 1.15rem;
             font-weight: 850;
             margin: 0.5rem 0 0.65rem;
+        }
+        div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+        div[data-testid="stSegmentedControl"] div[role="group"] {
+            align-items: center !important;
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 0.32rem !important;
+            justify-content: flex-start !important;
+        }
+        div[data-testid="stSegmentedControl"] label {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+        }
+        div[data-testid="stSegmentedControl"] label > div {
+            min-height: 32px !important;
+            padding: 0.34rem 0.85rem !important;
+            border-radius: 7px !important;
+            white-space: nowrap !important;
         }
         div[class*="st-key-inventory_control_"] {
             background: #EEF1F3;
