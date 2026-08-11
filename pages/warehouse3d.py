@@ -1073,7 +1073,7 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                 <table>
                     <thead>
                         <tr>
-                            <th>위치</th>
+                            <th>창고</th>
                             <th>층</th>
                             <th>보관위치</th>
                             <th>형태</th>
@@ -1191,6 +1191,19 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                 return ["1단", roofPart];
             }}
 
+            function rackDisplayName(rack) {{
+                const id = String(rack?.id || "랙").trim();
+                const typeText = (rack?.type || "light") === "heavy" ? "중량랙" : "경량랙";
+                const levels = [2, 3].includes(Number(rack?.levels)) ? Number(rack.levels) : 2;
+                if (rackIsRoofOnly(rack)) return `${{id}} ${{typeText}} ${{levels}}단 지붕`;
+                const bottomText = rack?.bottomOpen ? " 1단없음" : "";
+                return `${{id}} ${{typeText}} ${{levels}}단${{bottomText}}`;
+            }}
+
+            function rackLocationText(rack, part) {{
+                return `${{rackDisplayName(rack)}} / ${{part || "단 미지정"}}`;
+            }}
+
             function shapeLabel(shape) {{
                 return shape === "pallet" || shape === "wrapped_pallet" ? "파렛트" : "박스";
             }}
@@ -1237,7 +1250,7 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                         const parts = partOptionsFor(rack);
                         (rack.items || []).forEach((item, index) => {{
                             const part = item.part || parts[index % parts.length] || "1단";
-                            const location = `${{rack.id || "랙"}} / ${{part}}`;
+                            const location = rackLocationText(rack, part);
                             addRow(rows, buildingName, floorName, location, item.shape || "box", item.name, item.barcode, quantityOf(item), item.stack || 1);
                             if ((item.shape === "pallet" || item.shape === "wrapped_pallet") && Array.isArray(item.items)) {{
                                 item.items.forEach(innerItem => {{
@@ -1248,7 +1261,9 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                     }});
                     loadFixtures(buildingName, floorName).forEach(fixture => {{
                         if (!["box", "pallet", "wrapped_pallet"].includes(fixture.type)) return;
-                        const location = `바닥 X${{Number(fixture.x || 0).toFixed(0)}} Y${{Number(fixture.y || 0).toFixed(0)}}`;
+                        const fixtureName = String(fixture.label || shapeLabel(fixture.type) || "바닥 품목").trim();
+                        const fixtureId = fixture.id ? ` / ${{fixture.id}}` : "";
+                        const location = `바닥 배치 / ${{fixtureName}}${{fixtureId}}`;
                         addRow(rows, buildingName, floorName, location, fixture.type, fixture.label, fixture.barcode, Number(fixture.qty || 1), fixture.stack || 1);
                         if (fixture.type === "pallet" && Array.isArray(fixture.items)) {{
                             fixture.items.forEach(innerItem => {{
@@ -5208,7 +5223,9 @@ def warehouse_scene3d_html(
 
             function renderTargetRackPartSelect(preferredPart = targetRackPartSelect.value) {{
                 const rack = targetRack();
-                const options = partOptionsFor(rack);
+                const fixture = selectedFixture();
+                const fixtureShape = fixture?.type === "pallet" || fixture?.type === "wrapped_pallet" ? "pallet" : "box";
+                const options = partOptionsForLoadShape(rack, fixtureShape);
                 targetRackPartSelect.innerHTML = options.map(part => `<option value="${{part}}">${{part}}</option>`).join("");
                 targetRackPartSelect.value = options.includes(preferredPart) ? preferredPart : options[0];
             }}
@@ -5251,17 +5268,24 @@ def warehouse_scene3d_html(
                 return ["1단", roofPart];
             }}
 
+            function partOptionsForLoadShape(rack, shape) {{
+                if (shape === "pallet" || shape === "wrapped_pallet") return ["1단", "2단"];
+                const shelfOptions = partOptionsFor(rack).filter(part => /^\\d+단$/.test(part));
+                return shelfOptions.length ? shelfOptions : ["1단", "2단"];
+            }}
+
             function partOptionsForCurrentLoad(rack) {{
-                const options = partOptionsFor(rack);
-                if (loadShapeSelect.value !== "pallet") return options;
-                const shelfOptions = options.filter(part => /^\\d+단$/.test(part));
-                return shelfOptions.length ? shelfOptions : options;
+                return partOptionsForLoadShape(rack, loadShapeSelect.value);
+            }}
+
+            function partOptionLabel(part) {{
+                return loadShapeSelect.value === "pallet" ? `${{part}} 파렛트` : part;
             }}
 
             function renderPartSelect(rack) {{
                 const options = partOptionsForCurrentLoad(rack);
                 const previous = partSelect.value;
-                partSelect.innerHTML = options.map(part => `<option value="${{part}}">${{part}}</option>`).join("");
+                partSelect.innerHTML = options.map(part => `<option value="${{part}}">${{partOptionLabel(part)}}</option>`).join("");
                 partSelect.value = options.includes(previous) ? previous : options[0];
             }}
 
@@ -5376,12 +5400,12 @@ def warehouse_scene3d_html(
                 rack.levels = rackLevelCount(rack);
                 rack.roofOnly = rackIsRoofOnly(rack);
                 rack.bottomOpen = Boolean(rack.bottomOpen);
-                const allowedParts = partOptionsFor(rack);
                 let partChanged = false;
                 rack.items = (rack.items || []).map((item, index) => {{
-                    if (allowedParts.includes(item.part)) return item;
+                    const itemAllowedParts = partOptionsForLoadShape(rack, item.shape || "box");
+                    if (itemAllowedParts.includes(item.part)) return item;
                     partChanged = true;
-                    return {{ ...item, part: allowedParts[index % allowedParts.length] }};
+                    return {{ ...item, part: itemAllowedParts[index % itemAllowedParts.length] }};
                 }});
                 if (partChanged) saveLayout();
                 rackTypeSelect.value = rack.type || "light";
@@ -5639,7 +5663,7 @@ def warehouse_scene3d_html(
             function addLoadToRack(rack, load) {{
                 if (!rack) return false;
                 rack.items = rack.items || [];
-                const allowedParts = partOptionsFor(rack);
+                const allowedParts = partOptionsForLoadShape(rack, load.shape || "box");
                 const nextLoad = {{
                     ...load,
                     barcode: String(load.barcode || "").trim(),
@@ -5712,7 +5736,8 @@ def warehouse_scene3d_html(
             }}
 
             function fixtureLoadForRack(fixture, rack) {{
-                const allowedParts = partOptionsFor(rack);
+                const fixtureShape = fixture?.type === "pallet" || fixture?.type === "wrapped_pallet" ? "pallet" : "box";
+                const allowedParts = partOptionsForLoadShape(rack, fixtureShape);
                 const part = allowedParts.includes(targetRackPartSelect.value) ? targetRackPartSelect.value : allowedParts[0];
                 const isPallet = fixture.type === "pallet" || fixture.type === "wrapped_pallet";
                 return {{
