@@ -2695,11 +2695,12 @@ def inject_inventory_css() -> None:
             margin: 0.5rem 0 0.65rem;
         }
         .st-key-inventory_nav_shell {
-            background: #F7F8F6;
-            border: 1px solid #D7D0C7;
-            border-radius: 8px;
-            margin: 0.2rem 0 1rem;
-            padding: 0.72rem 0.86rem 0.78rem;
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            margin: 0.15rem 0 0.9rem;
+            padding: 0 !important;
         }
         .st-key-inventory_nav_shell [data-testid="stVerticalBlock"] {
             gap: 0.42rem;
@@ -2713,12 +2714,12 @@ def inject_inventory_css() -> None:
         }
         .st-key-inventory_nav_source,
         .st-key-inventory_nav_detail {
-            border-left: 2px solid #C7D3DC;
-            margin-left: 1rem;
-            padding-left: 0.78rem;
+            border-left: 0 !important;
+            margin-left: 0.9rem;
+            padding-left: 0 !important;
         }
         .st-key-inventory_nav_detail {
-            margin-left: 2rem;
+            margin-left: 1.8rem;
         }
         .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="radiogroup"],
         .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="group"],
