@@ -10,7 +10,6 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import delete, func, select
 
-from components.lazy_tabs import lazy_tab_selector
 from backend.perf import perf_span
 from pages import product_master as product_master_page
 
@@ -79,6 +78,11 @@ DASHBOARD_FILTER_LABELS = {
     "soldout": "품절 SKU 목록",
 }
 
+INVENTORY_MAIN_SECTIONS = ["현재재고", "안전재고", "재고이력", "MRP", "발주추천", "자재/반제품"]
+INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "창고관리"]
+INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "창고관리": "창고"}
+INVENTORY_SOURCE_TABS = ["재고조회", "입고내역", "출고내역", "대시보드", "마스터 관리"]
+
 
 def render_inventory_page() -> None:
     with perf_span("inventory.inject_css"):
@@ -95,40 +99,6 @@ def render_inventory_page() -> None:
         sync_inventory_filter_from_query()
     with perf_span("inventory.page_lazy_render"):
         render_inventory_page_lazy()
-    return
-
-    current_tab, safe_tab, history_tab, mrp_tab, recommend_tab, material_tab = st.tabs(
-        ["현재재고", "안전재고", "재고이력", "MRP", "발주추천", "자재/반제품"]
-    )
-
-    with current_tab:
-        render_inventory_list_panel()
-        render_outbound_history_linked_panel()
-        tab_3pl, tab_offline, tab_warehouse = st.tabs(["3PL", "오프라인", "창고관리"])
-
-        with tab_3pl:
-            render_source_inventory_tabs("3PL")
-
-        with tab_offline:
-            render_source_inventory_tabs("오프라인")
-
-        with tab_warehouse:
-            render_source_inventory_tabs("창고")
-
-    with safe_tab:
-        render_safe_stock_tab()
-
-    with history_tab:
-        render_stock_history_tab()
-
-    with mrp_tab:
-        render_mrp_tab()
-
-    with recommend_tab:
-        render_purchase_recommendation_tab()
-
-    with material_tab:
-        render_material_inventory_tab()
 
 
 def inventory_available() -> bool:
@@ -143,22 +113,73 @@ def inventory_available() -> bool:
     return True
 
 
-def render_inventory_page_lazy() -> None:
-    main_sections = ["현재재고", "안전재고", "재고이력", "MRP", "발주추천", "자재/반제품"]
-    with perf_span("inventory.main_section_select"):
-        selected_section = lazy_tab_selector(main_sections, "inventory_main_section")
+def menu_button_key(menu_key: str, label: str) -> str:
+    safe_label = re.sub(r"[^0-9A-Za-z가-힣_]+", "_", label).strip("_")
+    return f"{menu_key}_button_{safe_label or 'item'}"
 
+
+def inventory_menu_selector(
+    options: list[str],
+    menu_key: str,
+    default: str | None = None,
+    allow_unset: bool = False,
+) -> tuple[str, bool]:
+    state_key = f"{menu_key}_selected"
+    current = clean_cell(st.session_state.get(state_key))
+    if current not in options:
+        current = "" if allow_unset and default is None else (default or options[0])
+    st.session_state[state_key] = current
+
+    selected = current
+    changed = False
+    cols = st.columns(len(options), gap="small")
+    for col, label in zip(cols, options, strict=True):
+        active = label == selected
+        if col.button(
+            label,
+            key=menu_button_key(menu_key, label),
+            type="primary" if active else "secondary",
+            use_container_width=True,
+        ):
+            changed = label != current
+            selected = label
+            st.session_state[state_key] = selected
+    return selected, changed
+
+
+def render_inventory_page_lazy() -> None:
+    with perf_span("inventory.main_section_select"):
+        selected_section, _ = inventory_menu_selector(
+            INVENTORY_MAIN_SECTIONS,
+            "inventory_main_section",
+            default="현재재고",
+        )
     if selected_section == "현재재고":
+        with perf_span("inventory.source_select"):
+            selected_source, source_changed = inventory_menu_selector(
+                INVENTORY_CURRENT_SOURCES,
+                "inventory_current_source",
+                default=None,
+                allow_unset=True,
+            )
+        if source_changed:
+            st.session_state["inventory_active_source"] = selected_source
+        active_source = st.session_state.get("inventory_active_source") if selected_source else ""
+        if active_source not in INVENTORY_CURRENT_SOURCES:
+            active_source = ""
+            st.session_state.pop("inventory_active_source", None)
+
+        if not active_source:
+            st.info("현재재고 하위 구분을 선택하세요.")
+            return
+
         with perf_span("inventory.list_panel_render"):
             render_inventory_list_panel()
         with perf_span("inventory.outbound_linked_panel_render"):
             render_outbound_history_linked_panel()
-        source_sections = ["3PL", "오프라인", "창고관리"]
-        with perf_span("inventory.source_select"):
-            selected_source = lazy_tab_selector(source_sections, "inventory_current_source")
-        source_map = {"3PL": "3PL", "오프라인": "오프라인", "창고관리": "창고"}
-        with perf_span("inventory.source_tabs_render", source=source_map[selected_source]):
-            render_source_inventory_tabs_lazy(source_map[selected_source])
+        source_type = INVENTORY_SOURCE_MAP[active_source]
+        with perf_span("inventory.source_tabs_render", source=source_type):
+            render_source_inventory_tabs_lazy(source_type)
     elif selected_section == "안전재고":
         render_safe_stock_tab()
     elif selected_section == "재고이력":
@@ -172,9 +193,12 @@ def render_inventory_page_lazy() -> None:
 
 
 def render_source_inventory_tabs_lazy(source_type: str) -> None:
-    tab_sections = ["재고조회", "입고내역", "출고내역", "대시보드", "마스터 관리"]
     with perf_span("inventory.subtab_select", source=source_type):
-        selected_tab = lazy_tab_selector(tab_sections, f"inventory_{source_key(source_type)}_section")
+        selected_tab, _ = inventory_menu_selector(
+            INVENTORY_SOURCE_TABS,
+            f"inventory_{source_key(source_type)}_section",
+            default="재고조회",
+        )
     if selected_tab == "재고조회":
         render_daily_tab(source_type)
     elif selected_tab == "입고내역":
@@ -218,22 +242,6 @@ def import_upload_result(message: str, outcome) -> dict:
 
 def source_key(source_type: str) -> str:
     return SOURCE_KEY_MAP.get(source_type, source_type)
-
-
-def render_source_inventory_tabs(source_type: str) -> None:
-    stock_tab, inbound_tab, outbound_tab, dashboard_tab, master_tab = st.tabs(
-        ["재고조회", "입고내역", "출고내역", "대시보드", "마스터 관리"]
-    )
-    with stock_tab:
-        render_daily_tab(source_type)
-    with inbound_tab:
-        render_inbound_tab(source_type)
-    with outbound_tab:
-        render_outbound_tab(source_type)
-    with dashboard_tab:
-        render_inventory_dashboard_tab(source_type)
-    with master_tab:
-        product_master_page.render_master_tab(source_type, master_title(source_type))
 
 
 def master_title(source_type: str) -> str:
