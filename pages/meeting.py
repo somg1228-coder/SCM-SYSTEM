@@ -25,7 +25,6 @@ EVENT_SUMMARY_COLUMNS = ["행사명", "행사기간", "행사품목", "요청수
 ACTION_COLUMNS = ["담당부서/담당자", "진행내용", "수량", "완료예정일", "납기일", "진행상태"]
 EDIT_DELETE_COLUMN = "삭제"
 ROW_ID_COLUMN = "_row_id"
-EVENT_PRODUCT_OPTIONS = ["SKUA", "SKUB", "SKUC", "SKUD", "SKUE"]
 _MEETING_SCHEMA_READY = False
 ISSUE_KEYS = {
     "생산/재고 이슈": "issue_delay",
@@ -68,8 +67,6 @@ def render_meeting_page() -> None:
     with perf_span("meeting.events_section"):
         events_df, event_month = render_events_section(report["id"], meta["meeting_date"])
     meta["event_month"] = event_month
-    with perf_span("meeting.event_detail_section"):
-        events_df = render_event_detail_section(report, events_df, event_month)
     with perf_span("meeting.issue_section"):
         issues = render_issue_section(report)
     with perf_span("meeting.action_section"):
@@ -104,6 +101,7 @@ def render_meeting_page() -> None:
         clear_editor_state(f"meeting_events_editor_v5_{report['id']}_{month_key(event_month)}")
         clear_editor_state(f"meeting_events_editor_v6_{report['id']}_{month_key(event_month)}")
         clear_editor_state(f"meeting_events_editor_v7_{report['id']}_{month_key(event_month)}")
+        clear_editor_state(f"meeting_events_editor_v8_{report['id']}_{month_key(event_month)}")
         clear_editor_state(f"meeting_events_edit_buffer_{report['id']}_{month_key(event_month)}")
         clear_event_detail_editor_states(report["id"], event_month)
         clear_editor_state(table_draft_state_key(report["id"], f"events_{month_key(event_month)}"))
@@ -155,6 +153,7 @@ def render_meeting_page() -> None:
             clear_editor_state(f"meeting_events_editor_v5_{report['id']}_{month_key(event_month)}")
             clear_editor_state(f"meeting_events_editor_v6_{report['id']}_{month_key(event_month)}")
             clear_editor_state(f"meeting_events_editor_v7_{report['id']}_{month_key(event_month)}")
+            clear_editor_state(f"meeting_events_editor_v8_{report['id']}_{month_key(event_month)}")
             clear_editor_state(f"meeting_events_edit_buffer_{report['id']}_{month_key(event_month)}")
             clear_event_detail_editor_states(report["id"], event_month)
             clear_editor_state(table_draft_state_key(report["id"], "production"))
@@ -383,15 +382,11 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
     edit_buffer = st.session_state[edit_buffer_key]
     st.caption(f"{calendar_month:%Y년 %m월} 행사일정입니다. 같은 달 회의자료에서는 계속 이어지고, 이전월/다음월 버튼으로 지난 행사도 확인할 수 있습니다.")
     preview_df = filter_filled_rows(strip_delete_marker_column(current_draft), EVENT_COLUMNS)
-    selected_index = selected_event_index(report_id, preview_df, calendar_month)
-    selected_index = apply_event_selection_query(report_id, preview_df, calendar_month, selected_index)
-    render_html(render_event_calendar_html(preview_df, calendar_month, meeting_date, selected_index, report_id))
-    selected_index = render_event_selection_pills(report_id, preview_df, calendar_month, selected_index)
+    render_html(render_event_calendar_html(preview_df, calendar_month, meeting_date))
     st.markdown(render_table_html(EVENT_SUMMARY_COLUMNS, preview_df, "events"), unsafe_allow_html=True)
 
     with st.expander("행사 일정 편집", expanded=True):
         st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 선택 삭제는 화면에서만 제외되며, Supabase 반영은 변경사항 저장을 눌렀을 때만 실행됩니다.")
-        render_event_product_quick_add(report_id, calendar_month)
         pending_rows = get_pending_event_rows(report_id, calendar_month)
         if pending_rows:
             pending_df = pd.DataFrame(pending_rows, columns=EVENT_COLUMNS)
@@ -400,14 +395,15 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
             st.session_state[edit_buffer_key] = edit_buffer
             clear_pending_event_rows(report_id, calendar_month)
         buffer_full = prepare_event_editor_df(strip_delete_marker_column(edit_buffer))
-        editor_df = add_delete_marker_column(buffer_full[[ROW_ID_COLUMN, *EVENT_SUMMARY_COLUMNS]], marker_source=edit_buffer)
-        editor_key = f"meeting_events_editor_v7_{report_id}_{month_key(calendar_month)}"
+        editor_df = add_delete_marker_column(buffer_full[[ROW_ID_COLUMN, *EVENT_COLUMNS]], marker_source=edit_buffer)
+        editor_key = f"meeting_events_editor_v8_{report_id}_{month_key(calendar_month)}"
         with st.form(key=f"meeting_events_editor_form_{report_id}_{month_key(calendar_month)}", clear_on_submit=False):
             edited = render_visible_spreadsheet_editor(
                 editor_df,
-                EVENT_SUMMARY_COLUMNS,
+                EVENT_COLUMNS,
                 editor_key,
                 number_columns={"요청수량"},
+                multiline_columns={"상세내용"},
             )
             editor_action = render_editor_actions(
                 "meeting_events",
@@ -420,19 +416,18 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
             )
             editor_action = edited.attrs.get("editor_row_action") if edited.attrs.get("editor_row_action") != "none" else editor_action
     events_source = current_draft
-    buffer_source = prepare_event_editor_df(strip_delete_marker_column(edit_buffer))
     if editor_action == "row_plus":
-        events_source = prepare_event_editor_df(merge_event_details(apply_editor_row_action(edited, editor_action, editor_key, EVENT_SUMMARY_COLUMNS), buffer_source))
+        events_source = prepare_event_editor_df(apply_editor_row_action(edited, editor_action, editor_key, EVENT_COLUMNS))
         st.session_state[draft_key] = prepare_event_editor_df(events_source)
         st.session_state[edit_buffer_key] = add_delete_marker_column(events_source)
         st.rerun()
     elif editor_action == "row_minus":
-        events_source = prepare_event_editor_df(merge_event_details(apply_editor_row_action(edited, editor_action, editor_key, EVENT_SUMMARY_COLUMNS), buffer_source))
+        events_source = prepare_event_editor_df(apply_editor_row_action(edited, editor_action, editor_key, EVENT_COLUMNS))
         st.session_state[draft_key] = prepare_event_editor_df(events_source)
         st.session_state[edit_buffer_key] = add_delete_marker_column(events_source)
         st.rerun()
     elif editor_action == "add_row":
-        events_source = prepare_event_editor_df(merge_event_details(strip_delete_marker_column(edited), buffer_source))
+        events_source = prepare_event_editor_df(strip_delete_marker_column(edited))
         st.session_state[draft_key] = prepare_event_editor_df(events_source)
         st.session_state[edit_buffer_key] = add_delete_marker_column(events_source)
         grow_editor_row_count(editor_key, len(events_source) + 1)
@@ -446,71 +441,16 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
         if len(strip_delete_marker_column(edited)) >= before_delete_count:
             st.session_state.meeting_save_requested = False
         else:
-            events_source = prepare_event_editor_df(merge_event_details(strip_delete_marker_column(edited), buffer_source))
+            events_source = prepare_event_editor_df(strip_delete_marker_column(edited))
             st.session_state[draft_key] = prepare_event_editor_df(events_source)
             st.session_state[edit_buffer_key] = add_delete_marker_column(events_source)
             reset_visible_editor_state(editor_key, len(events_source))
             st.rerun()
     elif editor_action == "save":
-        events_source = prepare_event_editor_df(merge_event_details(strip_delete_marker_column(edited), buffer_source))
+        events_source = prepare_event_editor_df(strip_delete_marker_column(edited))
         st.session_state[draft_key] = prepare_event_editor_df(events_source)
         st.session_state[edit_buffer_key] = add_delete_marker_column(events_source)
     return normalize_event_editor_df(events_source), calendar_month
-
-
-def render_event_detail_section(report: dict, events_df: pd.DataFrame, event_month: date) -> pd.DataFrame:
-    st.markdown('<div id="meeting-event-detail-section" class="meeting-subsection-title">행사 상세 내용</div>', unsafe_allow_html=True)
-    selected_index = selected_event_index(report["id"], events_df, event_month)
-    if selected_index is None:
-        st.markdown('<div class="meeting-note-box empty">위 행사 캘린더에서 상세내용을 등록할 일정을 선택하세요.</div>', unsafe_allow_html=True)
-        return events_df
-
-    selected_row = events_df.iloc[selected_index]
-    selected_name = normalize_cell_value(selected_row.get("행사명")) or normalize_cell_value(selected_row.get("행사품목")) or "행사"
-    selected_period = normalize_cell_value(selected_row.get("행사기간"))
-    selected_detail = normalize_cell_value(selected_row.get("상세내용"))
-    detail_key = f"meeting_event_detail_{report['id']}_{month_key(event_month)}_{selected_index}"
-    st.markdown(
-        f"""
-        <div class="meeting-selected-event">
-            <strong>{escape_html(selected_name)}</strong>
-            <span>{escape_html(selected_period)}</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if selected_detail:
-        st.markdown(render_note_html(selected_detail), unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="meeting-note-box empty">선택한 일정의 상세내용이 없습니다.</div>', unsafe_allow_html=True)
-
-    with st.expander("선택 일정 상세 내용 편집", expanded=True):
-        edited_detail = st.text_area(
-            "선택 일정 상세 내용",
-            value=selected_detail,
-            height=140,
-            placeholder="선택한 행사 일정의 운영 방식, 주요 요청사항, 준비물, 리스크, 협의 필요사항 등을 입력하세요.",
-            key=detail_key,
-        )
-        detail_col, delete_col, spacer = st.columns([0.9, 0.9, 3.2], gap="small")
-        detail_action = "none"
-        with detail_col:
-            if st.button("상세내용 저장", key="meeting_event_detail_save_btn", type="primary", use_container_width=True):
-                st.session_state.meeting_save_requested = True
-                detail_action = "save"
-        with delete_col:
-            if st.button("상세내용 삭제", key="meeting_event_detail_delete_btn", use_container_width=True):
-                st.session_state.meeting_save_requested = True
-                detail_action = "delete"
-        with spacer:
-            st.empty()
-
-    updated_events_df = events_df.copy()
-    if detail_action == "delete":
-        return update_event_detail_draft(report["id"], event_month, updated_events_df, selected_index, "")
-    if detail_action == "save":
-        return update_event_detail_draft(report["id"], event_month, updated_events_df, selected_index, edited_detail)
-    return events_df
 
 
 def validate_event_rows_before_save(events_df: pd.DataFrame) -> bool:
@@ -541,12 +481,14 @@ def render_visible_spreadsheet_editor(
     number_columns: set[str] | None = None,
     date_columns: set[str] | None = None,
     select_options: dict[str, list[str]] | None = None,
+    multiline_columns: set[str] | None = None,
     blank_rows: int = 3,
 ) -> pd.DataFrame:
     with perf_span("meeting.spreadsheet_prepare", editor=key_prefix):
         number_columns = number_columns or set()
         date_columns = date_columns or set()
         select_options = select_options or {}
+        multiline_columns = multiline_columns or set()
         source = df.copy() if df is not None else pd.DataFrame(columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
         for column in [EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns]:
             if column not in source.columns:
@@ -621,13 +563,24 @@ def render_visible_spreadsheet_editor(
                     )
                 else:
                     placeholder = "YYYY-MM-DD" if column in date_columns else ""
-                    edited_row[column] = row_cols[column_index].text_input(
-                        column,
-                        value=normalize_date_value(value) if column in date_columns else normalize_cell_value(value),
-                        placeholder=placeholder,
-                        key=cell_key,
-                        label_visibility="collapsed",
-                    )
+                    text_value = normalize_date_value(value) if column in date_columns else normalize_cell_value(value)
+                    if column in multiline_columns:
+                        edited_row[column] = row_cols[column_index].text_area(
+                            column,
+                            value=text_value,
+                            placeholder=placeholder,
+                            key=cell_key,
+                            height=72,
+                            label_visibility="collapsed",
+                        )
+                    else:
+                        edited_row[column] = row_cols[column_index].text_input(
+                            column,
+                            value=text_value,
+                            placeholder=placeholder,
+                            key=cell_key,
+                            label_visibility="collapsed",
+                        )
             edited_rows.append(edited_row)
         st.markdown("</div>", unsafe_allow_html=True)
     edited_df = pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
@@ -698,7 +651,7 @@ def is_blank_editor_row(row: dict, columns: list[str]) -> bool:
 def spreadsheet_column_weights(columns: list[str]) -> list[float]:
     weights = [0.42]
     for column in columns:
-        if column in {"상품명", "진행내용", "행사품목", "비고"}:
+        if column in {"상품명", "진행내용", "행사품목", "상세내용", "비고"}:
             weights.append(1.45)
         elif column in {"담당부서/담당자", "행사기간"}:
             weights.append(1.05)
@@ -740,6 +693,7 @@ def render_spreadsheet_css_once() -> None:
             min-width: 1040px;
         }
         .meeting-visible-editor [data-testid="stTextInput"] input,
+        .meeting-visible-editor [data-testid="stTextArea"] textarea,
         .meeting-visible-editor [data-testid="stNumberInput"] input,
         .meeting-visible-editor [data-baseweb="select"] > div {
             background: #FFFFFF !important;
@@ -748,6 +702,11 @@ def render_spreadsheet_css_once() -> None:
             font-size: 0.92rem !important;
             font-weight: 760 !important;
             min-height: 38px !important;
+        }
+        .meeting-visible-editor [data-testid="stTextArea"] textarea {
+            line-height: 1.32 !important;
+            min-height: 72px !important;
+            resize: vertical;
         }
         .meeting-visible-editor [data-testid="stCheckbox"] {
             align-items: center;
@@ -953,44 +912,6 @@ def normalize_selected_row_positions(value) -> list[int]:
             except (TypeError, ValueError):
                 continue
     return sorted(set(positions))
-
-
-def render_event_product_quick_add(report_id: int, event_month: date) -> None:
-    product_options = get_event_product_options(report_id, event_month)
-    with st.form(key=f"meeting_event_product_form_{report_id}_{month_key(event_month)}", clear_on_submit=False):
-        select_col, custom_col, add_col = st.columns([1.25, 1.6, 0.8], gap="small")
-        with select_col:
-            selected_products = st.multiselect(
-                "행사품목 선택",
-                options=product_options,
-                key=f"meeting_event_product_select_{report_id}",
-            )
-        with custom_col:
-            typed_products = st.text_input(
-                "직접 입력",
-                key=f"meeting_event_product_custom_{report_id}",
-                placeholder="여러 품목은 쉼표로 구분",
-            )
-        with add_col:
-            st.write("")
-            st.write("")
-            add_submitted = st.form_submit_button("품목 추가", use_container_width=True)
-        if add_submitted:
-            products = merge_unique_values([*selected_products, *split_product_text(typed_products)])
-            if products:
-                append_pending_event_row(
-                    report_id,
-                    event_month,
-                    {
-                        "행사명": "",
-                        "행사기간": "",
-                        "행사품목": ", ".join(products),
-                        "요청수량": 0,
-                        "상세내용": "",
-                    },
-                )
-            else:
-                st.warning("추가할 행사품목을 선택하거나 입력하세요.")
 
 
 def build_event_editor_df(df: pd.DataFrame, report_id: int, event_month: date) -> pd.DataFrame:
@@ -1803,39 +1724,6 @@ def parse_int(value) -> int:
         return 0
 
 
-def get_event_product_options(report_id: int, event_month: date) -> list[str]:
-    products = list(EVENT_PRODUCT_OPTIONS)
-    try:
-        with connect_sqlite_compatible(DB_PATH) as conn:
-            products.extend(
-                row[0]
-                for row in conn.execute(
-                    """
-                    SELECT DISTINCT product_name
-                    FROM meeting_production_requests
-                    WHERE report_id = ? AND TRIM(product_name) != ''
-                    """,
-                    (report_id,),
-                ).fetchall()
-            )
-            event_product_rows = conn.execute(
-                """
-                SELECT DISTINCT affected_products
-                FROM meeting_events
-                WHERE event_month = ? AND TRIM(affected_products) != ''
-                """,
-                (month_key(event_month),),
-            ).fetchall()
-    except sqlite3.Error:
-        event_product_rows = []
-
-    for row in event_product_rows:
-        products.extend(split_product_text(row[0]))
-    for row in get_pending_event_rows(report_id, event_month):
-        products.extend(split_product_text(row.get("행사품목", "")))
-    return merge_unique_values(products)
-
-
 def pending_event_rows_key(report_id: int, event_month: date) -> str:
     return f"meeting_events_pending_rows_{report_id}_{month_key(event_month)}"
 
@@ -1843,12 +1731,6 @@ def pending_event_rows_key(report_id: int, event_month: date) -> str:
 def get_pending_event_rows(report_id: int, event_month: date) -> list[dict]:
     rows = st.session_state.get(pending_event_rows_key(report_id, event_month), [])
     return rows if isinstance(rows, list) else []
-
-
-def append_pending_event_row(report_id: int, event_month: date, row: dict) -> None:
-    rows = [*get_pending_event_rows(report_id, event_month)]
-    rows.append({column: row.get(column, "") for column in EVENT_COLUMNS})
-    st.session_state[pending_event_rows_key(report_id, event_month)] = rows
 
 
 def clear_pending_event_rows(report_id: int, event_month: date) -> None:
@@ -1974,22 +1856,6 @@ def clear_event_detail_editor_states(report_id: int, event_month: date) -> None:
     for key in list(st.session_state.keys()):
         if str(key).startswith(key_prefix):
             clear_editor_state(key)
-
-
-def update_event_detail_draft(
-    report_id: int,
-    event_month: date,
-    events_df: pd.DataFrame,
-    selected_index: int,
-    detail: str,
-) -> pd.DataFrame:
-    updated_df = prepare_event_editor_df(events_df)
-    if updated_df.empty or selected_index < 0 or selected_index >= len(updated_df):
-        return updated_df
-
-    updated_df.at[updated_df.index[selected_index], "상세내용"] = normalize_cell_value(detail)
-    st.session_state[table_draft_state_key(report_id, f"events_{month_key(event_month)}")] = prepare_event_editor_df(updated_df)
-    return updated_df
 
 
 def delete_event_month(event_month: date) -> None:
@@ -2544,86 +2410,15 @@ def parse_stored_month(value, default_month: date) -> date:
     return date(parsed.year, parsed.month, 1)
 
 
-def selected_event_index(report_id: int, df: pd.DataFrame, event_month: date) -> int | None:
-    state_key = f"meeting_selected_event_row_{report_id}_{month_key(event_month)}"
-    selected = st.session_state.get(state_key)
-    if not isinstance(selected, int) or df is None or df.empty:
-        return None
-    if selected < 0 or selected >= len(df):
-        st.session_state.pop(state_key, None)
-        return None
-    return selected
-
-
-def apply_event_selection_query(report_id: int, df: pd.DataFrame, event_month: date, selected_index: int | None) -> int | None:
-    try:
-        query_month = st.query_params.get("meeting_event_month")
-        query_row = st.query_params.get("meeting_event_row")
-    except Exception:
-        return selected_index
-    if isinstance(query_month, list):
-        query_month = query_month[0] if query_month else ""
-    if isinstance(query_row, list):
-        query_row = query_row[0] if query_row else ""
-    if query_month != month_key(event_month):
-        return selected_index
-    try:
-        row_position = int(query_row)
-    except (TypeError, ValueError):
-        return selected_index
-    if df is None or df.empty or row_position < 0 or row_position >= len(df):
-        return selected_index
-    state_key = f"meeting_selected_event_row_{report_id}_{month_key(event_month)}"
-    st.session_state[state_key] = row_position
-    return row_position
-
-
-def render_event_selection_pills(report_id: int, df: pd.DataFrame, event_month: date, selected_index: int | None) -> int | None:
-    state_key = f"meeting_selected_event_row_{report_id}_{month_key(event_month)}"
-    widget_key = f"meeting_event_selector_{report_id}_{month_key(event_month)}"
-    if df is None or df.empty:
-        st.session_state.pop(state_key, None)
-        st.caption("선택할 행사 일정이 없습니다.")
-        return None
-
-    options = list(range(len(df)))
-    if selected_index not in options:
-        selected_index = None
-
-    selected = st.pills(
-        "상세내용 작성할 행사 선택",
-        options,
-        selection_mode="single",
-        default=selected_index,
-        format_func=lambda index: event_selection_label(df.iloc[int(index)], int(index)),
-        key=widget_key,
-    )
-    if selected is None:
-        return selected_index
-    selected_index = int(selected)
-    st.session_state[state_key] = selected_index
-    return selected_index
-
-
-def event_selection_label(row: pd.Series, index: int) -> str:
-    name = normalize_cell_value(row.get("행사명")) or normalize_cell_value(row.get("행사품목")) or "행사"
-    period = normalize_cell_value(row.get("행사기간"))
-    suffix = f" / {period}" if period else ""
-    return f"{index + 1}. {truncate_text(name, 18)}{suffix}"
-
-
 def render_event_calendar_html(
     df: pd.DataFrame,
     display_month: date,
     meeting_date: date,
-    selected_index: int | None,
-    report_id: int | None = None,
 ) -> str:
-    month_text = month_key(display_month)
     month_weeks = calendar.monthcalendar(display_month.year, display_month.month)
     events_by_day: dict[int, list[str]] = {}
     if df is not None and not df.empty:
-        for row_position, (_, row) in enumerate(df.iterrows()):
+        for _, row in df.iterrows():
             sku = normalize_cell_value(row.get("행사품목", ""))
             detail = truncate_text(normalize_cell_value(row.get("상세내용", row.get("비고", ""))), 42)
             label = normalize_cell_value(row.get("행사명", "")) or truncate_text(sku, 32) or detail or "행사"
@@ -2634,10 +2429,7 @@ def render_event_calendar_html(
                     + (f"<em>{escape_html(detail)}</em>" if detail else "")
                 )
                 chip_class = "meeting-event-chip"
-                if selected_index == row_position:
-                    chip_class += " selected"
-                query = urlencode({"page": "회의자료", "meeting_event_month": month_text, "meeting_event_row": row_position})
-                chip = f'<a class="{chip_class}" href="?{query}#meeting-event-detail-section">{chip_body}</a>'
+                chip = f'<span class="{chip_class}">{chip_body}</span>'
                 events_by_day.setdefault(day, []).append(chip)
 
     week_labels = "".join(f"<b>{day}</b>" for day in ["월", "화", "수", "목", "금", "토", "일"])
