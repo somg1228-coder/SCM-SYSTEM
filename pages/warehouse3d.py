@@ -2628,7 +2628,8 @@ def warehouse_scene3d_html(
                 display: grid;
                 gap: 0.72rem;
                 grid-template-columns: 160px minmax(0, 1.18fr) minmax(410px, 0.92fr);
-                height: 684px;
+                height: clamp(720px, 82vh, 900px);
+                min-height: 720px;
             }}
             .panel {{
                 background: #edf0ec;
@@ -2923,13 +2924,16 @@ def warehouse_scene3d_html(
             .detail-panel {{
                 display: flex;
                 flex-direction: column;
+                gap: 0.52rem;
+                overflow: auto;
+                scrollbar-gutter: stable;
             }}
             .detail-section {{
                 background: rgba(250, 248, 245, 0.72);
                 border: 1px solid #D8D2C8;
                 border-radius: 10px;
-                margin-bottom: 0.58rem;
-                padding: 0.62rem;
+                margin-bottom: 0;
+                padding: 0.52rem;
             }}
             .section-title {{
                 align-items: center;
@@ -2939,13 +2943,13 @@ def warehouse_scene3d_html(
                 font-weight: 950;
                 justify-content: space-between;
                 line-height: 1.25;
-                margin-bottom: 0.48rem;
+                margin-bottom: 0.36rem;
             }}
             .rack-detail {{
                 background: #f8fafc;
                 border: 1px solid #e2e8f0;
                 border-radius: 10px;
-                padding: 0.62rem;
+                padding: 0.52rem 0.58rem;
             }}
             .rack-detail strong {{
                 color: #1f2937;
@@ -2958,11 +2962,12 @@ def warehouse_scene3d_html(
                 font-size: 0.76rem;
                 font-weight: 800;
                 margin-top: 0.26rem;
+                overflow-wrap: anywhere;
             }}
             .assign-box {{
                 display: grid;
-                gap: 0.36rem;
-                grid-template-columns: minmax(0, 1.15fr) minmax(92px, 0.75fr) minmax(72px, 0.55fr) minmax(84px, 0.65fr);
+                gap: 0.3rem;
+                grid-template-columns: minmax(0, 1.2fr) minmax(88px, 0.75fr) minmax(68px, 0.52fr) minmax(84px, 0.64fr);
             }}
             .field {{
                 display: flex;
@@ -2974,8 +2979,10 @@ def warehouse_scene3d_html(
                 color: #52616b;
                 font-size: 0.64rem;
                 font-weight: 900;
-                line-height: 1.1;
-                white-space: nowrap;
+                line-height: 1.18;
+                min-height: 0.78rem;
+                overflow: visible;
+                white-space: normal;
             }}
             .field input,
             .field select {{
@@ -3000,7 +3007,7 @@ def warehouse_scene3d_html(
                 display: flex;
                 font-size: 0.68rem;
                 font-weight: 900;
-                min-height: 34px;
+                min-height: 32px;
                 overflow: hidden;
                 padding: 0 0.44rem;
                 text-overflow: ellipsis;
@@ -3017,6 +3024,7 @@ def warehouse_scene3d_html(
             }}
             .detail-tools {{
                 flex: 0 0 auto;
+                min-height: 0;
             }}
             .stock-guide {{
                 background: #eef3f7;
@@ -3025,27 +3033,26 @@ def warehouse_scene3d_html(
                 color: #475569;
                 font-size: 0.7rem;
                 font-weight: 850;
-                line-height: 1.45;
-                margin-top: 0.5rem;
-                padding: 0.52rem 0.62rem;
+                line-height: 1.35;
+                margin-top: 0.42rem;
+                padding: 0.44rem 0.54rem;
             }}
             .nudge-grid {{
                 display: grid;
                 gap: 0.3rem;
                 grid-template-columns: repeat(4, minmax(0, 1fr));
-                margin-bottom: 0.5rem;
             }}
             .fixture-box {{
                 display: grid;
-                gap: 0.36rem;
+                gap: 0.32rem;
                 grid-template-columns: minmax(0, 1fr) repeat(4, 76px);
-                margin-bottom: 0.5rem;
+                margin-bottom: 0.44rem;
             }}
             .move-to-rack-box {{
                 display: grid;
-                gap: 0.36rem;
+                gap: 0.32rem;
                 grid-template-columns: minmax(0, 1fr) 82px 116px;
-                margin-bottom: 0.5rem;
+                margin-bottom: 0.42rem;
             }}
             .move-floor-box {{
                 display: none;
@@ -3080,8 +3087,9 @@ def warehouse_scene3d_html(
             .item-list {{
                 border: 1px solid #e2e8f0;
                 border-radius: 10px;
-                flex: 1 1 auto;
-                min-height: 122px;
+                flex: 1 0 180px;
+                margin-top: 0;
+                min-height: 180px;
                 overflow: auto;
             }}
             .item-list table {{
