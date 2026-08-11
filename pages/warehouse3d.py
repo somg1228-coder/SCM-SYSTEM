@@ -242,6 +242,27 @@ def rack_shelf_no(item: dict, fallback: int) -> int:
     return max(1, fallback)
 
 
+def warehouse_item_total_quantity(item: dict) -> int:
+    storage_unit = str(item.get("storage_unit") or item.get("package_type") or "").strip().upper()
+    package_count = max(0, safe_int(item.get("package_count"), 0))
+    qty_per_package = max(0, safe_int(item.get("qty_per_package"), 0))
+    boxes_per_pallet = max(0, safe_int(item.get("boxes_per_pallet"), 0))
+    stored_total = safe_int(item.get("total_quantity", item.get("quantity", item.get("qty", item.get("stock")))), 0)
+    if storage_unit == "EA":
+        return package_count or stored_total
+    if storage_unit == "BOX":
+        if package_count and qty_per_package:
+            return package_count * qty_per_package
+        return stored_total
+    if storage_unit == "PALLET":
+        if package_count and boxes_per_pallet and qty_per_package:
+            return package_count * boxes_per_pallet * qty_per_package
+        if package_count and qty_per_package:
+            return package_count * qty_per_package
+        return stored_total
+    return max(0, stored_total)
+
+
 def ensure_warehouse_detail_tables(db) -> None:
     if WarehouseRack is None or WarehouseInventoryPosition is None:
         return
@@ -309,7 +330,7 @@ def sync_warehouse_layout_detail_tables(db, layout_rows: list) -> None:
                 if not sku and not item_name:
                     continue
                 key = (shelf_no, sku, item_name)
-                quantity = safe_int(item.get("quantity", item.get("qty", item.get("stock"))), 0)
+                quantity = warehouse_item_total_quantity(item)
                 if key not in aggregated:
                     aggregated[key] = {"quantity": 0, "sort_order": item_index, "position_data": dict(item)}
                 aggregated[key]["quantity"] += quantity
@@ -1213,7 +1234,48 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                 return count > 1 ? `${{count}}중` : "1중";
             }}
 
+            function positiveInteger(value, fallback = 1) {{
+                const numberValue = Math.trunc(Number(value));
+                return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;
+            }}
+
+            function storageUnitForItem(item) {{
+                const raw = String(item?.storage_unit || item?.package_type || "").trim().toUpperCase();
+                if (["EA", "BOX", "PALLET"].includes(raw)) return raw;
+                const shape = String(item?.shape || item?.type || "").trim();
+                if (shape === "pallet" || shape === "wrapped_pallet") return "PALLET";
+                return "BOX";
+            }}
+
+            function packageCount(item) {{
+                const existing = item?.package_count ?? item?.packageCount;
+                if (Number(existing) > 0) return positiveInteger(existing, 1);
+                const total = positiveInteger(item?.total_quantity ?? item?.quantity ?? item?.qty ?? item?.stock, 1);
+                if (storageUnitForItem(item) === "EA") return total;
+                return Math.max(1, positiveInteger(item?.qty ?? item?.stock, 1));
+            }}
+
+            function qtyPerPackage(item) {{
+                const existing = item?.qty_per_package ?? item?.qtyPerPackage;
+                if (Number(existing) > 0) return positiveInteger(existing, 1);
+                if (storageUnitForItem(item) === "EA") return 1;
+                const total = positiveInteger(item?.total_quantity ?? item?.quantity ?? item?.qty ?? item?.stock, 1);
+                return Math.max(1, Math.ceil(total / Math.max(1, packageCount(item))));
+            }}
+
+            function boxesPerPallet(item) {{
+                const value = Math.trunc(Number(item?.boxes_per_pallet ?? item?.boxesPerPallet ?? 0));
+                return Number.isFinite(value) && value > 0 ? value : 0;
+            }}
+
             function quantityOf(item) {{
+                const unit = storageUnitForItem(item);
+                const count = packageCount(item);
+                const perPackage = qtyPerPackage(item);
+                const boxes = boxesPerPallet(item);
+                if (unit === "EA") return count;
+                if (unit === "BOX") return count * perPackage;
+                if (unit === "PALLET") return count * (boxes > 0 ? boxes * perPackage : perPackage);
                 return Number(item?.qty || item?.stock || 0);
             }}
 
@@ -1264,7 +1326,7 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                         const fixtureName = String(fixture.label || shapeLabel(fixture.type) || "바닥 품목").trim();
                         const fixtureId = fixture.id ? ` / ${{fixture.id}}` : "";
                         const location = `바닥 배치 / ${{fixtureName}}${{fixtureId}}`;
-                        addRow(rows, buildingName, floorName, location, fixture.type, fixture.label, fixture.barcode, Number(fixture.qty || 1), fixture.stack || 1);
+                        addRow(rows, buildingName, floorName, location, fixture.type, fixture.label, fixture.barcode, quantityOf(fixture), fixture.stack || 1);
                         if (fixture.type === "pallet" && Array.isArray(fixture.items)) {{
                             fixture.items.forEach(innerItem => {{
                                 addRow(rows, buildingName, floorName, `${{location}} / 파렛트 내부`, innerItem.shape || "box", innerItem.name, innerItem.barcode, quantityOf(innerItem), innerItem.stack || 1);
@@ -2884,8 +2946,26 @@ def warehouse_scene3d_html(
             .assign-box {{
                 display: grid;
                 gap: 0.36rem;
-                grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.85fr) 56px 74px 82px 64px;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
                 margin-bottom: 0.5rem;
+            }}
+            #manualItemName {{
+                grid-column: span 2;
+            }}
+            .assign-box .load-total-preview {{
+                align-items: center;
+                background: #eef3f7;
+                border: 1px solid #dbe3ec;
+                border-radius: 9px;
+                color: #334155;
+                display: flex;
+                font-size: 0.68rem;
+                font-weight: 900;
+                min-height: 34px;
+                overflow: hidden;
+                padding: 0 0.44rem;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }}
             #itemSelect {{
                 display: none !important;
@@ -2960,7 +3040,7 @@ def warehouse_scene3d_html(
                 overflow: auto;
             }}
             .item-list table {{
-                min-width: 660px;
+                min-width: 820px;
                 table-layout: fixed;
             }}
             .item-list th,
@@ -2991,11 +3071,22 @@ def warehouse_scene3d_html(
             }}
             .item-list th:nth-child(5),
             .item-list td:nth-child(5) {{
-                width: 12%;
+                width: 16%;
             }}
             .item-list th:nth-child(6),
             .item-list td:nth-child(6) {{
-                width: 15%;
+                width: 20%;
+            }}
+            .row-actions input,
+            .row-actions select {{
+                font-size: 0.66rem;
+                min-height: 26px;
+            }}
+            .package-actions {{
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }}
+            .package-actions .wide {{
+                grid-column: 1 / -1;
             }}
             table {{
                 border-collapse: collapse;
@@ -3290,17 +3381,25 @@ def warehouse_scene3d_html(
                         <select id="itemSelect"></select>
                         <input id="manualItemName" type="text" placeholder="상품명 직접 입력" aria-label="상품명 직접 입력">
                         <input id="manualItemBarcode" type="text" placeholder="바코드" aria-label="바코드">
-                        <input id="itemQty" type="number" min="1" value="1" aria-label="수량">
+                        <input id="itemQty" type="number" min="1" value="1" aria-label="포장수량">
                         <select id="partSelect" aria-label="랙 칸">
                             <option value="1단">1단</option>
                             <option value="2단">2단</option>
                             <option value="3단">3단</option>
                             <option value="4단">4단</option>
                         </select>
-                        <select id="loadShapeSelect" aria-label="적재 형태">
-                            <option value="box">박스</option>
+                        <select id="loadShapeSelect" aria-label="적재 단위">
+                            <option value="ea">개별</option>
+                            <option value="box" selected>박스</option>
                             <option value="pallet">파렛트</option>
                         </select>
+                        <input id="qtyPerPackage" type="number" min="1" value="1" placeholder="EA/단위" aria-label="단위당 상품수량">
+                        <input id="boxesPerPallet" type="number" min="0" value="" placeholder="BOX/PLT" aria-label="파렛트당 박스수">
+                        <select id="displayModeSelect" aria-label="3D 표시 방식">
+                            <option value="ACTUAL">실제 개수</option>
+                            <option value="SINGLE">대표 1개</option>
+                        </select>
+                        <span id="loadTotalPreview" class="load-total-preview">총 1 EA</span>
                         <button type="button" id="addLoad">추가</button>
                     </div>
                     <div class="stock-guide">랙을 선택하면 해당 랙/단에 적재되고, 바닥 박스/파렛트는 시설물 배치에서 추가 후 랙에 넣기로 옮길 수 있습니다.</div>
@@ -3432,6 +3531,10 @@ def warehouse_scene3d_html(
             const manualItemBarcode = document.getElementById("manualItemBarcode");
             const partSelect = document.getElementById("partSelect");
             const loadShapeSelect = document.getElementById("loadShapeSelect");
+            const qtyPerPackageInput = document.getElementById("qtyPerPackage");
+            const boxesPerPalletInput = document.getElementById("boxesPerPallet");
+            const displayModeSelect = document.getElementById("displayModeSelect");
+            const loadTotalPreview = document.getElementById("loadTotalPreview");
             const fixtureTypeSelect = document.getElementById("fixtureTypeSelect");
             const rotateFixtureButton = document.getElementById("rotateFixture");
             const lockFixtureButton = document.getElementById("lockFixture");
@@ -3713,6 +3816,101 @@ def warehouse_scene3d_html(
                 return Number.isFinite(numberValue) ? Math.trunc(numberValue) : 0;
             }}
 
+            function positiveInteger(value, fallback = 1) {{
+                const numberValue = Math.trunc(Number(value));
+                return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;
+            }}
+
+            function storageUnitForItem(item) {{
+                const raw = String(item?.storage_unit || item?.package_type || "").trim().toUpperCase();
+                if (["EA", "BOX", "PALLET"].includes(raw)) return raw;
+                const shape = String(item?.shape || item?.type || "").trim();
+                if (shape === "pallet" || shape === "wrapped_pallet") return "PALLET";
+                return "BOX";
+            }}
+
+            function visualShapeForStorageUnit(unit) {{
+                return unit === "PALLET" ? "pallet" : "box";
+            }}
+
+            function packageCount(item) {{
+                const existing = item?.package_count ?? item?.packageCount;
+                if (Number(existing) > 0) return positiveInteger(existing, 1);
+                const unit = storageUnitForItem(item);
+                const total = positiveInteger(item?.total_quantity ?? item?.quantity ?? item?.qty ?? item?.stock, 1);
+                const perPackage = positiveInteger(item?.qty_per_package ?? item?.qtyPerPackage, 1);
+                if (unit === "EA") return total;
+                if (unit === "BOX") return Math.max(1, Math.ceil(total / perPackage));
+                if (unit === "PALLET") return positiveInteger(item?.qty ?? item?.stock, 1);
+                return 1;
+            }}
+
+            function qtyPerPackage(item) {{
+                const existing = item?.qty_per_package ?? item?.qtyPerPackage;
+                if (Number(existing) > 0) return positiveInteger(existing, 1);
+                if (storageUnitForItem(item) === "EA") return 1;
+                const packageValue = packageCount(item);
+                const total = positiveInteger(item?.total_quantity ?? item?.quantity ?? item?.qty ?? item?.stock, 1);
+                return Math.max(1, Math.ceil(total / Math.max(1, packageValue)));
+            }}
+
+            function boxesPerPallet(item) {{
+                const value = Math.trunc(Number(item?.boxes_per_pallet ?? item?.boxesPerPallet ?? 0));
+                return Number.isFinite(value) && value > 0 ? value : 0;
+            }}
+
+            function displayModeForItem(item) {{
+                return String(item?.display_mode || item?.displayMode || "ACTUAL").trim().toUpperCase() === "SINGLE" ? "SINGLE" : "ACTUAL";
+            }}
+
+            function totalQuantity(item) {{
+                const unit = storageUnitForItem(item);
+                const count = packageCount(item);
+                const perPackage = qtyPerPackage(item);
+                const boxes = boxesPerPallet(item);
+                if (unit === "EA") return count;
+                if (unit === "BOX") return count * perPackage;
+                if (unit === "PALLET") return count * (boxes > 0 ? boxes * perPackage : perPackage);
+                return positiveInteger(item?.total_quantity ?? item?.quantity ?? item?.qty ?? item?.stock, 0);
+            }}
+
+            function normalizeLoadPackageFields(item) {{
+                const unit = storageUnitForItem(item);
+                const total = totalQuantity({{ ...item, storage_unit: unit }});
+                item.storage_unit = unit;
+                item.package_type = unit;
+                item.package_count = packageCount(item);
+                item.qty_per_package = unit === "EA" ? 1 : qtyPerPackage(item);
+                item.boxes_per_pallet = unit === "PALLET" ? boxesPerPallet(item) : 0;
+                item.total_quantity = total;
+                item.quantity = total;
+                item.qty = total;
+                item.shape = visualShapeForStorageUnit(unit);
+                item.display_mode = displayModeForItem(item);
+                return item;
+            }}
+
+            function packageUnitLabel(unit) {{
+                if (unit === "EA") return "개별 상품";
+                if (unit === "PALLET") return "파렛트";
+                return "박스";
+            }}
+
+            function packageSummaryText(item) {{
+                const unit = storageUnitForItem(item);
+                const count = packageCount(item);
+                const total = totalQuantity(item);
+                if (unit === "EA") return `${{count.toLocaleString("ko-KR")}} EA`;
+                if (unit === "BOX") return `${{count.toLocaleString("ko-KR")}} BOX × ${{qtyPerPackage(item).toLocaleString("ko-KR")}} EA = ${{total.toLocaleString("ko-KR")}} EA`;
+                const boxes = boxesPerPallet(item);
+                if (boxes > 0) return `${{count.toLocaleString("ko-KR")}} PLT × ${{boxes.toLocaleString("ko-KR")}} BOX × ${{qtyPerPackage(item).toLocaleString("ko-KR")}} EA = ${{total.toLocaleString("ko-KR")}} EA`;
+                return `${{count.toLocaleString("ko-KR")}} PLT × ${{qtyPerPackage(item).toLocaleString("ko-KR")}} EA = ${{total.toLocaleString("ko-KR")}} EA`;
+            }}
+
+            function labelQuantityText(item) {{
+                return `×${{totalQuantity(item).toLocaleString("ko-KR")}}`;
+            }}
+
             function shelfNumber(item, fallback) {{
                 const text = String(item?.part || item?.shelf || item?.shelf_no || "");
                 const digits = text.replace(/[^0-9]/g, "");
@@ -3806,8 +4004,9 @@ def warehouse_scene3d_html(
                                 const itemName = String(item?.item_name || item?.product_name || item?.name || "").trim();
                                 if (!sku && !itemName) return;
                                 const key = `${{shelfNo}}|${{sku}}|${{itemName}}`;
-                                const quantity = Math.max(0, integerOrZero(item?.quantity ?? item?.qty ?? item?.stock));
-                                const existing = aggregated.get(key) || {{ quantity: 0, sort_order: itemIndex, position_data: item }};
+                                const normalizedItem = normalizeLoadPackageFields({{ ...item }});
+                                const quantity = Math.max(0, integerOrZero(totalQuantity(normalizedItem)));
+                                const existing = aggregated.get(key) || {{ quantity: 0, sort_order: itemIndex, position_data: normalizedItem }};
                                 existing.quantity += quantity;
                                 aggregated.set(key, existing);
                             }});
@@ -4178,6 +4377,10 @@ def warehouse_scene3d_html(
                 refreshFloorOnly();
             }}
 
+            function normalizeRackItem(item) {{
+                return normalizeLoadPackageFields({{ ...(item || {{}}) }});
+            }}
+
             function normalizeFixture(fixture, index = 0) {{
                 const type = fixture?.type || "entrance";
                 const template = fixtureDefaults[type] || fixtureDefaults.entrance;
@@ -4185,17 +4388,20 @@ def warehouse_scene3d_html(
                 const max = fixtureAllowsOutside(type) ? 124 : 99;
                 const rawX = Number.isFinite(Number(fixture?.x)) ? Number(fixture.x) : 50;
                 const rawY = Number.isFinite(Number(fixture?.y)) ? Number(fixture.y) : 50;
+                const loadFixture = ["box", "pallet", "wrapped_pallet"].includes(type);
+                const normalized = loadFixture ? normalizeLoadPackageFields({{ ...fixture, storage_unit: type === "box" ? (fixture?.storage_unit || "BOX") : (fixture?.storage_unit || "PALLET") }}) : {{}};
                 return {{
                     ...template,
                     ...fixture,
+                    ...normalized,
                     type,
                     id: fixture?.id || `F-${{String(index + 1).padStart(2, "0")}}`,
                     label: fixture?.label || template.label,
                     x: clamp(rawX, min, max),
                     y: clamp(rawY, min, max),
-                    qty: Math.max(1, Number(fixture?.qty || 1)),
+                    qty: loadFixture ? normalized.total_quantity : Math.max(1, Number(fixture?.qty || 1)),
                     stack: clamp(Number(fixture?.stack || 1), 1, 2),
-                    items: Array.isArray(fixture?.items) ? fixture.items : [],
+                    items: Array.isArray(fixture?.items) ? fixture.items.map(normalizeRackItem) : [],
                     rotation: Number.isFinite(Number(fixture?.rotation)) ? Number(fixture.rotation) : 0,
                 }};
             }}
@@ -4215,7 +4421,7 @@ def warehouse_scene3d_html(
                     roofOnly: Boolean(rack.roofOnly),
                     parentRackId: String(rack.parentRackId || ""),
                     locked: Boolean(rack.locked),
-                    items: rack.items || [],
+                    items: Array.isArray(rack.items) ? rack.items.map(normalizeRackItem) : [],
                 }}));
             }}
 
@@ -4383,7 +4589,7 @@ def warehouse_scene3d_html(
             }}
 
             function rackLoadedQty(rack) {{
-                return (rack.items || []).reduce((sum, item) => sum + Number(item.qty || item.stock || 0), 0);
+                return (rack.items || []).reduce((sum, item) => sum + totalQuantity(item), 0);
             }}
 
             function rackStatus(rack) {{
@@ -4718,24 +4924,28 @@ def warehouse_scene3d_html(
                 return shape === "pallet" || shape === "wrapped_pallet" ? "파렛트" : "박스";
             }}
 
+            function loadTypeLabel(item) {{
+                return packageUnitLabel(storageUnitForItem(item));
+            }}
+
             function stackLabel(stack) {{
                 const count = clamp(Number(stack || 1), 1, 2);
                 return count > 1 ? `${{count}}중` : "1중";
             }}
 
             function loadQtyText(item, showPalletStack = false) {{
-                const qty = Number(item?.qty || item?.stock || 0).toLocaleString("ko-KR");
                 const isPallet = item?.shape === "pallet" || item?.shape === "wrapped_pallet" || item?.type === "pallet" || item?.type === "wrapped_pallet";
                 const innerQty = Array.isArray(item?.items)
-                    ? item.items.reduce((sum, innerItem) => sum + Number(innerItem.qty || innerItem.stock || 0), 0)
+                    ? item.items.reduce((sum, innerItem) => sum + totalQuantity(innerItem), 0)
                     : 0;
                 const innerText = innerQty ? ` · 내부 ${{innerQty.toLocaleString("ko-KR")}}개` : "";
                 const stackText = showPalletStack && Number(item?.stack || 1) > 1 ? ` · ${{stackLabel(item?.stack)}}` : "";
-                return isPallet ? `${{qty}}개${{stackText}}${{innerText}}` : `${{qty}}개${{innerText}}`;
+                const packageText = packageSummaryText(item);
+                return isPallet ? `${{packageText}}${{stackText}}${{innerText}}` : `${{packageText}}${{innerText}}`;
             }}
 
             function palletContentQty(fixture) {{
-                return (fixture?.items || []).reduce((sum, item) => sum + Number(item.qty || item.stock || 0), 0);
+                return (fixture?.items || []).reduce((sum, item) => sum + totalQuantity(item), 0);
             }}
 
             function makeFixture(fixture) {{
@@ -4813,7 +5023,9 @@ def warehouse_scene3d_html(
 
                 const innerQty = (fixture.type === "pallet" || fixture.type === "wrapped_pallet") ? palletContentQty(fixture) : 0;
                 const labelText = (fixture.type === "pallet" || fixture.type === "wrapped_pallet")
-                    ? `${{fixture.label || "파렛트"}}${{Number(fixture.stack || 1) > 1 ? ` · ${{stackLabel(fixture.stack)}}` : ""}}${{innerQty ? ` · 내부 ${{innerQty}}개` : ""}}`
+                    ? `${{fixture.label || "파렛트"}} ${{labelQuantityText(fixture)}}${{Number(fixture.stack || 1) > 1 ? ` · ${{stackLabel(fixture.stack)}}` : ""}}${{innerQty ? ` · 내부 ${{innerQty.toLocaleString("ko-KR")}}개` : ""}}`
+                    : isLoadFixture(fixture)
+                    ? `${{fixture.label || "박스"}} ${{labelQuantityText(fixture)}}`
                     : (fixture.label || "시설물");
                 const shouldShowFixtureLabel = showFixtureLabels || fixture.id === selectedFixtureId;
                 if (shouldShowFixtureLabel) {{
@@ -4867,6 +5079,29 @@ def warehouse_scene3d_html(
                 }}
 
                 return group;
+            }}
+
+            function visualObjectCount(item) {{
+                if (displayModeForItem(item) === "SINGLE") return 1;
+                if (storageUnitForItem(item) === "EA") return 1;
+                return packageCount(item);
+            }}
+
+            function visualLoadsForShelf(items) {{
+                const expanded = [];
+                const maxVisualObjectsPerItem = 24;
+                (items || []).forEach(item => {{
+                    const normalized = normalizeRackItem(item);
+                    const count = Math.min(maxVisualObjectsPerItem, Math.max(1, visualObjectCount(normalized)));
+                    Array.from({{ length: count }}).forEach((_, visualIndex) => {{
+                        expanded.push({{ item: normalized, visualIndex }});
+                    }});
+                }});
+                return expanded;
+            }}
+
+            function itemLabelText(item) {{
+                return `${{shortLabel(item.name, 11)}} ${{labelQuantityText(item)}}`;
             }}
 
             function makeShelfRack(rack, world, floorY) {{
@@ -4949,10 +5184,11 @@ def warehouse_scene3d_html(
                 }});
 
                 shelfLabels.forEach((part, shelfIndex) => {{
-                    const items = itemsByPart.get(part) || [];
+                    const items = visualLoadsForShelf(itemsByPart.get(part) || []);
                     const y = shelfYs[shelfIndex] + 0.22;
-                    const maxBoxes = Math.min(5, Math.max(1, items.length));
-                    items.slice(0, maxBoxes).forEach((item, itemIndex) => {{
+                    const maxBoxes = Math.min(24, Math.max(1, items.length));
+                    items.slice(0, maxBoxes).forEach((visualItem, itemIndex) => {{
+                        const item = visualItem.item;
                         const isPallet = item.shape === "pallet" || item.shape === "wrapped_pallet";
                         const boxW = isPallet
                             ? Math.min(1.18, Math.max(0.82, world.w / Math.max(1.8, maxBoxes + 0.35)))
@@ -4966,7 +5202,7 @@ def warehouse_scene3d_html(
                         const x = -world.w / 2 + boxW * 0.9 + itemIndex * (world.w - boxW * 1.8) / Math.max(1, maxBoxes - 1);
                         const z = itemIndex % 2 === 0 ? -world.d * 0.16 : world.d * 0.16;
                         const itemKey = rackVisualItemKey(rack, shelfIndex, itemIndex, item);
-                        const shouldShowItemLabel = showFixtureLabels || itemKey === selectedRackItemKey;
+                        const shouldShowItemLabel = visualItem.visualIndex === 0 && (showFixtureLabels || itemKey === selectedRackItemKey);
                         if (isPallet) {{
                             const stackCount = clamp(Number(item.stack || 1), 1, 2);
                             const palletBoxMaterial = new THREE.MeshStandardMaterial({{ color: 0xd99a42, roughness: 0.7, metalness: 0.02 }});
@@ -4993,7 +5229,7 @@ def warehouse_scene3d_html(
                             group.add(itemHitbox);
                             itemHitboxes.push(itemHitbox);
                             if (shouldShowItemLabel) {{
-                                group.add(makeLabel(shortLabel(item.name, 10), new THREE.Vector3(x, y + (stackCount - 1) * layerStep + 0.08 + layerBoxH * palletBoxLevels + 0.38, z), 0.36, itemKey === selectedRackItemKey));
+                                group.add(makeLabel(itemLabelText(item), new THREE.Vector3(x, y + (stackCount - 1) * layerStep + 0.08 + layerBoxH * palletBoxLevels + 0.38, z), 0.36, itemKey === selectedRackItemKey));
                             }}
                         }} else {{
                             const boxMaterial = itemMaterialFor(itemIndex + shelfIndex, status);
@@ -5005,7 +5241,7 @@ def warehouse_scene3d_html(
                             group.add(boxMesh);
                             itemHitboxes.push(boxMesh);
                             if (shouldShowItemLabel) {{
-                                group.add(makeLabel(shortLabel(item.name, 10), new THREE.Vector3(x, y + boxH + 0.3, z), 0.3, itemKey === selectedRackItemKey));
+                                group.add(makeLabel(itemLabelText(item), new THREE.Vector3(x, y + boxH + 0.3, z), 0.3, itemKey === selectedRackItemKey));
                             }}
                         }}
                     }});
@@ -5307,11 +5543,11 @@ def warehouse_scene3d_html(
             }}
 
             function partOptionsForCurrentLoad(rack) {{
-                return partOptionsForLoadShape(rack, loadShapeSelect.value);
+                return partOptionsForLoadShape(rack, visualShapeForStorageUnit(loadUnitFromInput()));
             }}
 
             function partOptionLabel(part) {{
-                return loadShapeSelect.value === "pallet" ? `${{part}} 파렛트` : part;
+                return loadUnitFromInput() === "PALLET" ? `${{part}} 파렛트` : part;
             }}
 
             function renderPartSelect(rack) {{
@@ -5319,6 +5555,53 @@ def warehouse_scene3d_html(
                 const previous = partSelect.value;
                 partSelect.innerHTML = options.map(part => `<option value="${{part}}">${{partOptionLabel(part)}}</option>`).join("");
                 partSelect.value = options.includes(previous) ? previous : options[0];
+            }}
+
+            function storageUnitOptionsHtml(selected) {{
+                return [
+                    ["EA", "개별"],
+                    ["BOX", "BOX"],
+                    ["PALLET", "PALLET"],
+                ].map(([value, label]) => `<option value="${{value}}" ${{selected === value ? "selected" : ""}}>${{label}}</option>`).join("");
+            }}
+
+            function displayModeOptionsHtml(selected) {{
+                return [
+                    ["ACTUAL", "실제 개수"],
+                    ["SINGLE", "대표 1개"],
+                ].map(([value, label]) => `<option value="${{value}}" ${{selected === value ? "selected" : ""}}>${{label}}</option>`).join("");
+            }}
+
+            function packageEditorControls(item, actionName, actionValue, deleteName = "data-remove") {{
+                const unit = storageUnitForItem(item);
+                const boxes = boxesPerPallet(item);
+                return `
+                    <div class="row-actions package-actions">
+                        <select data-package-field="storage_unit" class="wide" aria-label="적재 단위">${{storageUnitOptionsHtml(unit)}}</select>
+                        <input data-package-field="package_count" type="number" min="1" value="${{packageCount(item)}}" aria-label="포장 개수">
+                        <input data-package-field="qty_per_package" type="number" min="1" value="${{qtyPerPackage(item)}}" aria-label="단위당 수량">
+                        <input data-package-field="boxes_per_pallet" type="number" min="0" value="${{boxes || ""}}" placeholder="BOX/PLT" aria-label="파렛트당 박스수">
+                        <select data-package-field="display_mode" class="wide" aria-label="표시 방식">${{displayModeOptionsHtml(displayModeForItem(item))}}</select>
+                        <button type="button" ${{actionName}}="${{escapeHtml(actionValue)}}">수정</button>
+                        <button type="button" ${{deleteName}}="${{escapeHtml(actionValue)}}">삭제</button>
+                    </div>
+                `;
+            }}
+
+            function applyPackageEditor(button, target) {{
+                const container = button.closest(".package-actions");
+                if (!container || !target) return;
+                const unit = String(container.querySelector('[data-package-field="storage_unit"]')?.value || "BOX").toUpperCase();
+                target.storage_unit = ["EA", "BOX", "PALLET"].includes(unit) ? unit : "BOX";
+                target.package_type = target.storage_unit;
+                target.package_count = positiveInteger(container.querySelector('[data-package-field="package_count"]')?.value, 1);
+                target.qty_per_package = target.storage_unit === "EA" ? 1 : positiveInteger(container.querySelector('[data-package-field="qty_per_package"]')?.value, 1);
+                target.boxes_per_pallet = target.storage_unit === "PALLET" ? Math.max(0, integerOrZero(container.querySelector('[data-package-field="boxes_per_pallet"]')?.value)) : 0;
+                target.display_mode = container.querySelector('[data-package-field="display_mode"]')?.value === "SINGLE" ? "SINGLE" : "ACTUAL";
+                normalizeLoadPackageFields(target);
+                if (["box", "pallet", "wrapped_pallet"].includes(target.type)) {{
+                    target.type = target.storage_unit === "PALLET" ? "pallet" : "box";
+                }}
             }}
 
             function selectRack(rackId) {{
@@ -5373,13 +5656,25 @@ def warehouse_scene3d_html(
                         itemBody.innerHTML = deleteFixtureRow + fixture.items.map((item, index) => `
                             <tr>
                                 <td>파렛트</td>
-                                <td>${{shapeLabel(item.shape || "box")}}</td>
+                                <td>${{loadTypeLabel(item)}}</td>
                                 <td>${{escapeHtml(item.name)}}</td>
                                 <td>${{escapeHtml(item.barcode || "-")}}</td>
                                 <td>${{loadQtyText(item)}}</td>
-                                <td><button type="button" data-pallet-remove="${{index}}">삭제</button></td>
+                                <td>${{packageEditorControls(item, "data-pallet-update", index, "data-pallet-remove")}}</td>
                             </tr>
                         `).join("");
+                        itemBody.querySelectorAll("[data-pallet-update]").forEach(button => {{
+                            button.addEventListener("click", () => {{
+                                const index = Number(button.dataset.palletUpdate);
+                                const item = fixture.items[index];
+                                if (!item) return;
+                                applyPackageEditor(button, item);
+                                fixture.items[index] = item;
+                                saveFixtures();
+                                buildFixtures();
+                                renderFixture(fixture);
+                            }});
+                        }});
                         itemBody.querySelectorAll("[data-pallet-remove]").forEach(button => {{
                             button.addEventListener("click", () => {{
                                 fixture.items.splice(Number(button.dataset.palletRemove), 1);
@@ -5394,8 +5689,23 @@ def warehouse_scene3d_html(
                     }});
                 }} else {{
                     itemBody.innerHTML = isLoadFixture(fixture)
-                        ? `<tr><td colspan="5">선택한 바닥 품목 · 바코드 ${{escapeHtml(fixture.barcode || "-")}}</td><td><button type="button" data-fixture-delete="1">삭제</button></td></tr><tr><td colspan="6" class="empty">이 품목은 이동할 랙과 단을 선택한 뒤 랙에 넣기로 적재할 수 있습니다.</td></tr>`
+                        ? `<tr>
+                                <td>바닥</td>
+                                <td>${{loadTypeLabel(fixture)}}</td>
+                                <td>${{escapeHtml(fixture.label || fixture.name || "바닥 품목")}}</td>
+                                <td>${{escapeHtml(fixture.barcode || "-")}}</td>
+                                <td>${{loadQtyText(fixture)}}</td>
+                                <td>${{packageEditorControls(fixture, "data-fixture-update", "1", "data-fixture-delete")}}</td>
+                            </tr>
+                            <tr><td colspan="6" class="empty">이 품목은 이동할 랙과 단을 선택한 뒤 랙에 넣기로 적재할 수 있습니다.</td></tr>`
                         : '<tr><td colspan="6" class="empty">시설물은 선택 후 바로 드래그해서 위치를 옮기고, 시설물 배치 도구에서 회전/삭제할 수 있습니다.</td></tr>';
+                    itemBody.querySelector("[data-fixture-update]")?.addEventListener("click", event => {{
+                        applyPackageEditor(event.currentTarget, fixture);
+                        fixture.label = fixture.label || fixture.name || packageUnitLabel(storageUnitForItem(fixture));
+                        saveFixtures();
+                        buildFixtures();
+                        renderFixture(fixture);
+                    }});
                     itemBody.querySelector("[data-fixture-delete]")?.addEventListener("click", () => {{
                         deleteSelectedFixture();
                     }});
@@ -5404,7 +5714,16 @@ def warehouse_scene3d_html(
             }}
 
             function rackItemKey(item, index) {{
-                return `${{item.part || shelfParts[shelfPartIndex(item.part, index)]}}::${{item.shape || "box"}}::${{item.stack || 1}}::${{item.barcode || item.name}}`;
+                return [
+                    item.part || shelfParts[shelfPartIndex(item.part, index)],
+                    item.shape || "box",
+                    storageUnitForItem(item),
+                    qtyPerPackage(item),
+                    boxesPerPallet(item),
+                    displayModeForItem(item),
+                    item.stack || 1,
+                    item.barcode || item.name,
+                ].join("::");
             }}
 
             function renderRack(rack) {{
@@ -5434,10 +5753,11 @@ def warehouse_scene3d_html(
                 rack.bottomOpen = Boolean(rack.bottomOpen);
                 let partChanged = false;
                 rack.items = (rack.items || []).map((item, index) => {{
-                    const itemAllowedParts = partOptionsForLoadShape(rack, item.shape || "box");
-                    if (itemAllowedParts.includes(item.part)) return item;
+                    const normalizedItem = normalizeRackItem(item);
+                    const itemAllowedParts = partOptionsForLoadShape(rack, normalizedItem.shape || "box");
+                    if (itemAllowedParts.includes(normalizedItem.part)) return normalizedItem;
                     partChanged = true;
-                    return {{ ...item, part: itemAllowedParts[index % itemAllowedParts.length] }};
+                    return {{ ...normalizedItem, part: itemAllowedParts[index % itemAllowedParts.length] }};
                 }});
                 if (partChanged) saveLayout();
                 rackTypeSelect.value = rack.type || "light";
@@ -5463,17 +5783,26 @@ def warehouse_scene3d_html(
                 itemBody.innerHTML = rack.items.map((item, index) => `
                     <tr>
                         <td>${{escapeHtml(item.part || shelfParts[shelfPartIndex(item.part, index)])}}</td>
-                        <td>${{shapeLabel(item.shape || "box")}}</td>
+                        <td>${{loadTypeLabel(item)}}</td>
                         <td>${{escapeHtml(item.name)}}</td>
                         <td>${{escapeHtml(item.barcode || "-")}}</td>
                         <td>${{loadQtyText(item)}}</td>
-                        <td>
-                            <div class="row-actions">
-                                <button type="button" data-remove="${{escapeHtml(rackItemKey(item, index))}}">삭제</button>
-                            </div>
-                        </td>
+                        <td>${{packageEditorControls(item, "data-package-update", rackItemKey(item, index))}}</td>
                     </tr>
                 `).join("");
+                itemBody.querySelectorAll("[data-package-update]").forEach(button => {{
+                    button.addEventListener("click", () => {{
+                        const key = button.dataset.packageUpdate;
+                        const item = rack.items.find((item, index) => rackItemKey(item, index) === key);
+                        if (!item) return;
+                        applyPackageEditor(button, item);
+                        const itemAllowedParts = partOptionsForLoadShape(rack, item.shape || "box");
+                        item.part = itemAllowedParts.includes(item.part) ? item.part : itemAllowedParts[0];
+                        saveLayout();
+                        buildRacks();
+                        renderRack(rack);
+                    }});
+                }});
                 itemBody.querySelectorAll("[data-remove]").forEach(button => {{
                     button.addEventListener("click", () => {{
                         const key = button.dataset.remove;
@@ -5671,6 +6000,57 @@ def warehouse_scene3d_html(
                 return inventory[index];
             }}
 
+            function loadUnitFromInput() {{
+                const raw = String(loadShapeSelect.value || "box").toLowerCase();
+                if (raw === "ea") return "EA";
+                if (raw === "pallet") return "PALLET";
+                return "BOX";
+            }}
+
+            function packageValuesFromInputs() {{
+                const unit = loadUnitFromInput();
+                const count = positiveInteger(itemQty.value, 1);
+                const perPackage = unit === "EA" ? 1 : positiveInteger(qtyPerPackageInput.value, 1);
+                const boxes = unit === "PALLET" ? Math.max(0, integerOrZero(boxesPerPalletInput.value)) : 0;
+                const total = unit === "EA"
+                    ? count
+                    : unit === "BOX"
+                    ? count * perPackage
+                    : count * (boxes > 0 ? boxes * perPackage : perPackage);
+                return {{
+                    unit,
+                    package_count: count,
+                    qty_per_package: perPackage,
+                    boxes_per_pallet: boxes,
+                    total_quantity: total,
+                    display_mode: displayModeSelect.value === "SINGLE" ? "SINGLE" : "ACTUAL",
+                }};
+            }}
+
+            function updatePackageInputsForUnit() {{
+                const unit = loadUnitFromInput();
+                qtyPerPackageInput.disabled = unit === "EA";
+                boxesPerPalletInput.disabled = unit !== "PALLET";
+                itemQty.placeholder = unit === "EA" ? "EA" : unit === "PALLET" ? "PLT" : "BOX";
+                qtyPerPackageInput.placeholder = unit === "PALLET" ? "EA/PLT 또는 EA/BOX" : "EA/BOX";
+                if (unit === "EA") {{
+                    qtyPerPackageInput.value = "1";
+                    boxesPerPalletInput.value = "";
+                }} else if (unit === "BOX") {{
+                    boxesPerPalletInput.value = "";
+                }}
+                const values = packageValuesFromInputs();
+                loadTotalPreview.textContent = `총 ${{values.total_quantity.toLocaleString("ko-KR")}} EA`;
+                loadTotalPreview.title = unit === "PALLET" && values.boxes_per_pallet > 0
+                    ? `${{values.package_count}} PLT × ${{values.boxes_per_pallet}} BOX × ${{values.qty_per_package}} EA`
+                    : unit === "PALLET"
+                    ? `${{values.package_count}} PLT × ${{values.qty_per_package}} EA`
+                    : unit === "BOX"
+                    ? `${{values.package_count}} BOX × ${{values.qty_per_package}} EA`
+                    : `${{values.package_count}} EA`;
+                renderPartSelect(selectedRack());
+            }}
+
             function loadInputData() {{
                 const inventoryItem = selectedInventoryItem();
                 const manualName = manualItemName.value.trim();
@@ -5678,27 +6058,41 @@ def warehouse_scene3d_html(
                 const barcode = manualBarcode || inventoryItem?.barcode || "";
                 const name = manualName || inventoryItem?.name || barcode || "";
                 if (!name) return null;
-                const shape = loadShapeSelect.value || "box";
+                const packageValues = packageValuesFromInputs();
                 const isManual = Boolean(manualName || manualBarcode);
-                return {{
+                return normalizeLoadPackageFields({{
                     name,
                     barcode,
                     stock: Number(inventoryItem?.stock || 0),
                     status: isManual ? "manual" : (inventoryItem?.status || ""),
-                    qty: Math.max(1, Number(itemQty.value || 1)),
+                    storage_unit: packageValues.unit,
+                    package_type: packageValues.unit,
+                    package_count: packageValues.package_count,
+                    qty_per_package: packageValues.qty_per_package,
+                    boxes_per_pallet: packageValues.boxes_per_pallet,
+                    total_quantity: packageValues.total_quantity,
+                    qty: packageValues.total_quantity,
+                    quantity: packageValues.total_quantity,
                     part: partSelect.value || "1단",
-                    shape,
+                    shape: visualShapeForStorageUnit(packageValues.unit),
                     stack: 1,
-                }};
+                    display_mode: packageValues.display_mode,
+                }});
             }}
 
-            function resetLoadInputsAfterAdd({{ keepProduct = false }} = {{}}) {{
+            function resetLoadInputsAfterAdd({{ keepProduct = false, keepPackage = false }} = {{}}) {{
                 if (!keepProduct) {{
                     itemSelect.value = "";
                     manualItemName.value = "";
                     manualItemBarcode.value = "";
                 }}
-                itemQty.value = "1";
+                if (!keepPackage) {{
+                    itemQty.value = "1";
+                    qtyPerPackageInput.value = "1";
+                    boxesPerPalletInput.value = "";
+                    displayModeSelect.value = "ACTUAL";
+                }}
+                updatePackageInputsForUnit();
                 const focusTarget = keepProduct ? itemQty : manualItemName;
                 focusTarget.focus();
                 focusTarget.select?.();
@@ -5708,23 +6102,29 @@ def warehouse_scene3d_html(
                 if (!rack) return false;
                 rack.items = rack.items || [];
                 const allowedParts = partOptionsForLoadShape(rack, load.shape || "box");
-                const nextLoad = {{
+                const nextLoad = normalizeLoadPackageFields({{
                     ...load,
                     barcode: String(load.barcode || "").trim(),
                     part: allowedParts.includes(load.part) ? load.part : allowedParts[0],
-                }};
-                const key = `${{nextLoad.part}}::${{nextLoad.shape}}::${{nextLoad.barcode || nextLoad.name}}`;
-                const existing = rack.items.find(row => `${{row.part || "1단"}}::${{row.shape || "box"}}::${{row.barcode || row.name}}` === key);
+                }});
+                const key = rackItemKey(nextLoad, rack.items.length);
+                const existing = rack.items.find((row, index) => rackItemKey(row, index) === key);
                 if (existing) {{
-                    existing.qty = Number(existing.qty || existing.stock || 0) + Number(nextLoad.qty || 0);
+                    existing.package_count = packageCount(existing) + packageCount(nextLoad);
                     existing.part = nextLoad.part;
                     existing.shape = nextLoad.shape;
                     existing.stack = nextLoad.stack || 1;
                     existing.barcode = nextLoad.barcode;
                     existing.name = nextLoad.name || existing.name;
+                    existing.storage_unit = nextLoad.storage_unit;
+                    existing.package_type = nextLoad.package_type;
+                    existing.qty_per_package = nextLoad.qty_per_package;
+                    existing.boxes_per_pallet = nextLoad.boxes_per_pallet;
+                    existing.display_mode = nextLoad.display_mode;
                     if (Array.isArray(nextLoad.items) && nextLoad.items.length) {{
                         existing.items = [...(existing.items || []), ...nextLoad.items];
                     }}
+                    normalizeLoadPackageFields(existing);
                 }} else {{
                     rack.items.push(nextLoad);
                 }}
@@ -5765,12 +6165,15 @@ def warehouse_scene3d_html(
                     ...load,
                     part: "파렛트 내부",
                     shape: "box",
+                    storage_unit: storageUnitForItem(load) === "PALLET" ? "BOX" : storageUnitForItem(load),
                     stack: 1,
                 }};
-                const key = `${{palletLoad.shape}}::${{palletLoad.barcode || palletLoad.name}}`;
-                const existing = fixture.items.find(row => `${{row.shape || "box"}}::${{row.barcode || row.name}}` === key);
+                normalizeLoadPackageFields(palletLoad);
+                const key = rackItemKey(palletLoad, fixture.items.length);
+                const existing = fixture.items.find((row, index) => rackItemKey(row, index) === key);
                 if (existing) {{
-                    existing.qty = Number(existing.qty || existing.stock || 0) + palletLoad.qty;
+                    existing.package_count = packageCount(existing) + packageCount(palletLoad);
+                    normalizeLoadPackageFields(existing);
                 }} else {{
                     fixture.items.push(palletLoad);
                 }}
@@ -5784,17 +6187,24 @@ def warehouse_scene3d_html(
                 const allowedParts = partOptionsForLoadShape(rack, fixtureShape);
                 const part = allowedParts.includes(targetRackPartSelect.value) ? targetRackPartSelect.value : allowedParts[0];
                 const isPallet = fixture.type === "pallet" || fixture.type === "wrapped_pallet";
-                return {{
+                return normalizeLoadPackageFields({{
                     name: fixture.label || (isPallet ? "파렛트" : "박스"),
                     barcode: fixture.barcode || `오브젝트:${{fixture.id}}`,
-                    stock: Number(fixture.qty || 1),
-                    qty: Number(fixture.qty || 1),
+                    stock: totalQuantity(fixture),
+                    qty: totalQuantity(fixture),
                     status: "floor-object",
                     part,
+                    storage_unit: storageUnitForItem(fixture),
+                    package_type: storageUnitForItem(fixture),
+                    package_count: packageCount(fixture),
+                    qty_per_package: qtyPerPackage(fixture),
+                    boxes_per_pallet: boxesPerPallet(fixture),
+                    total_quantity: totalQuantity(fixture),
+                    display_mode: displayModeForItem(fixture),
                     shape: isPallet ? "pallet" : "box",
                     stack: isPallet ? clamp(Number(fixture.stack || 1), 1, 2) : 1,
                     items: Array.isArray(fixture.items) ? fixture.items : [],
-                }};
+                }});
             }}
 
             function rackDropPosition(rack, load) {{
@@ -5884,12 +6294,12 @@ def warehouse_scene3d_html(
                     saveLayout();
                     buildRacks();
                     renderRack(rack);
-                    resetLoadInputsAfterAdd();
+                    resetLoadInputsAfterAdd({{ keepProduct: true, keepPackage: true }});
                 }} else {{
                     const fixture = selectedFixture();
                     if ((fixture?.type === "pallet" || fixture?.type === "wrapped_pallet") && load.shape === "box") {{
                         addLoadToPallet(fixture, load);
-                        resetLoadInputsAfterAdd();
+                        resetLoadInputsAfterAdd({{ keepProduct: true, keepPackage: true }});
                         return;
                     }}
                     const template = fixtureDefaults[load.shape] || fixtureDefaults.box;
@@ -5905,6 +6315,14 @@ def warehouse_scene3d_html(
                         label: load.name,
                         barcode: load.barcode,
                         qty: load.qty,
+                        storage_unit: load.storage_unit,
+                        package_type: load.package_type,
+                        package_count: load.package_count,
+                        qty_per_package: load.qty_per_package,
+                        boxes_per_pallet: load.boxes_per_pallet,
+                        total_quantity: load.total_quantity,
+                        quantity: load.quantity,
+                        display_mode: load.display_mode,
                         stack: load.stack,
                         floor: activeFloor,
                         x: position.x,
@@ -5919,7 +6337,7 @@ def warehouse_scene3d_html(
                     buildRacks();
                     buildFixtures();
                     renderFixture(newFixture);
-                    resetLoadInputsAfterAdd({{ keepProduct: true }});
+                    resetLoadInputsAfterAdd({{ keepProduct: true, keepPackage: true }});
                 }}
             }}
 
@@ -6419,7 +6837,17 @@ def warehouse_scene3d_html(
                 addLoadFromInputs();
             }});
 
-            [manualItemName, manualItemBarcode, itemQty].forEach(input => {{
+            loadShapeSelect.addEventListener("change", () => {{
+                updatePackageInputsForUnit();
+                renderPartSelect(selectedRack());
+            }});
+
+            [itemQty, qtyPerPackageInput, boxesPerPalletInput, displayModeSelect].forEach(input => {{
+                input.addEventListener("input", updatePackageInputsForUnit);
+                input.addEventListener("change", updatePackageInputsForUnit);
+            }});
+
+            [manualItemName, manualItemBarcode, itemQty, qtyPerPackageInput, boxesPerPalletInput].forEach(input => {{
                 input.addEventListener("keydown", event => {{
                     if (event.key !== "Enter") return;
                     event.preventDefault();
@@ -6447,10 +6875,6 @@ def warehouse_scene3d_html(
 
             moveSelectionFloorButton.addEventListener("click", () => {{
                 moveSelectedFixtureToFloor();
-            }});
-
-            loadShapeSelect.addEventListener("change", () => {{
-                renderPartSelect(selectedRack());
             }});
 
             function nudgeSelectedRack(direction, step = 2.2) {{
@@ -6806,6 +7230,7 @@ def warehouse_scene3d_html(
 
             fixtures = loadFixtures(activeFloor);
             renderItemSelect();
+            updatePackageInputsForUnit();
             syncFixtureLabelButton();
             resizeRenderer();
             setZoom(100);
