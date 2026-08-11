@@ -2954,6 +2954,9 @@ def warehouse_scene3d_html(
                 overflow: auto;
                 scrollbar-gutter: stable;
             }}
+            .rack-detail-hidden {{
+                display: none !important;
+            }}
             .detail-section {{
                 background: rgba(250, 248, 245, 0.72);
                 border: 1px solid #D8D2C8;
@@ -3113,13 +3116,13 @@ def warehouse_scene3d_html(
             .item-list {{
                 border: 1px solid #e2e8f0;
                 border-radius: 10px;
-                flex: 1 0 180px;
+                flex: 1 0 290px;
                 margin-top: 0;
-                min-height: 180px;
+                min-height: 290px;
                 overflow: auto;
             }}
             .item-list table {{
-                min-width: 980px;
+                min-width: 760px;
                 table-layout: fixed;
             }}
             .item-list th,
@@ -3128,43 +3131,42 @@ def warehouse_scene3d_html(
             }}
             .item-list th:nth-child(1),
             .item-list td:nth-child(1) {{
-                width: 8%;
+                line-height: 1.35;
+                overflow-wrap: anywhere;
+                white-space: normal;
+                width: 20%;
             }}
             .item-list th:nth-child(2),
             .item-list td:nth-child(2) {{
-                width: 10%;
+                line-height: 1.35;
+                overflow-wrap: anywhere;
+                white-space: normal;
+                width: 22%;
             }}
             .item-list th:nth-child(3),
             .item-list td:nth-child(3) {{
                 line-height: 1.35;
                 overflow-wrap: anywhere;
                 white-space: normal;
-                width: 20%;
+                width: 16%;
             }}
             .item-list th:nth-child(4),
             .item-list td:nth-child(4) {{
-                line-height: 1.35;
-                overflow-wrap: anywhere;
-                white-space: normal;
-                width: 14%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                width: 13%;
             }}
             .item-list th:nth-child(5),
             .item-list td:nth-child(5) {{
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
-                width: 14%;
+                width: 12%;
             }}
             .item-list th:nth-child(6),
             .item-list td:nth-child(6) {{
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-                width: 13%;
-            }}
-            .item-list th:nth-child(7),
-            .item-list td:nth-child(7) {{
-                width: 20%;
+                width: 17%;
             }}
             .row-actions input,
             .row-actions select {{
@@ -3362,7 +3364,7 @@ def warehouse_scene3d_html(
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }}
                 .item-list table {{
-                    min-width: 920px;
+                    min-width: 760px;
                 }}
             }}
             @media (max-width: 560px) {{
@@ -3464,13 +3466,7 @@ def warehouse_scene3d_html(
                 </div>
             </section>
             <aside class="panel detail-panel">
-                <div class="detail-section rack-info-section">
-                    <div class="section-title">선택한 랙 정보</div>
-                    <div class="rack-detail" id="rackDetail">
-                        <strong>랙을 선택하세요</strong>
-                        <span>3D 모델에서 랙을 클릭하면 해당 랙의 적재 품목만 표시됩니다.</span>
-                    </div>
-                </div>
+                <div class="rack-detail-hidden" id="rackDetail"></div>
                 <div class="detail-tools">
                     <div class="detail-section load-section">
                         <div class="section-title">상품 적재 설정</div>
@@ -3547,8 +3543,8 @@ def warehouse_scene3d_html(
                 </div>
                 <div class="item-list">
                     <table>
-                        <thead><tr><th>칸</th><th>형태</th><th>상품명</th><th>바코드</th><th>표현 수량</th><th>총 실제 재고</th><th></th></tr></thead>
-                        <tbody id="itemBody"><tr><td colspan="7" class="empty">선택된 랙이 없습니다.</td></tr></tbody>
+                        <thead><tr><th>렉 정보</th><th>상품명</th><th>바코드</th><th>수량</th><th>총 재고</th><th>관리</th></tr></thead>
+                        <tbody id="itemBody"><tr><td colspan="6" class="empty">선택된 랙이 없습니다.</td></tr></tbody>
                     </table>
                 </div>
             </aside>
@@ -4009,6 +4005,11 @@ def warehouse_scene3d_html(
 
             function actualStockText(item) {{
                 return `${{totalQuantity(item).toLocaleString("ko-KR")}} EA`;
+            }}
+
+            function rackInfoText(rack, item, fallbackPart = "") {{
+                const part = item?.part || fallbackPart || "";
+                return `${{rackDisplayName(rack)}}${{part ? ` / ${{part}}` : ""}}`;
             }}
 
             function packageSummaryText(item) {{
@@ -5289,7 +5290,7 @@ def warehouse_scene3d_html(
                 }}
                 const shouldShowRackLabel = showFixtureLabels || (rack.id === selectedRackId && !selectedRackItemKey);
                 if (shouldShowRackLabel) {{
-                    group.add(makeLabel(rackLabelText(rack), new THREE.Vector3(0, rackHeight + 0.64, halfD + 0.08), 0.66, rack.id === selectedRackId && !selectedRackItemKey));
+                    group.add(makeLabel(rackLabelText(rack), new THREE.Vector3(0, rackHeight + 0.64, halfD + 0.08), 0.78, rack.id === selectedRackId && !selectedRackItemKey));
                 }}
 
                 const itemsByPart = new Map(shelfLabels.map(part => [part, []]));
@@ -5344,7 +5345,7 @@ def warehouse_scene3d_html(
                             group.add(itemHitbox);
                             itemHitboxes.push(itemHitbox);
                             if (shouldShowItemLabel) {{
-                                group.add(makeLabel(itemLabelText(item), new THREE.Vector3(x, y + (stackCount - 1) * layerStep + 0.08 + layerBoxH * palletBoxLevels + 0.38, z), 0.36, itemKey === selectedRackItemKey));
+                                group.add(makeLabel(itemLabelText(item), new THREE.Vector3(x, y + (stackCount - 1) * layerStep + 0.08 + layerBoxH * palletBoxLevels + 0.38, z), 0.42, itemKey === selectedRackItemKey));
                             }}
                         }} else {{
                             const boxMaterial = itemMaterialFor(itemIndex + shelfIndex, status);
@@ -5356,7 +5357,7 @@ def warehouse_scene3d_html(
                             group.add(boxMesh);
                             itemHitboxes.push(boxMesh);
                             if (shouldShowItemLabel) {{
-                                group.add(makeLabel(itemLabelText(item), new THREE.Vector3(x, y + boxH + 0.3, z), 0.3, itemKey === selectedRackItemKey));
+                                group.add(makeLabel(itemLabelText(item), new THREE.Vector3(x, y + boxH + 0.3, z), 0.36, itemKey === selectedRackItemKey));
                             }}
                         }}
                     }});
@@ -5761,17 +5762,16 @@ def warehouse_scene3d_html(
                 if (fixture.type === "pallet" || fixture.type === "wrapped_pallet") {{
                     const deleteFixtureRow = `
                         <tr>
-                            <td colspan="6">선택한 파렛트 전체</td>
+                            <td colspan="5">선택한 파렛트 전체</td>
                             <td><button type="button" data-fixture-delete="1">삭제</button></td>
                         </tr>
                     `;
                     if (!fixture.items.length) {{
-                        itemBody.innerHTML = deleteFixtureRow + '<tr><td colspan="7" class="empty">이 파렛트에 들어간 품목이 없습니다. 파렛트를 선택한 상태에서 상품명/바코드/수량을 입력하고 추가하세요.</td></tr>';
+                        itemBody.innerHTML = deleteFixtureRow + '<tr><td colspan="6" class="empty">이 파렛트에 들어간 품목이 없습니다. 파렛트를 선택한 상태에서 상품명/바코드/수량을 입력하고 추가하세요.</td></tr>';
                     }} else {{
                         itemBody.innerHTML = deleteFixtureRow + fixture.items.map((item, index) => `
                             <tr>
-                                <td>파렛트</td>
-                                <td>${{loadTypeLabel(item)}}</td>
+                                <td>파렛트 내부</td>
                                 <td>${{escapeHtml(item.name)}}</td>
                                 <td>${{escapeHtml(item.barcode || "-")}}</td>
                                 <td title="${{escapeHtml(loadQtyText(item))}}">${{packageDisplayText(item)}}</td>
@@ -5806,16 +5806,15 @@ def warehouse_scene3d_html(
                 }} else {{
                     itemBody.innerHTML = isLoadFixture(fixture)
                         ? `<tr>
-                                <td>바닥</td>
-                                <td>${{loadTypeLabel(fixture)}}</td>
+                                <td>바닥 시설물</td>
                                 <td>${{escapeHtml(fixture.label || fixture.name || "바닥 품목")}}</td>
                                 <td>${{escapeHtml(fixture.barcode || "-")}}</td>
                                 <td title="${{escapeHtml(loadQtyText(fixture))}}">${{packageDisplayText(fixture)}}</td>
                                 <td>${{actualStockText(fixture)}}</td>
                                 <td>${{packageEditorControls(fixture, "data-fixture-update", "1", "data-fixture-delete")}}</td>
                             </tr>
-                            <tr><td colspan="7" class="empty">이 품목은 이동할 랙과 단을 선택한 뒤 랙에 넣기로 적재할 수 있습니다.</td></tr>`
-                        : '<tr><td colspan="7" class="empty">시설물은 선택 후 바로 드래그해서 위치를 옮기고, 시설물 배치 도구에서 회전/삭제할 수 있습니다.</td></tr>';
+                            <tr><td colspan="6" class="empty">이 품목은 이동할 랙과 단을 선택한 뒤 랙에 넣기로 적재할 수 있습니다.</td></tr>`
+                        : '<tr><td colspan="6" class="empty">시설물은 선택 후 바로 드래그해서 위치를 옮기고, 시설물 배치 도구에서 회전/삭제할 수 있습니다.</td></tr>';
                     itemBody.querySelector("[data-fixture-update]")?.addEventListener("click", event => {{
                         applyPackageEditor(event.currentTarget, fixture);
                         fixture.label = fixture.label || fixture.name || packageUnitLabel(storageUnitForItem(fixture));
@@ -5846,7 +5845,7 @@ def warehouse_scene3d_html(
             function renderRack(rack) {{
                 if (!rack) {{
                     rackDetail.innerHTML = "<strong>랙을 선택하세요</strong><span>선택된 랙이 없습니다.</span>";
-                    itemBody.innerHTML = '<tr><td colspan="7" class="empty">선택된 랙이 없습니다.</td></tr>';
+                    itemBody.innerHTML = '<tr><td colspan="6" class="empty">선택된 랙이 없습니다.</td></tr>';
                     renderPartSelect(null);
                     lockButton.disabled = true;
                     lockButton.textContent = "랙 고정";
@@ -5894,13 +5893,12 @@ def warehouse_scene3d_html(
                     <span>${{rackDisplayType(rack)}} · ${{directionText}} · 3D 위치 X ${{Number(renderPosition.x).toFixed(1)}}%, Y ${{Number(renderPosition.y).toFixed(1)}}%${{stackText}} · 적재 ${{loadedQty.toLocaleString("ko-KR")}}개 · ${{lockText}}</span>
                 `;
                 if (!rack.items.length) {{
-                    itemBody.innerHTML = '<tr><td colspan="7" class="empty">이 랙에 연결된 품목이 없습니다.</td></tr>';
+                    itemBody.innerHTML = '<tr><td colspan="6" class="empty">이 랙에 연결된 품목이 없습니다.</td></tr>';
                     return;
                 }}
                 itemBody.innerHTML = rack.items.map((item, index) => `
                     <tr>
-                        <td>${{escapeHtml(item.part || shelfParts[shelfPartIndex(item.part, index)])}}</td>
-                        <td>${{loadTypeLabel(item)}}</td>
+                        <td>${{escapeHtml(rackInfoText(rack, item, shelfParts[shelfPartIndex(item.part, index)]))}}</td>
                         <td>${{escapeHtml(item.name)}}</td>
                         <td>${{escapeHtml(item.barcode || "-")}}</td>
                         <td title="${{escapeHtml(loadQtyText(item))}}">${{packageDisplayText(item)}}</td>
