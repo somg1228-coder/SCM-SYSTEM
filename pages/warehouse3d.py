@@ -4527,6 +4527,38 @@ def warehouse_scene3d_html(
                 return snapObjectEdges(position, fixtureEdgeExtentsPercent(fixture), allowOutside);
             }}
 
+            function fixturesOverlap(candidate, existing, padding = 1.8) {{
+                const candidateExtents = fixtureEdgeExtentsPercent(candidate);
+                const existingExtents = fixtureEdgeExtentsPercent(existing);
+                return (
+                    Math.abs(Number(candidate.x || 50) - Number(existing.x || 50)) <
+                        candidateExtents.halfX + existingExtents.halfX + padding &&
+                    Math.abs(Number(candidate.y || 50) - Number(existing.y || 50)) <
+                        candidateExtents.halfY + existingExtents.halfY + padding
+                );
+            }}
+
+            function findOpenFixturePosition(fixtureTemplate) {{
+                const anchor = selectedFixture() || fixtures[fixtures.length - 1] || {{ x: 50, y: 50 }};
+                const candidates = [];
+                [[8, 0], [0, 8], [-8, 0], [0, -8], [8, 8], [-8, 8], [8, -8], [-8, -8]].forEach(([dx, dy]) => {{
+                    candidates.push({{ x: Number(anchor.x || 50) + dx, y: Number(anchor.y || 50) + dy }});
+                }});
+                for (let y = 18; y <= 84; y += 11) {{
+                    for (let x = 16; x <= 88; x += 12) {{
+                        candidates.push({{ x, y }});
+                    }}
+                }}
+                for (const point of candidates) {{
+                    const candidate = normalizeFixture({{ ...fixtureTemplate, x: point.x, y: point.y }});
+                    const snapped = snapFixturePercentPosition(candidate, point, fixtureAllowsOutside(candidate.type));
+                    candidate.x = snapped.x;
+                    candidate.y = snapped.y;
+                    if (!fixtures.some(existing => fixturesOverlap(candidate, existing))) return snapped;
+                }}
+                return snapFixturePercentPosition(fixtureTemplate, {{ x: 50, y: 50 }}, fixtureAllowsOutside(fixtureTemplate.type));
+            }}
+
             function fixtureToWorld(fixture) {{
                 const size = layoutFloorSize();
                 return {{
@@ -5660,6 +5692,18 @@ def warehouse_scene3d_html(
                 }};
             }}
 
+            function resetLoadInputsAfterAdd({{ keepProduct = false }} = {{}}) {{
+                if (!keepProduct) {{
+                    itemSelect.value = "";
+                    manualItemName.value = "";
+                    manualItemBarcode.value = "";
+                }}
+                itemQty.value = "1";
+                const focusTarget = keepProduct ? itemQty : manualItemName;
+                focusTarget.focus();
+                focusTarget.select?.();
+            }}
+
             function addLoadToRack(rack, load) {{
                 if (!rack) return false;
                 rack.items = rack.items || [];
@@ -5840,16 +5884,20 @@ def warehouse_scene3d_html(
                     saveLayout();
                     buildRacks();
                     renderRack(rack);
+                    resetLoadInputsAfterAdd();
                 }} else {{
                     const fixture = selectedFixture();
-                    if (fixture?.type === "pallet" || fixture?.type === "wrapped_pallet") {{
+                    if ((fixture?.type === "pallet" || fixture?.type === "wrapped_pallet") && load.shape === "box") {{
                         addLoadToPallet(fixture, load);
-                        manualItemName.value = "";
-                        manualItemBarcode.value = "";
-                        itemQty.value = "1";
+                        resetLoadInputsAfterAdd();
                         return;
                     }}
                     const template = fixtureDefaults[load.shape] || fixtureDefaults.box;
+                    const position = findOpenFixturePosition({{
+                        ...template,
+                        type: load.shape,
+                        rotation: 0,
+                    }});
                     const newFixture = normalizeFixture({{
                         ...template,
                         id: `F-${{Date.now().toString(36).slice(-6)}}`,
@@ -5859,8 +5907,8 @@ def warehouse_scene3d_html(
                         qty: load.qty,
                         stack: load.stack,
                         floor: activeFloor,
-                        x: 50,
-                        y: 50,
+                        x: position.x,
+                        y: position.y,
                         rotation: 0,
                     }});
                     fixtures.push(newFixture);
@@ -5871,10 +5919,8 @@ def warehouse_scene3d_html(
                     buildRacks();
                     buildFixtures();
                     renderFixture(newFixture);
+                    resetLoadInputsAfterAdd({{ keepProduct: true }});
                 }}
-                manualItemName.value = "";
-                manualItemBarcode.value = "";
-                itemQty.value = "1";
             }}
 
             canvas.addEventListener("pointerdown", event => {{
@@ -6371,6 +6417,14 @@ def warehouse_scene3d_html(
 
             document.getElementById("addLoad").addEventListener("click", () => {{
                 addLoadFromInputs();
+            }});
+
+            [manualItemName, manualItemBarcode, itemQty].forEach(input => {{
+                input.addEventListener("keydown", event => {{
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    addLoadFromInputs();
+                }});
             }});
 
             moveFixtureToRackButton.addEventListener("click", () => {{
