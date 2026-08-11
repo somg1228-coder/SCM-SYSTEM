@@ -115,30 +115,16 @@ def inventory_available() -> bool:
 
 
 def render_inventory_page_lazy() -> None:
-    with perf_span("inventory.main_section_select"):
-        selected_section = lazy_tab_selector(
-            INVENTORY_MAIN_SECTIONS,
-            "inventory_main_section",
-            default="현재재고",
-        )
-    if selected_section == "현재재고":
-        with perf_span("inventory.source_select"):
-            selected_source = lazy_tab_selector(
-                INVENTORY_CURRENT_SOURCES,
-                "inventory_current_source",
-                default=st.session_state.get("inventory_active_source") or "3PL",
-            )
-        if selected_source not in INVENTORY_CURRENT_SOURCES:
-            selected_source = "3PL"
-        st.session_state["inventory_active_source"] = selected_source
+    selected_section, selected_source, selected_tab = render_inventory_navigation()
 
+    if selected_section == "현재재고":
+        source_type = INVENTORY_SOURCE_MAP[selected_source]
         with perf_span("inventory.list_panel_render"):
             render_inventory_list_panel()
         with perf_span("inventory.outbound_linked_panel_render"):
             render_outbound_history_linked_panel()
-        source_type = INVENTORY_SOURCE_MAP[selected_source]
         with perf_span("inventory.source_tabs_render", source=source_type):
-            render_source_inventory_tabs_lazy(source_type)
+            render_source_inventory_tabs_lazy(source_type, selected_tab)
     elif selected_section == "안전재고":
         render_safe_stock_tab()
     elif selected_section == "재고이력":
@@ -151,13 +137,56 @@ def render_inventory_page_lazy() -> None:
         render_material_inventory_tab()
 
 
-def render_source_inventory_tabs_lazy(source_type: str) -> None:
-    with perf_span("inventory.subtab_select", source=source_type):
-        selected_tab = lazy_tab_selector(
-            INVENTORY_SOURCE_TABS,
-            f"inventory_{source_key(source_type)}_section",
-            default="재고조회",
-        )
+def render_inventory_navigation() -> tuple[str, str, str]:
+    with st.container(key="inventory_nav_shell"):
+        st.markdown('<div class="inventory-nav-caption">재고관리</div>', unsafe_allow_html=True)
+        with perf_span("inventory.main_section_select"):
+            selected_section = lazy_tab_selector(
+                INVENTORY_MAIN_SECTIONS,
+                "inventory_main_section",
+                default="현재재고",
+                compact=True,
+            )
+
+        selected_source = ""
+        selected_tab = ""
+        if selected_section == "현재재고":
+            with st.container(key="inventory_nav_source"):
+                st.markdown('<div class="inventory-nav-caption">현재재고 하위 구분</div>', unsafe_allow_html=True)
+                with perf_span("inventory.source_select"):
+                    selected_source = lazy_tab_selector(
+                        INVENTORY_CURRENT_SOURCES,
+                        "inventory_current_source",
+                        default=st.session_state.get("inventory_active_source") or "3PL",
+                        compact=True,
+                    )
+                if selected_source not in INVENTORY_CURRENT_SOURCES:
+                    selected_source = "3PL"
+                st.session_state["inventory_active_source"] = selected_source
+
+            source_type = INVENTORY_SOURCE_MAP[selected_source]
+            with st.container(key="inventory_nav_detail"):
+                st.markdown(f'<div class="inventory-nav-caption">{selected_source} 메뉴</div>', unsafe_allow_html=True)
+                with perf_span("inventory.subtab_select", source=source_type):
+                    selected_tab = lazy_tab_selector(
+                        INVENTORY_SOURCE_TABS,
+                        f"inventory_{source_key(source_type)}_section",
+                        default="재고조회",
+                        compact=True,
+                    )
+
+    return selected_section, selected_source, selected_tab
+
+
+def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None = None) -> None:
+    if not selected_tab:
+        with perf_span("inventory.subtab_select", source=source_type):
+            selected_tab = lazy_tab_selector(
+                INVENTORY_SOURCE_TABS,
+                f"inventory_{source_key(source_type)}_section",
+                default="재고조회",
+                compact=True,
+            )
     if selected_tab == "재고조회":
         render_daily_tab(source_type)
     elif selected_tab == "입고내역":
@@ -2665,28 +2694,54 @@ def inject_inventory_css() -> None:
             font-weight: 850;
             margin: 0.5rem 0 0.65rem;
         }
-        div[data-testid="stPills"] div[role="radiogroup"],
-        div[data-testid="stPills"] div[role="group"],
-        div[data-testid="stSegmentedControl"] div[role="radiogroup"],
-        div[data-testid="stSegmentedControl"] div[role="group"] {
+        .st-key-inventory_nav_shell {
+            background: #F7F8F6;
+            border: 1px solid #D7D0C7;
+            border-radius: 8px;
+            margin: 0.2rem 0 1rem;
+            padding: 0.72rem 0.86rem 0.78rem;
+        }
+        .st-key-inventory_nav_shell [data-testid="stVerticalBlock"] {
+            gap: 0.42rem;
+        }
+        .inventory-nav-caption {
+            color: #536475;
+            font-size: 0.76rem;
+            font-weight: 850;
+            letter-spacing: 0;
+            margin: 0 0 0.14rem;
+        }
+        .st-key-inventory_nav_source,
+        .st-key-inventory_nav_detail {
+            border-left: 2px solid #C7D3DC;
+            margin-left: 1rem;
+            padding-left: 0.78rem;
+        }
+        .st-key-inventory_nav_detail {
+            margin-left: 2rem;
+        }
+        .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="radiogroup"],
+        .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="group"],
+        .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+        .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="group"] {
             align-items: center !important;
             display: flex !important;
             flex-wrap: wrap !important;
             gap: 0.32rem !important;
             justify-content: flex-start !important;
         }
-        div[data-testid="stPills"] label,
-        div[data-testid="stSegmentedControl"] label {
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label,
+        .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label {
             flex: 0 0 auto !important;
             width: auto !important;
             min-width: 0 !important;
             margin: 0 !important;
         }
-        div[data-testid="stPills"] label > div,
-        div[data-testid="stSegmentedControl"] label > div {
-            min-height: 32px !important;
-            padding: 0.34rem 0.85rem !important;
-            border-radius: 7px !important;
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label > div,
+        .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label > div {
+            min-height: 30px !important;
+            padding: 0.28rem 0.72rem !important;
+            border-radius: 6px !important;
             white-space: nowrap !important;
         }
         div[class*="st-key-inventory_control_"] {

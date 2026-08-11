@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import streamlit as st
 
 
-def lazy_tab_selector(options: Sequence[str], key: str, default: str | None = None) -> str:
+def lazy_tab_selector(options: Sequence[str], key: str, default: str | None = None, compact: bool = False) -> str:
     """Return one selected tab label without rendering inactive tab bodies."""
     labels = [str(option) for option in options]
     if not labels:
@@ -18,7 +18,7 @@ def lazy_tab_selector(options: Sequence[str], key: str, default: str | None = No
         current = labels[0]
     st.session_state[state_key] = current
 
-    if hasattr(st, "pills"):
+    if compact and hasattr(st, "pills"):
         selected = st.pills(
             "section",
             labels,
