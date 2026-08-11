@@ -2869,7 +2869,7 @@ def warehouse_scene3d_html(
             .assign-box {{
                 display: grid;
                 gap: 0.36rem;
-                grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.85fr) 56px 74px 82px 62px 64px;
+                grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.85fr) 56px 74px 82px 64px;
                 margin-bottom: 0.5rem;
             }}
             #itemSelect {{
@@ -3286,10 +3286,6 @@ def warehouse_scene3d_html(
                             <option value="box">박스</option>
                             <option value="pallet">파렛트</option>
                         </select>
-                        <select id="stackSelect" aria-label="적치">
-                            <option value="1">1중</option>
-                            <option value="2">2중</option>
-                        </select>
                         <button type="button" id="addLoad">추가</button>
                     </div>
                     <div class="stock-guide">랙을 선택하면 해당 랙/단에 적재되고, 바닥 박스/파렛트는 시설물 배치에서 추가 후 랙에 넣기로 옮길 수 있습니다.</div>
@@ -3421,7 +3417,6 @@ def warehouse_scene3d_html(
             const manualItemBarcode = document.getElementById("manualItemBarcode");
             const partSelect = document.getElementById("partSelect");
             const loadShapeSelect = document.getElementById("loadShapeSelect");
-            const stackSelect = document.getElementById("stackSelect");
             const fixtureTypeSelect = document.getElementById("fixtureTypeSelect");
             const rotateFixtureButton = document.getElementById("rotateFixture");
             const lockFixtureButton = document.getElementById("lockFixture");
@@ -4681,14 +4676,15 @@ def warehouse_scene3d_html(
                 return count > 1 ? `${{count}}중` : "1중";
             }}
 
-            function loadQtyText(item) {{
+            function loadQtyText(item, showPalletStack = false) {{
                 const qty = Number(item?.qty || item?.stock || 0).toLocaleString("ko-KR");
                 const isPallet = item?.shape === "pallet" || item?.shape === "wrapped_pallet" || item?.type === "pallet" || item?.type === "wrapped_pallet";
                 const innerQty = Array.isArray(item?.items)
                     ? item.items.reduce((sum, innerItem) => sum + Number(innerItem.qty || innerItem.stock || 0), 0)
                     : 0;
                 const innerText = innerQty ? ` · 내부 ${{innerQty.toLocaleString("ko-KR")}}개` : "";
-                return isPallet ? `${{qty}}개 · ${{stackLabel(item?.stack)}}${{innerText}}` : `${{qty}}개${{innerText}}`;
+                const stackText = showPalletStack && Number(item?.stack || 1) > 1 ? ` · ${{stackLabel(item?.stack)}}` : "";
+                return isPallet ? `${{qty}}개${{stackText}}${{innerText}}` : `${{qty}}개${{innerText}}`;
             }}
 
             function palletContentQty(fixture) {{
@@ -5255,8 +5251,15 @@ def warehouse_scene3d_html(
                 return ["1단", roofPart];
             }}
 
-            function renderPartSelect(rack) {{
+            function partOptionsForCurrentLoad(rack) {{
                 const options = partOptionsFor(rack);
+                if (loadShapeSelect.value !== "pallet") return options;
+                const shelfOptions = options.filter(part => /^\\d+단$/.test(part));
+                return shelfOptions.length ? shelfOptions : options;
+            }}
+
+            function renderPartSelect(rack) {{
+                const options = partOptionsForCurrentLoad(rack);
                 const previous = partSelect.value;
                 partSelect.innerHTML = options.map(part => `<option value="${{part}}">${{part}}</option>`).join("");
                 partSelect.value = options.includes(previous) ? previous : options[0];
@@ -5294,7 +5297,7 @@ def warehouse_scene3d_html(
                 unstackRackButton.disabled = true;
                 fixture.items = fixture.items || [];
                 const fixtureLoadText = ["box", "pallet", "wrapped_pallet"].includes(fixture.type)
-                    ? ` · 적재 ${{loadQtyText(fixture)}}`
+                    ? ` · 적재 ${{loadQtyText(fixture, true)}}`
                     : "";
                 const fixtureLockText = fixture.locked ? " · 고정됨" : " · 이동 가능";
                 rackDetail.innerHTML = `
@@ -5604,12 +5607,6 @@ def warehouse_scene3d_html(
                 renderRack(selectedRack());
             }}
 
-            function syncStackInput() {{
-                const isPallet = loadShapeSelect.value === "pallet";
-                stackSelect.disabled = !isPallet;
-                if (!isPallet) stackSelect.value = "1";
-            }}
-
             function selectedInventoryItem() {{
                 const rawValue = itemSelect.value;
                 if (rawValue === "") return null;
@@ -5635,7 +5632,7 @@ def warehouse_scene3d_html(
                     qty: Math.max(1, Number(itemQty.value || 1)),
                     part: partSelect.value || "1단",
                     shape,
-                    stack: shape === "pallet" ? clamp(Number(stackSelect.value || 1), 1, 2) : 1,
+                    stack: 1,
                 }};
             }}
 
@@ -5648,8 +5645,8 @@ def warehouse_scene3d_html(
                     barcode: String(load.barcode || "").trim(),
                     part: allowedParts.includes(load.part) ? load.part : allowedParts[0],
                 }};
-                const key = `${{nextLoad.part}}::${{nextLoad.shape}}::${{nextLoad.stack || 1}}::${{nextLoad.barcode || nextLoad.name}}`;
-                const existing = rack.items.find(row => `${{row.part || "1단"}}::${{row.shape || "box"}}::${{row.stack || 1}}::${{row.barcode || row.name}}` === key);
+                const key = `${{nextLoad.part}}::${{nextLoad.shape}}::${{nextLoad.barcode || nextLoad.name}}`;
+                const existing = rack.items.find(row => `${{row.part || "1단"}}::${{row.shape || "box"}}::${{row.barcode || row.name}}` === key);
                 if (existing) {{
                     existing.qty = Number(existing.qty || existing.stock || 0) + Number(nextLoad.qty || 0);
                     existing.part = nextLoad.part;
@@ -6374,7 +6371,7 @@ def warehouse_scene3d_html(
             }});
 
             loadShapeSelect.addEventListener("change", () => {{
-                syncStackInput();
+                renderPartSelect(selectedRack());
             }});
 
             function nudgeSelectedRack(direction, step = 2.2) {{
