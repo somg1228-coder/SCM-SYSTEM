@@ -1605,6 +1605,58 @@ def import_product_master_excel(db: Session, source_type: str, file_bytes: bytes
     return result
 
 
+def merge_inventory_daily_rows(target: InventoryDaily, duplicate: InventoryDaily) -> InventoryDaily:
+    if target.id == duplicate.id:
+        return target
+    for field in ("current_stock", "available_stock", "outbound_qty", "inbound_qty"):
+        setattr(target, field, int(getattr(target, field) or 0) + int(getattr(duplicate, field) or 0))
+    target.safe_stock = max(int(target.safe_stock or 0), int(duplicate.safe_stock or 0))
+    target.inbound_cycle = target.inbound_cycle or duplicate.inbound_cycle
+    dates = [value for value in (target.last_inbound_date, duplicate.last_inbound_date) if value]
+    if dates:
+        target.last_inbound_date = max(dates)
+    previous_dates = [value for value in (target.previous_inbound_date, duplicate.previous_inbound_date) if value]
+    if previous_dates:
+        target.previous_inbound_date = max(previous_dates)
+    if duplicate.memo and duplicate.memo not in (target.memo or ""):
+        target.memo = f"{target.memo}\n{duplicate.memo}".strip()
+    return target
+
+
+def apply_product_master_to_daily_without_unique_conflict(
+    db: Session,
+    item: InventoryDaily,
+    product,
+    deleted_ids: set[int] | None = None,
+) -> InventoryDaily:
+    if not product:
+        return item
+    target_barcode = normalize_barcode_text(product.barcode)
+    target_name = product.product_name
+    conflict = None
+    if target_name or target_barcode:
+        with db.no_autoflush:
+            conflict = db.execute(
+                select(InventoryDaily)
+                .where(
+                    InventoryDaily.source_type == item.source_type,
+                    InventoryDaily.work_date == item.work_date,
+                    InventoryDaily.product_name == target_name,
+                    InventoryDaily.barcode == target_barcode,
+                    InventoryDaily.id != item.id,
+                )
+                .order_by(InventoryDaily.id)
+            ).scalars().first()
+    if conflict is not None:
+        merge_inventory_daily_rows(conflict, item)
+        db.delete(item)
+        if deleted_ids is not None and item.id is not None:
+            deleted_ids.add(item.id)
+        item = conflict
+    apply_product_master_to_daily(item, product)
+    return item
+
+
 def sync_inventory_from_product_master(db: Session, source_type: str | None = None) -> int:
     if use_legacy_supabase_rest_store():
         sources = [source_type] if source_type else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
@@ -1616,10 +1668,13 @@ def sync_inventory_from_product_master(db: Session, source_type: str | None = No
     if source_type:
         daily_query = daily_query.where(InventoryDaily.source_type == source_type)
         inbound_query = inbound_query.where(InventoryInbound.source_type == source_type)
-    for item in db.execute(daily_query).scalars():
+    deleted_daily_ids: set[int] = set()
+    for item in list(db.execute(daily_query).scalars()):
+        if item.id in deleted_daily_ids:
+            continue
         product = find_product_master(db, item.source_type, item.product_code, item.barcode, item.product_name)
         if product:
-            apply_product_master_to_daily(item, product)
+            apply_product_master_to_daily_without_unique_conflict(db, item, product, deleted_daily_ids)
             count += 1
     for item in db.execute(inbound_query).scalars():
         product = find_product_master(db, item.source_type, item.product_code, item.barcode, item.product_name)
@@ -1746,7 +1801,7 @@ def ensure_daily_for_product(db: Session, source_type: str, work_date: date, pro
         )
         db.add(row)
         db.flush()
-    apply_product_master_to_daily(row, product)
+    row = apply_product_master_to_daily_without_unique_conflict(db, row, product)
     row.safe_stock = product.min_stock
     row.inbound_cycle = product.default_lead_time or None
     return row
