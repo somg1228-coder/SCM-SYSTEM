@@ -844,8 +844,6 @@ def render_warehouse3d_page() -> None:
     with perf_span("warehouse3d.data_processing.layout"):
         racks = build_rack_layout(inventory_rows, floor)
         summary = warehouse_summary(racks, inventory_rows)
-    with perf_span("warehouse3d.summary_render"):
-        render_summary(summary, work_date)
     save_notice = st.session_state.pop("warehouse3d_save_notice", None)
     if isinstance(save_notice, tuple) and len(save_notice) == 2:
         tone, message = save_notice
@@ -865,6 +863,7 @@ def render_warehouse3d_page() -> None:
                 racks=racks,
                 zones=FLOOR_ZONES.get(floor, []),
                 inventory_rows=inventory_rows,
+                summary=summary,
                 shared_layout_store=shared_layout_store,
             )
         with perf_span("warehouse3d.component_render", component="scene3d"):
@@ -2567,6 +2566,7 @@ def warehouse_scene3d_html(
     racks: list[dict],
     zones: list[str],
     inventory_rows: list[dict],
+    summary: dict | None = None,
     shared_layout_store: dict | None = None,
 ) -> str:
     payload = json.dumps(racks, ensure_ascii=False)
@@ -2609,6 +2609,7 @@ def warehouse_scene3d_html(
         for level in floors
     )
     zone_tags = "".join(f"<span>{escape(zone)}</span>" for zone in zones)
+    total_stock_text = f'{int((summary or {}).get("total_stock") or 0):,}개'
 
     return f"""
     <!doctype html>
@@ -2662,6 +2663,31 @@ def warehouse_scene3d_html(
                 flex-direction: column;
                 gap: 0.28rem;
                 margin-top: 0.7rem;
+            }}
+            .building-stock-summary {{
+                background: #FAF8F5;
+                border: 1px solid #D8D2C8;
+                border-radius: 9px;
+                color: #2F4659;
+                font-size: 0.72rem;
+                font-weight: 900;
+                line-height: 1.25;
+                margin-top: 0.7rem;
+                padding: 0.48rem 0.56rem;
+            }}
+            .building-stock-summary span {{
+                color: #64748B;
+                display: block;
+                font-size: 0.66rem;
+                font-weight: 850;
+                margin-bottom: 0.18rem;
+            }}
+            .building-stock-summary strong {{
+                color: #102033;
+                display: block;
+                font-size: 0.95rem;
+                font-weight: 950;
+                white-space: nowrap;
             }}
             .floor-chip,
             button,
@@ -3373,6 +3399,7 @@ def warehouse_scene3d_html(
                 <h3>건물/층 선택</h3>
                 <div class="building-name">{escape(building)}<br>{escape(LOCATIONS[building]["description"])}</div>
                 <div class="building-stack">{floor_stack}</div>
+                <div class="building-stock-summary"><span>총 현재고</span><strong>{escape(total_stock_text)}</strong></div>
             </section>
             <section class="panel model-panel">
                 <div class="scene-head">
