@@ -4560,13 +4560,13 @@ def warehouse_scene3d_html(
                 const lines = wrapLabel(rawText);
                 const labelCanvas = document.createElement("canvas");
                 const pixelRatio = emphasis ? 3 : 2.2;
-                const baseFontSize = lines.length > 1 ? 34 : 42;
+                const baseFontSize = lines.length > 1 ? 26 : 32;
                 const measureCtx = labelCanvas.getContext("2d");
                 measureCtx.font = `900 ${{baseFontSize}}px Pretendard, Arial, sans-serif`;
                 const measuredTextWidth = Math.max(...lines.map(line => measureCtx.measureText(line).width), 1);
-                const horizontalPadding = emphasis ? 58 : 50;
-                const logicalWidth = Math.min(760, Math.max(140, Math.ceil(measuredTextWidth + horizontalPadding)));
-                const logicalHeight = lines.length > 1 ? 154 : 108;
+                const horizontalPadding = emphasis ? 44 : 38;
+                const logicalWidth = Math.min(620, Math.max(104, Math.ceil(measuredTextWidth + horizontalPadding)));
+                const logicalHeight = lines.length > 1 ? 116 : 78;
                 labelCanvas.width = Math.round(logicalWidth * pixelRatio);
                 labelCanvas.height = Math.round(logicalHeight * pixelRatio);
                 const ctx = labelCanvas.getContext("2d");
@@ -4593,7 +4593,7 @@ def warehouse_scene3d_html(
                 ctx.textBaseline = "middle";
                 let fontSize = baseFontSize;
                 ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
-                while (fontSize > 24 && lines.some(line => ctx.measureText(line).width > logicalWidth - 54)) {{
+                while (fontSize > 18 && lines.some(line => ctx.measureText(line).width > logicalWidth - 42)) {{
                     fontSize -= 2;
                     ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
                 }}
@@ -4615,8 +4615,8 @@ def warehouse_scene3d_html(
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({{ map: texture, transparent: true, depthTest: false }}));
                 sprite.renderOrder = emphasis ? 30 : 20;
                 sprite.position.copy(position);
-                const emphasisScale = emphasis ? 1.14 : 1;
-                sprite.scale.set(Math.max(4.4, logicalWidth / 68) * scale * emphasisScale, Math.max(1.55, logicalHeight / 68) * scale * emphasisScale, 1);
+                const emphasisScale = emphasis ? 1.08 : 1;
+                sprite.scale.set(Math.max(3.0, logicalWidth / 82) * scale * emphasisScale, Math.max(1.08, logicalHeight / 82) * scale * emphasisScale, 1);
                 return sprite;
             }}
 
@@ -4764,7 +4764,7 @@ def warehouse_scene3d_html(
                     : (fixture.label || "시설물");
                 const shouldShowFixtureLabel = showFixtureLabels || fixture.id === selectedFixtureId;
                 if (shouldShowFixtureLabel) {{
-                    group.add(makeLabel(labelText, new THREE.Vector3(0, visualHeight + 0.62, 0), 0.9, fixture.id === selectedFixtureId));
+                    group.add(makeLabel(labelText, new THREE.Vector3(0, visualHeight + 0.46, 0), 0.52, fixture.id === selectedFixtureId));
                 }}
 
                 const hitHeight = Math.max(0.5, visualHeight);
@@ -4776,7 +4776,7 @@ def warehouse_scene3d_html(
                 if (fixture.locked) {{
                     group.add(rackPart(Math.min(0.82, world.w * 0.42), 0.1, 0.22, materials.locked, 0, visualHeight + 0.18, 0));
                     if (shouldShowFixtureLabel) {{
-                        group.add(makeLabel("고정", new THREE.Vector3(0, visualHeight + 0.58, 0), 0.46));
+                        group.add(makeLabel("고정", new THREE.Vector3(0, visualHeight + 0.42, 0), 0.32));
                     }}
                 }}
 
@@ -4886,7 +4886,7 @@ def warehouse_scene3d_html(
                 }}
                 const shouldShowRackLabel = showFixtureLabels || (rack.id === selectedRackId && !selectedRackItemKey);
                 if (shouldShowRackLabel) {{
-                    group.add(makeLabel(rackLabelText(rack), new THREE.Vector3(0, rackHeight + 0.72, halfD + 0.08), 0.78, rack.id === selectedRackId && !selectedRackItemKey));
+                    group.add(makeLabel(rackLabelText(rack), new THREE.Vector3(0, rackHeight + 0.58, halfD + 0.08), 0.58, rack.id === selectedRackId && !selectedRackItemKey));
                 }}
 
                 const itemsByPart = new Map(shelfLabels.map(part => [part, []]));
@@ -4940,7 +4940,7 @@ def warehouse_scene3d_html(
                             group.add(itemHitbox);
                             itemHitboxes.push(itemHitbox);
                             if (shouldShowItemLabel) {{
-                                group.add(makeLabel(shortLabel(item.name, 10), new THREE.Vector3(x, y + (stackCount - 1) * layerStep + 0.08 + layerBoxH * palletBoxLevels + 0.44, z), 0.42, itemKey === selectedRackItemKey));
+                                group.add(makeLabel(shortLabel(item.name, 10), new THREE.Vector3(x, y + (stackCount - 1) * layerStep + 0.08 + layerBoxH * palletBoxLevels + 0.34, z), 0.32, itemKey === selectedRackItemKey));
                             }}
                         }} else {{
                             const boxMaterial = itemMaterialFor(itemIndex + shelfIndex, status);
@@ -4952,7 +4952,7 @@ def warehouse_scene3d_html(
                             group.add(boxMesh);
                             itemHitboxes.push(boxMesh);
                             if (shouldShowItemLabel) {{
-                                group.add(makeLabel(shortLabel(item.name, 10), new THREE.Vector3(x, y + boxH + 0.34, z), 0.34, itemKey === selectedRackItemKey));
+                                group.add(makeLabel(shortLabel(item.name, 10), new THREE.Vector3(x, y + boxH + 0.26, z), 0.27, itemKey === selectedRackItemKey));
                             }}
                         }}
                     }});
