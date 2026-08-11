@@ -1226,6 +1226,13 @@ def fetch_master_inventory(source_type: str, work_date: date) -> list[dict]:
     return with_db(lambda db: services.master_based_inventory_rows(db, source_type, work_date)) or []
 
 
+def fetch_master_category_options(source_type: str, df: pd.DataFrame) -> list[str]:
+    categories = with_db(lambda db: services.list_product_master_categories(db, source_type)) or []
+    if not categories:
+        categories = [value for value in df.get("카테고리", pd.Series(dtype=str)).dropna().unique()]
+    return sorted({clean_cell(value) for value in categories if clean_cell(value)})
+
+
 def inventory_output_signature(df: pd.DataFrame, filters: dict) -> tuple:
     if df is None or df.empty:
         row_marker = ("empty", 0)
@@ -1301,7 +1308,7 @@ def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
 
 
 def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
-    category_options = sorted([value for value in df.get("카테고리", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
+    category_options = fetch_master_category_options(source_type, df)
     supplier_options = sorted([value for value in df.get("업체명", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
     manager_options = sorted([value for value in df.get("담당자", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
     status_options = ["정상", "주의", "부족", "품절"]
@@ -2165,7 +2172,8 @@ def latest_stock_lookup(db, source_type: str, work_date: date) -> dict[tuple[str
     lookup: dict[tuple[str, str], int] = {}
     for row in rows:
         stock = int(row.available_stock if row.available_stock is not None else row.current_stock or 0)
-        lookup[(row.product_name, row.barcode or "")] = lookup.get((row.product_name, row.barcode or ""), 0) + stock
+        barcode = services.normalize_barcode_text(row.barcode)
+        lookup[(row.product_name, barcode)] = lookup.get((row.product_name, barcode), 0) + stock
         lookup[(row.product_name, "")] = lookup.get((row.product_name, ""), 0) + stock
     return lookup
 
@@ -2216,7 +2224,7 @@ def purchase_recommendation_rows(db, source_type: str, work_date: date, include_
         lead_time = int(row.inbound_cycle or 0)
         product = services.find_product_master(db, source_type, row.product_code, row.barcode, row.product_name)
         box_qty = int((product.box_qty or product.pack_qty or 0) if product else 0)
-        avg_outbound = avg_daily_outbound(db, source_type, row.product_name, row.barcode or "", work_date, 14)
+        avg_outbound = avg_daily_outbound(db, source_type, row.product_name, services.normalize_barcode_text(row.barcode), work_date, 14)
         leadtime_need = ceil(avg_outbound * lead_time) if include_leadtime and lead_time else 0
         reorder_point = safe_stock + leadtime_need
         shortage_qty = max(reorder_point - current_stock, 0)
@@ -2394,7 +2402,7 @@ def daily_payload(df: pd.DataFrame, source_type: str, work_date: date) -> list[d
                 "supplier": clean_cell(row.get("업체명")),
                 "product_code": "",
                 "product_name": product_name,
-                "barcode": clean_cell(row.get("바코드")),
+                "barcode": services.normalize_barcode_text(row.get("바코드")),
                 "current_stock": to_int(row.get("현재고")),
                 "available_stock": to_int(row.get("가용재고")),
                 "safe_stock": to_int(row.get("안전재고")),
