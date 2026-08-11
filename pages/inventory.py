@@ -2728,22 +2728,72 @@ def inject_inventory_css() -> None:
             align-items: center !important;
             display: flex !important;
             flex-wrap: wrap !important;
-            gap: 0.32rem !important;
+            gap: 0.18rem 0.72rem !important;
             justify-content: flex-start !important;
         }
         .st-key-inventory_nav_shell div[data-testid="stPills"] label,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] button,
         .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label {
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
             flex: 0 0 auto !important;
             width: auto !important;
             min-width: 0 !important;
             margin: 0 !important;
+            padding: 0 !important;
         }
         .st-key-inventory_nav_shell div[data-testid="stPills"] label > div,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] button,
         .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label > div {
-            min-height: 30px !important;
-            padding: 0.28rem 0.72rem !important;
-            border-radius: 6px !important;
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            color: #46596A !important;
+            min-height: 28px !important;
+            padding: 0.18rem 0.06rem 0.24rem !important;
             white-space: nowrap !important;
+        }
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label > div *,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] button *,
+        .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label > div * {
+            color: #46596A !important;
+            -webkit-text-fill-color: #46596A !important;
+            font-weight: 760 !important;
+        }
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label:hover > div,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] button:hover,
+        .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label:hover > div {
+            background: transparent !important;
+            border-bottom-color: #AEBCC8 !important;
+        }
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label:has(input:checked) > div,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label:has([aria-checked="true"]) > div,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label[aria-checked="true"] > div,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label[data-checked="true"] > div,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] button[aria-pressed="true"],
+        .st-key-inventory_nav_shell div[data-testid="stPills"] [aria-selected="true"],
+        .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label:has(input:checked) > div,
+        .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label[aria-checked="true"] > div {
+            background: transparent !important;
+            border-bottom-color: #2F5D7C !important;
+            color: #102033 !important;
+            font-weight: 920 !important;
+        }
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label:has(input:checked) > div *,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label:has([aria-checked="true"]) > div *,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label[aria-checked="true"] > div *,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] label[data-checked="true"] > div *,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] button[aria-pressed="true"] *,
+        .st-key-inventory_nav_shell div[data-testid="stPills"] [aria-selected="true"] *,
+        .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label:has(input:checked) > div *,
+        .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label[aria-checked="true"] > div * {
+            color: #102033 !important;
+            -webkit-text-fill-color: #102033 !important;
+            font-weight: 920 !important;
         }
         div[class*="st-key-inventory_control_"] {
             background: #EEF1F3;
