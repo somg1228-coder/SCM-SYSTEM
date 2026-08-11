@@ -662,10 +662,10 @@ def handle_warehouse3d_layout_save_request(save_request: dict | None) -> bool:
         save_warehouse_layout_store(payload)
     except Exception as exc:
         write_warehouse_layout_log(f"Streamlit component save failed: {exc}")
-        st.session_state["warehouse3d_save_notice"] = ("error", f"서버 Supabase 저장 실패: {exc}")
+        st.session_state["warehouse3d_save_notice"] = ("error", f"배치저장 실패: {exc}")
         return True
 
-    st.session_state["warehouse3d_save_notice"] = ("success", "서버 Supabase 저장 완료")
+    st.session_state["warehouse3d_save_notice"] = ("success", "배치저장 완료")
     return True
 
 
@@ -853,8 +853,7 @@ def render_warehouse3d_page() -> None:
                 key=f"warehouse3d_scene_{building}",
                 default=None,
             )
-        if handle_warehouse3d_layout_save_request(save_request):
-            st.rerun()
+        handle_warehouse3d_layout_save_request(save_request)
     else:
         with perf_span("warehouse3d.component_html_build", component="stock_position"):
             stock_html = warehouse_stock_position_html(
@@ -2645,39 +2644,39 @@ def warehouse_scene3d_html(
                 margin-bottom: 0.58rem;
             }}
             .scene-tools {{
-                display: flex;
-                flex-wrap: wrap;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
                 gap: 0.42rem;
                 margin-bottom: 0.58rem;
             }}
             .scene-tools select,
             .scene-tools button {{
                 min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                width: 100%;
             }}
             #rackTypeSelect {{
-                flex: 1 1 180px;
-                min-width: 170px;
+                grid-column: span 2;
             }}
             #rackLevelSelect {{
-                flex: 0 0 92px;
+                grid-column: span 1;
             }}
             #rackBottomSelect {{
-                flex: 0 0 118px;
+                grid-column: span 1;
             }}
             #rackStackTargetSelect {{
-                flex: 1 1 160px;
-                min-width: 150px;
+                grid-column: span 2;
             }}
             .scene-tools button {{
-                flex: 1 1 92px;
-                min-width: 86px;
                 white-space: nowrap;
             }}
             .layout-save-status {{
                 align-items: center;
                 color: #50645f;
                 display: inline-flex;
-                flex: 1 0 100%;
+                grid-column: 1 / -1;
                 font-size: 0.74rem;
                 font-weight: 900;
                 line-height: 1.35;
@@ -3232,7 +3231,7 @@ def warehouse_scene3d_html(
                     <button type="button" id="resetRack">배치 초기화</button>
                     <button type="button" id="fitRack">기본배치</button>
                     <button type="button" id="printScene">모델 출력</button>
-                    <button type="button" id="saveLayoutFile">Supabase 저장</button>
+                    <button type="button" id="saveLayoutFile">배치저장</button>
                     <span id="layoutSaveStatus" class="layout-save-status"></span>
                 </div>
                 <div class="model-viewport" id="modelViewport">
@@ -3652,11 +3651,11 @@ def warehouse_scene3d_html(
 
             async function persistWarehouseLayoutToServer() {{
                 if (layoutSaveInProgress) {{
-                    setLayoutSaveStatus("Supabase 저장 대기", "muted");
+                    setLayoutSaveStatus("배치저장 대기", "muted");
                     return false;
                 }}
                 layoutSaveInProgress = true;
-                setLayoutSaveStatus("Supabase 저장 중...", "muted");
+                setLayoutSaveStatus("배치저장 중...", "muted");
                 try {{
                     const payload = collectWarehouseLayoutBackup();
                     const requestId = `${{Date.now()}}-${{Math.random().toString(16).slice(2)}}`;
@@ -3667,11 +3666,11 @@ def warehouse_scene3d_html(
                         payload,
                     }}, "*");
                     sharedLayoutStore = payload;
-                    setLayoutSaveStatus("Supabase 저장 요청 전송됨", "ok");
+                    setLayoutSaveStatus("배치저장 요청 전송됨", "ok");
                     return true;
                 }} catch (error) {{
                     console.warn("Warehouse layout Supabase save failed", error);
-                    setLayoutSaveStatus(`Supabase 저장 실패: ${{error?.message || error}}`, "error");
+                    setLayoutSaveStatus(`배치저장 실패: ${{error?.message || error}}`, "error");
                     return false;
                 }} finally {{
                     layoutSaveInProgress = false;
@@ -3914,11 +3913,11 @@ def warehouse_scene3d_html(
                 }});
                 if (!response.ok) {{
                     const detail = await response.text().catch(() => "");
-                    throw new Error(`Supabase 저장 실패 (${{response.status}}) ${{detail}}`);
+                    throw new Error(`배치저장 실패 (${{response.status}}) ${{detail}}`);
                 }}
                 const savedRows = await response.json().catch(() => []);
                 if (!Array.isArray(savedRows) || savedRows.length < rows.length) {{
-                    throw new Error("Supabase 저장 검증 실패: 저장 행 수가 맞지 않습니다.");
+                    throw new Error("배치저장 검증 실패: 저장 행 수가 맞지 않습니다.");
                 }}
                 const layoutIdByKey = new Map();
                 rows.forEach(row => layoutIdByKey.set(`${{row.building}}|${{row.floor}}`, row.id));
@@ -4056,13 +4055,21 @@ def warehouse_scene3d_html(
                 locationFloors.forEach(option => {{
                     const shared = sharedFloorData(option.building, option.floor);
                     if (!shared || typeof shared !== "object") return;
-                    if (Array.isArray(shared.racks)) {{
+                    const savedRacks = readJsonFromLocalStorageKeys(layoutStorageKeyCandidates(option.building, option.floor), null);
+                    const savedFixtures = readJsonFromLocalStorageKeys(fixtureStorageKeyCandidates(option.building, option.floor), null);
+                    const savedFloorSize = readJsonFromLocalStorageKeys(floorSizeStorageKeyCandidates(option.building, option.floor), null);
+                    if (!Array.isArray(savedRacks) && Array.isArray(shared.racks)) {{
                         writeJsonToLocalStorage(storageKeyForLocation(option.building, option.floor), normalizeRackIds(shared.racks));
                     }}
-                    if (Array.isArray(shared.fixtures)) {{
+                    if (!Array.isArray(savedFixtures) && Array.isArray(shared.fixtures)) {{
                         writeJsonToLocalStorage(fixtureStorageKeyForLocation(option.building, option.floor), shared.fixtures);
                     }}
-                    if (shared.floor_size && Number.isFinite(Number(shared.floor_size.width)) && Number.isFinite(Number(shared.floor_size.depth))) {{
+                    if (
+                        !(savedFloorSize && Number.isFinite(Number(savedFloorSize.width)) && Number.isFinite(Number(savedFloorSize.depth))) &&
+                        shared.floor_size &&
+                        Number.isFinite(Number(shared.floor_size.width)) &&
+                        Number.isFinite(Number(shared.floor_size.depth))
+                    ) {{
                         writeJsonToLocalStorage(floorSizeStorageKeyForLocation(option.building, option.floor), shared.floor_size);
                     }}
                 }});
@@ -4078,15 +4085,6 @@ def warehouse_scene3d_html(
 
             function loadFloorSize(floorName) {{
                 const base = baseFloorSize(floorName);
-                const sharedSize = sharedFloorData(activeBuilding, floorName)?.floor_size;
-                if (sharedSize && Number.isFinite(Number(sharedSize.width)) && Number.isFinite(Number(sharedSize.depth))) {{
-                    return {{
-                        width: clamp(Number(sharedSize.width), base.width * 0.45, base.width * 2.6),
-                        depth: clamp(Number(sharedSize.depth), base.depth * 0.45, base.depth * 2.6),
-                        x: Number.isFinite(Number(sharedSize.x)) ? Number(sharedSize.x) : 0,
-                        z: Number.isFinite(Number(sharedSize.z)) ? Number(sharedSize.z) : 0,
-                    }};
-                }}
                 try {{
                     const saved = readJsonFromLocalStorageKeys(floorSizeStorageKeyCandidates(activeBuilding, floorName), null);
                     if (saved && Number.isFinite(Number(saved.width)) && Number.isFinite(Number(saved.depth))) {{
@@ -4098,6 +4096,15 @@ def warehouse_scene3d_html(
                         }};
                     }}
                 }} catch (error) {{}}
+                const sharedSize = sharedFloorData(activeBuilding, floorName)?.floor_size;
+                if (sharedSize && Number.isFinite(Number(sharedSize.width)) && Number.isFinite(Number(sharedSize.depth))) {{
+                    return {{
+                        width: clamp(Number(sharedSize.width), base.width * 0.45, base.width * 2.6),
+                        depth: clamp(Number(sharedSize.depth), base.depth * 0.45, base.depth * 2.6),
+                        x: Number.isFinite(Number(sharedSize.x)) ? Number(sharedSize.x) : 0,
+                        z: Number.isFinite(Number(sharedSize.z)) ? Number(sharedSize.z) : 0,
+                    }};
+                }}
                 return {{ ...base, x: 0, z: 0 }};
             }}
 
@@ -4279,18 +4286,23 @@ def warehouse_scene3d_html(
             }}
 
             function loadLayout(floorName) {{
-                const shared = sharedFloorData(activeBuilding, floorName)?.racks;
-                if (Array.isArray(shared)) return normalizeRackIds(shared);
                 try {{
                     const saved = readJsonFromLocalStorageKeys(layoutStorageKeyCandidates(activeBuilding, floorName), null);
                     if (Array.isArray(saved)) return normalizeRackIds(saved);
                 }} catch (error) {{}}
+                const shared = sharedFloorData(activeBuilding, floorName)?.racks;
+                if (Array.isArray(shared)) return normalizeRackIds(shared);
                 return normalizeRackIds(defaultLayout(floorName));
             }}
 
-            function saveLayout() {{
+            function persistActiveFloorToBrowserStorage() {{
                 racks = normalizeRackIds(racks);
                 writeJsonToLocalStorage(storageKeyFor(activeFloor), racks);
+                writeJsonToLocalStorage(fixtureStorageKeyFor(activeFloor), fixtures.map(normalizeFixture));
+            }}
+
+            function saveLayout() {{
+                persistActiveFloorToBrowserStorage();
                 scheduleServerLayoutSave();
             }}
 
@@ -4300,17 +4312,17 @@ def warehouse_scene3d_html(
             }}
 
             function loadFixtures(floorName) {{
-                const shared = sharedFloorData(activeBuilding, floorName)?.fixtures;
-                if (Array.isArray(shared)) return shared.map(normalizeFixture);
                 try {{
                     const saved = readJsonFromLocalStorageKeys(fixtureStorageKeyCandidates(activeBuilding, floorName), null);
                     if (Array.isArray(saved)) return saved.map(normalizeFixture);
                 }} catch (error) {{}}
+                const shared = sharedFloorData(activeBuilding, floorName)?.fixtures;
+                if (Array.isArray(shared)) return shared.map(normalizeFixture);
                 return [];
             }}
 
             function saveFixtures() {{
-                writeJsonToLocalStorage(fixtureStorageKeyFor(activeFloor), fixtures);
+                persistActiveFloorToBrowserStorage();
                 scheduleServerLayoutSave();
             }}
 
@@ -4320,8 +4332,7 @@ def warehouse_scene3d_html(
             }}
 
             function collectWarehouseLayoutBackup() {{
-                saveLayout();
-                saveFixtures();
+                persistActiveFloorToBrowserStorage();
                 const locations = {{}};
                 locationFloors.forEach(option => {{
                     const buildingName = option.building;
