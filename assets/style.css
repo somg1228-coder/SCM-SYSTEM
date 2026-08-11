@@ -13272,6 +13272,51 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
     -webkit-text-fill-color: #FAF8F5 !important;
 }
 
+.stApp div[class*="st-key-"][class*="_category_toggle_widget_dropdown"] {
+    max-width: 320px !important;
+    width: 100% !important;
+}
+
+.stApp div[class*="st-key-"][class*="_category_toggle_widget_dropdown"] > [data-testid="stVerticalBlock"] {
+    gap: 0.16rem !important;
+}
+
+.stApp div[class*="st-key-"][class*="_category_toggle_widget_dropdown"] [data-testid="stButton"] button {
+    justify-content: space-between !important;
+    width: 100% !important;
+}
+
+.stApp div[class*="st-key-"][class*="_category_toggle_widget_options"] {
+    background: #F8F5EF !important;
+    border: 1px solid #CFC5B7 !important;
+    border-radius: 8px !important;
+    max-height: 280px !important;
+    overflow-y: auto !important;
+    padding: 0.28rem !important;
+    width: 100% !important;
+}
+
+.stApp div[class*="st-key-"][class*="_category_toggle_widget_options"] [data-testid="stButton"] button {
+    background: transparent !important;
+    border-color: transparent !important;
+    border-radius: 6px !important;
+    justify-content: flex-start !important;
+    min-height: 32px !important;
+    height: 32px !important;
+    padding: 0 10px !important;
+    text-align: left !important;
+}
+
+.stApp div[class*="st-key-"][class*="_category_toggle_widget_options"] [data-testid="stButton"] button:hover {
+    background: #E7E1D8 !important;
+    border-color: #D1C7BA !important;
+}
+
+.stApp div[class*="st-key-"][class*="_category_toggle_widget_options"] [data-testid="stButton"] button[kind="primary"] {
+    background: #516D86 !important;
+    border-color: #435D73 !important;
+}
+
 .stApp div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stExpander"] {
     background: transparent !important;
     border: 1px solid #CFC5B7 !important;
@@ -13310,6 +13355,14 @@ div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
 @media (max-width: 900px) {
     .stApp div[class*="st-key-inventory_filter_"][class*="_panel"] {
         padding: 10px !important;
+    }
+
+    .stApp div[class*="st-key-"][class*="_category_toggle_widget_dropdown"] {
+        max-width: 100% !important;
+    }
+
+    .stApp div[class*="st-key-"][class*="_category_toggle_widget_options"] {
+        max-height: min(55vh, 340px) !important;
     }
 }
 

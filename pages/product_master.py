@@ -757,6 +757,7 @@ def clear_inventory_view_state_for_source(key: str) -> None:
         "filters_open",
         "category_toggle",
         "category_toggle_widget",
+        "category_toggle_widget_open",
     ]:
         st.session_state.pop(f"{key}_{suffix}", None)
 

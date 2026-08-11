@@ -1228,6 +1228,8 @@ def fetch_master_inventory(source_type: str, work_date: date) -> list[dict]:
 
 def fetch_master_category_options(source_type: str, df: pd.DataFrame) -> list[str]:
     categories = with_db(lambda db: services.list_product_master_categories(db, source_type)) or []
+    if source_type == "3PL":
+        return sorted({clean_cell(value) for value in categories if clean_cell(value)})
     if not categories:
         categories = [value for value in df.get("카테고리", pd.Series(dtype=str)).dropna().unique()]
     return sorted({clean_cell(value) for value in categories if clean_cell(value)})
@@ -1263,32 +1265,31 @@ def inventory_single_category_toggle(options: list[str], state_key: str, widget_
         st.session_state[state_key] = "전체"
         return "전체"
 
-    st.caption("카테고리")
-    if hasattr(st, "segmented_control"):
-        selected = st.segmented_control(
-            "카테고리",
-            choices,
-            default=current,
-            key=widget_key,
-            label_visibility="collapsed",
-            width="stretch",
-        )
-        selected = clean_cell(selected) or "전체"
-    else:
-        selected = current
-        rows = [choices[index : index + 6] for index in range(0, len(choices), 6)]
-        for row_index, row_choices in enumerate(rows):
-            cols = st.columns(len(row_choices), gap="small")
-            for col, label in zip(cols, row_choices, strict=True):
-                if col.button(
-                    label,
-                    key=f"{widget_key}_{row_index}_{label}",
-                    type="primary" if label == current else "secondary",
-                    use_container_width=True,
-                ):
-                    selected = label
-                    st.session_state[state_key] = selected
-                    st.rerun()
+    open_key = f"{widget_key}_open"
+    st.session_state.setdefault(open_key, False)
+    selected = current
+    trigger_label = "카테고리 선택" if current == "전체" else f"카테고리 : {current}"
+    trigger_label = f"{trigger_label} {'▲' if st.session_state[open_key] else '▼'}"
+
+    with st.container(key=f"{widget_key}_dropdown"):
+        if st.button(trigger_label, key=f"{widget_key}_trigger", use_container_width=True):
+            st.session_state[open_key] = not st.session_state[open_key]
+            st.rerun()
+
+        if st.session_state[open_key]:
+            with st.container(key=f"{widget_key}_options"):
+                for index, label in enumerate(choices):
+                    if st.button(
+                        label,
+                        key=f"{widget_key}_option_{index}",
+                        type="primary" if label == current else "secondary",
+                        use_container_width=True,
+                    ):
+                        selected = label
+                        st.session_state[state_key] = selected
+                        st.session_state[open_key] = False
+                        st.session_state.pop(widget_key, None)
+                        st.rerun()
 
     st.session_state[state_key] = selected
     return selected
@@ -1466,6 +1467,7 @@ def reset_inventory_filters(filter_key: str) -> None:
         "page",
         "last_page_size",
         "category_toggle",
+        "category_toggle_widget_open",
     ]:
         st.session_state.pop(f"{filter_key}_{suffix}", None)
 
@@ -1516,6 +1518,7 @@ def clear_inventory_filter(filter_key: str, suffix: str, value: str | None = Non
         st.session_state[f"{filter_key}_{suffix}"] = []
         st.session_state[f"{filter_key}_category_toggle"] = "전체"
         st.session_state.pop(f"{filter_key}_category_toggle_widget", None)
+        st.session_state.pop(f"{filter_key}_category_toggle_widget_open", None)
     elif suffix in {"stock_presence"}:
         st.session_state[f"{filter_key}_{suffix}"] = "전체"
     elif suffix in {"inbound_expected", "outbound_expected", "below_safe"}:
@@ -2481,7 +2484,8 @@ def clean_cell(value) -> str:
             return ""
     except TypeError:
         pass
-    return str(value).strip()
+    text = str(value).strip()
+    return "" if text.lower() in {"nan", "nat", "none", "null"} else text
 
 
 def to_int(value) -> int:
