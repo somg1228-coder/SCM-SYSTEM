@@ -6727,7 +6727,6 @@ def warehouse_scene3d_html(
 
             fixtures = loadFixtures(activeFloor);
             renderItemSelect();
-            syncStackInput();
             syncFixtureLabelButton();
             resizeRenderer();
             setZoom(100);
