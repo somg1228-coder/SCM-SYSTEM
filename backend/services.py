@@ -70,7 +70,7 @@ KNOWN_IMPORT_HEADERS = {
     "기본창고-정상",
 }
 IMPORT_HEADER_ALIASES = {
-    "카테고리": ("카테고리", "카테고리명", "상품카테고리", "상품 카테고리", "대분류", "대분류명", "대 카테고리", "대카테고리", "분류", "상품분류", "category", "large_category", "largeCategory"),
+    "카테고리": ("카테고리", "카테고리명", "상품카테고리", "상품 카테고리", "대분류", "대분류명", "대 카테고리", "대카테고리", "분류", "상품분류", "category", "Category", "large_category", "largeCategory"),
     "중분류": ("중분류", "중분류명", "중 카테고리", "중카테고리", "medium_category", "mediumCategory"),
     "소분류": ("소분류", "소분류명", "소 카테고리", "소카테고리", "small_category", "smallCategory"),
     "바코드": ("바코드", "88바코드", "옵션바코드", "barcode"),
@@ -953,6 +953,7 @@ def normalize_product_master_row(row: dict) -> dict:
             "분류",
             "상품분류",
             "category",
+            "Category",
             "large_category",
             "largeCategory",
         ),

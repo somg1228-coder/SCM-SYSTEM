@@ -314,6 +314,7 @@ def normalize_product_payload(source_type: str, row: dict, used_skus: set[str]) 
             row,
             "large_category",
             "category",
+            "Category",
             "카테고리",
             "카테고리명",
             "상품카테고리",
