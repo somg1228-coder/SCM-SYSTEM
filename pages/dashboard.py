@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 import pandas as pd
 import streamlit as st
 
-from sqlalchemy import case, distinct, func, select
+from sqlalchemy import case, func, select
 from backend.perf import perf_span, record_perf_event
 
 try:
@@ -42,8 +42,6 @@ RETURN_CASE_DB_PATH = BASE_DIR / "ReturnCaseSystem" / "cases.db"
 SCHEDULE_DB_PATH = BASE_DIR / "data" / "schedule.db"
 SOURCE_TYPES = ["3PL", "오프라인", "창고"]
 _DASHBOARD_READY = False
-PURCHASE_PR_PENDING_STATUSES = ["작성", "상신"]
-PURCHASE_PR_OPEN_STATUSES = ["작성", "상신", "승인"]
 PO_INBOUND_DONE = "입고완료"
 PO_INBOUND_WAITING_STATUSES = ["입고대기", "부분입고"]
 PO_PROGRESS_DONE = "발주완료"
@@ -283,7 +281,6 @@ def render_dashboard() -> None:
     work_date = inventory_summary.get("work_date") or date.today()
     purchase_summary = dashboard_data.get("purchase_summary", {})
     core_tasks_summary = dashboard_data.get("core_tasks_summary", {})
-    return_case_summary = dashboard_data.get("return_case_summary", {})
     weekly_markup = dashboard_data.get("weekly_markup") or weekly_schedule_html()
     log_dashboard_event(
         "dashboard_data metrics "
@@ -295,15 +292,6 @@ def render_dashboard() -> None:
     with dashboard_stage(render_metrics, "cards_render"):
         kpi_markup = kpi_cards_html(inventory_summary, purchase_summary)
     with dashboard_stage(render_metrics, "charts_render"):
-        status_grid_markup = (
-            issue_donut_html(
-                return_case_summary.get("category_rows", []),
-                return_case_summary.get("total_count", 0),
-                return_case_summary.get("monthly_rows", []),
-                return_case_summary.get("year", date.today().year),
-            )
-            + occurrence_status_html(return_case_summary)
-        )
         warehouse_markup = warehouse_status_html(inventory_summary.get("source_status", []))
     with dashboard_stage(render_metrics, "tables_render"):
         recent_orders_markup = recent_orders_html(purchase_summary.get("recent_po_inbound", []))
@@ -315,9 +303,6 @@ def render_dashboard() -> None:
                 {weekly_markup}
                 {kpi_markup}
                 <section class="dashboard-middle-grid">
-                    <section class="status-grid">
-                        {status_grid_markup}
-                    </section>
                     {recent_orders_markup}
                 </section>
                 <section class="dashboard-bottom-grid">
@@ -437,10 +422,9 @@ def get_dashboard_data(trend_days: int = 7) -> dict:
     with dashboard_stage(metrics, "data_processing.merge_payload"):
         inventory_summary = {**inventory_summary, **payload.get("inventory_summary", {})}
         work_date = inventory_summary.get("work_date") or date.today()
-    with dashboard_stage(metrics, "return_case_summary"):
-        return_case_summary = get_return_case_summary(work_date)
+    record_dashboard_stage_skip(metrics, "return_case_summary", "removed from main dashboard for faster first render")
     with dashboard_stage(metrics, "schedule_processing"):
-        inventory_summary["return_as_count"] = int(return_case_summary.get("week_count") or return_case_summary.get("total_count") or 0)
+        inventory_summary["return_as_count"] = 0
         core_tasks_summary = build_core_tasks_summary_from_schedule(payload.get("production_rows", []))
         weekly_markup = build_weekly_schedule_html_from_production(payload.get("production_rows", []))
     with dashboard_stage(metrics, "purchase_summary_merge"):
@@ -598,14 +582,11 @@ def build_dashboard_purchase_summary_optimized(db, work_date: date, trend_days: 
     prev_month_start = prev_month_end.replace(day=1)
     with dashboard_stage(metrics, "purchase_summary"):
         purchase_snapshot = dashboard_purchase_snapshot(db, work_date, month_start, prev_month_start, prev_month_end, metrics)
-    pending_count = purchase_snapshot[0] or 0
-    pending_amount = purchase_snapshot[1] or 0
-    purchase_aggregate = purchase_snapshot[2:12]
+    purchase_aggregate = purchase_snapshot[0:10]
     month_amount = purchase_aggregate[4] or 0
     prev_month_amount = purchase_aggregate[5] or 0
-    rfq_count = purchase_snapshot[12] or 0
     with dashboard_stage(metrics, "production_summary"):
-        progress_rows = build_purchase_progress_rows_from_aggregate(work_date, pending_count, pending_amount, rfq_count, purchase_aggregate)
+        progress_rows = build_purchase_progress_rows_from_aggregate(work_date, purchase_aggregate)
     with dashboard_stage(metrics, "recent_po_inbound_summary"):
         recent_rows = get_recent_po_inbound_rows_optimized(db, metrics)
     priority_rows = []
@@ -614,8 +595,8 @@ def build_dashboard_purchase_summary_optimized(db, work_date: date, trend_days: 
     max_delay_days = (work_date - min_delayed_date).days if hasattr(min_delayed_date, "toordinal") else 0
     change_rate = ((float(month_amount or 0) - float(prev_month_amount or 0)) / float(prev_month_amount) * 100) if prev_month_amount else (100.0 if month_amount else 0.0)
     return {
-        "pending_pr_count": int(pending_count or 0),
-        "pending_pr_amount": int(pending_amount or 0),
+        "pending_pr_count": 0,
+        "pending_pr_amount": 0,
         "po_progress_count": int(purchase_aggregate[0] or 0),
         "uninbound_amount": int(purchase_aggregate[1] or 0),
         "delayed_count": int(purchase_aggregate[2] or 0),
@@ -634,26 +615,11 @@ def dashboard_purchase_snapshot(db, work_date: date, month_start: date, prev_mon
     open_po = (PurchaseOrder.inbound_status != PO_INBOUND_DONE) & (PurchaseOrder.progress_status != PO_PROGRESS_CANCELED)
     delayed_po = open_po & (PurchaseOrder.expected_inbound_date < work_date)
     inbound_waiting = PurchaseOrder.inbound_status.in_(PO_INBOUND_WAITING_STATUSES) & (PurchaseOrder.progress_status != PO_PROGRESS_CANCELED)
-    pending_count = (
-        select(func.count(PurchaseRequest.id))
-        .where(PurchaseRequest.approval_status.in_(PURCHASE_PR_PENDING_STATUSES))
-        .scalar_subquery()
-    )
-    pending_amount = (
-        select(func.coalesce(func.sum(quote_total_expr()), 0))
-        .select_from(PurchaseRequest)
-        .join(RfqQuote, RfqQuote.pr_number == PurchaseRequest.pr_number)
-        .where(PurchaseRequest.approval_status.in_(PURCHASE_PR_PENDING_STATUSES))
-        .scalar_subquery()
-    )
-    rfq_count = select(func.count(distinct(RfqQuote.pr_number))).scalar_subquery()
     return dashboard_query(
         metrics,
         db,
         "purchase_snapshot",
         select(
-            pending_count,
-            pending_amount,
             func.coalesce(func.sum(case((open_po, 1), else_=0)), 0),
             func.coalesce(func.sum(case((open_po, PurchaseOrder.order_amount), else_=0)), 0),
             func.coalesce(func.sum(case((delayed_po, 1), else_=0)), 0),
@@ -676,24 +642,16 @@ def dashboard_purchase_snapshot(db, work_date: date, month_start: date, prev_mon
             func.coalesce(func.sum(case((PurchaseOrder.progress_status == PO_PROGRESS_DONE, PurchaseOrder.order_amount), else_=0)), 0),
             func.coalesce(func.sum(case((inbound_waiting, 1), else_=0)), 0),
             func.coalesce(func.sum(case((inbound_waiting, PurchaseOrder.order_amount), else_=0)), 0),
-            rfq_count,
         ).where((PurchaseOrder.order_date <= work_date) | (PurchaseOrder.order_date.is_(None))),
         "one",
     )
 
 
-def quote_total_expr():
-    order_qty = case((PurchaseRequest.quantity >= RfqQuote.moq, PurchaseRequest.quantity), else_=RfqQuote.moq)
-    return order_qty * RfqQuote.unit_price + RfqQuote.shipping_fee
-
-
-def build_purchase_progress_rows_from_aggregate(work_date: date, pending_count: int, pending_amount: int, rfq_count: int, row) -> list[dict]:
+def build_purchase_progress_rows_from_aggregate(work_date: date, row) -> list[dict]:
     delayed_count = int(row[2] or 0)
     min_delayed_date = row[3]
     max_delay_days = (work_date - min_delayed_date).days if hasattr(min_delayed_date, "toordinal") else 0
     return [
-        {"label": "구매요청 대기", "value": int(pending_count or 0), "caption": f"{int(pending_amount or 0):,}원", "tone": "orange", "href": purchase_link("구매요청(PR)", "pr_pending")},
-        {"label": "견적 진행", "value": int(rfq_count or 0), "caption": "RFQ 등록", "tone": "cyan", "href": purchase_link("견적관리(RFQ)", "rfq_progress")},
         {"label": "발주 완료", "value": int(row[6] or 0), "caption": f"{int(row[7] or 0):,}원", "tone": "blue", "href": purchase_link("발주관리(PO)", "po_progress")},
         {"label": "입고 대기", "value": int(row[8] or 0), "caption": f"{int(row[9] or 0):,}원", "tone": "green", "href": purchase_link("발주관리(PO)", "inbound_waiting")},
         {"label": "납기 지연", "value": delayed_count, "caption": f"최대 {max_delay_days}일", "tone": "red" if delayed_count else "cyan", "href": purchase_link("발주관리(PO)", "po_delay")},
@@ -2082,8 +2040,6 @@ def kpi_cards_html(summary: dict, purchase_summary: dict) -> str:
     stock = format_metric(summary.get("current_stock", 0))
     outbound_qty = format_metric(summary.get("outbound_qty", 0))
     inbound_qty = format_metric(summary.get("inbound_qty", 0))
-    pending_pr = format_metric(purchase_summary.get("pending_pr_count", 0))
-    pending_amount = format_won(purchase_summary.get("pending_pr_amount", 0))
     po_progress = format_metric(purchase_summary.get("po_progress_count", 0))
     uninbound_amount = format_won(purchase_summary.get("uninbound_amount", 0))
     month_amount = format_won(purchase_summary.get("month_amount", 0))
@@ -2101,7 +2057,6 @@ def kpi_cards_html(summary: dict, purchase_summary: dict) -> str:
     cards = [
         ("cube", "총 현재고", f"{stock}개", caption_date, "cyan", inventory_link("all")),
         ("truck", "출고수량", f"{outbound_qty}개", caption_date, "blue", inventory_link("outbound")),
-        ("case", "구매요청", f"{pending_pr}건", f"대기 {pending_amount}", "purple", purchase_link("구매요청(PR)", "pr_pending")),
         ("truck", "발주 진행", f"{po_progress}건", f"미입고 {uninbound_amount}", "blue", purchase_link("발주관리(PO)", "po_progress")),
         ("box", "입고수량", f"{inbound_qty}개", caption_date, "green", inventory_link("all")),
         ("box", "이번 달 구매금액", month_amount, f"전월 대비 {month_change}", "green", purchase_link("구매 KPI")),
@@ -2530,8 +2485,6 @@ def inbound_3pl_html(rows: list[dict]) -> str:
 def purchase_progress_html(rows: list[dict]) -> str:
     if not rows:
         rows = [
-            {"label": "구매요청 대기", "value": 0, "caption": "0원", "tone": "orange", "href": purchase_link("구매요청(PR)", "pr_pending")},
-            {"label": "견적 진행", "value": 0, "caption": "RFQ 등록", "tone": "cyan", "href": purchase_link("견적관리(RFQ)", "rfq_progress")},
             {"label": "발주 완료", "value": 0, "caption": "0원", "tone": "blue", "href": purchase_link("발주관리(PO)", "po_progress")},
             {"label": "입고 대기", "value": 0, "caption": "0원", "tone": "green", "href": purchase_link("발주관리(PO)", "inbound_waiting")},
             {"label": "납기 지연", "value": 0, "caption": "최대 0일", "tone": "cyan", "href": purchase_link("발주관리(PO)", "po_delay")},
