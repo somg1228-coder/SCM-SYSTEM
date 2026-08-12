@@ -281,6 +281,7 @@ def render_dashboard() -> None:
     work_date = inventory_summary.get("work_date") or date.today()
     purchase_summary = dashboard_data.get("purchase_summary", {})
     core_tasks_summary = dashboard_data.get("core_tasks_summary", {})
+    return_case_summary = dashboard_data.get("return_case_summary", {})
     weekly_markup = dashboard_data.get("weekly_markup") or weekly_schedule_html()
     log_dashboard_event(
         "dashboard_data metrics "
@@ -292,6 +293,12 @@ def render_dashboard() -> None:
     with dashboard_stage(render_metrics, "cards_render"):
         kpi_markup = kpi_cards_html(inventory_summary, purchase_summary)
     with dashboard_stage(render_metrics, "charts_render"):
+        status_grid_markup = issue_donut_html(
+            return_case_summary.get("category_rows", []),
+            return_case_summary.get("total_count", 0),
+            return_case_summary.get("monthly_rows", []),
+            return_case_summary.get("year", date.today().year),
+        )
         warehouse_markup = warehouse_status_html(inventory_summary.get("source_status", []))
     with dashboard_stage(render_metrics, "tables_render"):
         recent_orders_markup = recent_orders_html(purchase_summary.get("recent_po_inbound", []))
@@ -303,6 +310,7 @@ def render_dashboard() -> None:
                 {weekly_markup}
                 {kpi_markup}
                 <section class="dashboard-middle-grid">
+                    {status_grid_markup}
                     {recent_orders_markup}
                 </section>
                 <section class="dashboard-bottom-grid">
@@ -422,7 +430,8 @@ def get_dashboard_data(trend_days: int = 7) -> dict:
     with dashboard_stage(metrics, "data_processing.merge_payload"):
         inventory_summary = {**inventory_summary, **payload.get("inventory_summary", {})}
         work_date = inventory_summary.get("work_date") or date.today()
-    record_dashboard_stage_skip(metrics, "return_case_summary", "removed from main dashboard for faster first render")
+    with dashboard_stage(metrics, "return_case_issue_summary"):
+        return_case_summary = get_return_case_issue_summary(work_date)
     with dashboard_stage(metrics, "schedule_processing"):
         inventory_summary["return_as_count"] = 0
         core_tasks_summary = build_core_tasks_summary_from_schedule(payload.get("production_rows", []))
@@ -1407,6 +1416,54 @@ def get_recent_inbound_rows(db, limit: int = 5) -> list[dict]:
         }
         for row in rows[:limit]
     ]
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_return_case_issue_summary(work_date: date) -> dict:
+    current_year = work_date.year if hasattr(work_date, "year") else date.today().year
+    summary = default_return_case_summary(work_date)
+    if legacy_store_available is None or connect_sqlite_compatible is None or not legacy_store_available(RETURN_CASE_DB_PATH):
+        return summary
+    try:
+        with connect_sqlite_compatible(RETURN_CASE_DB_PATH) as conn:
+            total_count = conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
+            category_rows = conn.execute(
+                """
+                SELECT category, COUNT(*) AS cnt
+                FROM cases
+                WHERE TRIM(COALESCE(category, '')) != ''
+                GROUP BY category
+                ORDER BY cnt DESC, category
+                """
+            ).fetchall()
+            monthly_counts = dict(
+                conn.execute(
+                    """
+                    SELECT substr(case_id, 5, 2) AS month, COUNT(*) AS cnt
+                    FROM cases
+                    WHERE substr(case_id, 1, 4) = ?
+                    GROUP BY month
+                    """,
+                    (str(current_year),),
+                ).fetchall()
+            )
+    except sqlite3.Error:
+        return summary
+
+    colors = ["#66849C", "#5F8F7B", "#A98755", "#8A94A3", "#A86464", "#7B8794"]
+    return {
+        **summary,
+        "total_count": int(total_count or 0),
+        "category_rows": [
+            {"category": category or "-", "count": int(count or 0), "color": colors[index % len(colors)]}
+            for index, (category, count) in enumerate(category_rows)
+        ],
+        "monthly_rows": [
+            {"month": month, "month_key": f"{current_year}{month:02d}", "count": int(monthly_counts.get(f"{month:02d}", 0) or 0)}
+            for month in range(1, 13)
+        ],
+        "year": current_year,
+    }
 
 
 @st.cache_data(ttl=60, show_spinner=False)

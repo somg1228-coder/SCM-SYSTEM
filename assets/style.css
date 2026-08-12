@@ -15215,3 +15215,58 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
     border-left-color: #52697F !important;
     color: #0F2B54 !important;
 }
+
+/* Sidebar clipping repair: keep group and menu cards inside the rail. */
+[data-testid="stSidebar"] .block-container {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button,
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button {
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    width: 100% !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] {
+    margin: 11px 0 7px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button {
+    min-height: 36px !important;
+    padding-left: 34px !important;
+    padding-right: 26px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button::before,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button::before {
+    left: 10px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button::after,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button::after {
+    right: 8px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] {
+    margin-left: 0 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button {
+    min-height: 32px !important;
+    padding-left: 34px !important;
+    padding-right: 8px !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand {
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+}
