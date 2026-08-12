@@ -4026,6 +4026,39 @@ def render_inventory_kpi_cards(cards: list[tuple[str, int, str, str]]) -> None:
                 st.metric(label, f"{int(value or 0):,}")
 
 
+def render_inventory_update_panel(
+    source_type: str,
+    work_date: date,
+    upload_preview_key: str,
+    preview_df_key: str,
+    applied_df_key: str,
+    excluded_df_key: str,
+) -> None:
+    with st.container(key=f"{source_key(source_type)}_inventory_update"):
+        with st.expander("ERP 재고 업데이트", expanded=False):
+            upload_cols = st.columns([2.2, 1.25, 0.78, 2.25], gap="small")
+            with upload_cols[0]:
+                uploaded = st.file_uploader("Excel/CSV 파일", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
+            with upload_cols[1]:
+                upload_mode = st.radio("반영 범위", ["일부 재고 파일", "전체 재고 파일"], horizontal=True, key=f"{source_type}_stock_upload_mode")
+            with upload_cols[2]:
+                st.write("")
+                if st.button("미리보기", key=f"{source_type}_stock_preview_btn_{work_date}", use_container_width=True):
+                    if uploaded is None:
+                        st.warning("먼저 ERP 재고 Excel 파일을 선택하세요.")
+                    else:
+                        mode = "full" if upload_mode == "전체 재고 파일" else "partial"
+                        preview = with_db(lambda db: services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode))
+                        if preview:
+                            st.session_state[upload_preview_key] = preview
+                            st.session_state[preview_df_key] = stock_preview_display_dataframe(preview)
+            with upload_cols[3]:
+                st.caption("바코드 우선 매칭, 미매칭, 중복을 확인한 뒤 반영합니다.")
+            preview = st.session_state.get(upload_preview_key)
+            if preview:
+                render_stock_upload_preview(source_type, work_date, upload_preview_key, preview, preview_df_key, applied_df_key, excluded_df_key)
+
+
 def render_daily_tab(source_type: str) -> None:
     today = date.today()
     saved_work_dates = fetch_work_dates(source_type)
@@ -4045,6 +4078,15 @@ def render_daily_tab(source_type: str) -> None:
     filtered_df = apply_inventory_filters(base_df, filters)
     paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
 
+    upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
+    preview_df_key = f"{source_type}_inventory_preview_df_{work_date.isoformat()}"
+    applied_df_key = f"{source_type}_applied_inventory_df_{work_date.isoformat()}"
+    excluded_df_key = f"{source_type}_excluded_inventory_df_{work_date.isoformat()}"
+    output_payload_key = f"{source_type}_daily_output_payload_{work_date.isoformat()}"
+    output_scope_key = f"{source_type}_daily_download_scope_{work_date}"
+
+    render_inventory_update_panel(source_type, work_date, upload_preview_key, preview_df_key, applied_df_key, excluded_df_key)
+
     status_series = filtered_df.get("재고상태", pd.Series(dtype=str))
     available_total = int(filtered_df.get("가용재고", pd.Series(dtype=int)).apply(to_int).sum()) if not filtered_df.empty else 0
     render_inventory_kpi_cards(
@@ -4056,13 +4098,6 @@ def render_daily_tab(source_type: str) -> None:
             ("가용재고", available_total, "현재 필터 기준 합계", "available"),
         ]
     )
-
-    upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
-    preview_df_key = f"{source_type}_inventory_preview_df_{work_date.isoformat()}"
-    applied_df_key = f"{source_type}_applied_inventory_df_{work_date.isoformat()}"
-    excluded_df_key = f"{source_type}_excluded_inventory_df_{work_date.isoformat()}"
-    output_payload_key = f"{source_type}_daily_output_payload_{work_date.isoformat()}"
-    output_scope_key = f"{source_type}_daily_download_scope_{work_date}"
 
     with st.container(key=f"{source_key(source_type)}_inventory_table_actions"):
         toolbar_title, toolbar_scope, toolbar_pdf, toolbar_excel = st.columns([3.8, 1.15, 0.78, 0.78], gap="small")
@@ -4121,30 +4156,6 @@ def render_daily_tab(source_type: str) -> None:
                     st.rerun()
             with spacer:
                 st.empty()
-
-    with st.container(key=f"{source_key(source_type)}_inventory_update"):
-        with st.expander("ERP 재고 업데이트", expanded=False):
-            upload_cols = st.columns([2.2, 1.25, 0.78, 2.25], gap="small")
-            with upload_cols[0]:
-                uploaded = st.file_uploader("Excel/CSV 파일", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
-            with upload_cols[1]:
-                upload_mode = st.radio("반영 범위", ["일부 재고 파일", "전체 재고 파일"], horizontal=True, key=f"{source_type}_stock_upload_mode")
-            with upload_cols[2]:
-                st.write("")
-                if st.button("미리보기", key=f"{source_type}_stock_preview_btn_{work_date}", use_container_width=True):
-                    if uploaded is None:
-                        st.warning("먼저 ERP 재고 Excel 파일을 선택하세요.")
-                    else:
-                        mode = "full" if upload_mode == "전체 재고 파일" else "partial"
-                        preview = with_db(lambda db: services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode))
-                        if preview:
-                            st.session_state[upload_preview_key] = preview
-                            st.session_state[preview_df_key] = stock_preview_display_dataframe(preview)
-            with upload_cols[3]:
-                st.caption("바코드 우선 매칭, 미매칭, 중복을 확인한 뒤 반영합니다.")
-            preview = st.session_state.get(upload_preview_key)
-            if preview:
-                render_stock_upload_preview(source_type, work_date, upload_preview_key, preview, preview_df_key, applied_df_key, excluded_df_key)
 
 
 def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, filters: dict) -> bytes:
