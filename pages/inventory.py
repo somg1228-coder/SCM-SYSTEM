@@ -49,14 +49,14 @@ DAILY_COLUMNS = [
     "카테고리",
     "바코드",
     "상품명",
-    "업체명",
-    "박스/파렛트 단위",
-    "현재고",
-    "안전재고",
     "가용재고",
-    "입고예정",
-    "출고예정",
+    "1주 평균출고수량",
     "재고상태",
+    "출고예정",
+    "현재고",
+    "발주필요일",
+    "박스/파렛트 단위",
+    "업체명",
     "담당자",
     "리드타임",
 ]
@@ -1515,11 +1515,11 @@ def apply_inventory_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
         filtered = filtered[filtered["현재고"].apply(to_int) > 0]
     elif filters.get("stock_presence") == "미보유":
         filtered = filtered[filtered["현재고"].apply(to_int) <= 0]
-    if filters.get("inbound_expected"):
+    if filters.get("inbound_expected") and "입고예정" in filtered.columns:
         filtered = filtered[filtered["입고예정"].apply(to_int) > 0]
     if filters.get("outbound_expected"):
         filtered = filtered[filtered["출고예정"].apply(to_int) > 0]
-    if filters.get("below_safe"):
+    if filters.get("below_safe") and {"현재고", "안전재고"}.issubset(filtered.columns):
         filtered = filtered[filtered["현재고"].apply(to_int) <= filtered["안전재고"].apply(to_int)]
     lead_min = int(filters.get("lead_min") or 0)
     lead_max = int(filters.get("lead_max") or 0)
@@ -1652,12 +1652,58 @@ def render_inventory_html(markup: str) -> None:
         st.markdown(markup, unsafe_allow_html=True)
 
 
+INVENTORY_STATUS_DISPLAY_COLUMNS = [
+    "카테고리",
+    "바코드",
+    "상품명",
+    "가용재고",
+    "1주 평균출고수량",
+    "재고상태",
+    "출고예정",
+    "현재고",
+    "발주필요일",
+    "박스/파렛트 단위",
+    "업체명",
+    "담당자",
+    "리드타임",
+]
+
+INVENTORY_STATUS_HIDDEN_COLUMNS = {
+    "선택",
+    "안전재고",
+    "입고예정",
+    "최근재고반영일",
+    "최근2주 평균출고",
+}
+
+
+def inventory_status_output_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    if not {"카테고리", "바코드", "상품명"}.issubset(df.columns):
+        return df
+
+    output_df = df.copy()
+    if "1주 평균출고수량" not in output_df.columns and "최근2주 평균출고" in output_df.columns:
+        output_df["1주 평균출고수량"] = output_df["최근2주 평균출고"]
+
+    ordered = [column for column in INVENTORY_STATUS_DISPLAY_COLUMNS if column in output_df.columns]
+    remaining = [
+        column
+        for column in output_df.columns
+        if column not in INVENTORY_STATUS_DISPLAY_COLUMNS and column not in INVENTORY_STATUS_HIDDEN_COLUMNS
+    ]
+    if not ordered:
+        return df
+    return output_df[ordered + remaining]
+
+
 def render_inventory_visible_table(df: pd.DataFrame, height: int = 520) -> None:
     with perf_span("inventory.table_render", rows=0 if df is None else len(df), height=height):
         if df is None or df.empty:
             st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
             return
-        safe_df = df.fillna("").copy()
+        safe_df = inventory_status_output_dataframe(df).fillna("").copy()
         for column in safe_df.columns:
             safe_df[column] = safe_df[column].map(lambda value: value.isoformat() if hasattr(value, "isoformat") else value)
         html = inventory_visible_table_html(safe_df)
@@ -1962,9 +2008,9 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
         "center": ParagraphStyle("inventory_center", fontName=font_name, fontSize=7.2, leading=9, alignment=TA_CENTER),
         "right": ParagraphStyle("inventory_right", fontName=font_name, fontSize=7.2, leading=9, alignment=TA_RIGHT),
     }
-    export_columns = ["카테고리", "바코드", "상품명", "업체명", "박스/파렛트 단위", "현재고", "안전재고", "가용재고", "입고예정", "출고예정", "재고상태", "담당자", "리드타임"]
-    export_df = df.copy()
-    export_df = export_df[[column for column in export_columns if column in export_df.columns]]
+    export_columns = INVENTORY_STATUS_DISPLAY_COLUMNS
+    export_df = inventory_status_output_dataframe(df)
+    export_df = export_df[[column for column in export_columns if column in export_df.columns]].copy()
     meta = [
         f"재고처: {source_type}",
         f"기준일자: {work_date:%Y-%m-%d}",
@@ -1975,28 +2021,26 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     ]
     story = [Paragraph("SCM 재고관리", styles["title"]), Spacer(1, 4 * mm), Paragraph(" / ".join(meta), styles["meta"]), Spacer(1, 4 * mm)]
     table_data = [[Paragraph(column, styles["center"]) for column in export_df.columns]]
+    numeric_columns = {"가용재고", "1주 평균출고수량", "출고예정", "현재고", "발주필요일", "리드타임"}
     for _, row in export_df.iterrows():
-        table_data.append(
-            [
-                Paragraph(clean_cell(row.get("카테고리")), styles["cell"]),
-                Paragraph(clean_cell(row.get("바코드")), styles["center"]),
-                Paragraph(clean_cell(row.get("상품명")), styles["cell"]),
-                Paragraph(clean_cell(row.get("업체명")), styles["cell"]),
-                Paragraph(clean_cell(row.get("박스/파렛트 단위")), styles["cell"]),
-                Paragraph(f"{to_int(row.get('현재고')):,}", styles["right"]),
-                Paragraph(f"{to_int(row.get('안전재고')):,}", styles["right"]),
-                Paragraph(f"{to_int(row.get('가용재고')):,}", styles["right"]),
-                Paragraph(f"{to_int(row.get('입고예정')):,}", styles["right"]),
-                Paragraph(f"{to_int(row.get('출고예정')):,}", styles["right"]),
-                Paragraph(clean_cell(row.get("재고상태")), styles["center"]),
-                Paragraph(clean_cell(row.get("담당자")), styles["center"]),
-                Paragraph(f"{to_int(row.get('리드타임')):,}", styles["right"]),
-            ]
-        )
+        cells = []
+        for column in export_df.columns:
+            value = row.get(column, "")
+            if column in numeric_columns and clean_cell(value) != "":
+                style = styles["right"]
+                text = f"{float(value):,.2f}" if column == "1주 평균출고수량" else f"{to_int(value):,}"
+            elif column in {"바코드", "재고상태"}:
+                style = styles["center"]
+                text = clean_cell(value)
+            else:
+                style = styles["cell"]
+                text = clean_cell(value)
+            cells.append(Paragraph(text, style))
+        table_data.append(cells)
     table = Table(
         table_data,
         repeatRows=1,
-        colWidths=[20 * mm, 27 * mm, 50 * mm, 24 * mm, 33 * mm, 15 * mm, 15 * mm, 15 * mm, 15 * mm, 15 * mm, 17 * mm, 18 * mm, 15 * mm],
+        colWidths=[17 * mm, 24 * mm, 46 * mm, 15 * mm, 20 * mm, 16 * mm, 15 * mm, 15 * mm, 16 * mm, 26 * mm, 22 * mm, 20 * mm, 14 * mm][: len(export_df.columns)],
     )
     table.setStyle(
         TableStyle(
@@ -2466,20 +2510,21 @@ def inbound_excel(source_type: str) -> bytes:
 def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
     mapped = []
     for row in rows:
+        order_days = row.get("order_needed_days")
         mapped.append(
             {
                 "선택": False,
-                "카테고리": row.get("category", ""),
+                "카테고리": clean_cell(row.get("category")) or "미분류",
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
-                "업체명": row.get("supplier", ""),
-                "박스/파렛트 단위": row.get("box_pallet_unit", ""),
-                "현재고": row.get("current_stock", 0),
-                "안전재고": row.get("safe_stock", 0),
                 "가용재고": row.get("available_stock", 0),
-                "입고예정": row.get("pending_inbound_qty", 0),
+                "1주 평균출고수량": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
+                "재고상태": clean_cell(row.get("stock_status")) or "미집계",
                 "출고예정": row.get("pending_outbound_qty", 0),
-                "재고상태": row.get("stock_status", ""),
+                "현재고": row.get("current_stock", 0),
+                "발주필요일": "" if order_days is None else int(order_days),
+                "박스/파렛트 단위": row.get("box_pallet_unit", ""),
+                "업체명": row.get("supplier", ""),
                 "담당자": row.get("manager", ""),
                 "리드타임": row.get("inbound_cycle", 0) or 0,
             }
@@ -4240,11 +4285,11 @@ def apply_inventory_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
         filtered = filtered[filtered["현재고"].apply(to_int) > 0]
     elif filters.get("stock_presence") == "미보유":
         filtered = filtered[filtered["현재고"].apply(to_int) <= 0]
-    if filters.get("inbound_expected"):
+    if filters.get("inbound_expected") and "입고예정" in filtered.columns:
         filtered = filtered[filtered["입고예정"].apply(to_int) > 0]
     if filters.get("outbound_expected"):
         filtered = filtered[filtered["출고예정"].apply(to_int) > 0]
-    if filters.get("below_safe"):
+    if filters.get("below_safe") and {"현재고", "안전재고"}.issubset(filtered.columns):
         filtered = filtered[filtered["현재고"].apply(to_int) <= filtered["안전재고"].apply(to_int)]
     lead_min = int(filters.get("lead_min") or 0)
     lead_max = int(filters.get("lead_max") or 0)
@@ -4558,7 +4603,7 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
                 label_visibility="collapsed",
             )
         output_df = filtered_df if download_scope == "현재 필터" else base_df
-        output_df = output_df.drop(columns=["선택"], errors="ignore")
+        output_df = inventory_status_output_dataframe(output_df.drop(columns=["선택"], errors="ignore"))
         output_filters = filters if download_scope == "현재 필터" else {}
         output_signature = inventory_output_signature(output_df, output_filters)
         payload = st.session_state.get(output_payload_key, {})
