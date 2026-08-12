@@ -15770,3 +15770,62 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
 }
+
+/* Sidebar submenu flattening: keep selection feedback without card-shaped child items. */
+[data-testid="stSidebar"] div[class*="sidebar_nav_"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] {
+    margin: 1px 0 1px 3px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button {
+    background: transparent !important;
+    border: 0 !important;
+    border-left: 3px solid transparent !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+    color: #27384A !important;
+    min-height: 33px !important;
+    padding-left: 34px !important;
+    padding-right: 8px !important;
+    -webkit-text-fill-color: #27384A !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button:hover,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button:hover {
+    background: rgba(82, 105, 127, 0.055) !important;
+    border-left-color: rgba(82, 105, 127, 0.26) !important;
+    box-shadow: none !important;
+    color: #172033 !important;
+    -webkit-text-fill-color: #172033 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button[kind="primary"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[kind="primary"],
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button[data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[data-testid="stBaseButton-primary"] {
+    background: rgba(82, 105, 127, 0.1) !important;
+    border: 0 !important;
+    border-left: 4px solid #52697F !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+    color: #0F2B54 !important;
+    font-weight: 850 !important;
+    -webkit-text-fill-color: #0F2B54 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button::before,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button::before {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    left: 10px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button[kind="primary"]::before,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[kind="primary"]::before,
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button[data-testid="stBaseButton-primary"]::before,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[data-testid="stBaseButton-primary"]::before {
+    background: rgba(82, 105, 127, 0.12) !important;
+    border-color: rgba(82, 105, 127, 0.2) !important;
+}
