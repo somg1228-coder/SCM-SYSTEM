@@ -3746,6 +3746,35 @@ def inject_inventory_css() -> None:
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
+
+        /* Kill the Streamlit pill look in inventory navigation. */
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="st-key-inventory_main_section_"] [data-testid="stButton"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="st-key-inventory_current_source_"] [data-testid="stButton"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="st-key-inventory_threepl_section_"] [data-testid="stButton"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="st-key-inventory_offline_section_"] [data-testid="stButton"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="st-key-inventory_warehouse_section_"] [data-testid="stButton"] button {
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            color: #2F4051 !important;
+            min-height: 34px !important;
+            padding: 0.24rem 0 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="st-key-inventory_main_section_"] [data-testid="stButton"] button *,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="st-key-inventory_current_source_"] [data-testid="stButton"] button *,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="st-key-inventory_threepl_section_"] [data-testid="stButton"] button *,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="st-key-inventory_offline_section_"] [data-testid="stButton"] button *,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="st-key-inventory_warehouse_section_"] [data-testid="stButton"] button * {
+            color: inherit !important;
+            font-weight: 820 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[class*="_active"] [data-testid="stButton"] button {
+            border-bottom-color: #0F2B54 !important;
+            color: #0F2B54 !important;
+            font-weight: 950 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -3812,17 +3841,43 @@ def render_inventory_page_lazy() -> None:
         render_material_inventory_tab()
 
 
+def inventory_nav_token(value: str) -> str:
+    token = re.sub(r"[^0-9A-Za-z]+", "_", str(value)).strip("_").lower()
+    return token or "item"
+
+
+def inventory_text_tab_selector(options: list[str], key: str, default: str) -> str:
+    labels = [str(option) for option in options]
+    state_key = f"{key}_selected"
+    current = st.session_state.get(state_key) or default or (labels[0] if labels else "")
+    if current not in labels and labels:
+        current = labels[0]
+    st.session_state[state_key] = current
+    if not labels:
+        return ""
+
+    columns = st.columns(len(labels), gap="small")
+    for index, label in enumerate(labels):
+        active = "active" if label == current else "idle"
+        token = inventory_nav_token(f"{index}_{label}")
+        with columns[index]:
+            with st.container(key=f"{key}_{token}_{active}"):
+                if st.button(label, key=f"{key}_{token}_button", use_container_width=True):
+                    st.session_state[state_key] = label
+                    st.rerun()
+    return current
+
+
 def render_inventory_navigation() -> tuple[str, str, str]:
     with st.container(key="inventory_nav_shell"):
-        current_section = clean_cell(st.session_state.get("inventory_main_section")) or "현재재고"
+        current_section = clean_cell(st.session_state.get("inventory_main_section_selected")) or "현재재고"
         render_inventory_module_rail(current_section)
         nav_main_col, nav_source_col, nav_detail_col = st.columns([2.55, 1.1, 2.35], gap="large")
         with nav_main_col:
-            selected_section = lazy_tab_selector(
+            selected_section = inventory_text_tab_selector(
                 INVENTORY_MAIN_SECTIONS,
                 "inventory_main_section",
                 default="현재재고",
-                compact=True,
             )
 
         selected_source = ""
@@ -3830,11 +3885,10 @@ def render_inventory_navigation() -> tuple[str, str, str]:
         if selected_section == "현재재고":
             with nav_source_col:
                 with st.container(key="inventory_nav_source"):
-                    selected_source = lazy_tab_selector(
+                    selected_source = inventory_text_tab_selector(
                         INVENTORY_CURRENT_SOURCES,
                         "inventory_current_source",
                         default=st.session_state.get("inventory_active_source") or "3PL",
-                        compact=True,
                     )
             if selected_source not in INVENTORY_CURRENT_SOURCES:
                 selected_source = "3PL"
@@ -3843,11 +3897,10 @@ def render_inventory_navigation() -> tuple[str, str, str]:
             source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
             with nav_detail_col:
                 with st.container(key="inventory_nav_detail"):
-                    selected_tab = lazy_tab_selector(
+                    selected_tab = inventory_text_tab_selector(
                         INVENTORY_SOURCE_TABS,
                         f"inventory_{source_key(source_type)}_section",
                         default="재고조회",
-                        compact=True,
                     )
     return selected_section, selected_source, selected_tab
 
