@@ -26,7 +26,7 @@ else:
 SOURCE_TABS = [
     ("3PL", "3PL 마스터"),
     ("오프라인", "오프라인 마스터"),
-    ("창고", "창고관리 마스터"),
+    ("창고", "창고 마스터"),
 ]
 
 SOURCE_KEY_MAP = {
@@ -848,16 +848,16 @@ def render_threepl_master_filters(key: str, df: pd.DataFrame) -> dict:
     lead_time_options = sorted({to_int_value(value) for value in df.get("리드타임", pd.Series(dtype=int)).dropna().unique() if to_int_value(value) > 0})
 
     with st.expander("검색 및 필터", expanded=True):
-        categories = render_threepl_category_toggle(key, category_options)
-
-        row1 = st.columns([1.5, 1.0, 1.0], gap="small")
+        row1 = st.columns([1.6, 0.78, 1.0, 1.0], gap="small")
         keyword = row1[0].text_input(
             "통합 검색",
             placeholder="바코드 / 상품명 / 업체명 / 담당자",
             key=f"product_master_{key}_keyword",
         )
-        suppliers = row1[1].multiselect("업체명", supplier_options, key=f"product_master_{key}_suppliers")
-        managers = row1[2].multiselect("담당자", manager_options, key=f"product_master_{key}_managers")
+        with row1[1]:
+            categories = render_threepl_category_toggle(key, category_options)
+        suppliers = row1[2].multiselect("업체명", supplier_options, key=f"product_master_{key}_suppliers")
+        managers = row1[3].multiselect("담당자", manager_options, key=f"product_master_{key}_managers")
 
         row2 = st.columns([1.0, 1.0, 1.0, 0.8, 0.7, 0.9], gap="small")
         lead_times = row2[0].multiselect("리드타임", lead_time_options, key=f"product_master_{key}_lead_times")
@@ -1705,6 +1705,21 @@ def inject_product_master_css() -> None:
         div[class*="st-key-product_master_"][class*="_editor_panel"] button[kind="primary"] *,
         div[class*="st-key-product_master_"][class*="_editor_panel"] [data-testid="baseButton-primary"] * {
             color: #FFFFFF !important;
+        }
+        div[class*="st-key-product_master_"][class*="_categories_toggle_dropdown"] {
+            margin-top: 1.46rem !important;
+        }
+        div[class*="st-key-product_master_"][class*="_categories_toggle_dropdown"] [data-testid="stPopover"] button,
+        div[class*="st-key-product_master_"][class*="_categories_toggle_dropdown"] [data-testid="stButton"] button {
+            border-radius: 8px !important;
+            font-size: 0.78rem !important;
+            font-weight: 800 !important;
+            min-height: 34px !important;
+            padding: 0.3rem 0.48rem !important;
+        }
+        div[class*="st-key-product_master_"][class*="_controls"] [data-testid="stTextInput"] input,
+        div[class*="st-key-product_master_"][class*="_controls"] [data-baseweb="select"] > div {
+            min-height: 34px !important;
         }
         </style>
         """,

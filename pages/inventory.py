@@ -81,8 +81,8 @@ DASHBOARD_FILTER_LABELS = {
 }
 
 INVENTORY_MAIN_SECTIONS = ["현재재고", "안전재고", "재고이력", "MRP", "발주추천", "자재/반제품"]
-INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "창고관리"]
-INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "창고관리": "창고"}
+INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "창고"]
+INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "창고": "창고"}
 INVENTORY_SOURCE_TABS = ["재고조회", "입고내역", "출고내역", "대시보드", "마스터 관리"]
 
 
@@ -235,7 +235,7 @@ def source_key(source_type: str) -> str:
 
 def master_title(source_type: str) -> str:
     if source_type == "창고":
-        return "창고관리 마스터"
+        return "창고 마스터"
     return f"{source_type} 마스터"
 
 
@@ -3801,26 +3801,83 @@ def inject_inventory_css() -> None:
             font-size: 0.96rem !important;
             min-height: 36px !important;
         }
-        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stSidebar"] .stButton > button {
+
+        /* Final compact inventory navigation and filters. */
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell {
+            background: #FAF8F5 !important;
+            border: 1px solid #D8D0C4 !important;
+            border-radius: 8px !important;
+            box-shadow: 0 8px 18px rgba(52, 44, 34, 0.045) !important;
+            margin: 0 0 0.82rem !important;
+            padding: 0.72rem 0.84rem 0.58rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source {
+            border-bottom: 1px solid #D8D0C4 !important;
+            margin: 0 0 0.38rem !important;
+            padding: 0 0 0.48rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source [data-testid="stHorizontalBlock"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail [data-testid="stHorizontalBlock"] {
+            gap: 0.42rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source [data-testid="stButton"] button {
+            background: #FFFEFC !important;
+            border: 1px solid #D8D0C4 !important;
+            border-left: 4px solid #8A9CAF !important;
+            border-radius: 8px !important;
+            box-shadow: 0 4px 12px rgba(48, 40, 31, 0.045) !important;
+            color: #2F4051 !important;
+            font-size: 0.9rem !important;
+            font-weight: 850 !important;
+            min-height: 38px !important;
+            padding: 0.38rem 0.56rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[class*="_active"] [data-testid="stButton"] button {
+            background: #EEF3F7 !important;
+            border-color: #9FB3CA !important;
+            border-left-color: #0F2B54 !important;
+            color: #0F2B54 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail [data-testid="stButton"] button {
             background: transparent !important;
             border: 0 !important;
-            border-left: 3px solid transparent !important;
+            border-bottom: 2px solid transparent !important;
             border-radius: 0 !important;
             box-shadow: none !important;
-            color: #e3f5f0 !important;
-            min-height: auto !important;
-            padding: 0.45rem 0.65rem !important;
+            color: #52697F !important;
+            font-size: 0.82rem !important;
+            font-weight: 780 !important;
+            min-height: 28px !important;
+            padding: 0.1rem 0.04rem 0.18rem !important;
         }
-        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stSidebar"] .stButton > button:hover {
-            background: rgba(20, 132, 118, 0.22) !important;
-            border-left-color: rgba(117, 236, 219, 0.5) !important;
-            color: #ffffff !important;
-            transform: none !important;
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[class*="_active"] [data-testid="stButton"] button {
+            border-bottom-color: #0F2B54 !important;
+            color: #0F2B54 !important;
+            font-weight: 900 !important;
         }
-        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stSidebar"] .stButton > button[kind="primary"] {
-            background: rgba(21, 152, 134, 0.22) !important;
-            border-left-color: var(--cyan) !important;
-            color: #ffffff !important;
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] {
+            margin-bottom: 0.72rem !important;
+            padding: 0.72rem 0.82rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stPopover"] button,
+        div[class*="product_master_"][class*="_categories_toggle_dropdown"] [data-testid="stPopover"] button {
+            min-height: 34px !important;
+            padding: 0.32rem 0.48rem !important;
+            font-size: 0.78rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] input,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-baseweb="select"] > div {
+            min-height: 34px !important;
+        }
+        .inventory-page-header h1 {
+            font-size: 1.36rem !important;
+        }
+        .inventory-page-header p {
+            font-size: 0.84rem !important;
         }
         </style>
         """,
@@ -3852,13 +3909,13 @@ DAILY_COLUMNS = [
     "담당자",
     "리드타임",
 ]
-INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "로긴창고"]
-INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "로긴창고": "창고"}
+INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "창고"]
+INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "창고": "창고"}
 INVENTORY_SOURCE_TABS = ["재고", "입고", "출고", "대시보드", "마스터"]
 
 
 def master_title(source_type: str) -> str:
-    return "창고관리 마스터" if source_type == "창고" else f"{source_type} 마스터"
+    return "창고 마스터" if source_type == "창고" else f"{source_type} 마스터"
 
 
 def render_inventory_page_lazy() -> None:
@@ -3881,7 +3938,7 @@ def inventory_nav_token(value: str) -> str:
     return token or "item"
 
 
-def inventory_text_tab_selector(options: list[str], key: str, default: str) -> str:
+def inventory_text_tab_selector(options: list[str], key: str, default: str, trailing_weight: float = 0.0) -> str:
     labels = [str(option) for option in options]
     state_key = f"{key}_selected"
     current = st.session_state.get(state_key) or default or (labels[0] if labels else "")
@@ -3891,7 +3948,10 @@ def inventory_text_tab_selector(options: list[str], key: str, default: str) -> s
     if not labels:
         return ""
 
-    columns = st.columns(len(labels), gap="small")
+    weights = [1.0] * len(labels)
+    if trailing_weight:
+        weights.append(trailing_weight)
+    columns = st.columns(weights, gap="small")
     for index, label in enumerate(labels):
         active = "active" if label == current else "idle"
         token = inventory_nav_token(f"{index}_{label}")
@@ -3900,6 +3960,9 @@ def inventory_text_tab_selector(options: list[str], key: str, default: str) -> s
                 if st.button(label, key=f"{key}_{token}_button", use_container_width=True):
                     st.session_state[state_key] = label
                     st.rerun()
+    if trailing_weight:
+        with columns[-1]:
+            st.empty()
     return current
 
 
@@ -3910,6 +3973,7 @@ def render_inventory_navigation() -> tuple[str, str]:
                 INVENTORY_CURRENT_SOURCES,
                 "inventory_current_source",
                 default=st.session_state.get("inventory_active_source") or "3PL",
+                trailing_weight=3.6,
             )
         if selected_source not in INVENTORY_CURRENT_SOURCES:
             selected_source = "3PL"
@@ -3921,6 +3985,7 @@ def render_inventory_navigation() -> tuple[str, str]:
                 INVENTORY_SOURCE_TABS,
                 f"inventory_{source_key(source_type)}_section",
                 default="재고",
+                trailing_weight=4.5,
             )
     return selected_source, selected_tab
 
@@ -4053,7 +4118,7 @@ def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
         st.session_state.setdefault(f"{filter_key}_{suffix}", value)
 
     with st.container(key=f"inventory_filter_{filter_key}_panel"):
-        cols = st.columns([2.15, 1.24, 1.12, 1.05, 0.68, 0.68], gap="small")
+        cols = st.columns([2.35, 0.82, 1.05, 0.95, 0.58, 0.58], gap="small")
         search = cols[0].text_input("통합검색", placeholder="바코드 / 상품명 / 업체명 / 담당자", key=f"{filter_key}_search")
         with cols[1]:
             categories = inventory_category_toggle(category_options, filter_key)
@@ -4393,7 +4458,7 @@ def render_inventory_update_panel(
             render_stock_upload_preview(source_type, work_date, upload_preview_key, preview, preview_df_key, applied_df_key, excluded_df_key)
 
 
-def render_daily_tab(source_type: str) -> None:
+def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
     today = date.today()
     saved_work_dates = fetch_work_dates(source_type)
     default_work_date = saved_work_dates[0] if saved_work_dates else today

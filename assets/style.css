@@ -15151,3 +15151,67 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
         overflow-x: auto !important;
     }
 }
+
+/* Sidebar final hierarchy: make the main category headers read as distinct cards. */
+[data-testid="stSidebar"] div[class*="sidebar_group_"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] {
+    margin: 14px 0 8px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button {
+    border-radius: 8px !important;
+    box-shadow: inset 4px 0 0 var(--group-accent), 0 5px 14px rgba(46, 39, 31, 0.055) !important;
+    font-size: 13px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0 !important;
+    min-height: 40px !important;
+    padding-left: 42px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_work"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_work"] button {
+    background: #E7EDF4 !important;
+    border-color: #C5D0DC !important;
+    color: #263F58 !important;
+    -webkit-text-fill-color: #263F58 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_ops"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_ops"] button {
+    background: #E5EEE7 !important;
+    border-color: #C2D3C5 !important;
+    color: #334F3D !important;
+    -webkit-text-fill-color: #334F3D !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_support"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_support"] button {
+    background: #EEE8F3 !important;
+    border-color: #D2C7DC !important;
+    color: #52415F !important;
+    -webkit-text-fill-color: #52415F !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] {
+    margin-left: 7px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button {
+    background: #FFFEFC !important;
+    border: 1px solid #E4DED6 !important;
+    border-left: 3px solid transparent !important;
+    border-radius: 8px !important;
+    color: #334155 !important;
+    min-height: 34px !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button[kind="primary"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[kind="primary"] {
+    background: #EEF3F7 !important;
+    border-color: #C8D4DF !important;
+    border-left-color: #52697F !important;
+    color: #0F2B54 !important;
+}
