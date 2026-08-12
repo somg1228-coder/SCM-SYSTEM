@@ -3855,6 +3855,9 @@ def inject_inventory_css() -> None:
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail [data-testid="stHorizontalBlock"] {
             gap: 0.26rem !important;
         }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail [data-testid="stHorizontalBlock"] {
+            gap: 0.42rem !important;
+        }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source [data-testid="stButton"] button {
             background: #FFFEFC !important;
             border: 1px solid #D8D0C4 !important;
@@ -3973,7 +3976,14 @@ def inventory_nav_token(value: str) -> str:
     return token or "item"
 
 
-def inventory_text_tab_selector(options: list[str], key: str, default: str, item_weight: float = 1.0, trailing_weight: float = 0.0) -> str:
+def inventory_text_tab_selector(
+    options: list[str],
+    key: str,
+    default: str,
+    item_weight: float = 1.0,
+    trailing_weight: float = 0.0,
+    item_weights: list[float] | None = None,
+) -> str:
     labels = [str(option) for option in options]
     state_key = f"{key}_selected"
     current = st.session_state.get(state_key) or default or (labels[0] if labels else "")
@@ -3983,7 +3993,7 @@ def inventory_text_tab_selector(options: list[str], key: str, default: str, item
     if not labels:
         return ""
 
-    weights = [item_weight] * len(labels)
+    weights = item_weights if item_weights and len(item_weights) == len(labels) else [item_weight] * len(labels)
     if trailing_weight:
         weights.append(trailing_weight)
     columns = st.columns(weights, gap="small")
@@ -4021,8 +4031,8 @@ def render_inventory_navigation() -> tuple[str, str]:
                 INVENTORY_SOURCE_TABS,
                 f"inventory_{source_key(source_type)}_section",
                 default="재고",
-                item_weight=0.34,
-                trailing_weight=8.2,
+                item_weights=[0.34, 0.34, 0.34, 0.62, 0.48],
+                trailing_weight=8.0,
             )
     return selected_source, selected_tab
 
