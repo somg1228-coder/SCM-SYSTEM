@@ -3519,6 +3519,233 @@ def inject_inventory_css() -> None:
             border-color: #CFC5B7 !important;
             color: #2F4051 !important;
         }
+
+        /* Reference redesign: structured SCM inventory screen in portal colors. */
+        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stAppViewBlockContainer"] {
+            max-width: 1680px !important;
+            padding-left: clamp(1rem, 1.45vw, 1.55rem) !important;
+            padding-right: clamp(1rem, 1.45vw, 1.55rem) !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell {
+            background: transparent !important;
+            border-bottom: 1px solid #D8D0C4 !important;
+            margin-bottom: 1.42rem !important;
+            padding-bottom: 0.9rem !important;
+        }
+        .inventory-module-rail {
+            align-items: stretch;
+            border-bottom: 1px solid #D8D0C4;
+            display: grid;
+            grid-template-columns: repeat(5, minmax(120px, 1fr));
+            margin: 0 0 1rem;
+        }
+        .inventory-module-item {
+            align-items: center;
+            color: #2F4051;
+            display: flex;
+            font-size: 0.98rem;
+            font-weight: 850;
+            gap: 0.55rem;
+            justify-content: center;
+            min-height: 54px;
+            padding: 0 0.7rem;
+            position: relative;
+        }
+        .inventory-module-item i {
+            color: #52697F;
+            font-style: normal;
+            font-weight: 900;
+        }
+        .inventory-module-item.active {
+            color: #0F2B54;
+        }
+        .inventory-module-item.active::after {
+            background: #0F2B54;
+            bottom: -1px;
+            content: "";
+            height: 3px;
+            left: 9%;
+            position: absolute;
+            right: 9%;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="radiogroup"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="group"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="group"] {
+            gap: 0.55rem 1.05rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label > div {
+            border: 0 !important;
+            border-radius: 999px !important;
+            min-height: 42px !important;
+            padding: 0.52rem 1rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label:has(input:checked) > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label[aria-checked="true"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button[aria-pressed="true"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] [aria-selected="true"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label:has(input:checked) > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label[aria-checked="true"] > div {
+            background: #0F2B54 !important;
+            color: #FFFFFF !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[data-testid="stPills"] label:has(input:checked) > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[data-testid="stPills"] label[aria-checked="true"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[data-testid="stPills"] button[aria-pressed="true"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[data-testid="stPills"] [aria-selected="true"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] label:has(input:checked) > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] label[aria-checked="true"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] button[aria-pressed="true"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] [aria-selected="true"] {
+            background: transparent !important;
+            color: #0F2B54 !important;
+            font-weight: 900 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail {
+            margin-left: 0 !important;
+        }
+        .inventory-page-header h1 {
+            color: #0F2B54 !important;
+            font-size: clamp(1.65rem, 1.75vw, 2.1rem) !important;
+            font-weight: 950 !important;
+            margin: 0 0 0.42rem !important;
+        }
+        .inventory-page-header p {
+            color: #52697F !important;
+            font-size: 0.94rem !important;
+            margin: 0 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"] {
+            border-radius: 8px !important;
+            box-shadow: 0 12px 28px rgba(48, 40, 31, 0.08) !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] {
+            margin-bottom: 1.05rem !important;
+            padding: 1.15rem 1.28rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] {
+            margin: 0 0 1.1rem !important;
+            padding: 1.15rem 1.28rem !important;
+        }
+        .inventory-update-heading h2 {
+            color: #0F2B54;
+            font-size: 1.18rem;
+            font-weight: 950;
+            margin: 0 0 0.25rem;
+        }
+        .inventory-update-heading p {
+            color: #52697F;
+            font-size: 0.88rem;
+            margin: 0 0 0.95rem;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_inventory_update"] [data-testid="stFileUploaderDropzone"] {
+            background: #FFFEFC !important;
+            border: 1px dashed #9FB3CA !important;
+            border-radius: 8px !important;
+            min-height: 96px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_inventory_update"] [data-testid="stAlert"] {
+            background: #EEF3F7 !important;
+            border-color: #D6E0EA !important;
+            color: #0F2B54 !important;
+        }
+        .inventory-design-kpis {
+            display: grid;
+            gap: 1rem;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            margin: 0 0 1.1rem;
+        }
+        .inventory-design-kpi {
+            align-items: center;
+            background: #FAF8F5;
+            border: 1px solid #D8D0C4;
+            border-radius: 8px;
+            box-shadow: 0 12px 28px rgba(48, 40, 31, 0.075);
+            display: flex;
+            justify-content: space-between;
+            min-height: 112px;
+            padding: 1rem 1.2rem;
+        }
+        .inventory-design-kpi span {
+            color: #0F2B54;
+            display: block;
+            font-size: 0.86rem;
+            font-weight: 900;
+            margin-bottom: 0.44rem;
+        }
+        .inventory-design-kpi strong {
+            color: #0F2B54;
+            display: block;
+            font-size: 2rem;
+            font-weight: 950;
+            letter-spacing: 0;
+            line-height: 1;
+        }
+        .inventory-design-kpi em {
+            color: #52697F;
+            display: block;
+            font-size: 0.82rem;
+            font-style: normal;
+            margin-top: 0.42rem;
+        }
+        .inventory-design-kpi i {
+            align-items: center;
+            background: #E8EEF7;
+            border-radius: 999px;
+            color: #52697F;
+            display: inline-flex;
+            flex: 0 0 46px;
+            font-size: 1.45rem;
+            font-style: normal;
+            font-weight: 900;
+            height: 46px;
+            justify-content: center;
+            width: 46px;
+        }
+        .inventory-design-kpi.normal strong,
+        .inventory-design-kpi.normal i { color: #26844A; }
+        .inventory-design-kpi.warning strong,
+        .inventory-design-kpi.warning i { color: #C05A1A; }
+        .inventory-design-kpi.short strong,
+        .inventory-design-kpi.short i { color: #4F7BC4; }
+        .inventory-design-kpi.soldout strong,
+        .inventory-design-kpi.soldout i { color: #D83939; }
+        .inventory-design-kpi.unknown strong,
+        .inventory-design-kpi.unknown i { color: #6B7280; }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"] {
+            margin: 0 0 1rem !important;
+            padding: 1rem 1.28rem !important;
+        }
+        .inventory-table-title h2 {
+            color: #0F2B54 !important;
+            font-size: 1.2rem !important;
+        }
+        .inventory-table-title span {
+            background: #EEF3F7;
+            border-radius: 999px;
+            color: #0F2B54 !important;
+            font-weight: 800;
+            padding: 0.22rem 0.65rem;
+        }
+        @media (max-width: 1366px) {
+            .inventory-design-kpis {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+        @media (max-width: 900px) {
+            .inventory-module-rail {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .inventory-design-kpis {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -3587,35 +3814,41 @@ def render_inventory_page_lazy() -> None:
 
 def render_inventory_navigation() -> tuple[str, str, str]:
     with st.container(key="inventory_nav_shell"):
-        selected_section = lazy_tab_selector(
-            INVENTORY_MAIN_SECTIONS,
-            "inventory_main_section",
-            default="현재재고",
-            compact=True,
-        )
+        current_section = clean_cell(st.session_state.get("inventory_main_section")) or "현재재고"
+        render_inventory_module_rail(current_section)
+        nav_main_col, nav_source_col, nav_detail_col = st.columns([2.55, 1.1, 2.35], gap="large")
+        with nav_main_col:
+            selected_section = lazy_tab_selector(
+                INVENTORY_MAIN_SECTIONS,
+                "inventory_main_section",
+                default="현재재고",
+                compact=True,
+            )
 
         selected_source = ""
         selected_tab = ""
         if selected_section == "현재재고":
-            with st.container(key="inventory_nav_source"):
-                selected_source = lazy_tab_selector(
-                    INVENTORY_CURRENT_SOURCES,
-                    "inventory_current_source",
-                    default=st.session_state.get("inventory_active_source") or "3PL",
-                    compact=True,
-                )
+            with nav_source_col:
+                with st.container(key="inventory_nav_source"):
+                    selected_source = lazy_tab_selector(
+                        INVENTORY_CURRENT_SOURCES,
+                        "inventory_current_source",
+                        default=st.session_state.get("inventory_active_source") or "3PL",
+                        compact=True,
+                    )
             if selected_source not in INVENTORY_CURRENT_SOURCES:
                 selected_source = "3PL"
             st.session_state["inventory_active_source"] = selected_source
 
             source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
-            with st.container(key="inventory_nav_detail"):
-                selected_tab = lazy_tab_selector(
-                    INVENTORY_SOURCE_TABS,
-                    f"inventory_{source_key(source_type)}_section",
-                    default="재고조회",
-                    compact=True,
-                )
+            with nav_detail_col:
+                with st.container(key="inventory_nav_detail"):
+                    selected_tab = lazy_tab_selector(
+                        INVENTORY_SOURCE_TABS,
+                        f"inventory_{source_key(source_type)}_section",
+                        default="재고조회",
+                        compact=True,
+                    )
     return selected_section, selected_source, selected_tab
 
 
@@ -4019,11 +4252,50 @@ def stock_excluded_display_dataframe(preview: dict) -> pd.DataFrame:
 
 
 def render_inventory_kpi_cards(cards: list[tuple[str, int, str, str]]) -> None:
-    with st.container(key="inventory_kpi_native"):
-        columns = st.columns(len(cards), gap="small")
-        for column, (label, value, _unit, _tone) in zip(columns, cards):
-            with column:
-                st.metric(label, f"{int(value or 0):,}")
+    icons = {
+        "neutral": "▦",
+        "normal": "✓",
+        "warning": "!",
+        "short": "↓",
+        "soldout": "−",
+        "unknown": "?",
+        "available": "▣",
+    }
+    items = []
+    for label, value, unit, tone in cards:
+        items.append(
+            f"""
+            <article class="inventory-design-kpi {escape(tone)}">
+                <div>
+                    <span>{escape(label)}</span>
+                    <strong>{int(value or 0):,}</strong>
+                    <em>{escape(unit)}</em>
+                </div>
+                <i>{escape(icons.get(tone, "?"))}</i>
+            </article>
+            """
+        )
+    render_inventory_html(f'<section class="inventory-design-kpis">{"".join(items)}</section>')
+
+
+def render_inventory_module_rail(active_section: str) -> None:
+    groups = [
+        ("재고현황", "현재재고", "▱"),
+        ("계획/발주", "MRP", "▤"),
+        ("물류관리", "현재재고", "▰"),
+        ("조회/관리", "현재재고", "▣"),
+        ("마스터관리", "현재재고", "⚙"),
+    ]
+    active_group = "재고현황"
+    if active_section in {"MRP", "발주추천", "자재/반제품"}:
+        active_group = "계획/발주"
+    elif active_section in {"안전재고", "재고이력"}:
+        active_group = "재고현황"
+    items = []
+    for label, _target, icon in groups:
+        active = "active" if label == active_group else ""
+        items.append(f'<div class="inventory-module-item {active}"><i>{escape(icon)}</i><span>{escape(label)}</span></div>')
+    render_inventory_html(f'<section class="inventory-module-rail">{"".join(items)}</section>')
 
 
 def render_inventory_update_panel(
@@ -4035,28 +4307,37 @@ def render_inventory_update_panel(
     excluded_df_key: str,
 ) -> None:
     with st.container(key=f"{source_key(source_type)}_inventory_update"):
-        with st.expander("ERP 재고 업데이트", expanded=False):
-            upload_cols = st.columns([2.2, 1.25, 0.78, 2.25], gap="small")
-            with upload_cols[0]:
-                uploaded = st.file_uploader("Excel/CSV 파일", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
-            with upload_cols[1]:
-                upload_mode = st.radio("반영 범위", ["일부 재고 파일", "전체 재고 파일"], horizontal=True, key=f"{source_type}_stock_upload_mode")
-            with upload_cols[2]:
-                st.write("")
-                if st.button("미리보기", key=f"{source_type}_stock_preview_btn_{work_date}", use_container_width=True):
-                    if uploaded is None:
-                        st.warning("먼저 ERP 재고 Excel 파일을 선택하세요.")
-                    else:
-                        mode = "full" if upload_mode == "전체 재고 파일" else "partial"
-                        preview = with_db(lambda db: services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode))
-                        if preview:
-                            st.session_state[upload_preview_key] = preview
-                            st.session_state[preview_df_key] = stock_preview_display_dataframe(preview)
-            with upload_cols[3]:
-                st.caption("바코드 우선 매칭, 미매칭, 중복을 확인한 뒤 반영합니다.")
-            preview = st.session_state.get(upload_preview_key)
-            if preview:
-                render_stock_upload_preview(source_type, work_date, upload_preview_key, preview, preview_df_key, applied_df_key, excluded_df_key)
+        render_inventory_html(
+            """
+            <div class="inventory-update-heading">
+                <div>
+                    <h2>ERP 재고 업데이트</h2>
+                    <p>ERP에서 추출한 Excel/CSV 파일로 현재 재고를 갱신합니다.</p>
+                </div>
+            </div>
+            """
+        )
+        upload_cols = st.columns([2.45, 1.05, 0.88, 1.42], gap="large")
+        with upload_cols[0]:
+            uploaded = st.file_uploader("파일 선택 또는 Drag & Drop", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
+        with upload_cols[1]:
+            upload_mode = st.radio("반영 범위", ["일부 재고", "전체 재고"], horizontal=False, key=f"{source_type}_stock_upload_mode")
+        with upload_cols[2]:
+            st.write("")
+            if st.button("미리보기", key=f"{source_type}_stock_preview_btn_{work_date}", use_container_width=True):
+                if uploaded is None:
+                    st.warning("먼저 ERP 재고 Excel 파일을 선택하세요.")
+                else:
+                    mode = "full" if upload_mode == "전체 재고" else "partial"
+                    preview = with_db(lambda db: services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode))
+                    if preview:
+                        st.session_state[upload_preview_key] = preview
+                        st.session_state[preview_df_key] = stock_preview_display_dataframe(preview)
+        with upload_cols[3]:
+            st.info("미리보기에서 바코드 우선 매칭, 미매칭, 중복을 확인한 뒤 재고 반영을 누르면 저장과 재고 계산이 함께 실행됩니다.")
+        preview = st.session_state.get(upload_preview_key)
+        if preview:
+            render_stock_upload_preview(source_type, work_date, upload_preview_key, preview, preview_df_key, applied_df_key, excluded_df_key)
 
 
 def render_daily_tab(source_type: str) -> None:
@@ -4068,7 +4349,14 @@ def render_daily_tab(source_type: str) -> None:
     with st.container(key=f"{source_key(source_type)}_daily_header"):
         header_text_col, header_date_col = st.columns([5.2, 1.1], gap="small")
         with header_text_col:
-            render_inventory_html(f'<div class="inventory-page-header"><h1>{source_type} 재고조회</h1></div>')
+            render_inventory_html(
+                f"""
+                <div class="inventory-page-header">
+                    <h1>{escape(source_type)} 재고조회</h1>
+                    <p>외부 물류센터의 재고 현황을 조회하고 ERP 재고 데이터를 업데이트합니다.</p>
+                </div>
+                """
+            )
         with header_date_col:
             work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
 
@@ -4088,14 +4376,14 @@ def render_daily_tab(source_type: str) -> None:
     render_inventory_update_panel(source_type, work_date, upload_preview_key, preview_df_key, applied_df_key, excluded_df_key)
 
     status_series = filtered_df.get("재고상태", pd.Series(dtype=str))
-    available_total = int(filtered_df.get("가용재고", pd.Series(dtype=int)).apply(to_int).sum()) if not filtered_df.empty else 0
     render_inventory_kpi_cards(
         [
-            ("전체 상품", len(filtered_df), "현재 필터 기준 상품 수", "neutral"),
-            ("정상", int((status_series == "정상").sum()), "정상 재고 상품", "normal"),
-            ("부족", int((status_series == "부족").sum()), "안전재고 이하 상품", "short"),
-            ("품절", int((status_series == "품절").sum()), "가용재고 0 이하 상품", "soldout"),
-            ("가용재고", available_total, "현재 필터 기준 합계", "available"),
+            ("전체 재고", len(filtered_df), "items", "neutral"),
+            ("정상", int((status_series == "정상").sum()), "items", "normal"),
+            ("주의", int((status_series == "주의").sum()), "items", "warning"),
+            ("부족", int((status_series == "부족").sum()), "items", "short"),
+            ("품절", int((status_series == "품절").sum()), "items", "soldout"),
+            ("미집계", int((status_series == "미집계").sum()), "items", "unknown"),
         ]
     )
 
