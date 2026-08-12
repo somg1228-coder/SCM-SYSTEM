@@ -15496,3 +15496,277 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
         grid-template-columns: 1fr !important;
     }
 }
+
+/* Dashboard information hierarchy final pass: schedule / KPI / issue+orders+tasks / inventory+purchase. */
+:root {
+    --dashboard-row-3-h: clamp(218px, 26vh, 292px);
+    --dashboard-row-4-h: clamp(208px, 23vh, 276px);
+}
+
+.dashboard-shell {
+    gap: clamp(9px, 0.86vw, 14px) !important;
+}
+
+.dashboard-middle-grid {
+    align-items: stretch !important;
+    display: grid !important;
+    gap: clamp(9px, 0.86vw, 14px) !important;
+    grid-template-columns: minmax(190px, 25fr) minmax(360px, 45fr) minmax(260px, 30fr) !important;
+    grid-template-rows: minmax(var(--dashboard-row-3-h), auto) !important;
+}
+
+.dashboard-bottom-grid {
+    align-items: stretch !important;
+    display: grid !important;
+    gap: clamp(9px, 0.86vw, 14px) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-rows: minmax(var(--dashboard-row-4-h), auto) !important;
+}
+
+.dashboard-middle-grid > .donut-card,
+.dashboard-middle-grid > .order-panel,
+.dashboard-middle-grid > .core-task-panel,
+.dashboard-bottom-grid > .warehouse-panel,
+.dashboard-bottom-grid > .purchase-progress-panel {
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
+.dashboard-middle-grid > .donut-card {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: clamp(8px, 0.7vw, 12px) !important;
+    justify-content: flex-start !important;
+    padding: clamp(11px, 0.78vw, 14px) !important;
+}
+
+.dashboard-middle-grid > .donut-card h2 {
+    flex: 0 0 auto !important;
+    font-size: clamp(14px, 0.88vw, 16px) !important;
+    line-height: 1.2 !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-middle-grid > .donut-card .donut-layout {
+    align-items: center !important;
+    display: grid !important;
+    flex: 1 1 auto !important;
+    gap: clamp(8px, 0.8vw, 12px) !important;
+    grid-template-columns: minmax(92px, 0.78fr) minmax(0, 1fr) !important;
+    min-height: 0 !important;
+}
+
+.dashboard-middle-grid > .donut-card .donut {
+    height: clamp(88px, 7.1vw, 124px) !important;
+    justify-self: center !important;
+    width: clamp(88px, 7.1vw, 124px) !important;
+}
+
+.dashboard-middle-grid > .donut-card .donut::after {
+    height: clamp(44px, 3.6vw, 58px) !important;
+    width: clamp(44px, 3.6vw, 58px) !important;
+}
+
+.dashboard-middle-grid > .donut-card .donut strong {
+    font-size: clamp(17px, 1.2vw, 22px) !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-middle-grid > .donut-card .donut span {
+    font-size: clamp(10px, 0.72vw, 12px) !important;
+    white-space: nowrap !important;
+}
+
+.dashboard-shell .donut-card .issue-monthly-mini,
+.dashboard-shell .donut-card .issue-monthly-bars,
+.dashboard-shell .donut-card .issue-monthly-head {
+    display: none !important;
+}
+
+.dashboard-middle-grid > .donut-card .legend.issue-legend-bottom {
+    align-content: center !important;
+    display: grid !important;
+    flex: 1 1 auto !important;
+    gap: 5px !important;
+    grid-template-columns: 1fr !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
+.dashboard-middle-grid > .donut-card .legend.issue-legend-bottom li {
+    align-items: center !important;
+    display: grid !important;
+    gap: 6px !important;
+    grid-template-columns: 9px minmax(0, 1fr) auto !important;
+    min-width: 0 !important;
+}
+
+.dashboard-middle-grid > .donut-card .legend.issue-legend-bottom a,
+.dashboard-middle-grid > .donut-card .legend.issue-legend-bottom b,
+.dashboard-middle-grid > .donut-card .legend.issue-legend-bottom span,
+.dashboard-middle-grid > .donut-card .legend.issue-legend-bottom .empty-cell {
+    display: block !important;
+    font-size: clamp(10px, 0.72vw, 12px) !important;
+    line-height: 1.15 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+}
+
+.dashboard-middle-grid > .order-panel {
+    min-height: var(--dashboard-row-3-h) !important;
+}
+
+.dashboard-middle-grid > .order-panel .order-summary-table {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+}
+
+.dashboard-middle-grid > .order-panel .order-summary-body {
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
+.dashboard-middle-grid > .order-panel .order-summary-head,
+.dashboard-middle-grid > .order-panel .order-summary-row {
+    grid-template-columns: minmax(82px, 0.9fr) minmax(70px, 0.8fr) minmax(0, 1.5fr) minmax(72px, 0.72fr) !important;
+    min-height: clamp(30px, 3.1vh, 36px) !important;
+}
+
+.dashboard-middle-grid > .core-task-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: clamp(7px, 0.68vw, 10px) !important;
+    min-height: var(--dashboard-row-3-h) !important;
+    padding: clamp(11px, 0.78vw, 14px) !important;
+}
+
+.dashboard-middle-grid > .core-task-panel .panel-title-row {
+    flex: 0 0 auto !important;
+    margin-bottom: 0 !important;
+}
+
+.dashboard-middle-grid > .core-task-panel .core-task-summary {
+    display: grid !important;
+    flex: 0 0 auto !important;
+    gap: 6px !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.dashboard-middle-grid > .core-task-panel .core-task-summary span {
+    min-height: clamp(38px, 4vh, 48px) !important;
+    padding: 5px 6px !important;
+}
+
+.dashboard-middle-grid > .core-task-panel .core-task-summary strong {
+    font-size: clamp(16px, 1.08vw, 20px) !important;
+}
+
+.dashboard-middle-grid > .core-task-panel .core-task-list {
+    flex: 1 1 auto !important;
+    gap: 5px !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding-right: 0 !important;
+}
+
+.dashboard-middle-grid > .core-task-panel .core-task-list li {
+    grid-template-columns: 22px minmax(0, 1fr) auto !important;
+    min-height: clamp(27px, 3vh, 33px) !important;
+    padding: 4px 7px !important;
+}
+
+.dashboard-middle-grid > .core-task-panel .core-task-list i,
+.dashboard-middle-grid > .core-task-panel .core-task-list span,
+.dashboard-middle-grid > .core-task-panel .core-task-list b {
+    font-size: clamp(10px, 0.76vw, 12px) !important;
+}
+
+.dashboard-middle-grid > .core-task-panel .ghost-link {
+    flex: 0 0 auto !important;
+    height: 30px !important;
+    margin-top: 0 !important;
+}
+
+.dashboard-bottom-grid > .warehouse-panel,
+.dashboard-bottom-grid > .purchase-progress-panel {
+    min-height: var(--dashboard-row-4-h) !important;
+}
+
+.dashboard-bottom-grid > .warehouse-panel {
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.dashboard-bottom-grid > .warehouse-panel .warehouse-row,
+.dashboard-bottom-grid > .purchase-progress-panel .purchase-progress-row {
+    min-height: clamp(34px, 3.6vh, 42px) !important;
+}
+
+@media (max-height: 820px) {
+    :root {
+        --dashboard-row-3-h: clamp(190px, 24vh, 238px);
+        --dashboard-row-4-h: clamp(176px, 21vh, 220px);
+    }
+
+    .dashboard-middle-grid > .donut-card .donut {
+        height: clamp(78px, 6.2vw, 104px) !important;
+        width: clamp(78px, 6.2vw, 104px) !important;
+    }
+
+    .dashboard-middle-grid > .core-task-panel .core-task-list li {
+        min-height: 26px !important;
+    }
+}
+
+@media (max-width: 1280px) and (min-width: 981px) {
+    .dashboard-middle-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) !important;
+    }
+
+    .dashboard-middle-grid > .core-task-panel {
+        grid-column: 1 / -1 !important;
+    }
+
+    .dashboard-bottom-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
+
+@media (max-width: 980px) {
+    .dashboard-middle-grid,
+    .dashboard-bottom-grid {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: none !important;
+    }
+
+    .dashboard-middle-grid > .donut-card,
+    .dashboard-middle-grid > .order-panel,
+    .dashboard-middle-grid > .core-task-panel,
+    .dashboard-bottom-grid > .warehouse-panel,
+    .dashboard-bottom-grid > .purchase-progress-panel {
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+    }
+
+    .dashboard-middle-grid > .donut-card .donut-layout {
+        grid-template-columns: minmax(92px, 0.42fr) minmax(0, 0.58fr) !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .dashboard-middle-grid > .donut-card .donut-layout {
+        grid-template-columns: 1fr !important;
+    }
+
+    .dashboard-middle-grid > .donut-card .legend.issue-legend-bottom {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}

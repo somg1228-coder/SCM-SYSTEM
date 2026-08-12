@@ -312,11 +312,11 @@ def render_dashboard() -> None:
                 <section class="dashboard-middle-grid">
                     {status_grid_markup}
                     {recent_orders_markup}
+                    {core_tasks_markup}
                 </section>
                 <section class="dashboard-bottom-grid">
                     {warehouse_markup}
                     {purchase_progress_markup}
-                    {core_tasks_markup}
                 </section>
             </main>
             """
@@ -2263,9 +2263,8 @@ def issue_donut_html(rows: list[dict], total_count: int, monthly_rows: list[dict
                 {labels}
                 <div><strong>{int(total_count or 0):,}건</strong><span>전체</span></div>
             </a>
-            {issue_monthly_strip_html(monthly_rows or [], year or date.today().year)}
+            <ul class="legend issue-legend-bottom">{legend}</ul>
         </div>
-        <ul class="legend issue-legend-bottom">{legend}</ul>
     </article>
     """
 
