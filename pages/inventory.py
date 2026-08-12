@@ -3808,29 +3808,29 @@ def inject_inventory_css() -> None:
             border: 1px solid #D8D0C4 !important;
             border-radius: 8px !important;
             box-shadow: 0 8px 18px rgba(52, 44, 34, 0.045) !important;
-            margin: 0 0 0.82rem !important;
-            padding: 0.72rem 0.84rem 0.58rem !important;
+            margin: 0 0 0.64rem !important;
+            padding: 0.46rem 0.62rem 0.42rem !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source {
             border-bottom: 1px solid #D8D0C4 !important;
-            margin: 0 0 0.38rem !important;
-            padding: 0 0 0.48rem !important;
+            margin: 0 0 0.28rem !important;
+            padding: 0 0 0.28rem !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source [data-testid="stHorizontalBlock"],
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail [data-testid="stHorizontalBlock"] {
-            gap: 0.42rem !important;
+            gap: 0.26rem !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source [data-testid="stButton"] button {
             background: #FFFEFC !important;
             border: 1px solid #D8D0C4 !important;
-            border-left: 4px solid #8A9CAF !important;
+            border-left: 3px solid #8A9CAF !important;
             border-radius: 8px !important;
             box-shadow: 0 4px 12px rgba(48, 40, 31, 0.045) !important;
             color: #2F4051 !important;
-            font-size: 0.9rem !important;
+            font-size: 0.8rem !important;
             font-weight: 850 !important;
-            min-height: 38px !important;
-            padding: 0.38rem 0.56rem !important;
+            min-height: 30px !important;
+            padding: 0.18rem 0.34rem !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[class*="_active"] [data-testid="stButton"] button {
             background: #EEF3F7 !important;
@@ -3849,10 +3849,10 @@ def inject_inventory_css() -> None:
             border-radius: 0 !important;
             box-shadow: none !important;
             color: #52697F !important;
-            font-size: 0.82rem !important;
+            font-size: 0.76rem !important;
             font-weight: 780 !important;
-            min-height: 28px !important;
-            padding: 0.1rem 0.04rem 0.18rem !important;
+            min-height: 24px !important;
+            padding: 0.04rem 0.02rem 0.12rem !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[class*="_active"] [data-testid="stButton"] button {
             border-bottom-color: #0F2B54 !important;
@@ -3938,7 +3938,7 @@ def inventory_nav_token(value: str) -> str:
     return token or "item"
 
 
-def inventory_text_tab_selector(options: list[str], key: str, default: str, trailing_weight: float = 0.0) -> str:
+def inventory_text_tab_selector(options: list[str], key: str, default: str, item_weight: float = 1.0, trailing_weight: float = 0.0) -> str:
     labels = [str(option) for option in options]
     state_key = f"{key}_selected"
     current = st.session_state.get(state_key) or default or (labels[0] if labels else "")
@@ -3948,7 +3948,7 @@ def inventory_text_tab_selector(options: list[str], key: str, default: str, trai
     if not labels:
         return ""
 
-    weights = [1.0] * len(labels)
+    weights = [item_weight] * len(labels)
     if trailing_weight:
         weights.append(trailing_weight)
     columns = st.columns(weights, gap="small")
@@ -3973,7 +3973,8 @@ def render_inventory_navigation() -> tuple[str, str]:
                 INVENTORY_CURRENT_SOURCES,
                 "inventory_current_source",
                 default=st.session_state.get("inventory_active_source") or "3PL",
-                trailing_weight=3.6,
+                item_weight=0.42,
+                trailing_weight=7.8,
             )
         if selected_source not in INVENTORY_CURRENT_SOURCES:
             selected_source = "3PL"
@@ -3985,7 +3986,8 @@ def render_inventory_navigation() -> tuple[str, str]:
                 INVENTORY_SOURCE_TABS,
                 f"inventory_{source_key(source_type)}_section",
                 default="재고",
-                trailing_weight=4.5,
+                item_weight=0.34,
+                trailing_weight=8.2,
             )
     return selected_source, selected_tab
 
