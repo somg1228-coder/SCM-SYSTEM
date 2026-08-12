@@ -3933,17 +3933,14 @@ DAILY_COLUMNS = [
     "카테고리",
     "바코드",
     "상품명",
-    "업체명",
-    "박스/파렛트 단위",
-    "현재고",
-    "안전재고",
-    "최근2주 평균출고",
     "가용재고",
-    "입고예정",
-    "출고예정",
+    "1주 평균출고수량",
     "재고상태",
+    "출고예정",
+    "현재고",
     "발주필요일",
-    "최근재고반영일",
+    "박스/파렛트 단위",
+    "업체명",
     "담당자",
     "리드타임",
 ]
@@ -4054,9 +4051,6 @@ def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None
 def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
     mapped = []
     for row in rows:
-        update_date = row.get("last_inventory_update_date")
-        if hasattr(update_date, "isoformat"):
-            update_date = update_date.isoformat()
         order_days = row.get("order_needed_days")
         mapped.append(
             {
@@ -4064,17 +4058,14 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "카테고리": clean_cell(row.get("category")) or "미분류",
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
-                "업체명": row.get("supplier", ""),
-                "박스/파렛트 단위": row.get("box_pallet_unit", ""),
-                "현재고": row.get("current_stock", 0),
-                "안전재고": row.get("safe_stock", 0),
-                "최근2주 평균출고": row.get("avg_daily_outbound_2w", 0),
                 "가용재고": row.get("available_stock", 0),
-                "입고예정": row.get("pending_inbound_qty", 0),
-                "출고예정": row.get("pending_outbound_qty", 0),
+                "1주 평균출고수량": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
                 "재고상태": clean_cell(row.get("stock_status")) or "미집계",
+                "출고예정": row.get("pending_outbound_qty", 0),
+                "현재고": row.get("current_stock", 0),
                 "발주필요일": "" if order_days is None else int(order_days),
-                "최근재고반영일": update_date or "",
+                "박스/파렛트 단위": row.get("box_pallet_unit", ""),
+                "업체명": row.get("supplier", ""),
                 "담당자": row.get("manager", ""),
                 "리드타임": row.get("inbound_cycle", 0) or 0,
             }
@@ -4086,7 +4077,7 @@ def inventory_output_signature(df: pd.DataFrame, filters: dict) -> tuple:
     if df is None or df.empty:
         row_marker = ("empty", 0)
     else:
-        sample_columns = [column for column in ("바코드", "상품명", "현재고", "가용재고", "최근재고반영일") if column in df.columns]
+        sample_columns = [column for column in ("바코드", "상품명", "현재고", "가용재고", "1주 평균출고수량") if column in df.columns]
         sample = tuple(tuple(clean_cell(value) for value in row) for row in df[sample_columns].head(5).fillna("").to_numpy())
         row_marker = (len(df), sample)
     filter_marker = tuple(sorted((str(key), str(value)) for key, value in (filters or {}).items()))
@@ -4636,7 +4627,7 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
         "center": ParagraphStyle("inventory_center_v2", fontName=font_name, fontSize=6.7, leading=8.2, alignment=TA_CENTER),
         "right": ParagraphStyle("inventory_right_v2", fontName=font_name, fontSize=6.7, leading=8.2, alignment=TA_RIGHT),
     }
-    export_columns = ["카테고리", "바코드", "상품명", "업체명", "현재고", "안전재고", "최근2주 평균출고", "가용재고", "재고상태", "발주필요일", "최근재고반영일", "리드타임"]
+    export_columns = ["카테고리", "바코드", "상품명", "가용재고", "1주 평균출고수량", "재고상태", "출고예정", "현재고", "발주필요일", "박스/파렛트 단위", "업체명", "담당자", "리드타임"]
     export_df = df[[column for column in export_columns if column in df.columns]].copy()
     meta = [
         f"재고처: {source_type}",
@@ -4647,15 +4638,15 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     ]
     story = [Paragraph("SCM 재고관리", styles["title"]), Spacer(1, 4 * mm), Paragraph(" / ".join(meta), styles["meta"]), Spacer(1, 4 * mm)]
     table_data = [[Paragraph(column, styles["center"]) for column in export_df.columns]]
-    numeric_columns = {"현재고", "안전재고", "최근2주 평균출고", "가용재고", "발주필요일", "리드타임"}
+    numeric_columns = {"가용재고", "1주 평균출고수량", "출고예정", "현재고", "발주필요일", "리드타임"}
     for _, row in export_df.iterrows():
         cells = []
         for column in export_df.columns:
             value = row.get(column, "")
             if column in numeric_columns and clean_cell(value) != "":
                 style = styles["right"]
-                text = f"{float(value):,.2f}" if column == "최근2주 평균출고" else f"{to_int(value):,}"
-            elif column in {"바코드", "재고상태", "최근재고반영일"}:
+                text = f"{float(value):,.2f}" if column == "1주 평균출고수량" else f"{to_int(value):,}"
+            elif column in {"바코드", "재고상태"}:
                 style = styles["center"]
                 text = clean_cell(value)
             else:
@@ -4663,7 +4654,7 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
                 text = clean_cell(value)
             cells.append(Paragraph(text, style))
         table_data.append(cells)
-    widths = [18 * mm, 25 * mm, 48 * mm, 25 * mm, 15 * mm, 15 * mm, 20 * mm, 15 * mm, 17 * mm, 16 * mm, 22 * mm, 14 * mm]
+    widths = [17 * mm, 24 * mm, 46 * mm, 15 * mm, 20 * mm, 16 * mm, 15 * mm, 15 * mm, 16 * mm, 26 * mm, 22 * mm, 20 * mm, 14 * mm]
     table = Table(table_data, repeatRows=1, colWidths=widths[: len(export_df.columns)])
     table.setStyle(
         TableStyle(

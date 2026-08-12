@@ -2037,7 +2037,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     purchase_metrics = purchase_inventory_metrics(db, source_type, products)
     inbound_metrics = latest_inbound_metrics(db, source_type, products)
     latest_daily_by_sku = latest_daily_rows_by_product(db, source_type, work_date, products)
-    avg_outbound_by_sku = recent_outbound_average_by_product(db, source_type, work_date, products)
+    avg_outbound_by_sku = recent_outbound_average_by_product(db, source_type, work_date, products, business_day_count=5)
     pending_by_sku = pending_inbound_qty_by_product(db, source_type, work_date, products)
     rows = []
     for product in products:
@@ -2078,6 +2078,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "pack_qty": int(product.pack_qty or 0),
                 "box_pallet_unit": format_box_pallet_unit(product.box_qty, product.pack_qty),
                 "recommended_boxes": ceil(shortage_qty / box_qty) if box_qty and shortage_qty > 0 else 0,
+                "avg_daily_outbound_1w": avg_outbound,
                 "avg_daily_outbound_2w": avg_outbound,
                 "order_needed_days": needed_days,
                 "last_inventory_update_date": daily.work_date if has_snapshot else None,
