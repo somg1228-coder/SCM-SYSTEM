@@ -3108,11 +3108,6 @@ def warehouse_scene3d_html(
                 margin-top: 0.42rem;
                 padding: 0.44rem 0.54rem;
             }}
-            .nudge-grid {{
-                display: grid;
-                gap: 0.3rem;
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-            }}
             .fixture-box {{
                 display: grid;
                 gap: 0.32rem;
@@ -3402,9 +3397,6 @@ def warehouse_scene3d_html(
                 .move-floor-box {{
                     grid-template-columns: 1fr;
                 }}
-                .nudge-grid {{
-                    grid-template-columns: repeat(2, minmax(0, 1fr));
-                }}
                 .item-list table {{
                     min-width: 760px;
                 }}
@@ -3579,12 +3571,6 @@ def warehouse_scene3d_html(
                         <div class="move-floor-box">
                             <select id="targetFloorSelect" aria-label="이동할 층"></select>
                             <button type="button" id="moveSelectionFloor">층 이동</button>
-                        </div>
-                        <div class="nudge-grid">
-                            <button type="button" data-nudge="left">←</button>
-                            <button type="button" data-nudge="up">↑</button>
-                            <button type="button" data-nudge="down">↓</button>
-                            <button type="button" data-nudge="right">→</button>
                         </div>
                     </div>
                     </div>
