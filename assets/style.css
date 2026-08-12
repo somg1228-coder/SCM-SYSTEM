@@ -15829,3 +15829,65 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
     background: rgba(82, 105, 127, 0.12) !important;
     border-color: rgba(82, 105, 127, 0.2) !important;
 }
+
+/* Sidebar icon clipping repair: let masked icons render inside a stable 22px well. */
+[data-testid="stSidebar"] div[class*="sidebar_nav_"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"],
+[data-testid="stSidebar"] div[class*="sidebar_group_"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] {
+    overflow: visible !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button {
+    min-height: 36px !important;
+    overflow: visible !important;
+    padding-left: 40px !important;
+    position: relative !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button::before,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button::before {
+    background: rgba(82, 105, 127, 0.07) !important;
+    border: 1px solid rgba(82, 105, 127, 0.12) !important;
+    border-radius: 7px !important;
+    box-shadow: none !important;
+    content: "" !important;
+    display: block !important;
+    height: 22px !important;
+    left: 10px !important;
+    position: absolute !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 22px !important;
+    z-index: 0 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button::after,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button::after {
+    background: var(--menu-accent, #52697F) !important;
+    content: "" !important;
+    display: block !important;
+    height: 16px !important;
+    left: 13px !important;
+    position: absolute !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 16px !important;
+    z-index: 1 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button p,
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button span,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button p,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button span {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button {
+    overflow: visible !important;
+}
