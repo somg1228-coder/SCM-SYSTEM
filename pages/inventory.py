@@ -3468,6 +3468,57 @@ def inject_inventory_css() -> None:
                 margin-left: 0 !important;
             }
         }
+
+        /* Match the portal home background instead of isolated white panels. */
+        .stApp:has(.st-key-inventory_nav_shell) {
+            background:
+                radial-gradient(circle at 48% 4%, rgba(18, 155, 139, 0.16), transparent 34%),
+                radial-gradient(circle at 76% 48%, rgba(13, 107, 99, 0.1), transparent 30%),
+                linear-gradient(135deg, #F8F7F4 0%, #FBFAF8 44%, #FAF8F5 100%) !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] {
+            background: #FAF8F5 !important;
+            border-color: #D8D0C4 !important;
+            box-shadow: 0 8px 18px rgba(52, 44, 34, 0.045) !important;
+        }
+        .st-key-inventory_kpi_native [data-testid="stMetric"] {
+            background: #FAF8F5 !important;
+            border-color: #D8D0C4 !important;
+            border-left-color: #52697F !important;
+            box-shadow: 0 8px 18px rgba(52, 44, 34, 0.04) !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] input,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-baseweb="select"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_header"] [data-testid="stDateInput"] input {
+            background: #FFFEFC !important;
+            border-color: #CFC5B7 !important;
+        }
+        .inventory-visible-table-wrap {
+            background: #F2EFEA !important;
+            border-color: #D8D0C4 !important;
+        }
+        .inventory-visible-table th {
+            background: #EDE8E1 !important;
+            color: #26384A !important;
+        }
+        .inventory-visible-table td {
+            background: #FAF8F5 !important;
+            border-bottom-color: #E2DCD4 !important;
+        }
+        .inventory-visible-table tr:nth-child(even) td {
+            background: #F4F1EB !important;
+        }
+        .inventory-visible-table tbody tr:hover td {
+            background: #F1EEE8 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stButton"] button:not([kind="primary"]) {
+            background: #E8E3DC !important;
+            border-color: #CFC5B7 !important;
+            color: #2F4051 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
