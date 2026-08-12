@@ -2951,7 +2951,7 @@ def warehouse_scene3d_html(
                 display: flex;
                 flex-direction: column;
                 gap: 0.52rem;
-                overflow: auto;
+                overflow: hidden;
                 scrollbar-gutter: stable;
             }}
             .detail-tabs {{
@@ -2960,7 +2960,7 @@ def warehouse_scene3d_html(
                 border-radius: 10px;
                 display: grid;
                 gap: 0.28rem;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
+                grid-template-columns: repeat(2, minmax(0, 1fr));
                 padding: 0.28rem;
             }}
             .detail-tab {{
@@ -2980,7 +2980,18 @@ def warehouse_scene3d_html(
                 min-height: 0;
             }}
             .detail-tab-panel.active {{
-                display: block;
+                display: flex;
+                flex-direction: column;
+                flex: 1 1 auto;
+                gap: 0.52rem;
+                min-height: 0;
+            }}
+            .detail-tab-panel[data-detail-panel="load"].active {{
+                overflow: auto;
+                padding-right: 0.06rem;
+            }}
+            .detail-tab-panel[data-detail-panel="items"].active {{
+                overflow: hidden;
             }}
             .rack-detail-hidden {{
                 display: none !important;
@@ -3080,8 +3091,11 @@ def warehouse_scene3d_html(
                 display: none !important;
             }}
             .detail-tools {{
-                flex: 0 0 auto;
+                display: flex;
+                flex: 1 1 auto;
+                flex-direction: column;
                 min-height: 0;
+                overflow: hidden;
             }}
             .stock-guide {{
                 background: #eef3f7;
@@ -3144,9 +3158,9 @@ def warehouse_scene3d_html(
             .item-list {{
                 border: 1px solid #e2e8f0;
                 border-radius: 10px;
-                flex: 1 0 290px;
+                flex: 1 1 auto;
                 margin-top: 0;
-                min-height: 290px;
+                min-height: 0;
                 overflow: auto;
             }}
             .item-list table {{
@@ -3497,8 +3511,7 @@ def warehouse_scene3d_html(
                 <div class="rack-detail-hidden" id="rackDetail"></div>
                 <div class="detail-tabs" role="tablist" aria-label="3D 창고 관리 도구">
                     <button class="detail-tab active" type="button" data-detail-tab="load">적재</button>
-                    <button class="detail-tab" type="button" data-detail-tab="fixture">시설물</button>
-                    <button class="detail-tab" type="button" data-detail-tab="items">목록</button>
+                    <button class="detail-tab" type="button" data-detail-tab="items">적재품목</button>
                 </div>
                 <div class="detail-tools">
                     <div class="detail-tab-panel active" data-detail-panel="load">
@@ -3531,8 +3544,6 @@ def warehouse_scene3d_html(
                         </div>
                         <div class="stock-guide">랙을 선택하면 해당 랙/단에 적재되고, 바닥 박스/파렛트는 시설물 배치에서 추가 후 랙에 넣기로 옮길 수 있습니다.</div>
                     </div>
-                    </div>
-                    <div class="detail-tab-panel" data-detail-panel="fixture">
                     <div class="detail-section fixture-section">
                         <div class="section-title">창고 시설물 배치</div>
                         <div class="fixture-box">
@@ -3577,14 +3588,14 @@ def warehouse_scene3d_html(
                         </div>
                     </div>
                     </div>
-                </div>
-                <div class="detail-tab-panel" data-detail-panel="items">
-                <div class="item-list">
-                    <table>
-                        <thead><tr><th>렉 정보</th><th>상품명</th><th>바코드</th><th>수량</th><th>총 재고</th><th>관리</th></tr></thead>
-                        <tbody id="itemBody"><tr><td colspan="6" class="empty">선택된 랙이 없습니다.</td></tr></tbody>
-                    </table>
-                </div>
+                    <div class="detail-tab-panel" data-detail-panel="items">
+                    <div class="item-list">
+                        <table>
+                            <thead><tr><th>렉 정보</th><th>상품명</th><th>바코드</th><th>수량</th><th>총 재고</th><th>관리</th></tr></thead>
+                            <tbody id="itemBody"><tr><td colspan="6" class="empty">선택된 랙이 없습니다.</td></tr></tbody>
+                        </table>
+                    </div>
+                    </div>
                 </div>
             </aside>
         </main>
@@ -3708,7 +3719,7 @@ def warehouse_scene3d_html(
             scene.fog = screenSceneFog;
 
             function activateDetailTab(tabName) {{
-                const nextTab = ["load", "fixture", "items"].includes(tabName) ? tabName : "load";
+                const nextTab = ["load", "items"].includes(tabName) ? tabName : "load";
                 detailTabButtons.forEach(button => {{
                     const isActive = button.dataset.detailTab === nextTab;
                     button.classList.toggle("active", isActive);
