@@ -926,34 +926,52 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
 
 def render_inbound_tab(source_type: str) -> None:
     st.markdown(f'<div class="inventory-tab-title">{source_type} 입고내역</div>', unsafe_allow_html=True)
-    upload_col, apply_col, download_col, spacer = st.columns([1.4, 0.95, 1.05, 3.2], gap="small")
-    with upload_col:
-        uploaded = st.file_uploader("입고내역 엑셀 업로드", type=["xlsx", "xls", "html"], key=f"{source_type}_inbound_file")
-        if st.button("입고내역 엑셀 반영", key=f"{source_type}_inbound_import", use_container_width=True):
-            if uploaded is None:
-                st.warning("먼저 엑셀 파일을 업로드하세요.")
-            else:
-                outcome = with_db(lambda db: import_upload_result("입고내역 엑셀 반영 완료", services.import_inbound_excel(db, source_type, uploaded.getvalue())))
-                if outcome and outcome.get("ok", True):
-                    clear_inventory_editor_buffer(f"{source_type}_inbound_editor_buffer")
-                show_result(outcome)
-    with apply_col:
-        apply_date = st.date_input("반영 기준일자", value=date.today(), key=f"{source_type}_inbound_apply_date")
-        if st.button("재고현황에 반영", key=f"{source_type}_inbound_apply", type="primary", use_container_width=True):
-            show_result(with_db(lambda db: result("재고현황 반영 완료", services.apply_inbound_to_stock(db, source_type, apply_date))))
-    with download_col:
-        st.write("")
-        download_data = inbound_excel(source_type)
-        st.download_button(
-            "엑셀 다운로드",
-            data=download_data or b"",
-            file_name=f"{source_type}_입고내역.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key=f"{source_type}_inbound_download",
+    with st.container(key=f"{source_key(source_type)}_inbound_import_panel"):
+        render_inventory_html(
+            """
+            <div class="inventory-update-heading">
+                <div>
+                    <h2>입고내역 파일 반영</h2>
+                    <p>성현물류 거래명세서는 품목명이 마스터 상품명과 같으면 해당 상품 입고로 자동 매칭됩니다.</p>
+                </div>
+            </div>
+            """
         )
-    with spacer:
-        st.empty()
+        upload_col, import_col, apply_col, download_col, spacer = st.columns([2.2, 0.85, 0.95, 0.95, 2.4], gap="small")
+        with upload_col:
+            uploaded = st.file_uploader(
+                "입고내역 엑셀 업로드",
+                type=["xlsx", "xls", "html"],
+                key=f"{source_type}_inbound_file",
+                label_visibility="collapsed",
+            )
+        with import_col:
+            st.write("")
+            if st.button("파일 반영", key=f"{source_type}_inbound_import", use_container_width=True):
+                if uploaded is None:
+                    st.warning("먼저 입고내역 파일을 업로드하세요.")
+                else:
+                    outcome = with_db(lambda db: import_upload_result("입고내역 파일 반영 완료", services.import_inbound_excel(db, source_type, uploaded.getvalue())))
+                    if outcome and outcome.get("ok", True):
+                        clear_inventory_editor_buffer(f"{source_type}_inbound_editor_buffer")
+                    show_result(outcome)
+        with apply_col:
+            apply_date = st.date_input("반영 기준일자", value=date.today(), key=f"{source_type}_inbound_apply_date")
+            if st.button("재고 반영", key=f"{source_type}_inbound_apply", type="primary", use_container_width=True):
+                show_result(with_db(lambda db: result("재고현황 반영 완료", services.apply_inbound_to_stock(db, source_type, apply_date))))
+        with download_col:
+            st.write("")
+            download_data = inbound_excel(source_type)
+            st.download_button(
+                "엑셀 다운로드",
+                data=download_data or b"",
+                file_name=f"{source_type}_입고내역.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"{source_type}_inbound_download",
+            )
+        with spacer:
+            st.empty()
 
     df = inbound_to_editor(fetch_inbound(source_type))
     inbound_buffer_key = f"{source_type}_inbound_editor_buffer"
@@ -3037,6 +3055,7 @@ def inject_inventory_css() -> None:
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_daily_header"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inbound_import_panel"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"] {
             background: #FFFFFF !important;
@@ -3173,6 +3192,7 @@ def inject_inventory_css() -> None:
         }
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stButton"] button,
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] [data-testid="stButton"] button,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inbound_import_panel"] [data-testid="stButton"] button,
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"] [data-testid="stButton"] button,
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"] [data-testid="stButton"] button {
             border-radius: 8px !important;
@@ -3181,6 +3201,7 @@ def inject_inventory_css() -> None:
         }
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stButton"] button[kind="primary"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] [data-testid="stButton"] button[kind="primary"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inbound_import_panel"] [data-testid="stButton"] button[kind="primary"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"] [data-testid="stButton"] button[kind="primary"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"] [data-testid="stButton"] button[kind="primary"] {
             background: #1E3A5F !important;
@@ -3485,7 +3506,8 @@ def inject_inventory_css() -> None:
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"],
-        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] {
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inbound_import_panel"] {
             background: #FAF8F5 !important;
             border-color: #D8D0C4 !important;
             box-shadow: 0 8px 18px rgba(52, 44, 34, 0.045) !important;
@@ -3522,6 +3544,7 @@ def inject_inventory_css() -> None:
         }
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stButton"] button:not([kind="primary"]),
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] [data-testid="stButton"] button:not([kind="primary"]),
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inbound_import_panel"] [data-testid="stButton"] button:not([kind="primary"]),
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"] [data-testid="stButton"] button:not([kind="primary"]),
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"] [data-testid="stButton"] button:not([kind="primary"]) {
             background: #E8E3DC !important;
@@ -3629,6 +3652,7 @@ def inject_inventory_css() -> None:
         }
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inbound_import_panel"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"],
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"] {
             border-radius: 8px !important;
@@ -3641,6 +3665,10 @@ def inject_inventory_css() -> None:
         .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] {
             margin: 0 0 1.1rem !important;
             padding: 1.15rem 1.28rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inbound_import_panel"] {
+            margin: 0 0 0.82rem !important;
+            padding: 0.82rem 0.95rem !important;
         }
         .inventory-update-heading h2 {
             color: #0F2B54;
@@ -3658,6 +3686,13 @@ def inject_inventory_css() -> None:
             border: 1px dashed #9FB3CA !important;
             border-radius: 8px !important;
             min-height: 96px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_inbound_import_panel"] [data-testid="stFileUploaderDropzone"] {
+            background: #FFFEFC !important;
+            border: 1px dashed #9FB3CA !important;
+            border-radius: 8px !important;
+            min-height: 64px !important;
+            padding: 0.48rem 0.6rem !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) div[class*="_inventory_update"] [data-testid="stAlert"] {
             background: #EEF3F7 !important;

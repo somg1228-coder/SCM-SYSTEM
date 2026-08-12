@@ -255,6 +255,26 @@ def parse_date(value) -> date | None:
     return parsed.date()
 
 
+def parse_excel_serial_date(value) -> date | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    text = clean_text(value)
+    if not text:
+        return None
+    try:
+        serial = float(text)
+    except ValueError:
+        return parse_date(value)
+    if serial <= 0:
+        return None
+    parsed = pd.to_datetime(serial, unit="D", origin="1899-12-30", errors="coerce")
+    if pd.isna(parsed):
+        return None
+    return parsed.date()
+
+
 def is_business_day(day: date, holidays: set[date] | None = None) -> bool:
     holiday_set = holidays or set()
     return day.weekday() < 5 and day not in holiday_set
@@ -443,7 +463,8 @@ def read_seonghyun_inbound_statement(file_bytes: bytes) -> pd.DataFrame | None:
         if header_index is None or product_col is None or qty_col is None:
             continue
 
-        statement_date = parse_date(raw_df.iat[1, 0] if raw_df.shape[0] > 1 and raw_df.shape[1] > 0 else None) or date.today()
+        statement_date_value = raw_df.iat[1, 0] if raw_df.shape[0] > 1 and raw_df.shape[1] > 0 else None
+        statement_date = parse_excel_serial_date(statement_date_value) or parse_date(statement_date_value) or date.today()
         rows = []
         current_month = statement_date.month
         current_day = statement_date.day
@@ -600,7 +621,7 @@ def find_product_master(db: Session, source_type: str, sku: str = "", barcode: s
         if row:
             return row
     if product_name:
-        return db.execute(select(model).where(model.product_name == product_name)).scalar_one_or_none()
+        return db.execute(select(model).where(model.product_name == product_name).order_by(model.id)).scalars().first()
     return None
 
 
