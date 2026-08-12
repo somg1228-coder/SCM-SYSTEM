@@ -1219,17 +1219,72 @@ def fetch_daily(source_type: str, work_date: date) -> list[dict]:
     return with_db(lambda db: [services.daily_to_dict(row) for row in services.list_daily(db, source_type, work_date)]) or []
 
 
+def inventory_normalize_barcode(value) -> str:
+    if services is not None and hasattr(services, "normalize_barcode_text"):
+        return services.normalize_barcode_text(value)
+    return clean_cell(value)
+
+
+def build_master_category_lookup(db, source_type: str) -> dict[str, dict[str, str]]:
+    by_sku: dict[str, str] = {}
+    by_barcode: dict[str, str] = {}
+    by_barcode_name: dict[str, str] = {}
+    by_name: dict[str, str] = {}
+    products = services.list_product_master(db, source_type, "", "전체") if services is not None else []
+    for product in products or []:
+        sku = clean_cell(getattr(product, "sku", ""))
+        barcode = inventory_normalize_barcode(getattr(product, "barcode", ""))
+        product_name = clean_cell(getattr(product, "product_name", ""))
+        category = clean_cell(getattr(product, "large_category", "") or getattr(product, "category", ""))
+        if not category:
+            continue
+        if sku:
+            by_sku.setdefault(sku, category)
+        if barcode:
+            by_barcode.setdefault(barcode, category)
+        if barcode and product_name:
+            by_barcode_name.setdefault(f"{barcode}|{product_name}", category)
+        if product_name:
+            by_name.setdefault(product_name, category)
+    return {
+        "sku": by_sku,
+        "barcode": by_barcode,
+        "barcode_name": by_barcode_name,
+        "name": by_name,
+    }
+
+
+def apply_master_categories(rows: list[dict], lookup: dict[str, dict[str, str]]) -> list[dict]:
+    normalized = []
+    for row in rows:
+        next_row = dict(row)
+        sku = clean_cell(next_row.get("product_code") or next_row.get("sku"))
+        barcode = inventory_normalize_barcode(next_row.get("barcode"))
+        product_name = clean_cell(next_row.get("product_name"))
+        existing_category = clean_cell(next_row.get("category"))
+        master_category = (
+            lookup["sku"].get(sku)
+            or lookup["barcode"].get(barcode)
+            or lookup["barcode_name"].get(f"{barcode}|{product_name}")
+            or lookup["name"].get(product_name)
+        )
+        next_row["category"] = master_category or existing_category or "미분류"
+        normalized.append(next_row)
+    return normalized
+
+
 def fetch_master_inventory(source_type: str, work_date: date) -> list[dict]:
-    return with_db(lambda db: services.master_based_inventory_rows(db, source_type, work_date)) or []
+    def load_rows(db):
+        rows = services.master_based_inventory_rows(db, source_type, work_date)
+        return apply_master_categories(rows, build_master_category_lookup(db, source_type))
+
+    return with_db(load_rows) or []
 
 
 def fetch_master_category_options(source_type: str, df: pd.DataFrame) -> list[str]:
-    categories = with_db(lambda db: services.list_product_master_categories(db, source_type)) or []
-    if source_type == "3PL":
-        return sorted({clean_cell(value) for value in categories if clean_cell(value)})
-    if not categories:
-        categories = [value for value in df.get("카테고리", pd.Series(dtype=str)).dropna().unique()]
-    return sorted({clean_cell(value) for value in categories if clean_cell(value)})
+    master_categories = with_db(lambda db: services.list_product_master_categories(db, source_type)) or []
+    table_categories = df.get("카테고리", pd.Series(dtype=str)).dropna().unique() if df is not None else []
+    return sorted({clean_cell(value) for value in [*master_categories, *table_categories] if clean_cell(value)})
 
 
 def inventory_output_signature(df: pd.DataFrame, filters: dict) -> tuple:
@@ -1572,6 +1627,13 @@ def style_inventory_dataframe(df: pd.DataFrame):
     return styler.applymap(cell_style, subset=["재고상태"])
 
 
+def render_inventory_html(markup: str) -> None:
+    if hasattr(st, "html"):
+        st.html(markup)
+    else:
+        st.markdown(markup, unsafe_allow_html=True)
+
+
 def render_inventory_visible_table(df: pd.DataFrame, height: int = 520) -> None:
     with perf_span("inventory.table_render", rows=0 if df is None else len(df), height=height):
         if df is None or df.empty:
@@ -1581,13 +1643,12 @@ def render_inventory_visible_table(df: pd.DataFrame, height: int = 520) -> None:
         for column in safe_df.columns:
             safe_df[column] = safe_df[column].map(lambda value: value.isoformat() if hasattr(value, "isoformat") else value)
         html = inventory_visible_table_html(safe_df)
-        st.markdown(
+        render_inventory_html(
             f"""
             <div class="inventory-visible-table-wrap" style="max-height:{int(height)}px;">
                 {html}
             </div>
-            """,
-            unsafe_allow_html=True,
+            """
         )
 
 
@@ -3297,6 +3358,116 @@ def inject_inventory_css() -> None:
                 grid-template-columns: 1fr 1fr;
             }
         }
+
+        /* Final inventory lookup overrides: keep this page compact and table-first. */
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell {
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 1px solid #E5E7EB !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            margin: 0 0 0.62rem !important;
+            padding: 0 0 0.34rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-nav-head,
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-nav-caption {
+            display: none !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source {
+            margin-left: 0.72rem !important;
+            padding-left: 0 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail {
+            margin-left: 1.44rem !important;
+            padding-left: 0 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label > div {
+            background: transparent !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            min-height: 27px !important;
+            padding: 0.12rem 0.04rem 0.2rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label:has(input:checked) > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label[aria-checked="true"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button[aria-pressed="true"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] [aria-selected="true"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label:has(input:checked) > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label[aria-checked="true"] > div {
+            background: transparent !important;
+            border-bottom-color: #1E3A5F !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_daily_header"] {
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            margin: 0 0 0.52rem !important;
+            padding: 0 !important;
+        }
+        .inventory-page-header h1 {
+            font-size: 1.08rem !important;
+            line-height: 1.2 !important;
+            margin: 0.12rem 0 0 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] {
+            border-radius: 8px !important;
+            margin: 0 0 0.58rem !important;
+            padding: 0.72rem 0.82rem !important;
+        }
+        .st-key-inventory_kpi_native {
+            margin: 0 0 0.62rem !important;
+        }
+        .st-key-inventory_kpi_native [data-testid="stMetric"] {
+            background: #FFFFFF !important;
+            border: 1px solid #E5E7EB !important;
+            border-left: 4px solid #52697F !important;
+            border-radius: 8px !important;
+            min-height: 78px !important;
+            padding: 0.62rem 0.72rem !important;
+        }
+        .st-key-inventory_kpi_native [data-testid="stMetricLabel"] p {
+            color: #64748B !important;
+            font-size: 0.72rem !important;
+            font-weight: 850 !important;
+        }
+        .st-key-inventory_kpi_native [data-testid="stMetricValue"] {
+            color: #111827 !important;
+            font-size: 1.38rem !important;
+            font-weight: 900 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"] {
+            border-radius: 8px !important;
+            margin: 0 0 0.32rem !important;
+            padding: 0.58rem 0.72rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] {
+            border-radius: 8px !important;
+            margin: 0.58rem 0 0 !important;
+            padding: 0.45rem 0.72rem !important;
+        }
+        .inventory-table-status.soldout {
+            background: #7F1D1D !important;
+            border-color: #7F1D1D !important;
+            color: #FFFFFF !important;
+        }
+        @media (max-width: 1280px) {
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stHorizontalBlock"],
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="_inventory_table_actions"] [data-testid="stHorizontalBlock"] {
+                flex-wrap: wrap !important;
+            }
+        }
+        @media (max-width: 1024px) {
+            .st-key-inventory_kpi_native [data-testid="stHorizontalBlock"] {
+                flex-wrap: wrap !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source,
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail {
+                margin-left: 0 !important;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -3365,19 +3536,6 @@ def render_inventory_page_lazy() -> None:
 
 def render_inventory_navigation() -> tuple[str, str, str]:
     with st.container(key="inventory_nav_shell"):
-        st.markdown(
-            """
-            <div class="inventory-nav-head">
-                <div>
-                    <strong>재고관리</strong>
-                    <span>SCM / WMS Inventory Operations</span>
-                </div>
-                <em>재고현황 · 계획/발주 · 물류관리 · 조회/관리</em>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown('<div class="inventory-nav-caption">1차 메뉴</div>', unsafe_allow_html=True)
         selected_section = lazy_tab_selector(
             INVENTORY_MAIN_SECTIONS,
             "inventory_main_section",
@@ -3389,7 +3547,6 @@ def render_inventory_navigation() -> tuple[str, str, str]:
         selected_tab = ""
         if selected_section == "현재재고":
             with st.container(key="inventory_nav_source"):
-                st.markdown('<div class="inventory-nav-caption">물류관리</div>', unsafe_allow_html=True)
                 selected_source = lazy_tab_selector(
                     INVENTORY_CURRENT_SOURCES,
                     "inventory_current_source",
@@ -3402,7 +3559,6 @@ def render_inventory_navigation() -> tuple[str, str, str]:
 
             source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
             with st.container(key="inventory_nav_detail"):
-                st.markdown('<div class="inventory-nav-caption">조회/관리</div>', unsafe_allow_html=True)
                 selected_tab = lazy_tab_selector(
                     INVENTORY_SOURCE_TABS,
                     f"inventory_{source_key(source_type)}_section",
@@ -3436,7 +3592,7 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
         mapped.append(
             {
                 "선택": False,
-                "카테고리": row.get("category", ""),
+                "카테고리": clean_cell(row.get("category")) or "미분류",
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
                 "업체명": row.get("supplier", ""),
@@ -3447,7 +3603,7 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "가용재고": row.get("available_stock", 0),
                 "입고예정": row.get("pending_inbound_qty", 0),
                 "출고예정": row.get("pending_outbound_qty", 0),
-                "재고상태": row.get("stock_status", ""),
+                "재고상태": clean_cell(row.get("stock_status")) or "미집계",
                 "발주필요일": "" if order_days is None else int(order_days),
                 "최근재고반영일": update_date or "",
                 "담당자": row.get("manager", ""),
@@ -3812,17 +3968,11 @@ def stock_excluded_display_dataframe(preview: dict) -> pd.DataFrame:
 
 
 def render_inventory_kpi_cards(cards: list[tuple[str, int, str, str]]) -> None:
-    items = "".join(
-        f"""
-        <div class="inventory-kpi-card {tone}">
-            <div class="inventory-kpi-label"><i></i><span>{escape(label)}</span></div>
-            <strong>{int(value or 0):,}</strong>
-            <em>{escape(unit)}</em>
-        </div>
-        """
-        for label, value, unit, tone in cards
-    )
-    st.markdown(f'<section class="inventory-kpi-grid">{items}</section>', unsafe_allow_html=True)
+    with st.container(key="inventory_kpi_native"):
+        columns = st.columns(len(cards), gap="small")
+        for column, (label, value, _unit, _tone) in zip(columns, cards):
+            with column:
+                st.metric(label, f"{int(value or 0):,}")
 
 
 def render_daily_tab(source_type: str) -> None:
@@ -3832,18 +3982,9 @@ def render_daily_tab(source_type: str) -> None:
     daily_date_key = f"{source_type}_daily_date"
     st.session_state.setdefault(daily_date_key, default_work_date)
     with st.container(key=f"{source_key(source_type)}_daily_header"):
-        header_text_col, header_date_col = st.columns([4.8, 1.25], gap="large")
+        header_text_col, header_date_col = st.columns([5.2, 1.1], gap="small")
         with header_text_col:
-            st.markdown(
-                f"""
-                <div class="inventory-page-header">
-                    <span>재고관리</span>
-                    <h1>{source_type} 재고조회</h1>
-                    <p>외부 물류센터와 ERP 재고 데이터를 기준으로 현재고, 안전재고, 입출고 상태를 조회합니다.</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            render_inventory_html(f'<div class="inventory-page-header"><h1>{source_type} 재고조회</h1></div>')
         with header_date_col:
             work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
 
@@ -3854,14 +3995,14 @@ def render_daily_tab(source_type: str) -> None:
     paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
 
     status_series = filtered_df.get("재고상태", pd.Series(dtype=str))
+    available_total = int(filtered_df.get("가용재고", pd.Series(dtype=int)).apply(to_int).sum()) if not filtered_df.empty else 0
     render_inventory_kpi_cards(
         [
-            ("전체 재고", len(filtered_df), "items", "neutral"),
-            ("정상", int((status_series == "정상").sum()), "items", "normal"),
-            ("주의", int((status_series == "주의").sum()), "items", "warning"),
-            ("부족", int((status_series == "부족").sum()), "items", "short"),
-            ("품절", int((status_series == "품절").sum()), "items", "soldout"),
-            ("미집계", int((status_series == "미집계").sum()), "items", "unknown"),
+            ("전체 상품", len(filtered_df), "현재 필터 기준 상품 수", "neutral"),
+            ("정상", int((status_series == "정상").sum()), "정상 재고 상품", "normal"),
+            ("부족", int((status_series == "부족").sum()), "안전재고 이하 상품", "short"),
+            ("품절", int((status_series == "품절").sum()), "가용재고 0 이하 상품", "soldout"),
+            ("가용재고", available_total, "현재 필터 기준 합계", "available"),
         ]
     )
 
@@ -3872,78 +4013,35 @@ def render_daily_tab(source_type: str) -> None:
     output_payload_key = f"{source_type}_daily_output_payload_{work_date.isoformat()}"
     output_scope_key = f"{source_type}_daily_download_scope_{work_date}"
 
-    with st.container(key=f"{source_key(source_type)}_inventory_update"):
-        st.markdown('<div class="inventory-update-card">', unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div class="inventory-card-heading">
-                <div>
-                    <h2>ERP 재고 업데이트</h2>
-                    <p>ERP에서 추출한 Excel/CSV 파일로 현재 재고를 갱신합니다.</p>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        upload_cols = st.columns([2.2, 1.35, 0.82, 2.5], gap="small")
-        with upload_cols[0]:
-            uploaded = st.file_uploader("파일 선택 또는 Drag & Drop", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
-        with upload_cols[1]:
-            upload_mode = st.radio("반영 범위", ["일부 재고 파일", "전체 재고 파일"], horizontal=True, key=f"{source_type}_stock_upload_mode")
-        with upload_cols[2]:
-            st.write("")
-            if st.button("미리보기", key=f"{source_type}_stock_preview_btn_{work_date}", use_container_width=True):
-                if uploaded is None:
-                    st.warning("먼저 ERP 재고 Excel 파일을 선택하세요.")
-                else:
-                    mode = "full" if upload_mode == "전체 재고 파일" else "partial"
-                    preview = with_db(lambda db: services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode))
-                    if preview:
-                        st.session_state[upload_preview_key] = preview
-                        st.session_state[preview_df_key] = stock_preview_display_dataframe(preview)
-        with upload_cols[3]:
-            st.caption("미리보기에서 바코드 우선 매칭, 미매칭, 중복을 확인한 뒤 재고 반영을 누르면 Supabase 저장과 재고 계산이 함께 실행됩니다.")
-        preview = st.session_state.get(upload_preview_key)
-        if preview:
-            render_stock_upload_preview(source_type, work_date, upload_preview_key, preview, preview_df_key, applied_df_key, excluded_df_key)
-        st.markdown("</div>", unsafe_allow_html=True)
-
     with st.container(key=f"{source_key(source_type)}_inventory_table_actions"):
-        toolbar_title, toolbar_scope, toolbar_pdf, toolbar_excel = st.columns([3.6, 1.65, 0.82, 0.82], gap="small")
+        toolbar_title, toolbar_scope, toolbar_pdf, toolbar_excel = st.columns([3.8, 1.15, 0.78, 0.78], gap="small")
         with toolbar_title:
-            st.markdown(
-                f"""
-                <div class="inventory-table-title">
-                    <h2>재고 현황</h2>
-                    <span>{len(filtered_df):,}개 상품 · 전체 {len(base_df):,}개 · {page}/{total_pages} 페이지</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
+            render_inventory_html(
+                f'<div class="inventory-table-title"><h2>재고 현황</h2><span>{len(filtered_df):,}개 상품 · 전체 {len(base_df):,}개 · {page}/{total_pages} 페이지</span></div>'
             )
         with toolbar_scope:
-            download_scope = st.radio(
+            download_scope = st.selectbox(
                 "다운로드 범위",
-                ["현재 필터 결과 다운로드", "전체 데이터 다운로드"],
-                horizontal=True,
+                ["현재 필터", "전체 데이터"],
                 key=output_scope_key,
                 label_visibility="collapsed",
             )
-        output_df = filtered_df if download_scope == "현재 필터 결과 다운로드" else base_df
+        output_df = filtered_df if download_scope == "현재 필터" else base_df
         output_df = output_df.drop(columns=["선택"], errors="ignore")
-        output_filters = filters if download_scope == "현재 필터 결과 다운로드" else {}
+        output_filters = filters if download_scope == "현재 필터" else {}
         output_signature = inventory_output_signature(output_df, output_filters)
         payload = st.session_state.get(output_payload_key, {})
         if isinstance(payload, dict) and payload.get("signature") != output_signature:
             st.session_state.pop(output_payload_key, None)
             payload = {}
         with toolbar_pdf:
-            if st.button("PDF ↓", key=f"{source_type}_daily_pdf_prepare_{work_date}", use_container_width=True):
+            if st.button("PDF", key=f"{source_type}_daily_pdf_prepare_{work_date}", use_container_width=True):
                 payload = {**payload, "signature": output_signature, "pdf": inventory_pdf_bytes(output_df, source_type, work_date, output_filters)}
                 st.session_state[output_payload_key] = payload
             if isinstance(payload, dict) and payload.get("pdf"):
                 st.download_button("PDF 저장", data=payload["pdf"], file_name=inventory_file_name("pdf", output_df, output_filters), mime="application/pdf", use_container_width=True, key=f"{source_type}_daily_pdf_download_{work_date}")
         with toolbar_excel:
-            if st.button("Excel ↓", key=f"{source_type}_daily_excel_prepare_{work_date}", use_container_width=True):
+            if st.button("Excel", key=f"{source_type}_daily_excel_prepare_{work_date}", use_container_width=True):
                 payload = {**payload, "signature": output_signature, "excel": dataframe_to_excel(output_df)}
                 st.session_state[output_payload_key] = payload
             if isinstance(payload, dict) and payload.get("excel"):
@@ -3972,6 +4070,30 @@ def render_daily_tab(source_type: str) -> None:
                     st.rerun()
             with spacer:
                 st.empty()
+
+    with st.container(key=f"{source_key(source_type)}_inventory_update"):
+        with st.expander("ERP 재고 업데이트", expanded=False):
+            upload_cols = st.columns([2.2, 1.25, 0.78, 2.25], gap="small")
+            with upload_cols[0]:
+                uploaded = st.file_uploader("Excel/CSV 파일", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
+            with upload_cols[1]:
+                upload_mode = st.radio("반영 범위", ["일부 재고 파일", "전체 재고 파일"], horizontal=True, key=f"{source_type}_stock_upload_mode")
+            with upload_cols[2]:
+                st.write("")
+                if st.button("미리보기", key=f"{source_type}_stock_preview_btn_{work_date}", use_container_width=True):
+                    if uploaded is None:
+                        st.warning("먼저 ERP 재고 Excel 파일을 선택하세요.")
+                    else:
+                        mode = "full" if upload_mode == "전체 재고 파일" else "partial"
+                        preview = with_db(lambda db: services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode))
+                        if preview:
+                            st.session_state[upload_preview_key] = preview
+                            st.session_state[preview_df_key] = stock_preview_display_dataframe(preview)
+            with upload_cols[3]:
+                st.caption("바코드 우선 매칭, 미매칭, 중복을 확인한 뒤 반영합니다.")
+            preview = st.session_state.get(upload_preview_key)
+            if preview:
+                render_stock_upload_preview(source_type, work_date, upload_preview_key, preview, preview_df_key, applied_df_key, excluded_df_key)
 
 
 def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, filters: dict) -> bytes:
