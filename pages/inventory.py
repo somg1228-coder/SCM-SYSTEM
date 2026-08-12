@@ -716,7 +716,7 @@ def render_material_inventory_tab() -> None:
         st.empty()
 
 
-def render_daily_tab(source_type: str) -> None:
+def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
     st.markdown(f'<div class="inventory-tab-title">{source_type} 재고조회</div>', unsafe_allow_html=True)
     today = date.today()
     with perf_span("inventory.fetch_work_dates", source=source_type):
@@ -3171,12 +3171,18 @@ def inject_inventory_css() -> None:
             color: #111827 !important;
             min-height: 38px !important;
         }
-        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stButton"] button {
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stButton"] button,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] [data-testid="stButton"] button,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"] [data-testid="stButton"] button,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"] [data-testid="stButton"] button {
             border-radius: 8px !important;
             font-weight: 800 !important;
             min-height: 38px !important;
         }
-        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stButton"] button[kind="primary"] {
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stButton"] button[kind="primary"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] [data-testid="stButton"] button[kind="primary"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"] [data-testid="stButton"] button[kind="primary"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"] [data-testid="stButton"] button[kind="primary"] {
             background: #1E3A5F !important;
             border-color: #1E3A5F !important;
             color: #FFFFFF !important;
@@ -3514,7 +3520,10 @@ def inject_inventory_css() -> None:
         .inventory-visible-table tbody tr:hover td {
             background: #F1EEE8 !important;
         }
-        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stButton"] button:not([kind="primary"]) {
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stButton"] button:not([kind="primary"]),
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"] [data-testid="stButton"] button:not([kind="primary"]),
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"] [data-testid="stButton"] button:not([kind="primary"]),
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"] [data-testid="stButton"] button:not([kind="primary"]) {
             background: #E8E3DC !important;
             border-color: #CFC5B7 !important;
             color: #2F4051 !important;
@@ -3775,6 +3784,44 @@ def inject_inventory_css() -> None:
             color: #0F2B54 !important;
             font-weight: 950 !important;
         }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source {
+            border-bottom: 1px solid #D8D0C4 !important;
+            margin: 0 0 0.55rem !important;
+            padding: 0 0 0.42rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source [data-testid="stButton"] button {
+            font-size: 1.04rem !important;
+            min-height: 44px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail [data-testid="stButton"] button {
+            font-size: 0.96rem !important;
+            min-height: 36px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stSidebar"] .stButton > button {
+            background: transparent !important;
+            border: 0 !important;
+            border-left: 3px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            color: #e3f5f0 !important;
+            min-height: auto !important;
+            padding: 0.45rem 0.65rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stSidebar"] .stButton > button:hover {
+            background: rgba(20, 132, 118, 0.22) !important;
+            border-left-color: rgba(117, 236, 219, 0.5) !important;
+            color: #ffffff !important;
+            transform: none !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stSidebar"] .stButton > button[kind="primary"] {
+            background: rgba(21, 152, 134, 0.22) !important;
+            border-left-color: var(--cyan) !important;
+            color: #ffffff !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -3805,10 +3852,9 @@ DAILY_COLUMNS = [
     "담당자",
     "리드타임",
 ]
-INVENTORY_MAIN_SECTIONS = ["현재재고", "안전재고", "재고이력", "MRP", "발주추천", "자재/반제품"]
-INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "창고관리"]
-INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "창고관리": "창고"}
-INVENTORY_SOURCE_TABS = ["재고조회", "입고내역", "출고내역", "대시보드", "마스터관리"]
+INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "로긴창고"]
+INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "로긴창고": "창고"}
+INVENTORY_SOURCE_TABS = ["재고", "입고", "출고", "대시보드", "마스터"]
 
 
 def master_title(source_type: str) -> str:
@@ -3816,29 +3862,18 @@ def master_title(source_type: str) -> str:
 
 
 def render_inventory_page_lazy() -> None:
-    selected_section, selected_source, selected_tab = render_inventory_navigation()
-    if selected_section == "현재재고":
-        source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
-        if selected_tab == "재고조회":
-            render_daily_tab(source_type)
-        elif selected_tab == "입고내역":
-            render_inbound_tab(source_type)
-        elif selected_tab == "출고내역":
-            render_outbound_tab(source_type)
-        elif selected_tab == "대시보드":
-            render_inventory_dashboard_tab(source_type)
-        elif selected_tab == "마스터관리":
-            product_master_page.render_master_tab(source_type, master_title(source_type))
-    elif selected_section == "안전재고":
-        render_safe_stock_tab()
-    elif selected_section == "재고이력":
-        render_stock_history_tab()
-    elif selected_section == "MRP":
-        render_mrp_tab()
-    elif selected_section == "발주추천":
-        render_purchase_recommendation_tab()
-    elif selected_section == "자재/반제품":
-        render_material_inventory_tab()
+    selected_source, selected_tab = render_inventory_navigation()
+    source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
+    if selected_tab == "재고":
+        render_daily_tab(source_type, selected_source)
+    elif selected_tab == "입고":
+        render_inbound_tab(source_type)
+    elif selected_tab == "출고":
+        render_outbound_tab(source_type)
+    elif selected_tab == "대시보드":
+        render_inventory_dashboard_tab(source_type)
+    elif selected_tab == "마스터":
+        product_master_page.render_master_tab(source_type, master_title(source_type))
 
 
 def inventory_nav_token(value: str) -> str:
@@ -3868,54 +3903,39 @@ def inventory_text_tab_selector(options: list[str], key: str, default: str) -> s
     return current
 
 
-def render_inventory_navigation() -> tuple[str, str, str]:
+def render_inventory_navigation() -> tuple[str, str]:
     with st.container(key="inventory_nav_shell"):
-        current_section = clean_cell(st.session_state.get("inventory_main_section_selected")) or "현재재고"
-        render_inventory_module_rail(current_section)
-        nav_main_col, nav_source_col, nav_detail_col = st.columns([2.55, 1.1, 2.35], gap="large")
-        with nav_main_col:
-            selected_section = inventory_text_tab_selector(
-                INVENTORY_MAIN_SECTIONS,
-                "inventory_main_section",
-                default="현재재고",
+        with st.container(key="inventory_nav_source"):
+            selected_source = inventory_text_tab_selector(
+                INVENTORY_CURRENT_SOURCES,
+                "inventory_current_source",
+                default=st.session_state.get("inventory_active_source") or "3PL",
             )
+        if selected_source not in INVENTORY_CURRENT_SOURCES:
+            selected_source = "3PL"
+        st.session_state["inventory_active_source"] = selected_source
 
-        selected_source = ""
-        selected_tab = ""
-        if selected_section == "현재재고":
-            with nav_source_col:
-                with st.container(key="inventory_nav_source"):
-                    selected_source = inventory_text_tab_selector(
-                        INVENTORY_CURRENT_SOURCES,
-                        "inventory_current_source",
-                        default=st.session_state.get("inventory_active_source") or "3PL",
-                    )
-            if selected_source not in INVENTORY_CURRENT_SOURCES:
-                selected_source = "3PL"
-            st.session_state["inventory_active_source"] = selected_source
-
-            source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
-            with nav_detail_col:
-                with st.container(key="inventory_nav_detail"):
-                    selected_tab = inventory_text_tab_selector(
-                        INVENTORY_SOURCE_TABS,
-                        f"inventory_{source_key(source_type)}_section",
-                        default="재고조회",
-                    )
-    return selected_section, selected_source, selected_tab
+        source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
+        with st.container(key="inventory_nav_detail"):
+            selected_tab = inventory_text_tab_selector(
+                INVENTORY_SOURCE_TABS,
+                f"inventory_{source_key(source_type)}_section",
+                default="재고",
+            )
+    return selected_source, selected_tab
 
 
 def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None = None) -> None:
-    selected_tab = selected_tab or "재고조회"
-    if selected_tab == "재고조회":
+    selected_tab = selected_tab or "재고"
+    if selected_tab in {"재고", "재고조회"}:
         render_daily_tab(source_type)
-    elif selected_tab == "입고내역":
+    elif selected_tab in {"입고", "입고내역"}:
         render_inbound_tab(source_type)
-    elif selected_tab == "출고내역":
+    elif selected_tab in {"출고", "출고내역"}:
         render_outbound_tab(source_type)
     elif selected_tab == "대시보드":
         render_inventory_dashboard_tab(source_type)
-    elif selected_tab == "마스터관리":
+    elif selected_tab in {"마스터", "마스터관리"}:
         product_master_page.render_master_tab(source_type, master_title(source_type))
 
 
@@ -4331,26 +4351,6 @@ def render_inventory_kpi_cards(cards: list[tuple[str, int, str, str]]) -> None:
     render_inventory_html(f'<section class="inventory-design-kpis">{"".join(items)}</section>')
 
 
-def render_inventory_module_rail(active_section: str) -> None:
-    groups = [
-        ("재고현황", "현재재고", "▱"),
-        ("계획/발주", "MRP", "▤"),
-        ("물류관리", "현재재고", "▰"),
-        ("조회/관리", "현재재고", "▣"),
-        ("마스터관리", "현재재고", "⚙"),
-    ]
-    active_group = "재고현황"
-    if active_section in {"MRP", "발주추천", "자재/반제품"}:
-        active_group = "계획/발주"
-    elif active_section in {"안전재고", "재고이력"}:
-        active_group = "재고현황"
-    items = []
-    for label, _target, icon in groups:
-        active = "active" if label == active_group else ""
-        items.append(f'<div class="inventory-module-item {active}"><i>{escape(icon)}</i><span>{escape(label)}</span></div>')
-    render_inventory_html(f'<section class="inventory-module-rail">{"".join(items)}</section>')
-
-
 def render_inventory_update_panel(
     source_type: str,
     work_date: date,
@@ -4402,10 +4402,11 @@ def render_daily_tab(source_type: str) -> None:
     with st.container(key=f"{source_key(source_type)}_daily_header"):
         header_text_col, header_date_col = st.columns([5.2, 1.1], gap="small")
         with header_text_col:
+            display_source = source_label or source_type
             render_inventory_html(
                 f"""
                 <div class="inventory-page-header">
-                    <h1>{escape(source_type)} 재고조회</h1>
+                    <h1>{escape(display_source)} 재고조회</h1>
                     <p>외부 물류센터의 재고 현황을 조회하고 ERP 재고 데이터를 업데이트합니다.</p>
                 </div>
                 """
