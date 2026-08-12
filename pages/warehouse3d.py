@@ -2954,6 +2954,34 @@ def warehouse_scene3d_html(
                 overflow: auto;
                 scrollbar-gutter: stable;
             }}
+            .detail-tabs {{
+                background: #EDE8E1;
+                border: 1px solid #D8D2C8;
+                border-radius: 10px;
+                display: grid;
+                gap: 0.28rem;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                padding: 0.28rem;
+            }}
+            .detail-tab {{
+                background: transparent;
+                border-color: transparent;
+                min-height: 32px;
+                padding: 0 0.34rem;
+            }}
+            .detail-tab.active {{
+                background: #FAF8F5;
+                border-color: #CFC7BC;
+                box-shadow: inset 0 -2px 0 #4F6F8F;
+                color: #1F2933;
+            }}
+            .detail-tab-panel {{
+                display: none;
+                min-height: 0;
+            }}
+            .detail-tab-panel.active {{
+                display: block;
+            }}
             .rack-detail-hidden {{
                 display: none !important;
             }}
@@ -3467,7 +3495,13 @@ def warehouse_scene3d_html(
             </section>
             <aside class="panel detail-panel">
                 <div class="rack-detail-hidden" id="rackDetail"></div>
+                <div class="detail-tabs" role="tablist" aria-label="3D 창고 관리 도구">
+                    <button class="detail-tab active" type="button" data-detail-tab="load">적재</button>
+                    <button class="detail-tab" type="button" data-detail-tab="fixture">시설물</button>
+                    <button class="detail-tab" type="button" data-detail-tab="items">목록</button>
+                </div>
                 <div class="detail-tools">
+                    <div class="detail-tab-panel active" data-detail-panel="load">
                     <div class="detail-section load-section">
                         <div class="section-title">상품 적재 설정</div>
                         <div class="assign-box">
@@ -3497,6 +3531,8 @@ def warehouse_scene3d_html(
                         </div>
                         <div class="stock-guide">랙을 선택하면 해당 랙/단에 적재되고, 바닥 박스/파렛트는 시설물 배치에서 추가 후 랙에 넣기로 옮길 수 있습니다.</div>
                     </div>
+                    </div>
+                    <div class="detail-tab-panel" data-detail-panel="fixture">
                     <div class="detail-section fixture-section">
                         <div class="section-title">창고 시설물 배치</div>
                         <div class="fixture-box">
@@ -3540,12 +3576,15 @@ def warehouse_scene3d_html(
                             <button type="button" data-nudge="right">→</button>
                         </div>
                     </div>
+                    </div>
                 </div>
+                <div class="detail-tab-panel" data-detail-panel="items">
                 <div class="item-list">
                     <table>
                         <thead><tr><th>렉 정보</th><th>상품명</th><th>바코드</th><th>수량</th><th>총 재고</th><th>관리</th></tr></thead>
                         <tbody id="itemBody"><tr><td colspan="6" class="empty">선택된 랙이 없습니다.</td></tr></tbody>
                     </table>
+                </div>
                 </div>
             </aside>
         </main>
@@ -3658,6 +3697,8 @@ def warehouse_scene3d_html(
             const printSceneButton = document.getElementById("printScene");
             const saveLayoutFileButton = document.getElementById("saveLayoutFile");
             const layoutSaveStatus = document.getElementById("layoutSaveStatus");
+            const detailTabButtons = Array.from(document.querySelectorAll("[data-detail-tab]"));
+            const detailTabPanels = Array.from(document.querySelectorAll("[data-detail-panel]"));
             const placementScale = 1.45;
 
             const scene = new THREE.Scene();
@@ -3665,6 +3706,22 @@ def warehouse_scene3d_html(
             const screenSceneFog = null;
             scene.background = screenSceneBackground;
             scene.fog = screenSceneFog;
+
+            function activateDetailTab(tabName) {{
+                const nextTab = ["load", "fixture", "items"].includes(tabName) ? tabName : "load";
+                detailTabButtons.forEach(button => {{
+                    const isActive = button.dataset.detailTab === nextTab;
+                    button.classList.toggle("active", isActive);
+                    button.setAttribute("aria-selected", isActive ? "true" : "false");
+                }});
+                detailTabPanels.forEach(panel => {{
+                    panel.classList.toggle("active", panel.dataset.detailPanel === nextTab);
+                }});
+            }}
+
+            detailTabButtons.forEach(button => {{
+                button.addEventListener("click", () => activateDetailTab(button.dataset.detailTab));
+            }});
 
             const renderer = new THREE.WebGLRenderer({{ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true }});
             const screenPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
@@ -5724,6 +5781,7 @@ def warehouse_scene3d_html(
                 selectedRackId = rackId || "";
                 selectedFixtureId = "";
                 selectedRackItemKey = "";
+                activateDetailTab("load");
                 buildRacks();
                 buildFixtures();
                 renderRack(selectedRack());
@@ -5733,6 +5791,7 @@ def warehouse_scene3d_html(
                 selectedFixtureId = fixtureId || "";
                 selectedRackId = "";
                 selectedRackItemKey = "";
+                activateDetailTab("fixture");
                 buildRacks();
                 buildFixtures();
                 renderFixture(selectedFixture());

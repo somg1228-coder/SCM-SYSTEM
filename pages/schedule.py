@@ -269,6 +269,8 @@ def render_schedule_visible_editor(
         if column not in source.columns:
             source[column] = False if column in {EDIT_DELETE_COLUMN, *checkbox_columns} else ""
     source = source[[EDIT_DELETE_COLUMN, *columns]].reset_index(drop=True)
+    if columns == SLOT_COLUMNS and not compact:
+        return render_schedule_slot_editor(source, columns, key_prefix, blank_rows)
     rows = source.to_dict("records")
     row_count_key = schedule_editor_row_count_key(key_prefix)
     current_row_count = max(blank_rows, len(rows), int(st.session_state.get(row_count_key, 0) or 0))
@@ -334,8 +336,78 @@ def render_schedule_visible_editor(
     return edited_df
 
 
+def render_schedule_slot_editor(df: pd.DataFrame, columns: list[str], key_prefix: str, blank_rows: int = 3) -> pd.DataFrame:
+    rows = df.to_dict("records")
+    row_count_key = schedule_editor_row_count_key(key_prefix)
+    current_row_count = max(blank_rows, len(rows), int(st.session_state.get(row_count_key, 0) or 0))
+    st.session_state[row_count_key] = current_row_count
+    for _ in range(max(0, current_row_count - len(rows))):
+        rows.append({EDIT_DELETE_COLUMN: False, **{column: "" for column in columns}})
+
+    st.markdown('<div class="schedule-slot-editor">', unsafe_allow_html=True)
+    toolbar_cols = st.columns([1.15, 5.8], gap="small")
+    row_action = "none"
+    delete_row_index: int | None = None
+    if toolbar_cols[0].form_submit_button("+ 시간대 추가", use_container_width=True):
+        row_action = "add_row"
+    with toolbar_cols[1]:
+        st.empty()
+
+    header_cols = st.columns([1.05, 1.28, 1.28, 1.28, 1.28, 1.28, 0.34], gap="small")
+    for index, column in enumerate(columns):
+        header_cols[index].markdown(f'<div class="slot-sheet-header">{html_escape(column)}</div>', unsafe_allow_html=True)
+    header_cols[-1].markdown('<div class="slot-sheet-header slot-action-header"></div>', unsafe_allow_html=True)
+
+    edited_rows = []
+    for row_index, row in enumerate(rows):
+        st.markdown('<div class="schedule-slot-row-anchor"></div>', unsafe_allow_html=True)
+        row_cols = st.columns([1.05, 1.28, 1.28, 1.28, 1.28, 1.28, 0.34], gap="small")
+        edited_row = {EDIT_DELETE_COLUMN: False}
+        for column_index, column in enumerate(columns):
+            value = clean_text(row.get(column, ""))
+            cell_key = f"{key_prefix}_{row_index}_{column_index + 1}_{safe_widget_key(column)}"
+            if column == "시간":
+                edited_row[column] = row_cols[column_index].text_area(
+                    column,
+                    value=value,
+                    height=82,
+                    key=cell_key,
+                    label_visibility="collapsed",
+                    placeholder="오전\n09:00~11:30",
+                )
+            else:
+                edited_row[column] = row_cols[column_index].text_area(
+                    column,
+                    value=value,
+                    height=96,
+                    key=cell_key,
+                    label_visibility="collapsed",
+                    placeholder="+ 일정 입력",
+                )
+        with row_cols[-1]:
+            st.markdown('<div class="slot-trash-spacer"></div>', unsafe_allow_html=True)
+            if st.form_submit_button(f"🗑 {row_index + 1}", help="이 시간대 삭제", use_container_width=True):
+                row_action = "selected_delete"
+                delete_row_index = row_index
+        if delete_row_index == row_index:
+            edited_row[EDIT_DELETE_COLUMN] = True
+        edited_rows.append(edited_row)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    edited_df = pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, *columns])
+    edited_df.attrs["editor_row_action"] = row_action
+    return edited_df
+
+
 def render_schedule_editor_actions(key_prefix: str, save_label: str, delete_label: str) -> str:
     action = "none"
+    if key_prefix == "schedule_slots":
+        action_cols = st.columns([1.0, 5.0], gap="small")
+        if action_cols[0].form_submit_button(save_label, type="primary", use_container_width=True):
+            action = "save"
+        with action_cols[1]:
+            st.empty()
+        return action
     action_cols = st.columns([0.9, 0.9, 4.0], gap="small")
     if action_cols[0].form_submit_button(save_label, type="primary", use_container_width=True):
         action = "save"
@@ -873,6 +945,7 @@ def inject_schedule_css() -> None:
             display: flex;
             flex-direction: column;
             gap: 0.85rem;
+            min-width: 1180px;
             padding-bottom: 2rem;
         }
         .weekly-schedule-title {
@@ -972,12 +1045,14 @@ def inject_schedule_css() -> None:
             border: 1px solid #E2E8F0;
             border-radius: 6px;
             overflow-x: auto;
+            width: 100%;
         }
         .weekly-table-wrap table {
             border-collapse: collapse;
             color: #334155;
             font-size: 0.82rem;
-            table-layout: fixed;
+            min-width: 1120px;
+            table-layout: auto;
             width: 100%;
         }
         .weekly-table-wrap th,
@@ -996,16 +1071,143 @@ def inject_schedule_css() -> None:
         }
         .weekly-table-wrap th:first-child,
         .weekly-table-wrap td:first-child {
-            width: 120px;
             font-weight: 900;
+            min-width: 132px;
+            width: 132px;
+        }
+        .weekly-table-wrap th:not(:first-child),
+        .weekly-table-wrap td:not(:first-child) {
+            min-width: 190px;
         }
         .weekly-table-wrap td {
-            min-height: 78px;
             line-height: 1.45;
         }
         .weekly-table-wrap .empty {
             color: #94A3B8;
             text-align: center;
+        }
+
+        /* Compact time-slot editor. Keep schedule row heights content-driven. */
+        .schedule-slot-editor {
+            background: #FAF8F5;
+            border: 1px solid #D8D2C8;
+            border-radius: 10px;
+            box-shadow: 0 8px 18px rgba(45, 38, 30, 0.035);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            height: auto !important;
+            margin: 0;
+            min-height: 0 !important;
+            overflow-x: auto;
+            padding: 0.72rem;
+        }
+        .schedule-slot-editor [data-testid="stHorizontalBlock"] {
+            align-items: flex-start !important;
+            display: flex !important;
+            flex: none !important;
+            flex-grow: 0 !important;
+            height: auto !important;
+            justify-content: flex-start !important;
+            margin: 0 !important;
+            min-height: 0 !important;
+            min-width: 1100px !important;
+        }
+        .schedule-slot-editor [data-testid="stVerticalBlock"],
+        .schedule-slot-editor [data-testid="stElementContainer"],
+        .schedule-slot-editor div[class*="st-key-schedule_slots_editor_"] {
+            flex: none !important;
+            flex-grow: 0 !important;
+            height: auto !important;
+            min-height: 0 !important;
+        }
+        .schedule-slot-editor div[class*="st-key-schedule_slots_editor_"] [data-testid="stDataFrame"] {
+            height: auto !important;
+            min-height: 0 !important;
+        }
+        .slot-sheet-header {
+            align-items: center;
+            background: #EDE8E1;
+            border: 1px solid #D8D2C8;
+            border-radius: 8px;
+            color: #102033;
+            display: flex;
+            font-size: 0.84rem;
+            font-weight: 900;
+            justify-content: center;
+            min-height: 34px;
+            padding: 0.4rem 0.5rem;
+            white-space: nowrap;
+        }
+        .slot-action-header {
+            background: transparent;
+            border-color: transparent;
+        }
+        .schedule-slot-editor textarea,
+        .schedule-slot-editor [data-testid="stTextArea"] textarea,
+        .schedule-slot-editor [data-baseweb="textarea"] textarea {
+            background: #FFFDF9 !important;
+            border: 1px solid #D7CEC1 !important;
+            border-radius: 9px !important;
+            box-shadow: none !important;
+            color: #172033 !important;
+            font-size: 0.88rem !important;
+            font-weight: 720 !important;
+            height: auto !important;
+            line-height: 1.34 !important;
+            min-height: 96px !important;
+            padding: 0.62rem 0.68rem !important;
+            resize: vertical !important;
+        }
+        .schedule-slot-editor [data-testid="stHorizontalBlock"] > div:first-child textarea,
+        .schedule-slot-editor [data-testid="stHorizontalBlock"] > div:first-child [data-testid="stTextArea"] textarea {
+            font-weight: 850 !important;
+            min-height: 96px !important;
+            text-align: center !important;
+        }
+        .schedule-slot-editor textarea::placeholder {
+            color: #A59B8C !important;
+            -webkit-text-fill-color: #A59B8C !important;
+        }
+        .schedule-slot-editor textarea:hover {
+            background: #FFFFFF !important;
+            border-color: #BDAF9F !important;
+        }
+        .schedule-slot-editor textarea:focus {
+            background: #FFFFFF !important;
+            border-color: #8CA0B3 !important;
+            box-shadow: 0 0 0 2px rgba(79, 111, 143, 0.14) !important;
+        }
+        .slot-trash-spacer {
+            height: 0.1rem;
+        }
+        .schedule-slot-editor [data-testid="stFormSubmitButton"] button {
+            border-radius: 8px !important;
+            min-height: 36px !important;
+        }
+        .schedule-slot-editor [data-testid="stFormSubmitButton"] button:has(span:only-child) {
+            padding-left: 0.4rem !important;
+            padding-right: 0.4rem !important;
+        }
+        .schedule-slot-editor [data-testid="stHorizontalBlock"] + [data-testid="stHorizontalBlock"] {
+            margin-top: 0 !important;
+        }
+        div[data-testid="stExpander"]:has(.schedule-slot-editor) {
+            height: auto !important;
+            min-height: 0 !important;
+        }
+        div[data-testid="stExpander"]:has(.schedule-slot-editor) [data-testid="stExpanderDetails"] {
+            height: auto !important;
+            min-height: 0 !important;
+            padding-top: 0.75rem !important;
+        }
+        @media (max-width: 1180px) {
+            .schedule-slot-editor {
+                overflow-x: auto;
+            }
+            .schedule-slot-editor [data-testid="stHorizontalBlock"] {
+                min-width: 1100px !important;
+            }
         }
         </style>
         """,
