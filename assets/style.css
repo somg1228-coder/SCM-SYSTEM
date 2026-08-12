@@ -15337,3 +15337,133 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
     -webkit-text-fill-color: #172033 !important;
     width: auto !important;
 }
+
+/* Final requested brand and dashboard card polish. */
+[data-testid="stSidebar"] .sidebar-brand {
+    background: linear-gradient(180deg, #0E2747 0%, #0A1D36 100%) !important;
+    border: 1px solid rgba(93, 142, 190, 0.34) !important;
+    border-radius: 8px !important;
+    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06), 0 8px 18px rgba(8, 20, 39, 0.18) !important;
+    gap: 7px !important;
+    justify-content: center !important;
+    min-height: 42px !important;
+    padding: 8px 9px !important;
+    position: relative !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand::after {
+    background: linear-gradient(90deg, transparent, rgba(70, 140, 211, 0.42), transparent) !important;
+    bottom: -7px !important;
+    content: "" !important;
+    height: 1px !important;
+    left: 8px !important;
+    position: absolute !important;
+    right: 8px !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand-mark {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    flex: 0 0 20px !important;
+    gap: 2px !important;
+    height: 20px !important;
+    padding: 2px !important;
+    width: 20px !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand-mark i {
+    background: linear-gradient(180deg, #3FB7FF 0%, #1478D4 100%) !important;
+    box-shadow: 0 0 8px rgba(35, 143, 227, 0.45) !important;
+    width: 4px !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand-mark i:nth-child(1) {
+    height: 6px !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand-mark i:nth-child(2) {
+    height: 10px !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand-mark i:nth-child(3) {
+    height: 15px !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand-title,
+[data-testid="stSidebar"] .sidebar-brand span:last-child {
+    color: #F5FAFF !important;
+    font-size: 12px !important;
+    font-weight: 950 !important;
+    letter-spacing: 0.02em !important;
+    -webkit-text-fill-color: #F5FAFF !important;
+}
+
+.dashboard-shell .kpi-tile {
+    grid-template-columns: 42px minmax(0, 1fr) !important;
+}
+
+.dashboard-shell .kpi-icon {
+    align-items: center !important;
+    background: #F2F6FA !important;
+    border: 1px solid #D9E4EF !important;
+    border-radius: 8px !important;
+    color: #0F4B86 !important;
+    display: inline-flex !important;
+    font-size: 20px !important;
+    height: 34px !important;
+    justify-content: center !important;
+    width: 34px !important;
+}
+
+.dashboard-shell .kpi-icon span {
+    color: inherit !important;
+    display: block !important;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Segoe UI Symbol", sans-serif !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+.dashboard-shell .kpi-tile.cyan .kpi-icon,
+.dashboard-shell .kpi-tile.blue .kpi-icon {
+    color: #0F4B86 !important;
+}
+
+.dashboard-shell .kpi-tile.green .kpi-icon {
+    color: #416D4F !important;
+}
+
+.dashboard-shell .donut-card .donut-layout {
+    align-items: stretch !important;
+    display: grid !important;
+    gap: 14px !important;
+    grid-template-columns: minmax(150px, 0.82fr) minmax(180px, 1fr) !important;
+}
+
+.dashboard-shell .donut-card .issue-monthly-mini {
+    align-self: stretch !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    min-height: 154px !important;
+}
+
+.dashboard-shell .donut-card .legend.issue-legend-bottom {
+    display: grid !important;
+    gap: 6px 10px !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    margin: 12px 0 0 !important;
+}
+
+.dashboard-shell .donut-card .legend.issue-legend-bottom li {
+    min-width: 0 !important;
+}
+
+@media (max-width: 900px) {
+    .dashboard-shell .donut-card .donut-layout,
+    .dashboard-shell .donut-card .legend.issue-legend-bottom {
+        grid-template-columns: 1fr !important;
+    }
+}

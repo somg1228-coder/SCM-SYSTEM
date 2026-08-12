@@ -2112,16 +2112,16 @@ def kpi_cards_html(summary: dict, purchase_summary: dict) -> str:
         return "?" + urlencode(params)
 
     cards = [
-        ("cube", "총 현재고", f"{stock}개", caption_date, "cyan", inventory_link("all")),
-        ("truck", "출고수량", f"{outbound_qty}개", caption_date, "blue", inventory_link("outbound")),
-        ("truck", "발주 진행", f"{po_progress}건", f"미입고 {uninbound_amount}", "blue", purchase_link("발주관리(PO)", "po_progress")),
-        ("box", "입고수량", f"{inbound_qty}개", caption_date, "green", inventory_link("all")),
-        ("box", "이번 달 구매금액", month_amount, f"전월 대비 {month_change}", "green", purchase_link("구매 KPI")),
+        ("📦", "총 현재고", f"{stock}개", caption_date, "cyan", inventory_link("all")),
+        ("↥", "출고수량", f"{outbound_qty}개", caption_date, "blue", inventory_link("outbound")),
+        ("🛒", "발주 진행", f"{po_progress}건", f"미입고 {uninbound_amount}", "blue", purchase_link("발주관리(PO)", "po_progress")),
+        ("↧", "입고수량", f"{inbound_qty}개", caption_date, "green", inventory_link("all")),
+        ("₩", "이번 달 구매금액", month_amount, f"전월 대비 {month_change}", "green", purchase_link("구매 KPI")),
     ]
     return '<section class="kpi-row">' + "".join(
         f"""
         <a class="kpi-tile {tone}" href="{href}" target="_self" title="{label} 보기">
-            <div class="kpi-icon">{icon_svg(icon)}</div>
+            <div class="kpi-icon"><span>{escape(icon)}</span></div>
             <div>
                 <span>{label}</span>
                 <strong>{value}</strong>
@@ -2263,9 +2263,9 @@ def issue_donut_html(rows: list[dict], total_count: int, monthly_rows: list[dict
                 {labels}
                 <div><strong>{int(total_count or 0):,}건</strong><span>전체</span></div>
             </a>
-            <ul class="legend">{legend}</ul>
+            {issue_monthly_strip_html(monthly_rows or [], year or date.today().year)}
         </div>
-        {issue_monthly_strip_html(monthly_rows or [], year or date.today().year)}
+        <ul class="legend issue-legend-bottom">{legend}</ul>
     </article>
     """
 

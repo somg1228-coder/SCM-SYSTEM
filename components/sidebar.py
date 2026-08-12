@@ -87,7 +87,7 @@ def render_sidebar() -> str:
 
     with st.sidebar:
         st.markdown(
-            '<div class="sidebar-brand"><span class="sidebar-brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="sidebar-brand-title">SCM</span></div>'
+            '<div class="sidebar-brand"><span class="sidebar-brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="sidebar-brand-title">SCM SYSTEM</span></div>'
             '<div class="sidebar-divider"></div>',
             unsafe_allow_html=True,
         )
