@@ -56,6 +56,7 @@ DAILY_COLUMNS = [
     "현재고",
     "발주필요일",
     "박스/파렛트 단위",
+    "재고위치",
     "업체명",
     "담당자",
     "리드타임",
@@ -807,7 +808,7 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
                 if preview:
                     st.session_state[upload_preview_key] = preview
                     preview_df = stock_preview_display_dataframe(preview)
-                    uploaded_df = pd.DataFrame(preview.get("debug", {}).get("normalized_records", []))
+                    uploaded_df = pd.DataFrame(preview.get("debug", {}).get("normalized_sample", []))
                     st.session_state[uploaded_inventory_key] = uploaded_df
                     st.session_state[inventory_preview_df_key] = preview_df
                     st.session_state["uploaded_inventory_df"] = uploaded_df
@@ -2524,6 +2525,7 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "현재고": row.get("current_stock", 0),
                 "발주필요일": "" if order_days is None else int(order_days),
                 "박스/파렛트 단위": row.get("box_pallet_unit", ""),
+                "재고위치": row.get("storage_location", ""),
                 "업체명": row.get("supplier", ""),
                 "담당자": row.get("manager", ""),
                 "리드타임": row.get("inbound_cycle", 0) or 0,
@@ -4278,7 +4280,7 @@ def apply_inventory_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     if statuses:
         filtered = filtered[filtered["재고상태"].isin(statuses)]
     if search:
-        search_columns = ["바코드", "상품명", "업체명", "담당자"]
+        search_columns = ["바코드", "상품명", "업체명", "재고위치", "담당자"]
         search_text = filtered[search_columns].astype(str).agg(" ".join, axis=1).str.lower()
         filtered = filtered[search_text.str.contains(re.escape(search), na=False)]
     if filters.get("stock_presence") == "보유":
@@ -4441,6 +4443,7 @@ def stock_preview_display_dataframe(preview: dict) -> pd.DataFrame:
         "category": "카테고리",
         "product_name": "상품명",
         "barcode": "바코드",
+        "storage_location": "재고위치",
         "previous_stock": "기존 현재고",
         "new_stock": "변경 현재고",
         "new_available_stock": "변경 가용재고",
@@ -4448,7 +4451,7 @@ def stock_preview_display_dataframe(preview: dict) -> pd.DataFrame:
         "matched": "반영대상",
     }
     display_df = preview_df.rename(columns=columns)
-    ordered = ["엑셀 행", "SKU", "카테고리", "상품명", "바코드", "기존 현재고", "변경 현재고", "변경 가용재고", "검증결과", "반영대상"]
+    ordered = ["엑셀 행", "SKU", "카테고리", "상품명", "바코드", "재고위치", "기존 현재고", "변경 현재고", "변경 가용재고", "검증결과", "반영대상"]
     return display_df[[column for column in ordered if column in display_df.columns]]
 
 
@@ -4501,44 +4504,52 @@ def render_inventory_kpi_cards(cards: list[tuple[str, int, str, str]]) -> None:
 
 def render_inventory_update_panel(
     source_type: str,
-    work_date: date,
-    upload_preview_key: str,
-    preview_df_key: str,
-    applied_df_key: str,
-    excluded_df_key: str,
-) -> None:
+    daily_date_key: str,
+) -> date:
     with st.container(key=f"{source_key(source_type)}_inventory_update"):
         render_inventory_html(
             """
             <div class="inventory-update-heading">
                 <div>
                     <h2>ERP 재고 업데이트</h2>
-                    <p>ERP에서 추출한 Excel/CSV 파일로 현재 재고를 갱신합니다.</p>
+                    <p>ERP에서 추출한 Excel/CSV 파일로 선택 기준일의 재고 Snapshot을 바로 갱신합니다.</p>
                 </div>
             </div>
             """
         )
-        upload_cols = st.columns([2.45, 1.05, 0.88, 1.42], gap="large")
+        upload_cols = st.columns([2.35, 0.92, 0.95, 0.92, 1.35], gap="large")
+        with upload_cols[1]:
+            work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
+
+        upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
+        preview_df_key = f"{source_type}_inventory_preview_df_{work_date.isoformat()}"
+        applied_df_key = f"{source_type}_applied_inventory_df_{work_date.isoformat()}"
+        excluded_df_key = f"{source_type}_excluded_inventory_df_{work_date.isoformat()}"
         with upload_cols[0]:
             uploaded = st.file_uploader("파일 선택 또는 Drag & Drop", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
-        with upload_cols[1]:
-            upload_mode = st.radio("반영 범위", ["일부 재고", "전체 재고"], horizontal=False, key=f"{source_type}_stock_upload_mode")
         with upload_cols[2]:
+            upload_mode = st.radio("반영 범위", ["일부 재고", "전체 재고"], horizontal=False, key=f"{source_type}_stock_upload_mode")
+        with upload_cols[3]:
             st.write("")
-            if st.button("미리보기", key=f"{source_type}_stock_preview_btn_{work_date}", use_container_width=True):
+            if st.button("엑셀업로드", key=f"{source_type}_stock_upload_btn_{work_date}", type="primary", use_container_width=True):
                 if uploaded is None:
                     st.warning("먼저 ERP 재고 Excel 파일을 선택하세요.")
                 else:
                     mode = "full" if upload_mode == "전체 재고" else "partial"
-                    preview = with_db(lambda db: services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode))
-                    if preview:
-                        st.session_state[upload_preview_key] = preview
-                        st.session_state[preview_df_key] = stock_preview_display_dataframe(preview)
-        with upload_cols[3]:
-            st.info("미리보기에서 바코드 우선 매칭, 미매칭, 중복을 확인한 뒤 재고 반영을 누르면 저장과 재고 계산이 함께 실행됩니다.")
-        preview = st.session_state.get(upload_preview_key)
-        if preview:
-            render_stock_upload_preview(source_type, work_date, upload_preview_key, preview, preview_df_key, applied_df_key, excluded_df_key)
+                    with st.spinner("엑셀을 읽고 재고를 바로 반영하는 중입니다..."):
+                        def upload_action(db):
+                            preview = services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode)
+                            if not preview or not preview.get("ok", True):
+                                return preview
+                            return services.apply_stock_upload_preview(db, source_type, work_date, preview, current_user_name())
+
+                        outcome = with_db(upload_action)
+                    for key in [upload_preview_key, preview_df_key, applied_df_key, excluded_df_key]:
+                        st.session_state.pop(key, None)
+                    show_result(outcome)
+        with upload_cols[4]:
+            st.info("엑셀업로드를 누르면 저장과 재고 계산이 바로 실행됩니다. 재고위치 컬럼이 있으면 창고 위치표에도 함께 반영됩니다.")
+        return work_date
 
 
 def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
@@ -4548,19 +4559,17 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
     daily_date_key = f"{source_type}_daily_date"
     st.session_state.setdefault(daily_date_key, default_work_date)
     with st.container(key=f"{source_key(source_type)}_daily_header"):
-        header_text_col, header_date_col = st.columns([5.2, 1.1], gap="small")
-        with header_text_col:
-            display_source = source_label or source_type
-            render_inventory_html(
-                f"""
-                <div class="inventory-page-header">
-                    <h1>{escape(display_source)} 재고조회</h1>
-                    <p>외부 물류센터의 재고 현황을 조회하고 ERP 재고 데이터를 업데이트합니다.</p>
-                </div>
-                """
-            )
-        with header_date_col:
-            work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
+        display_source = source_label or source_type
+        render_inventory_html(
+            f"""
+            <div class="inventory-page-header">
+                <h1>{escape(display_source)} 재고조회</h1>
+                <p>외부 물류센터의 재고 현황을 조회하고 ERP 재고 데이터를 업데이트합니다.</p>
+            </div>
+            """
+        )
+
+    work_date = render_inventory_update_panel(source_type, daily_date_key)
 
     rows = fetch_master_inventory(source_type, work_date)
     base_df = daily_to_editor(rows)
@@ -4574,8 +4583,6 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
     excluded_df_key = f"{source_type}_excluded_inventory_df_{work_date.isoformat()}"
     output_payload_key = f"{source_type}_daily_output_payload_{work_date.isoformat()}"
     output_scope_key = f"{source_type}_daily_download_scope_{work_date}"
-
-    render_inventory_update_panel(source_type, work_date, upload_preview_key, preview_df_key, applied_df_key, excluded_df_key)
 
     status_series = filtered_df.get("재고상태", pd.Series(dtype=str))
     render_inventory_kpi_cards(

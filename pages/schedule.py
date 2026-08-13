@@ -370,7 +370,7 @@ def render_schedule_slot_editor(df: pd.DataFrame, columns: list[str], key_prefix
                 edited_row[column] = row_cols[column_index].text_area(
                     column,
                     value=value,
-                    height=82,
+                    height=66,
                     key=cell_key,
                     label_visibility="collapsed",
                     placeholder="오전\n09:00~11:30",
@@ -379,7 +379,7 @@ def render_schedule_slot_editor(df: pd.DataFrame, columns: list[str], key_prefix
                 edited_row[column] = row_cols[column_index].text_area(
                     column,
                     value=value,
-                    height=96,
+                    height=76,
                     key=cell_key,
                     label_visibility="collapsed",
                     placeholder="+ 일정 입력",
@@ -1030,10 +1030,10 @@ def inject_schedule_css() -> None:
             max-width: 640px;
         }
         div[class*="st-key-schedule_slots_editor_"] {
-            min-height: 390px;
+            min-height: 300px;
         }
         div[class*="st-key-schedule_slots_editor_"] [data-testid="stDataFrame"] {
-            min-height: 380px;
+            min-height: 290px;
         }
         .weekly-section-title.history-title {
             background: rgba(120, 74, 49, 0.72);
@@ -1095,7 +1095,7 @@ def inject_schedule_css() -> None:
             box-shadow: 0 8px 18px rgba(45, 38, 30, 0.035);
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: 6px;
             height: auto !important;
             margin: 0;
             min-height: 0 !important;
@@ -1155,14 +1155,14 @@ def inject_schedule_css() -> None:
             font-weight: 720 !important;
             height: auto !important;
             line-height: 1.34 !important;
-            min-height: 96px !important;
-            padding: 0.62rem 0.68rem !important;
+            min-height: 76px !important;
+            padding: 0.48rem 0.58rem !important;
             resize: vertical !important;
         }
         .schedule-slot-editor [data-testid="stHorizontalBlock"] > div:first-child textarea,
         .schedule-slot-editor [data-testid="stHorizontalBlock"] > div:first-child [data-testid="stTextArea"] textarea {
             font-weight: 850 !important;
-            min-height: 96px !important;
+            min-height: 66px !important;
             text-align: center !important;
         }
         .schedule-slot-editor textarea::placeholder {

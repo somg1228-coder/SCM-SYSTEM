@@ -86,6 +86,7 @@ LOCATIONS = {
 LEGACY_LOCATION_MAP = {"밑창고1": "창고1", "옆창고2": "창고2"}
 CANONICAL_LOCATION_BY_LEGACY = {legacy: current for current, legacy in LEGACY_LOCATION_MAP.items()}
 WAREHOUSE_LAYOUT_STORE_NAME = "warehouse3d_layouts.json"
+WAREHOUSE3D_UI_VERSION = "items_card_v2"
 THREE_VENDOR_DIR = Path(__file__).resolve().parents[1] / "assets" / "vendor" / "three-0.160.0"
 WAREHOUSE3D_COMPONENT_DIR = Path(__file__).resolve().parents[1] / "components" / "warehouse3d_component"
 WAREHOUSE_LAYOUT_API_PORTS = range(8765, 8775)
@@ -870,7 +871,7 @@ def render_warehouse3d_page() -> None:
             save_request = warehouse3d_scene_component(
                 html=scene_html,
                 height=860,
-                key=f"warehouse3d_scene_{building}",
+                key=f"warehouse3d_scene_{building}_{WAREHOUSE3D_UI_VERSION}",
                 default=None,
             )
         handle_warehouse3d_layout_save_request(save_request)
@@ -935,12 +936,13 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
     location_floors = warehouse_location_floor_options()
     default_location_key = f"{building}::{default_floor}"
     floor_payload = json.dumps(
-        {option["key"]: build_rack_layout(inventory_rows, option["floor"]) for option in location_floors},
+        {option["key"]: [] for option in location_floors},
         ensure_ascii=False,
     )
     legacy_location_map_payload = json.dumps({"밑창고1": "창고1", "옆창고2": "창고2"}, ensure_ascii=False)
     shared_layout_payload = json.dumps(shared_layout_store or empty_warehouse_layout_store(), ensure_ascii=False)
     location_floors_payload = json.dumps(warehouse_location_floor_options(), ensure_ascii=False)
+    inventory_payload = json.dumps(inventory_rows, ensure_ascii=False, default=str)
 
     return f"""
     <!doctype html>
@@ -1112,6 +1114,7 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
             const locationFloors = {location_floors_payload};
             const defaultRacksByLocationFloor = {floor_payload};
             const sharedLayoutStore = {shared_layout_payload};
+            const inventoryRows = {inventory_payload};
             const legacyLocationMap = {legacy_location_map_payload};
             const stockBody = document.getElementById("stockBody");
             const stockFoot = document.getElementById("stockFoot");
@@ -1302,6 +1305,18 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                 }});
             }}
 
+            function floorForInventoryLocation(locationText, fallbackBuilding) {{
+                const text = String(locationText || "");
+                const direct = locationFloors.find(option =>
+                    text.includes(option.label) ||
+                    (text.includes(option.building) && text.includes(option.floor))
+                );
+                if (direct) return direct;
+                const floorOnly = locationFloors.find(option => option.building === fallbackBuilding && text.includes(option.floor));
+                if (floorOnly) return floorOnly;
+                return locationFloors.find(option => option.building === fallbackBuilding) || locationFloors[0];
+            }}
+
             function collectRows() {{
                 const rows = new Map();
                 locationFloors.forEach(option => {{
@@ -1332,6 +1347,25 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                             }});
                         }}
                     }});
+                }});
+                inventoryRows.forEach(item => {{
+                    const qty = Number(item.current_stock || item.available_stock || 0);
+                    if (!qty) return;
+                    const name = String(item.product_name || "").trim();
+                    if (!name) return;
+                    const location = String(item.storage_location || item.location || "").trim();
+                    const option = floorForInventoryLocation(location, activeBuilding);
+                    addRow(
+                        rows,
+                        option?.building || activeBuilding,
+                        option?.floor || "",
+                        location ? `ERP 재고 / ${{location}}` : "ERP 재고 / 위치 미지정",
+                        "box",
+                        name,
+                        item.barcode || item.product_code || "",
+                        qty,
+                        1
+                    );
                 }});
                 return Array.from(rows.values()).sort((a, b) =>
                     a.building.localeCompare(b.building, "ko-KR") ||
@@ -1463,6 +1497,7 @@ def build_rack_layout(inventory_rows: list[dict], floor: str) -> list[dict]:
                     {
                         "name": row.get("product_name", ""),
                         "barcode": row.get("barcode", ""),
+                        "storage_location": row.get("storage_location", ""),
                         "stock": int(row.get("current_stock") or 0),
                         "safe": int(row.get("safe_stock") or 0),
                         "status": row.get("stock_status", ""),
@@ -2991,6 +3026,7 @@ def warehouse_scene3d_html(
                 padding-right: 0.06rem;
             }}
             .detail-tab-panel[data-detail-panel="items"].active {{
+                height: 100%;
                 overflow: hidden;
             }}
             .rack-detail-hidden {{
@@ -3094,6 +3130,7 @@ def warehouse_scene3d_html(
                 display: flex;
                 flex: 1 1 auto;
                 flex-direction: column;
+                height: 100%;
                 min-height: 0;
                 overflow: hidden;
             }}
@@ -3153,57 +3190,119 @@ def warehouse_scene3d_html(
             .item-list {{
                 border: 1px solid #e2e8f0;
                 border-radius: 10px;
+                display: flex;
                 flex: 1 1 auto;
+                flex-direction: column;
+                height: 100%;
                 margin-top: 0;
                 min-height: 0;
-                overflow: auto;
+                overflow: hidden;
+                padding: 0.48rem;
             }}
             .item-list table {{
-                min-width: 760px;
-                table-layout: fixed;
+                border-collapse: separate;
+                border-spacing: 0;
+                display: flex;
+                flex: 1 1 auto;
+                flex-direction: column;
+                min-height: 0;
+                min-width: 0;
+                table-layout: auto;
+                width: 100%;
+            }}
+            .item-list thead {{
+                display: none;
+            }}
+            .item-list tbody {{
+                display: flex;
+                flex: 1 1 auto;
+                flex-direction: column;
+                gap: 0.48rem;
+                min-height: 0;
+                overflow-y: auto;
+                overflow-x: hidden;
+                padding-right: 0.14rem;
+                width: 100%;
+            }}
+            .item-list tr {{
+                background: #FAF8F5;
+                border: 1px solid #D8D2C8;
+                border-radius: 9px;
+                display: grid;
+                gap: 0.34rem 0.48rem;
+                grid-template-columns: minmax(0, 1fr) minmax(0, 0.82fr);
+                padding: 0.52rem;
+                width: 100%;
             }}
             .item-list th,
             .item-list td {{
+                background: transparent !important;
+                border: 0;
+                color: #1F2933;
+                display: flex;
+                flex-direction: column;
+                gap: 0.18rem;
+                min-width: 0;
+                padding: 0;
                 vertical-align: top;
+            }}
+            .item-list td::before {{
+                color: #64748B;
+                content: "";
+                font-size: 0.62rem;
+                font-weight: 950;
+                line-height: 1.15;
             }}
             .item-list th:nth-child(1),
             .item-list td:nth-child(1) {{
+                grid-column: 1 / -1;
                 line-height: 1.35;
                 overflow-wrap: anywhere;
                 white-space: normal;
-                width: 20%;
             }}
+            .item-list td:nth-child(1)::before {{ content: "렉 정보"; }}
             .item-list th:nth-child(2),
             .item-list td:nth-child(2) {{
+                grid-column: 1 / -1;
                 line-height: 1.35;
                 overflow-wrap: anywhere;
                 white-space: normal;
-                width: 22%;
             }}
+            .item-list td:nth-child(2)::before {{ content: "상품명"; }}
             .item-list th:nth-child(3),
             .item-list td:nth-child(3) {{
                 line-height: 1.35;
                 overflow-wrap: anywhere;
                 white-space: normal;
-                width: 16%;
             }}
+            .item-list td:nth-child(3)::before {{ content: "바코드"; }}
             .item-list th:nth-child(4),
             .item-list td:nth-child(4) {{
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-                width: 13%;
+                line-height: 1.35;
+                overflow-wrap: anywhere;
+                white-space: normal;
             }}
+            .item-list td:nth-child(4)::before {{ content: "수량"; }}
             .item-list th:nth-child(5),
             .item-list td:nth-child(5) {{
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-                width: 12%;
+                line-height: 1.35;
+                overflow-wrap: anywhere;
+                white-space: normal;
             }}
+            .item-list td:nth-child(5)::before {{ content: "총 재고"; }}
             .item-list th:nth-child(6),
             .item-list td:nth-child(6) {{
-                width: 17%;
+                grid-column: 1 / -1;
+            }}
+            .item-list td:nth-child(6)::before {{ content: "관리"; }}
+            .item-list .empty {{
+                display: block;
+                grid-column: 1 / -1;
+                padding: 0.7rem;
+                text-align: center;
+            }}
+            .item-list .empty::before {{
+                display: none;
             }}
             .row-actions input,
             .row-actions select {{
@@ -3398,7 +3497,7 @@ def warehouse_scene3d_html(
                     grid-template-columns: 1fr;
                 }}
                 .item-list table {{
-                    min-width: 760px;
+                    min-width: 0;
                 }}
             }}
             @media (max-width: 560px) {{
@@ -3532,9 +3631,9 @@ def warehouse_scene3d_html(
                             <option value="SINGLE">대표 1개 표시</option>
                         </select></label>
                         <label class="field field-total"><span>총 실제 재고</span><span id="loadTotalPreview" class="load-total-preview">총 실제 재고 1 EA</span></label>
-                        <button type="button" id="addLoad">적재 목록에 추가</button>
+                        <button type="button" id="addLoad">상품추가</button>
                         </div>
-                        <div class="stock-guide">랙을 선택하면 해당 랙/단에 적재되고, 바닥 박스/파렛트는 시설물 배치에서 추가 후 랙에 넣기로 옮길 수 있습니다.</div>
+                        <div class="stock-guide">렉을 선택하면 해당 렉/단에 바로 들어가고, 바닥 박스/파렛트는 시설물 배치에서 추가 후 렉에 넣기로 옮길 수 있습니다.</div>
                     </div>
                     <div class="detail-section fixture-section">
                         <div class="section-title">창고 시설물 배치</div>
@@ -3566,7 +3665,7 @@ def warehouse_scene3d_html(
                         <div class="move-to-rack-box">
                             <select id="targetRackSelect" aria-label="이동할 랙"></select>
                             <select id="targetRackPartSelect" aria-label="이동할 랙 단"></select>
-                            <button type="button" id="moveFixtureToRack">랙에 넣기</button>
+                            <button type="button" id="moveFixtureToRack">렉에 넣기</button>
                         </div>
                         <div class="move-floor-box">
                             <select id="targetFloorSelect" aria-label="이동할 층"></select>
@@ -5869,7 +5968,7 @@ def warehouse_scene3d_html(
                                 <td>${{actualStockText(fixture)}}</td>
                                 <td>${{packageEditorControls(fixture, "data-fixture-update", "1", "data-fixture-delete")}}</td>
                             </tr>
-                            <tr><td colspan="6" class="empty">이 품목은 이동할 랙과 단을 선택한 뒤 랙에 넣기로 적재할 수 있습니다.</td></tr>`
+                            <tr><td colspan="6" class="empty">이 품목은 이동할 렉과 단을 선택한 뒤 렉에 넣기로 적재할 수 있습니다.</td></tr>`
                         : '<tr><td colspan="6" class="empty">시설물은 선택 후 바로 드래그해서 위치를 옮기고, 시설물 배치 도구에서 회전/삭제할 수 있습니다.</td></tr>';
                     itemBody.querySelector("[data-fixture-update]")?.addEventListener("click", event => {{
                         applyPackageEditor(event.currentTarget, fixture);

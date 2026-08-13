@@ -46,11 +46,153 @@
       });
     }
 
+    function normalizeWarehouseHtml(html) {
+      let normalized = String(html || "")
+        .replaceAll("적재 목록에 추가", "상품추가")
+        .replaceAll("적재목록에 추가", "상품추가")
+        .replaceAll(">랙에 넣기<", ">렉에 넣기<");
+      const finalStyle = `
+        <style id="warehouse3d-final-card-fixes">
+        #addLoad {
+          font-size: 0 !important;
+        }
+        #addLoad::before {
+          content: "상품추가";
+          font-size: 0.78rem;
+          font-weight: 900;
+        }
+        .detail-tab-panel[data-detail-panel="items"].active,
+        .detail-tools,
+        .item-list {
+          display: flex !important;
+          flex: 1 1 auto !important;
+          flex-direction: column !important;
+          height: 100% !important;
+          min-height: 0 !important;
+          overflow: hidden !important;
+        }
+        .item-list {
+          background: #F2EFEA !important;
+          border: 1px solid #D8D2C8 !important;
+          border-radius: 10px !important;
+          padding: 0.52rem !important;
+        }
+        .item-list table {
+          border-collapse: separate !important;
+          display: flex !important;
+          flex: 1 1 auto !important;
+          flex-direction: column !important;
+          min-height: 0 !important;
+          min-width: 0 !important;
+          table-layout: auto !important;
+          width: 100% !important;
+        }
+        .item-list thead {
+          display: none !important;
+        }
+        .item-list tbody {
+          display: flex !important;
+          flex: 1 1 auto !important;
+          flex-direction: column !important;
+          gap: 0.5rem !important;
+          min-height: 0 !important;
+          overflow-x: hidden !important;
+          overflow-y: auto !important;
+          padding-right: 0.16rem !important;
+          width: 100% !important;
+        }
+        .item-list tbody:has(.empty) {
+          overflow: hidden !important;
+        }
+        .item-list tr {
+          background: #FAF8F5 !important;
+          border: 1px solid #D8D2C8 !important;
+          border-radius: 9px !important;
+          display: grid !important;
+          gap: 0.36rem 0.52rem !important;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 0.82fr) !important;
+          padding: 0.56rem !important;
+          width: 100% !important;
+        }
+        .item-list tr:has(.empty) {
+          align-items: center !important;
+          display: flex !important;
+          flex: 1 1 auto !important;
+          justify-content: center !important;
+          min-height: 100% !important;
+        }
+        .item-list th,
+        .item-list td {
+          background: transparent !important;
+          border: 0 !important;
+          color: #1F2933 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 0.18rem !important;
+          line-height: 1.36 !important;
+          min-width: 0 !important;
+          overflow-wrap: anywhere !important;
+          padding: 0 !important;
+          white-space: normal !important;
+        }
+        .item-list td::before {
+          color: #64748B !important;
+          content: "" !important;
+          font-size: 0.62rem !important;
+          font-weight: 950 !important;
+          line-height: 1.12 !important;
+        }
+        .item-list td:nth-child(1),
+        .item-list td:nth-child(2),
+        .item-list td:nth-child(6) {
+          grid-column: 1 / -1 !important;
+        }
+        .item-list td:nth-child(1)::before { content: "렉 정보" !important; }
+        .item-list td:nth-child(2)::before { content: "상품명" !important; }
+        .item-list td:nth-child(3)::before { content: "바코드" !important; }
+        .item-list td:nth-child(4)::before { content: "수량" !important; }
+        .item-list td:nth-child(5)::before { content: "총 재고" !important; }
+        .item-list td:nth-child(6)::before { content: "관리" !important; }
+        .item-list .empty {
+          color: #64748B !important;
+          display: block !important;
+          grid-column: 1 / -1 !important;
+          line-height: 1.45 !important;
+          padding: 1rem !important;
+          text-align: center !important;
+          width: 100% !important;
+        }
+        .item-list .empty::before {
+          display: none !important;
+        }
+        .row-actions {
+          display: grid !important;
+          gap: 0.3rem !important;
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+        .row-actions select,
+        .row-actions .wide {
+          grid-column: 1 / -1 !important;
+        }
+        .row-actions button,
+        .row-actions input,
+        .row-actions select {
+          min-width: 0 !important;
+          width: 100% !important;
+        }
+        </style>
+      `;
+      if (normalized.includes("</head>")) {
+        return normalized.replace("</head>", `${finalStyle}</head>`);
+      }
+      return `${finalStyle}${normalized}`;
+    }
+
     function render(args = {}) {
       const height = Number(args.height || 860);
       frame.style.height = `${height}px`;
       frame.style.width = "100%";
-      frame.srcdoc = String(args.html || "");
+      frame.srcdoc = normalizeWarehouseHtml(args.html);
       setFrameHeight(height);
     }
 

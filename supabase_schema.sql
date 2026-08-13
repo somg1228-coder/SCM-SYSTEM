@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS "inventory_daily" (
     "updated_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
     "product_code" VARCHAR(120) DEFAULT '' NOT NULL,
     "available_stock" INTEGER DEFAULT 0 NOT NULL,
-    "supplier" VARCHAR(160) DEFAULT '' NOT NULL
+    "supplier" VARCHAR(160) DEFAULT '' NOT NULL,
+    "storage_location" VARCHAR(160) DEFAULT '' NOT NULL
 );
 CREATE INDEX IF NOT EXISTS "ix_inventory_daily_source_type" ON "inventory_daily" ("source_type");
 CREATE INDEX IF NOT EXISTS "ix_inventory_daily_product_name" ON "inventory_daily" ("product_name");
@@ -245,6 +246,7 @@ CREATE TABLE IF NOT EXISTS "offline_product_master" (
     "small_category" VARCHAR(120) NOT NULL,
     "brand" VARCHAR(120) NOT NULL,
     "supplier" VARCHAR(160) NOT NULL,
+    "storage_location" VARCHAR(160) DEFAULT '' NOT NULL,
     "pack_qty" INTEGER NOT NULL,
     "box_qty" INTEGER NOT NULL,
     "default_lead_time" INTEGER NOT NULL,
@@ -272,6 +274,7 @@ CREATE TABLE IF NOT EXISTS "product_master" (
     "small_category" VARCHAR(120) NOT NULL,
     "brand" VARCHAR(120) NOT NULL,
     "supplier" VARCHAR(160) NOT NULL,
+    "storage_location" VARCHAR(160) DEFAULT '' NOT NULL,
     "pack_qty" INTEGER NOT NULL,
     "box_qty" INTEGER NOT NULL,
     "default_lead_time" INTEGER NOT NULL,
@@ -682,6 +685,7 @@ CREATE TABLE IF NOT EXISTS "thirdparty_product_master" (
     "small_category" VARCHAR(120) NOT NULL,
     "brand" VARCHAR(120) NOT NULL,
     "supplier" VARCHAR(160) NOT NULL,
+    "storage_location" VARCHAR(160) DEFAULT '' NOT NULL,
     "pack_qty" INTEGER NOT NULL,
     "box_qty" INTEGER NOT NULL,
     "default_lead_time" INTEGER NOT NULL,
@@ -765,6 +769,7 @@ CREATE TABLE IF NOT EXISTS "warehouse_product_master" (
     "small_category" VARCHAR(120) NOT NULL,
     "brand" VARCHAR(120) NOT NULL,
     "supplier" VARCHAR(160) NOT NULL,
+    "storage_location" VARCHAR(160) DEFAULT '' NOT NULL,
     "pack_qty" INTEGER NOT NULL,
     "box_qty" INTEGER NOT NULL,
     "default_lead_time" INTEGER NOT NULL,

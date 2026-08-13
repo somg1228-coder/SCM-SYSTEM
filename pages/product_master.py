@@ -57,6 +57,7 @@ THREEPL_MASTER_COLUMNS = [
     "바코드",
     "상품명",
     "업체명",
+    "재고위치",
     "박스/파렛트 단위",
     "담당자",
     "리드타임",
@@ -460,8 +461,26 @@ def render_product_master_visible_table(df: pd.DataFrame, height: int = 470) -> 
 
 
 def render_product_master_row_edit_form(source_type: str, key: str, df: pd.DataFrame, form_suffix: str) -> None:
+    mode_key = f"product_master_{key}_{form_suffix}_edit_mode"
+    mode = st.radio(
+        "작업 방식",
+        ["상품 등록", "기존 상품 수정"],
+        horizontal=True,
+        key=mode_key,
+    )
+    if mode == "상품 등록":
+        row = blank_product_master_row(source_type)
+        field_key_prefix = f"product_master_{key}_{form_suffix}_new"
+        if uses_threepl_master_form(source_type):
+            render_threepl_row_edit_form(source_type, key, row, form_suffix, field_key_prefix, is_new=True)
+        elif uses_simple_master_form(source_type):
+            render_simple_row_edit_form(source_type, key, row, form_suffix, field_key_prefix, is_new=True)
+        else:
+            render_standard_row_edit_form(source_type, key, row, form_suffix, field_key_prefix, is_new=True)
+        return
+
     if df is None or df.empty:
-        st.info("수정할 마스터 데이터가 없습니다.")
+        st.info("수정할 마스터 데이터가 없습니다. 상품 등록 모드에서 새 품목을 추가할 수 있습니다.")
         return
 
     safe_df = df.reset_index(drop=True).fillna("")
@@ -503,11 +522,35 @@ def render_product_master_row_edit_form(source_type: str, key: str, df: pd.DataF
         render_standard_row_edit_form(source_type, key, row, form_suffix, field_key_prefix)
 
 
+def blank_product_master_row(source_type: str) -> dict:
+    if uses_threepl_master_form(source_type):
+        row = {column: "" for column in [*THREEPL_MASTER_COLUMNS, *THREEPL_MASTER_INTERNAL_COLUMNS]}
+        row.update({"리드타임": 0, "안전재고": 0, "정렬순서": 0, "사용여부": "사용"})
+        return row
+    if uses_simple_master_form(source_type):
+        row = {column: "" for column in OFFLINE_MASTER_COLUMNS}
+        row.update({"미사용 처리": False, "리드타임": 0, "정렬순서": 0, "사용여부": "사용"})
+        return row
+    row = {column: "" for column in MASTER_COLUMNS}
+    row.update(
+        {
+            "미사용 처리": False,
+            "입수": 0,
+            "박스입수": 0,
+            "기본 리드타임": 0,
+            "최소재고": 0,
+            "정렬순서": 0,
+            "사용여부": "사용",
+        }
+    )
+    return row
+
+
 def product_master_row_matches_keyword(row: pd.Series, keyword: str) -> bool:
     needle = clean_value(keyword).lower()
     if not needle:
         return True
-    fields = ["SKU", "바코드", "88바코드", "상품명", "카테고리", "업체명", "공급처", "담당자", "브랜드", "비고"]
+    fields = ["SKU", "바코드", "88바코드", "상품명", "카테고리", "업체명", "공급처", "재고위치", "담당자", "브랜드", "비고"]
     haystack = " ".join(clean_value(row.get(field)) for field in fields).lower()
     return needle in haystack
 
@@ -539,13 +582,21 @@ def product_master_row_label(row: pd.Series, idx: int) -> str:
     return " / ".join(parts)
 
 
-def render_threepl_row_edit_form(source_type: str, key: str, row: dict, form_suffix: str, field_key_prefix: str) -> None:
+def render_threepl_row_edit_form(
+    source_type: str,
+    key: str,
+    row: dict,
+    form_suffix: str,
+    field_key_prefix: str,
+    is_new: bool = False,
+) -> None:
     with st.form(key=f"product_master_{key}_{form_suffix}_row_form", clear_on_submit=False):
-        top = st.columns([1.0, 1.15, 2.2, 1.35], gap="small")
+        top = st.columns([1.0, 1.15, 2.2, 1.25, 1.25], gap="small")
         category = top[0].text_input("카테고리", value=clean_value(row.get("카테고리")), key=f"{field_key_prefix}_category")
         barcode = top[1].text_input("바코드", value=clean_value(row.get("바코드")), key=f"{field_key_prefix}_barcode")
         product_name = top[2].text_input("상품명", value=clean_value(row.get("상품명")), key=f"{field_key_prefix}_product_name")
         supplier = top[3].text_input("업체명", value=clean_value(row.get("업체명")), key=f"{field_key_prefix}_supplier")
+        storage_location = top[4].text_input("재고위치", value=clean_value(row.get("재고위치")), key=f"{field_key_prefix}_storage_location")
 
         bottom = st.columns([1.45, 1.0, 0.75, 0.75], gap="small")
         box_pallet_unit = bottom[0].text_input("박스/파렛트 단위", value=clean_value(row.get("박스/파렛트 단위")), key=f"{field_key_prefix}_box_pallet_unit")
@@ -553,7 +604,7 @@ def render_threepl_row_edit_form(source_type: str, key: str, row: dict, form_suf
         lead_time = bottom[2].number_input("리드타임", min_value=0, step=1, value=to_int_value(row.get("리드타임")), key=f"{field_key_prefix}_lead_time")
         is_active = bottom[3].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")), key=f"{field_key_prefix}_is_active")
 
-        submitted = st.form_submit_button("선택 품목 저장", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("상품 등록" if is_new else "수정 저장", type="primary", use_container_width=True)
     if submitted:
         edited_row = dict(row)
         edited_row.update(
@@ -562,6 +613,7 @@ def render_threepl_row_edit_form(source_type: str, key: str, row: dict, form_suf
                 "바코드": barcode,
                 "상품명": product_name,
                 "업체명": supplier,
+                "재고위치": storage_location,
                 "박스/파렛트 단위": box_pallet_unit,
                 "담당자": manager,
                 "리드타임": lead_time,
@@ -571,7 +623,14 @@ def render_threepl_row_edit_form(source_type: str, key: str, row: dict, form_suf
         save_product_master_rows(source_type, key, threepl_editor_to_payload(pd.DataFrame([edited_row])))
 
 
-def render_simple_row_edit_form(source_type: str, key: str, row: dict, form_suffix: str, field_key_prefix: str) -> None:
+def render_simple_row_edit_form(
+    source_type: str,
+    key: str,
+    row: dict,
+    form_suffix: str,
+    field_key_prefix: str,
+    is_new: bool = False,
+) -> None:
     barcode_label = "88바코드" if "88바코드" in row else "바코드"
     with st.form(key=f"product_master_{key}_{form_suffix}_row_form", clear_on_submit=False):
         top = st.columns([1.0, 2.2, 1.15], gap="small")
@@ -585,7 +644,7 @@ def render_simple_row_edit_form(source_type: str, key: str, row: dict, form_suff
         is_active = bottom[2].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")), key=f"{field_key_prefix}_is_active")
         memo = bottom[3].text_input("비고", value=clean_value(row.get("비고")), key=f"{field_key_prefix}_memo")
 
-        submitted = st.form_submit_button("선택 품목 저장", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("상품 등록" if is_new else "수정 저장", type="primary", use_container_width=True)
     if submitted:
         edited_row = dict(row)
         edited_row.update(
@@ -602,7 +661,14 @@ def render_simple_row_edit_form(source_type: str, key: str, row: dict, form_suff
         save_product_master_rows(source_type, key, offline_editor_to_payload(pd.DataFrame([edited_row])))
 
 
-def render_standard_row_edit_form(source_type: str, key: str, row: dict, form_suffix: str, field_key_prefix: str) -> None:
+def render_standard_row_edit_form(
+    source_type: str,
+    key: str,
+    row: dict,
+    form_suffix: str,
+    field_key_prefix: str,
+    is_new: bool = False,
+) -> None:
     with st.form(key=f"product_master_{key}_{form_suffix}_row_form", clear_on_submit=False):
         row1 = st.columns([1.0, 1.15, 2.2, 1.0], gap="small")
         sku = row1[0].text_input("SKU", value=clean_value(row.get("SKU")), key=f"{field_key_prefix}_sku")
@@ -623,7 +689,7 @@ def render_standard_row_edit_form(source_type: str, key: str, row: dict, form_su
         is_active = row3[1].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")), key=f"{field_key_prefix}_is_active")
         memo = row3[2].text_input("비고", value=clean_value(row.get("비고")), key=f"{field_key_prefix}_memo")
 
-        submitted = st.form_submit_button("선택 품목 저장", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("상품 등록" if is_new else "수정 저장", type="primary", use_container_width=True)
     if submitted:
         edited_row = dict(row)
         edited_row.update(
@@ -1037,7 +1103,7 @@ def apply_threepl_master_filters(df: pd.DataFrame, filters: dict) -> pd.DataFram
     filtered = df.copy()
     keyword = clean_value(filters.get("keyword")).lower()
     if keyword:
-        search_columns = ["바코드", "상품명", "업체명", "담당자"]
+        search_columns = ["바코드", "상품명", "업체명", "재고위치", "담당자"]
         search_text = filtered[search_columns].astype(str).agg(" ".join, axis=1).str.lower()
         filtered = filtered[search_text.str.contains(re.escape(keyword), na=False)]
     if filters.get("categories"):
@@ -1165,6 +1231,7 @@ def threepl_master_column_config() -> dict:
         "바코드": st.column_config.TextColumn("바코드", width="medium"),
         "상품명": st.column_config.TextColumn("상품명", width="large"),
         "업체명": st.column_config.TextColumn("업체명", width="medium"),
+        "재고위치": st.column_config.TextColumn("재고위치", width="medium"),
         "박스/파렛트 단위": st.column_config.TextColumn("박스/파렛트 단위", width="medium"),
         "담당자": st.column_config.TextColumn("담당자", width="medium"),
         "리드타임": st.column_config.NumberColumn("리드타임", min_value=0, step=1),
@@ -1238,6 +1305,7 @@ def threepl_master_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
                 "업체명": row.get("supplier", ""),
+                "재고위치": row.get("storage_location", ""),
                 "박스/파렛트 단위": row.get("box_pallet_unit") or format_box_pallet_unit(row.get("box_qty", 0), row.get("pack_qty", 0)),
                 "담당자": row.get("memo", ""),
                 "리드타임": row.get("default_lead_time", 0),
@@ -1337,6 +1405,7 @@ def threepl_editor_to_payload(df: pd.DataFrame) -> list[dict]:
             "카테고리": clean_value(row.get("카테고리")),
             "브랜드": clean_value(row.get("브랜드")),
             "공급처": clean_value(row.get("업체명")),
+            "재고위치": clean_value(row.get("재고위치")),
             "입수": pallet_qty,
             "박스입수": box_qty,
             "기본 리드타임": to_int_value(row.get("리드타임") or row.get("기본 리드타임")),
@@ -1543,6 +1612,7 @@ def threepl_master_excel(df: pd.DataFrame) -> bytes:
             "바코드": 18,
             "상품명": 34,
             "업체명": 20,
+            "재고위치": 18,
             "박스/파렛트 단위": 28,
             "담당자": 16,
             "리드타임": 12,

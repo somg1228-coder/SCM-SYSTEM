@@ -15442,15 +15442,21 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
     font-size: 20px !important;
     height: 34px !important;
     justify-content: center !important;
+    overflow: visible !important;
     width: 34px !important;
 }
 
 .dashboard-shell .kpi-icon span {
+    align-items: center !important;
     color: inherit !important;
-    display: block !important;
+    display: inline-flex !important;
     font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Segoe UI Symbol", sans-serif !important;
-    font-size: 18px !important;
-    line-height: 1 !important;
+    font-size: 17px !important;
+    height: 24px !important;
+    justify-content: center !important;
+    line-height: 1.25 !important;
+    overflow: visible !important;
+    width: 24px !important;
     -webkit-text-fill-color: currentColor !important;
 }
 

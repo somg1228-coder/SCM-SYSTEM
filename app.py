@@ -332,6 +332,38 @@ def render_page(page: str) -> None:
         log_route_event(f"render_page_done {page!r} seconds={elapsed:.3f}")
 
 
+def inject_route_transition_cleanup(page: str) -> None:
+    if page != "3D 창고관리":
+        return
+    st.markdown(
+        """
+        <div class="route-warehouse3d-active" aria-hidden="true"></div>
+        <style>
+        .route-warehouse3d-active {
+            display: none !important;
+        }
+        .stApp:has(.route-warehouse3d-active) .st-key-inventory_nav_shell,
+        .stApp:has(.route-warehouse3d-active) div[class*="st-key-inventory_filter_"],
+        .stApp:has(.route-warehouse3d-active) div[class*="_daily_header"],
+        .stApp:has(.route-warehouse3d-active) div[class*="_inventory_update"],
+        .stApp:has(.route-warehouse3d-active) div[class*="_inventory_table_actions"],
+        .stApp:has(.route-warehouse3d-active) div[class*="_inventory_table_panel"],
+        .stApp:has(.route-warehouse3d-active) .inventory-tab-title,
+        .stApp:has(.route-warehouse3d-active) .inventory-page-header,
+        .stApp:has(.route-warehouse3d-active) .inventory-visible-table-wrap,
+        .stApp:has(.route-warehouse3d-active) .product-master-title,
+        .stApp:has(.route-warehouse3d-active) .product-master-control-title,
+        .stApp:has(.route-warehouse3d-active) .product-master-form-title,
+        .stApp:has(.route-warehouse3d-active) .product-master-visible-table-wrap,
+        .stApp:has(.route-warehouse3d-active) div[class*="st-key-product_master_"] {
+            display: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def query_value(name: str) -> str:
     value = st.query_params.get(name)
     if isinstance(value, list):
@@ -385,7 +417,7 @@ def sync_query_params_to_state() -> None:
 def main() -> None:
     started_at = time.perf_counter()
     st.set_page_config(
-        page_title="SCM 물류운영포털",
+        page_title="SCM SYSTEM",
         layout="wide",
         initial_sidebar_state="expanded",
     )
@@ -404,6 +436,7 @@ def main() -> None:
     st.session_state["selected_menu"] = page
     st.session_state["current_page"] = page
     log_perf(f"{st.session_state.get('perf_run_id')} selected_page={page}")
+    inject_route_transition_cleanup(page)
 
     if page != "반품/AS 관리":
         with perf_span("header_render", page=page):

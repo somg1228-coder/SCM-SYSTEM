@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 from sqlalchemy import case, delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.database import record_save_failure, record_save_success
@@ -60,6 +61,8 @@ KNOWN_IMPORT_HEADERS = {
     "분류",
     "상품분류",
     "업체명",
+    "재고위치",
+    "보관위치",
     "박스/파렛트 단위",
     "담당자",
     "현재고",
@@ -76,6 +79,7 @@ IMPORT_HEADER_ALIASES = {
     "바코드": ("바코드", "88바코드", "옵션바코드", "barcode"),
     "상품명": ("상품명", "품목", "품목명", "product_name"),
     "업체명": ("업체명", "공급처", "거래처", "supplier"),
+    "재고위치": ("재고위치", "재고 위치", "보관위치", "보관 위치", "창고위치", "창고 위치", "로케이션", "랙위치", "랙 위치", "location", "storage_location"),
     "박스/파렛트 단위": ("박스/파렛트 단위", "박스파렛트단위", "파렛트,박스단위"),
     "담당자": ("담당자", "비고", "memo"),
     "리드타임": ("리드타임", "기본 리드타임", "제조기간", "default_lead_time"),
@@ -88,6 +92,7 @@ PRODUCT_MASTER_COLUMNS = [
     "카테고리",
     "브랜드",
     "공급처",
+    "재고위치",
     "입수",
     "박스입수",
     "기본 리드타임",
@@ -107,6 +112,7 @@ PURCHASE_METRIC_SOURCE_ORDER = ["창고", "3PL", "오프라인"]
 STOCK_WARNING_RATIO = 0.2
 STOCK_CURRENT_COLUMN_CANDIDATES = ["보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고", "수량", "상품수량"]
 STOCK_AVAILABLE_COLUMN_CANDIDATES = ["가용재고", "판매가능재고", "판매 가능 재고", "수량", "상품수량"]
+STOCK_LOCATION_COLUMN_CANDIDATES = ["재고위치", "재고 위치", "보관위치", "보관 위치", "창고위치", "창고 위치", "로케이션", "랙위치", "랙 위치", "location", "storage_location"]
 
 
 def product_master_model(source_type: str):
@@ -369,35 +375,35 @@ def read_html_with_stdlib(file_bytes: bytes) -> pd.DataFrame:
 def read_excel(file_bytes: bytes) -> pd.DataFrame:
     uploaded_file = BytesIO(file_bytes)
     try:
-        sheets = pd.read_excel(uploaded_file, sheet_name=None, engine="openpyxl")
-        if not sheets:
+        workbook = pd.ExcelFile(uploaded_file, engine="openpyxl")
+        sheet_names = list(workbook.sheet_names)
+        if not sheet_names:
             raise ValueError("엑셀 시트를 찾지 못했습니다.")
         selected_sheet = ""
         selected_raw = pd.DataFrame()
         selected_df = pd.DataFrame()
         non_empty_sheets = []
-        fallback_raw = pd.DataFrame()
         fallback_name = ""
-        for sheet_name, sheet_df in sheets.items():
-            if sheet_df is None or sheet_df.dropna(how="all").empty:
+        for sheet_name in sheet_names:
+            probe = workbook.parse(sheet_name=sheet_name, nrows=12)
+            if probe is None or probe.dropna(how="all").empty:
                 continue
             non_empty_sheets.append(sheet_name)
-            if fallback_raw.empty:
+            if not fallback_name:
                 fallback_name = sheet_name
-                fallback_raw = sheet_df
-            candidate = normalize_import_headers(sheet_df)
+            candidate = normalize_import_headers(probe)
             if has_known_import_headers(candidate):
                 selected_sheet = sheet_name
-                selected_raw = sheet_df
-                selected_df = candidate
                 break
+        if not selected_sheet:
+            selected_sheet = fallback_name or sheet_names[0]
+        selected_raw = workbook.parse(sheet_name=selected_sheet)
+        selected_df = normalize_import_headers(selected_raw)
         if selected_df.empty:
-            selected_sheet = fallback_name or next(iter(sheets.keys()))
-            selected_raw = fallback_raw if not fallback_raw.empty else next(iter(sheets.values()))
             selected_df = normalize_import_headers(selected_raw)
         df = selected_df
         df.attrs["read_method"] = "excel"
-        df.attrs["sheet_names"] = list(sheets.keys())
+        df.attrs["sheet_names"] = sheet_names
         df.attrs["non_empty_sheet_names"] = non_empty_sheets
         df.attrs["selected_sheet"] = selected_sheet
         df.attrs["raw_shape"] = tuple(selected_raw.shape)
@@ -538,6 +544,7 @@ def product_master_to_dict(row) -> dict:
         "small_category": row.small_category,
         "brand": row.brand,
         "supplier": row.supplier,
+        "storage_location": getattr(row, "storage_location", ""),
         "pack_qty": row.pack_qty,
         "box_qty": row.box_qty,
         "default_lead_time": row.default_lead_time,
@@ -887,6 +894,7 @@ def apply_product_master_to_daily(item: InventoryDaily, product) -> None:
     item.product_name = product.product_name
     item.category = product.large_category
     item.supplier = product.supplier
+    item.storage_location = getattr(product, "storage_location", "") or getattr(item, "storage_location", "")
     if product.min_stock and not item.safe_stock:
         item.safe_stock = product.min_stock
 
@@ -915,6 +923,7 @@ def product_master_dataframe(rows: list) -> pd.DataFrame:
                 "카테고리": row.large_category,
                 "브랜드": row.brand,
                 "공급처": row.supplier,
+                "재고위치": getattr(row, "storage_location", ""),
                 "입수": row.pack_qty,
                 "박스입수": row.box_qty,
                 "기본 리드타임": row.default_lead_time,
@@ -998,6 +1007,17 @@ def normalize_product_master_row(row: dict) -> dict:
         ),
         "brand": clean_text(data.get("브랜드") or data.get("brand")),
         "supplier": clean_text(data.get("공급처") or data.get("업체명") or data.get("거래처") or data.get("supplier")),
+        "storage_location": clean_text(
+            data.get("재고위치")
+            or data.get("재고 위치")
+            or data.get("보관위치")
+            or data.get("보관 위치")
+            or data.get("창고위치")
+            or data.get("창고 위치")
+            or data.get("로케이션")
+            or data.get("location")
+            or data.get("storage_location")
+        ),
         "pack_qty": combined_pallet_qty or to_int(data.get("입수") or data.get("pack_qty")),
         "box_qty": combined_box_qty or to_int(data.get("박스입수") or data.get("box_qty")) or to_box_unit_int(data.get("파렛트,박스단위")),
         "default_lead_time": to_int(
@@ -1020,7 +1040,7 @@ def normalize_product_master_row(row: dict) -> dict:
 
 
 PRODUCT_MASTER_CATEGORY_FIELDS = ("large_category", "medium_category", "small_category")
-PRODUCT_MASTER_TEXT_REFERENCE_FIELDS = (*PRODUCT_MASTER_CATEGORY_FIELDS, "memo")
+PRODUCT_MASTER_TEXT_REFERENCE_FIELDS = (*PRODUCT_MASTER_CATEGORY_FIELDS, "storage_location", "memo")
 PRODUCT_MASTER_NUMBER_REFERENCE_FIELDS = ("pack_qty", "box_qty")
 PRODUCT_MASTER_CATEGORY_HEADERS = {"카테고리", "중분류", "소분류"}
 
@@ -1040,7 +1060,7 @@ def fill_down_product_master_categories(df: pd.DataFrame) -> pd.DataFrame:
         column
         for column in df.columns
         if normalize_import_header_name(str(column))
-        in {"SKU", "바코드", "상품명", "업체명", "박스/파렛트 단위", "담당자", "리드타임"}
+        in {"SKU", "바코드", "상품명", "업체명", "재고위치", "박스/파렛트 단위", "담당자", "리드타임"}
     ]
     last_values = {column: "" for column in category_columns}
     for index in df.index:
@@ -1168,6 +1188,7 @@ THREEPL_MASTER_IMPORT_FIELDS = [
     ("barcode", "바코드"),
     ("product_name", "상품명"),
     ("supplier", "업체명"),
+    ("storage_location", "재고위치"),
     ("box_pallet_unit", "박스/파렛트 단위"),
     ("memo", "담당자"),
     ("default_lead_time", "리드타임"),
@@ -1196,6 +1217,7 @@ def threepl_master_basis_data(row: dict) -> dict:
         "small_category": clean_text(row.get("small_category")),
         "brand": clean_text(row.get("brand")),
         "supplier": clean_text(row.get("supplier")),
+        "storage_location": clean_text(row.get("storage_location")),
         "pack_qty": to_int(row.get("pack_qty")),
         "box_qty": to_int(row.get("box_qty")),
         "default_lead_time": to_int(row.get("default_lead_time")),
@@ -1803,6 +1825,7 @@ def ensure_daily_for_product(db: Session, source_type: str, work_date: date, pro
             barcode=normalize_barcode_text(product.barcode),
             category=product.large_category,
             supplier=product.supplier,
+            storage_location=getattr(product, "storage_location", ""),
             safe_stock=product.min_stock,
             inbound_cycle=product.default_lead_time or None,
         )
@@ -1985,12 +2008,13 @@ def recent_outbound_average_by_product(
     return {sku: round(total / divisor, 2) for sku, total in totals.items()}
 
 
-def order_needed_days(current_stock: int, safe_stock: int, avg_daily_outbound: float) -> int | None:
+def order_needed_days(current_stock: int, safe_stock: int, avg_daily_outbound: float, lead_time_days: int = 0) -> int | None:
     if avg_daily_outbound <= 0:
         return None
     if current_stock <= safe_stock:
         return 0
-    return max(ceil((current_stock - safe_stock) / avg_daily_outbound), 0)
+    days_until_safe_stock = (current_stock - safe_stock) / avg_daily_outbound
+    return max(ceil(days_until_safe_stock - max(int(lead_time_days or 0), 0)), 0)
 
 
 def pending_inbound_qty_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, int]:
@@ -2022,6 +2046,60 @@ def pending_inbound_qty_by_product(db: Session, source_type: str, work_date: dat
     return pending
 
 
+def ensure_daily_snapshots_from_latest(db: Session, source_type: str, work_date: date, products: list | None = None) -> int:
+    if use_legacy_supabase_rest_store():
+        return 0
+
+    model = product_master_model(source_type)
+    if products is None:
+        products = list(db.execute(select(model).order_by(model.sort_order, model.product_name, model.sku)).scalars())
+    existing_by_sku = daily_rows_by_product(db, source_type, work_date, products)
+    previous_by_sku = latest_daily_rows_by_product(db, source_type, work_date - timedelta(days=1), products)
+    created = 0
+    for product in products:
+        sku = clean_text(product.sku)
+        if not sku:
+            continue
+        current = existing_by_sku.get(sku)
+        if current is not None:
+            continue
+
+        previous = previous_by_sku.get(sku)
+        row = InventoryDaily(
+            source_type=source_type,
+            work_date=work_date,
+            category=product.large_category,
+            product_code=product.sku,
+            product_name=product.product_name,
+            barcode=normalize_barcode_text(product.barcode),
+            supplier=product.supplier,
+            current_stock=int(previous.current_stock or 0) if previous else 0,
+            available_stock=int(previous.available_stock if previous and previous.available_stock is not None else previous.current_stock if previous else 0),
+            safe_stock=int(previous.safe_stock or product.min_stock or 0) if previous else int(product.min_stock or 0),
+            stock_status=stock_status_for_values(
+                int(previous.available_stock if previous and previous.available_stock is not None else previous.current_stock if previous else 0),
+                int(previous.safe_stock or product.min_stock or 0) if previous else int(product.min_stock or 0),
+            ),
+            outbound_qty=0,
+            inbound_qty=0,
+            previous_inbound_date=previous.previous_inbound_date if previous else None,
+            last_inbound_date=previous.last_inbound_date if previous else None,
+            inbound_cycle=int(previous.inbound_cycle or product.default_lead_time or 0) or None if previous else int(product.default_lead_time or 0) or None,
+            memo=previous.memo if previous else "",
+        )
+        db.add(row)
+        created += 1
+    if created:
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            return 0
+    else:
+        db.commit()
+    return created
+
+
 def master_based_inventory_rows(db: Session, source_type: str, work_date: date, active_only: bool = False) -> list[dict]:
     if use_legacy_supabase_rest_store():
         rows = supabase_store.master_based_inventory_rows(source_type, work_date)
@@ -2034,6 +2112,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     if active_only:
         query = query.where(model.is_active == "사용")
     products = list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
+    ensure_daily_snapshots_from_latest(db, source_type, work_date, products)
     purchase_metrics = purchase_inventory_metrics(db, source_type, products)
     inbound_metrics = latest_inbound_metrics(db, source_type, products)
     latest_daily_by_sku = latest_daily_rows_by_product(db, source_type, work_date, products)
@@ -2050,13 +2129,14 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         purchase_metric = purchase_metrics.get((source_type, product.sku), {})
         inbound_metric = inbound_metrics.get((source_type, product.sku), {})
         measured_lead_time = int(purchase_metric.get("avg_lead_time") or 0)
+        lead_time = measured_lead_time or product.default_lead_time or 0
         box_qty = int(product.box_qty or product.pack_qty or 0)
         pending_inbound_qty = int(pending_by_sku.get(product_sku, 0) or 0)
         pending_outbound_qty = int(daily.outbound_qty or 0) if has_snapshot else 0
         available_stock = current_stock + pending_inbound_qty - pending_outbound_qty if has_snapshot else 0
         shortage_qty = max(safe_stock - current_stock, 0)
         avg_outbound = float(avg_outbound_by_sku.get(product_sku, 0) or 0)
-        needed_days = order_needed_days(available_stock, safe_stock, avg_outbound)
+        needed_days = order_needed_days(available_stock, safe_stock, avg_outbound, lead_time)
         rows.append(
             {
                 "source_type": source_type,
@@ -2073,7 +2153,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "pending_outbound_qty": pending_outbound_qty,
                 "stock_status": status,
                 "barcode": normalize_barcode_text(product.barcode),
-                "inbound_cycle": measured_lead_time or product.default_lead_time or 0,
+                "inbound_cycle": lead_time,
                 "box_qty": box_qty,
                 "pack_qty": int(product.pack_qty or 0),
                 "box_pallet_unit": format_box_pallet_unit(product.box_qty, product.pack_qty),
@@ -2157,7 +2237,7 @@ def prepare_stock_upload_preview(
         "normalized_shape": df.attrs.get("normalized_shape", tuple(df.shape)),
         "normalized_columns": df.attrs.get("normalized_columns", [str(column) for column in df.columns]),
         "normalized_head": df.attrs.get("normalized_head", df.head(5).fillna("").astype(str).to_dict("records")),
-        "normalized_records": df.fillna("").to_dict("records"),
+        "normalized_sample": df.head(20).fillna("").to_dict("records"),
     }
     if df is None or df.empty:
         return {
@@ -2188,6 +2268,10 @@ def prepare_stock_upload_preview(
         available_col = find_column(df, STOCK_AVAILABLE_COLUMN_CANDIDATES)
     except ValueError:
         available_col = current_col
+    try:
+        location_col = find_column(df, STOCK_LOCATION_COLUMN_CANDIDATES)
+    except ValueError:
+        location_col = None
     try:
         product_code_col = find_column(df, ["SKU", "상품코드", "품목코드", "상품번호"])
     except ValueError:
@@ -2227,6 +2311,7 @@ def prepare_stock_upload_preview(
         barcode = normalize_barcode_text(row.get(barcode_col)) if barcode_col else ""
         product_code = clean_text(row.get(product_code_col)) if product_code_col else ""
         product_name = clean_text(row.get(name_col)) if name_col else ""
+        storage_location = clean_text(row.get(location_col)) if location_col else ""
         current_stock, stock_ok = to_int_strict(row.get(current_col))
         available_raw = row.get(available_col) if available_col else ""
         available_stock, available_ok = (
@@ -2302,6 +2387,7 @@ def prepare_stock_upload_preview(
                 "category": product.large_category if product else "",
                 "product_name": product.product_name if product else product_name,
                 "barcode": normalize_barcode_text(product.barcode) if product else barcode,
+                "storage_location": storage_location or (getattr(product, "storage_location", "") if product else ""),
                 "previous_stock": previous_stock,
                 "new_stock": current_stock,
                 "new_available_stock": available_stock,
@@ -2326,6 +2412,7 @@ def prepare_stock_upload_preview(
                     "category": product.large_category,
                     "product_name": product.product_name,
                     "barcode": normalize_barcode_text(product.barcode),
+                    "storage_location": getattr(product, "storage_location", ""),
                     "previous_stock": previous_stock,
                     "new_stock": 0,
                     "new_available_stock": 0,
@@ -2381,14 +2468,22 @@ def apply_stock_upload_preview(
 
         count = 0
         verification_targets = []
+        products = list(db.execute(select(product_master_model(source_type))).scalars())
+        products_by_sku = {clean_text(product.sku): product for product in products if clean_text(product.sku)}
+        daily_by_sku = daily_rows_by_product(db, source_type, work_date, products)
         for row in rows:
-            product = find_product_master(db, source_type, clean_text(row.get("product_code")), normalize_barcode_text(row.get("barcode")), clean_text(row.get("product_name")))
+            product_sku = clean_text(row.get("product_code"))
+            product = products_by_sku.get(product_sku) or find_product_master(db, source_type, product_sku, normalize_barcode_text(row.get("barcode")), clean_text(row.get("product_name")))
             if not product:
                 continue
-            item = ensure_daily_for_product(db, source_type, work_date, product)
+            item = daily_by_sku.get(clean_text(product.sku))
+            if item is None:
+                item = ensure_daily_for_product(db, source_type, work_date, product)
+                daily_by_sku[clean_text(product.sku)] = item
             previous_stock = int(item.current_stock or 0)
             new_stock = to_int(row.get("new_stock"))
             new_available_stock = to_int(row.get("new_available_stock")) if "new_available_stock" in row else new_stock
+            storage_location = clean_text(row.get("storage_location")) or getattr(product, "storage_location", "")
             db.add(
                 InventoryUploadSnapshot(
                     upload_history_id=history.id,
@@ -2403,6 +2498,9 @@ def apply_stock_upload_preview(
             )
             item.current_stock = new_stock
             item.available_stock = new_available_stock
+            item.storage_location = storage_location
+            if storage_location and hasattr(product, "storage_location"):
+                product.storage_location = storage_location
             item.outbound_qty = max(previous_stock + int(item.inbound_qty or 0) - new_available_stock, 0)
             item.stock_status = stock_status_for_values(new_available_stock, product.min_stock or 0)
             verification_targets.append(
@@ -2410,6 +2508,7 @@ def apply_stock_upload_preview(
                     "product_code": product.sku,
                     "barcode": normalize_barcode_text(product.barcode),
                     "product_name": product.product_name,
+                    "storage_location": storage_location,
                     "current_stock": new_stock,
                     "available_stock": new_available_stock,
                 }
@@ -2418,7 +2517,6 @@ def apply_stock_upload_preview(
         db.commit()
         calculate_safe_stock(db, source_type, work_date)
         update_status(db, source_type, work_date)
-        calculate_inbound_cycle(db, source_type)
         verification = verify_stock_upload_saved(db, source_type, work_date, verification_targets)
     except Exception as exc:
         db.rollback()
@@ -2446,24 +2544,25 @@ def apply_stock_upload_preview(
 
 def verify_stock_upload_saved(db: Session, source_type: str, work_date: date, targets: list[dict]) -> dict:
     db.expire_all()
-    failed = []
-    for target in targets:
-        item = db.execute(
+    rows = list(
+        db.execute(
             select(InventoryDaily).where(
                 InventoryDaily.source_type == source_type,
                 InventoryDaily.work_date == work_date,
-                InventoryDaily.product_code == target["product_code"],
             )
-        ).scalar_one_or_none()
+        ).scalars()
+    )
+    by_sku = {clean_text(row.product_code): row for row in rows if clean_text(row.product_code)}
+    by_barcode_name = {
+        (normalize_barcode_text(row.barcode), clean_text(row.product_name)): row
+        for row in rows
+        if normalize_barcode_text(row.barcode) and clean_text(row.product_name)
+    }
+    failed = []
+    for target in targets:
+        item = by_sku.get(clean_text(target["product_code"]))
         if item is None:
-            item = db.execute(
-                select(InventoryDaily).where(
-                    InventoryDaily.source_type == source_type,
-                    InventoryDaily.work_date == work_date,
-                    InventoryDaily.barcode == target["barcode"],
-                    InventoryDaily.product_name == target["product_name"],
-                )
-            ).scalar_one_or_none()
+            item = by_barcode_name.get((normalize_barcode_text(target["barcode"]), clean_text(target["product_name"])))
         if (
             item is None
             or int(item.current_stock or 0) != int(target["current_stock"] or 0)
@@ -2532,52 +2631,9 @@ def create_date(db: Session, source_type: str, work_date: date | None = None) ->
         return {"ok": True, "message": "Supabase는 거래 기준으로 현재고를 계산하므로 별도 기준일자 생성이 필요 없습니다.", "count": 0}
 
     target_date = work_date or date.today()
-    if not is_business_day(target_date):
-        return {"ok": False, "message": "주말/공휴일은 생성하지 않습니다.", "count": 0}
-
-    exists = db.scalar(
-        select(func.count()).where(InventoryDaily.source_type == source_type, InventoryDaily.work_date == target_date)
-    )
-    if exists:
-        return {"ok": False, "message": "이미 해당 기준일자 데이터가 있습니다.", "count": 0}
-
-    previous_date = db.scalar(
-        select(func.max(InventoryDaily.work_date)).where(
-            InventoryDaily.source_type == source_type,
-            InventoryDaily.work_date < target_date,
-        )
-    )
-    if previous_date is None:
-        return {"ok": True, "message": "복사할 직전 기준일자가 없어 빈 날짜로 시작합니다.", "count": 0}
-
-    count = 0
-    previous_rows = list_daily(db, source_type, previous_date)
-    for row in previous_rows:
-        db.add(
-            InventoryDaily(
-                source_type=source_type,
-                work_date=target_date,
-                category=row.category,
-                product_code=row.product_code,
-                product_name=row.product_name,
-                barcode=row.barcode,
-                supplier=row.supplier,
-                current_stock=0,
-                available_stock=0,
-                safe_stock=row.safe_stock,
-                stock_status="",
-                outbound_qty=0,
-                previous_inbound_date=row.previous_inbound_date,
-                last_inbound_date=row.last_inbound_date,
-                inbound_qty=0,
-                inbound_cycle=row.inbound_cycle,
-                memo=row.memo,
-            )
-        )
-        count += 1
-    db.commit()
+    count = ensure_daily_snapshots_from_latest(db, source_type, target_date)
     update_status(db, source_type, target_date)
-    return {"ok": True, "message": "오늘 데이터 생성 완료", "count": count}
+    return {"ok": True, "message": "기준일자 Snapshot 생성/승계 완료", "count": count}
 
 
 def row_data(row) -> dict:
@@ -2619,6 +2675,12 @@ def bulk_save_daily(db: Session, source_type: str, work_date: date, rows: list[d
         data["category"] = clean_text(data.get("category")) or existing.get("category", "")
         data["product_code"] = clean_text(data.get("product_code")) or existing.get("product_code", "")
         data["supplier"] = clean_text(data.get("supplier")) or existing.get("supplier", "")
+        data["storage_location"] = clean_text(
+            data.get("storage_location")
+            or data.get("재고위치")
+            or data.get("보관위치")
+            or data.get("location")
+        ) or existing.get("storage_location", "")
         data["current_stock"] = to_int(data.get("current_stock"))
         data["available_stock"] = to_int(data.get("available_stock"))
         data["safe_stock"] = to_int(data.get("safe_stock"))
@@ -2749,6 +2811,10 @@ def import_stock(db: Session, source_type: str, work_date: date, file_bytes: byt
         lead_time_col = find_column(df, ["리드타임", "리드 타임", "leadtime", "lead_time", "제조기간", "입고주기", "입고 주기"])
     except ValueError:
         lead_time_col = None
+    try:
+        location_col = find_column(df, STOCK_LOCATION_COLUMN_CANDIDATES)
+    except ValueError:
+        location_col = None
 
     count = 0
     for _, row in df.iterrows():
@@ -2769,6 +2835,8 @@ def import_stock(db: Session, source_type: str, work_date: date, file_bytes: byt
         elif available_col:
             item.current_stock = to_int(row.get(available_col))
         item.available_stock = to_int(row.get(available_col)) if available_col and clean_text(row.get(available_col)) else item.current_stock
+        if location_col:
+            item.storage_location = clean_text(row.get(location_col))
         if safe_col:
             item.safe_stock = to_int(row.get(safe_col))
         if status_col:
@@ -3070,6 +3138,7 @@ def daily_to_dict(row: InventoryDaily) -> dict:
         "product_name": row.product_name,
         "barcode": row.barcode,
         "supplier": row.supplier,
+        "storage_location": getattr(row, "storage_location", ""),
         "current_stock": row.current_stock,
         "available_stock": row.available_stock,
         "safe_stock": row.safe_stock,
