@@ -1029,12 +1029,6 @@ def inject_schedule_css() -> None:
         div[class*="st-key-schedule_highlights_editor_"] [data-testid="stDataFrame"] {
             max-width: 640px;
         }
-        div[class*="st-key-schedule_slots_editor_"] {
-            min-height: 300px;
-        }
-        div[class*="st-key-schedule_slots_editor_"] [data-testid="stDataFrame"] {
-            min-height: 290px;
-        }
         .weekly-section-title.history-title {
             background: rgba(120, 74, 49, 0.72);
             border-radius: 6px 6px 0 0;
@@ -1119,11 +1113,27 @@ def inject_schedule_css() -> None:
             flex: none !important;
             flex-grow: 0 !important;
             height: auto !important;
+            margin-bottom: 0 !important;
+            margin-top: 0 !important;
             min-height: 0 !important;
+            padding-bottom: 0 !important;
+            padding-top: 0 !important;
         }
         .schedule-slot-editor div[class*="st-key-schedule_slots_editor_"] [data-testid="stDataFrame"] {
             height: auto !important;
             min-height: 0 !important;
+        }
+        .schedule-slot-editor [data-testid="stTextArea"],
+        .schedule-slot-editor [data-baseweb="textarea"] {
+            margin: 0 !important;
+            min-height: 0 !important;
+        }
+        .schedule-slot-editor [data-testid="stElementContainer"]:has(.schedule-slot-row-anchor) {
+            display: none !important;
+            height: 0 !important;
+            margin: 0 !important;
+            min-height: 0 !important;
+            padding: 0 !important;
         }
         .slot-sheet-header {
             align-items: center;
