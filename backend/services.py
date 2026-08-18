@@ -2379,7 +2379,12 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
 
         needed_days = order_needed_days(available_stock, safe_stock, avg_outbound, lead_time)
 
-        category = product.large_category
+        category = (
+            clean_text(product.large_category)
+            or (clean_text(daily.category) if has_snapshot else "")
+            or clean_text(product.medium_category)
+            or clean_text(product.small_category)
+        )
         supplier = product.supplier
         manager = product.memo
         box_pallet_unit = format_box_pallet_unit(product.box_qty, product.pack_qty)
@@ -2389,6 +2394,9 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "source_type": source_type,
                 "work_date": work_date,
                 "category": category,
+                "large_category": product.large_category,
+                "medium_category": product.medium_category,
+                "small_category": product.small_category,
                 "product_code": product.sku,
                 "product_name": product.product_name,
                 "supplier": supplier,

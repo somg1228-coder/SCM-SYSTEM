@@ -2472,10 +2472,11 @@ def inbound_excel(source_type: str) -> bytes:
 def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
     mapped = []
     for row in rows:
+        category = clean_cell(row.get("category") or row.get("large_category") or row.get("medium_category") or row.get("small_category"))
         mapped.append(
             {
                 "선택": False,
-                "카테고리": clean_cell(row.get("category")) or "미분류",
+                "카테고리": category or "미분류",
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
                 "가용재고": row.get("available_stock", 0),
@@ -4079,10 +4080,11 @@ def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None
 def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
     mapped = []
     for row in rows:
+        category = clean_cell(row.get("category") or row.get("large_category") or row.get("medium_category") or row.get("small_category"))
         mapped.append(
             {
                 "선택": False,
-                "카테고리": clean_cell(row.get("category")) or "미분류",
+                "카테고리": category or "미분류",
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
                 "가용재고": row.get("available_stock", 0),
