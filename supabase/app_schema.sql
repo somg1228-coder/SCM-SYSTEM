@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS inventory_daily (
 	product_name VARCHAR(255) NOT NULL, 
 	barcode VARCHAR(120) NOT NULL, 
 	supplier VARCHAR(160) NOT NULL, 
-	storage_location VARCHAR(160) NOT NULL,
 	current_stock INTEGER NOT NULL, 
 	available_stock INTEGER NOT NULL, 
 	safe_stock INTEGER NOT NULL, 

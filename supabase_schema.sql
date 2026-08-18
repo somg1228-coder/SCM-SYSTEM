@@ -66,8 +66,7 @@ CREATE TABLE IF NOT EXISTS "inventory_daily" (
     "updated_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
     "product_code" VARCHAR(120) DEFAULT '' NOT NULL,
     "available_stock" INTEGER DEFAULT 0 NOT NULL,
-    "supplier" VARCHAR(160) DEFAULT '' NOT NULL,
-    "storage_location" VARCHAR(160) DEFAULT '' NOT NULL
+    "supplier" VARCHAR(160) DEFAULT '' NOT NULL
 );
 CREATE INDEX IF NOT EXISTS "ix_inventory_daily_source_type" ON "inventory_daily" ("source_type");
 CREATE INDEX IF NOT EXISTS "ix_inventory_daily_product_name" ON "inventory_daily" ("product_name");

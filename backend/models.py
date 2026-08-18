@@ -27,7 +27,6 @@ class InventoryDaily(Base):
     product_name: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     barcode: Mapped[str] = mapped_column(String(120), default="", nullable=False)
     supplier: Mapped[str] = mapped_column(String(160), default="", nullable=False)
-    storage_location: Mapped[str] = mapped_column(String(160), default="", nullable=False)
     current_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     available_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     safe_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

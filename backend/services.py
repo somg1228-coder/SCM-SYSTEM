@@ -146,6 +146,10 @@ def product_master_model_data(model, row: dict) -> dict:
     return {key: value for key, value in row.items() if key in fields}
 
 
+def model_has_field(model, field_name: str) -> bool:
+    return field_name in model.__table__.columns
+
+
 class HTMLTableParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -921,7 +925,8 @@ def apply_product_master_to_daily(item: InventoryDaily, product) -> None:
     item.product_name = product.product_name
     item.category = product.large_category
     item.supplier = product.supplier
-    item.storage_location = getattr(product, "storage_location", "") or getattr(item, "storage_location", "")
+    if model_has_field(InventoryDaily, "storage_location"):
+        item.storage_location = getattr(product, "storage_location", "") or getattr(item, "storage_location", "")
     if product.min_stock and not item.safe_stock:
         item.safe_stock = product.min_stock
 
@@ -1955,7 +1960,6 @@ def ensure_daily_for_product(db: Session, source_type: str, work_date: date, pro
             barcode=normalize_barcode_text(product.barcode),
             category=product.large_category,
             supplier=product.supplier,
-            storage_location=getattr(product, "storage_location", ""),
             safe_stock=product.min_stock,
             inbound_cycle=product.default_lead_time or None,
         )
@@ -2707,7 +2711,6 @@ def apply_stock_upload_preview(
                     barcode=normalize_barcode_text(product.barcode),
                     category=product.large_category,
                     supplier=product.supplier,
-                    storage_location=getattr(product, "storage_location", ""),
                     safe_stock=product.min_stock,
                     inbound_cycle=product.default_lead_time or None,
                 )
@@ -2737,7 +2740,8 @@ def apply_stock_upload_preview(
             )
             item.current_stock = new_stock
             item.available_stock = new_available_stock
-            item.storage_location = storage_location
+            if model_has_field(InventoryDaily, "storage_location"):
+                item.storage_location = storage_location
             if storage_location and hasattr(product, "storage_location"):
                 product.storage_location = storage_location
             item.outbound_qty = max(previous_stock + int(item.inbound_qty or 0) - new_available_stock, 0)
@@ -2977,12 +2981,18 @@ def bulk_save_daily(db: Session, source_type: str, work_date: date, rows: list[d
         data["category"] = clean_text(data.get("category")) or existing.get("category", "")
         data["product_code"] = clean_text(data.get("product_code")) or existing.get("product_code", "")
         data["supplier"] = clean_text(data.get("supplier")) or existing.get("supplier", "")
-        data["storage_location"] = clean_text(
-            data.get("storage_location")
-            or data.get("재고위치")
-            or data.get("보관위치")
-            or data.get("location")
-        ) or existing.get("storage_location", "")
+        if model_has_field(InventoryDaily, "storage_location"):
+            data["storage_location"] = clean_text(
+                data.get("storage_location")
+                or data.get("재고위치")
+                or data.get("보관위치")
+                or data.get("location")
+            ) or existing.get("storage_location", "")
+        else:
+            data.pop("storage_location", None)
+            data.pop("재고위치", None)
+            data.pop("보관위치", None)
+            data.pop("location", None)
         data["current_stock"] = to_int(data.get("current_stock"))
         data["available_stock"] = to_int(data.get("available_stock"))
         data["safe_stock"] = to_int(data.get("safe_stock"))
@@ -3137,7 +3147,7 @@ def import_stock(db: Session, source_type: str, work_date: date, file_bytes: byt
         elif available_col:
             item.current_stock = to_int(row.get(available_col))
         item.available_stock = to_int(row.get(available_col)) if available_col and clean_text(row.get(available_col)) else item.current_stock
-        if location_col:
+        if location_col and model_has_field(InventoryDaily, "storage_location"):
             item.storage_location = clean_text(row.get(location_col))
         if safe_col:
             item.safe_stock = to_int(row.get(safe_col))
