@@ -15,7 +15,7 @@ import unicodedata
 from decimal import Decimal, InvalidOperation
 
 import pandas as pd
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -151,6 +151,51 @@ def product_master_model_data(model, row: dict) -> dict:
 
 def model_has_field(model, field_name: str) -> bool:
     return field_name in model.__table__.columns
+
+
+def product_master_lookup(db: Session, source_type: str) -> dict[str, dict[str, object]]:
+    if use_legacy_supabase_rest_store():
+        rows = supabase_store.list_product_master(source_type, "", "전체")
+    else:
+        model = product_master_model(source_type)
+        rows = list(db.execute(select(model).order_by(model.id)).scalars())
+
+    lookup: dict[str, dict[str, object]] = {
+        "sku": {},
+        "barcode": {},
+        "barcode_name": {},
+        "name": {},
+    }
+    for product in rows or []:
+        sku = clean_text(getattr(product, "sku", ""))
+        barcode = normalize_barcode_text(getattr(product, "barcode", ""))
+        product_name = clean_text(getattr(product, "product_name", ""))
+        if sku:
+            lookup["sku"].setdefault(sku, product)
+        if barcode:
+            lookup["barcode"].setdefault(barcode, product)
+        if barcode and product_name:
+            lookup["barcode_name"].setdefault(f"{barcode}|{product_name}", product)
+        if product_name:
+            lookup["name"].setdefault(product_name, product)
+    return lookup
+
+
+def find_product_master_from_lookup(
+    lookup: dict[str, dict[str, object]],
+    sku: str = "",
+    barcode: str = "",
+    product_name: str = "",
+):
+    sku = clean_text(sku)
+    barcode = normalize_barcode_text(barcode)
+    product_name = clean_text(product_name)
+    return (
+        lookup["sku"].get(sku)
+        or lookup["barcode_name"].get(f"{barcode}|{product_name}")
+        or lookup["barcode"].get(barcode)
+        or lookup["name"].get(product_name)
+    )
 
 
 class HTMLTableParser(HTMLParser):
@@ -3153,10 +3198,16 @@ def bulk_save_inbound(db: Session, source_type: str, rows: list[dict]) -> int:
         for row in list_inbound(db, source_type)
     }
     db.execute(delete(InventoryInbound).where(InventoryInbound.source_type == source_type))
+    lookup = product_master_lookup(db, source_type)
     count = 0
     for row in rows:
         data = row_data(row)
-        product = find_product_master(db, source_type, clean_text(data.get("product_code")), normalize_barcode_text(data.get("barcode")), clean_text(data.get("product_name")))
+        product = find_product_master_from_lookup(
+            lookup,
+            clean_text(data.get("product_code")),
+            normalize_barcode_text(data.get("barcode")),
+            clean_text(data.get("product_name")),
+        )
         if product:
             data["product_code"] = product.sku
             data["barcode"] = normalize_barcode_text(product.barcode)
@@ -3186,7 +3237,10 @@ def bulk_save_inbound(db: Session, source_type: str, rows: list[dict]) -> int:
         data["vendor"] = clean_text(data.get("vendor")) or clean_text(data.get("supplier"))
         data["is_applied"] = bool(data.get("is_applied")) if "is_applied" in data else bool(existing_rows.get(key, {}).get("is_applied", False))
         item = InventoryInbound(**data)
-        apply_product_master_to_inbound(item, product or find_product_master(db, source_type, item.product_code, item.barcode, item.product_name))
+        apply_product_master_to_inbound(
+            item,
+            product or find_product_master_from_lookup(lookup, item.product_code, item.barcode, item.product_name),
+        )
         db.add(item)
         count += 1
     db.commit()
@@ -3405,6 +3459,7 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes) -> di
             )
         return import_result(supabase_store.bulk_save_inbound(source_type, rows), df)
 
+    lookup = product_master_lookup(db, source_type)
     count = 0
     for _, row in df.iterrows():
         product_name = clean_text(row.get(name_col))
@@ -3423,7 +3478,10 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes) -> di
                 inbound_type=clean_text(row.get(type_col)) if type_col else "",
                 is_applied=False,
             )
-        apply_product_master_to_inbound(item, find_product_master(db, source_type, item.product_code, item.barcode, item.product_name))
+        apply_product_master_to_inbound(
+            item,
+            find_product_master_from_lookup(lookup, item.product_code, item.barcode, item.product_name),
+        )
         db.add(item)
         count += 1
     db.commit()
@@ -3443,27 +3501,115 @@ def apply_inbound_to_stock(db: Session, source_type: str, work_date: date) -> in
             )
         ).scalars()
     )
-    count = 0
+    if not inbound_rows:
+        return 0
+
+    lookup = product_master_lookup(db, source_type)
+    inbound_groups: dict[tuple[str, str], dict] = {}
+    touched_keys: set[tuple[str, str]] = set()
     for inbound in inbound_rows:
-        item = get_or_create_daily(db, source_type, work_date, inbound.product_name, inbound.barcode)
+        product = find_product_master_from_lookup(lookup, inbound.product_code, inbound.barcode, inbound.product_name)
+        product_name = clean_text(getattr(product, "product_name", "")) or clean_text(inbound.product_name)
+        barcode = normalize_barcode_text(getattr(product, "barcode", "")) or normalize_barcode_text(inbound.barcode)
+        key = (product_name, barcode)
+        group = inbound_groups.setdefault(
+            key,
+            {
+                "product": product,
+                "product_code": clean_text(getattr(product, "sku", "")) or clean_text(inbound.product_code),
+                "product_name": product_name,
+                "barcode": barcode,
+                "category": clean_text(getattr(product, "large_category", "")) or clean_text(inbound.category),
+                "supplier": clean_text(getattr(product, "supplier", "")) or clean_text(inbound.vendor),
+                "safe_stock": int(getattr(product, "min_stock", 0) or 0),
+                "qty": 0,
+                "last_inbound_date": inbound.inbound_date,
+            },
+        )
+        group["qty"] += int(inbound.inbound_qty or 0)
+        if inbound.inbound_date and (not group["last_inbound_date"] or inbound.inbound_date > group["last_inbound_date"]):
+            group["last_inbound_date"] = inbound.inbound_date
+        touched_keys.add(key)
+
+    existing_daily = {
+        (row.product_name, normalize_barcode_text(row.barcode)): row
+        for row in db.execute(
+            select(InventoryDaily).where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date == work_date,
+                tuple_(InventoryDaily.product_name, InventoryDaily.barcode).in_(list(inbound_groups.keys())),
+            )
+        ).scalars()
+    }
+
+    count = 0
+    for key, group in inbound_groups.items():
+        item = existing_daily.get(key)
+        if item is None:
+            item = InventoryDaily(
+                source_type=source_type,
+                work_date=work_date,
+                product_name=group["product_name"],
+                barcode=group["barcode"],
+            )
+            db.add(item)
         if not item.category:
-            item.category = inbound.category
+            item.category = group["category"]
         if not item.product_code:
-            item.product_code = inbound.product_code
+            item.product_code = group["product_code"]
         if not item.supplier:
-            item.supplier = inbound.vendor
-        apply_product_master_to_daily(item, find_product_master(db, source_type, item.product_code, item.barcode, item.product_name))
-        item.inbound_qty += inbound.inbound_qty
-        item.current_stock += inbound.inbound_qty
-        item.available_stock += inbound.inbound_qty
-        if item.last_inbound_date and item.last_inbound_date != inbound.inbound_date:
+            item.supplier = group["supplier"]
+        apply_product_master_to_daily(item, group["product"])
+        qty = int(group["qty"] or 0)
+        item.inbound_qty = int(item.inbound_qty or 0) + qty
+        item.current_stock = int(item.current_stock or 0) + qty
+        item.available_stock = int(item.available_stock or 0) + qty
+        if group["safe_stock"] and not item.safe_stock:
+            item.safe_stock = group["safe_stock"]
+        if item.last_inbound_date and item.last_inbound_date != group["last_inbound_date"]:
             item.previous_inbound_date = item.last_inbound_date
-        item.last_inbound_date = inbound.inbound_date
+        item.last_inbound_date = group["last_inbound_date"]
+        item.stock_status = stock_status_for_values(
+            int(item.available_stock if item.available_stock is not None else item.current_stock or 0),
+            int(item.safe_stock or group["safe_stock"] or 0),
+        )
+        count += 1
+
+    for inbound in inbound_rows:
         inbound.is_applied = True
+    db.commit()
+    calculate_inbound_cycle_for_keys(db, source_type, touched_keys)
+    return count
+
+
+def calculate_inbound_cycle_for_keys(db: Session, source_type: str, keys: set[tuple[str, str]]) -> int:
+    if not keys:
+        return 0
+    rows = list(
+        db.execute(
+            select(InventoryDaily).where(
+                InventoryDaily.source_type == source_type,
+                tuple_(InventoryDaily.product_name, InventoryDaily.barcode).in_(list(keys)),
+            )
+        ).scalars()
+    )
+    grouped: dict[tuple[str, str], list[InventoryDaily]] = {}
+    for row in rows:
+        grouped.setdefault((row.product_name, normalize_barcode_text(row.barcode)), []).append(row)
+
+    count = 0
+    for product_rows in grouped.values():
+        dates = sorted({row.last_inbound_date for row in product_rows if row.last_inbound_date})
+        diffs = [
+            (dates[index] - dates[index - 1]).days
+            for index in range(1, len(dates))
+            if 1 <= (dates[index] - dates[index - 1]).days <= 90
+        ]
+        cycle = round(median(diffs)) if diffs else None
+        for row in product_rows:
+            row.inbound_cycle = cycle
         count += 1
     db.commit()
-    update_status(db, source_type, work_date)
-    calculate_inbound_cycle(db, source_type)
     return count
 
 

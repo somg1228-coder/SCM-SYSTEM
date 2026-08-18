@@ -929,7 +929,11 @@ def render_inbound_tab(source_type: str) -> None:
         with apply_col:
             apply_date = st.date_input("반영 기준일자", value=date.today(), key=f"{source_type}_inbound_apply_date")
             if st.button("재고 반영", key=f"{source_type}_inbound_apply", type="primary", use_container_width=True):
-                show_result(with_db(lambda db: result("재고현황 반영 완료", services.apply_inbound_to_stock(db, source_type, apply_date))))
+                outcome = with_db(lambda db: result("재고현황 반영 완료", services.apply_inbound_to_stock(db, source_type, apply_date)))
+                if outcome and outcome.get("ok", True):
+                    clear_inventory_data_caches()
+                    clear_inventory_editor_buffer(f"{source_type}_inbound_editor_buffer")
+                show_result(outcome)
         with download_col:
             st.write("")
             download_data = inbound_excel(source_type)
@@ -948,30 +952,16 @@ def render_inbound_tab(source_type: str) -> None:
     inbound_buffer_key = f"{source_type}_inbound_editor_buffer"
     if inbound_buffer_key not in st.session_state:
         st.session_state[inbound_buffer_key] = df
-    inbound_sku_options = sorted(set([*product_sku_options(source_type), *[value for value in df.get("SKU", pd.Series(dtype=str)).astype(str).tolist() if value]]))
+    display_df = st.session_state[inbound_buffer_key].drop(columns=["삭제"], errors="ignore")
+    render_plain_inventory_table(display_df, height=360, empty_message="입고내역 데이터가 없습니다.")
     with st.form(key=f"{source_type}_inbound_editor_form", clear_on_submit=False):
-        edited = st.data_editor(
-            st.session_state[inbound_buffer_key],
-            num_rows="dynamic",
-            hide_index=True,
-            use_container_width=True,
-            key=f"{source_type}_inbound_editor",
-            column_order=INBOUND_COLUMNS,
-            column_config={
-                "삭제": st.column_config.CheckboxColumn("삭제", default=False),
-                "SKU": st.column_config.SelectboxColumn("SKU", options=inbound_sku_options) if inbound_sku_options else st.column_config.TextColumn("SKU"),
-                "입고일자": st.column_config.DateColumn("입고일자"),
-                "공급처": st.column_config.TextColumn("공급처", disabled=True),
-                "입고수량": st.column_config.NumberColumn("입고수량", step=1),
-            },
-        )
         if st.form_submit_button("입고내역 저장", type="primary", use_container_width=True):
-            rows = inbound_payload(edited, source_type)
+            rows = inbound_payload(st.session_state[inbound_buffer_key], source_type)
             outcome = with_db(lambda db: result("입고내역 저장 완료", services.bulk_save_inbound(db, source_type, rows)))
             if outcome and outcome.get("ok", True):
                 clear_inventory_editor_buffer(inbound_buffer_key)
             else:
-                st.session_state[inbound_buffer_key] = edited
+                st.session_state[inbound_buffer_key] = df
             show_result(outcome)
 
 
@@ -2560,7 +2550,6 @@ def inbound_payload(df: pd.DataFrame, source_type: str) -> list[dict]:
                 "barcode": clean_cell(row.get("바코드")),
                 "vendor": clean_cell(row.get("공급처")),
                 "inbound_qty": to_int(row.get("입고수량")),
-                "vendor": "",
                 "inbound_type": clean_cell(row.get("입고구분")),
                 "memo": clean_cell(row.get("비고")),
             }
