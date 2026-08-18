@@ -4517,15 +4517,15 @@ def render_inventory_update_panel(
             </div>
             """
         )
-        upload_cols = st.columns([2.35, 0.92, 0.95, 0.92, 1.35], gap="large")
-        with upload_cols[1]:
+        upload_cols = st.columns([0.92, 2.35, 0.95, 0.92, 1.35], gap="large")
+        with upload_cols[0]:
             work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
 
         upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
         preview_df_key = f"{source_type}_inventory_preview_df_{work_date.isoformat()}"
         applied_df_key = f"{source_type}_applied_inventory_df_{work_date.isoformat()}"
         excluded_df_key = f"{source_type}_excluded_inventory_df_{work_date.isoformat()}"
-        with upload_cols[0]:
+        with upload_cols[1]:
             uploaded = st.file_uploader("파일 선택 또는 Drag & Drop", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
         with upload_cols[2]:
             upload_mode = st.radio("반영 범위", ["일부 재고", "전체 재고"], horizontal=False, key=f"{source_type}_stock_upload_mode")
@@ -4762,8 +4762,8 @@ def render_inventory_update_panel(
             </div>
             """
         )
-        upload_cols = st.columns([2.35, 0.92, 0.95, 0.92, 1.35], gap="large")
-        with upload_cols[1]:
+        upload_cols = st.columns([0.92, 2.35, 0.95, 0.92, 1.35], gap="large")
+        with upload_cols[0]:
             work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
 
         upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
@@ -4773,7 +4773,7 @@ def render_inventory_update_panel(
         result_key = f"{source_type}_stock_upload_result_{work_date.isoformat()}"
         processing_key = f"{source_type}_stock_upload_processing_{work_date.isoformat()}"
 
-        with upload_cols[0]:
+        with upload_cols[1]:
             uploaded = st.file_uploader("파일 선택 또는 Drag & Drop", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
         with upload_cols[2]:
             upload_mode = st.radio("반영 범위", ["일부 재고", "전체 재고"], horizontal=False, key=f"{source_type}_stock_upload_mode")

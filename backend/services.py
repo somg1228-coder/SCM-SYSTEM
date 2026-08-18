@@ -137,6 +137,15 @@ def product_master_model(source_type: str):
     return PRODUCT_MASTER_MODEL_BY_SOURCE.get(source_type, ThirdpartyProductMaster)
 
 
+def product_master_model_fields(model) -> set[str]:
+    return {column.key for column in model.__table__.columns}
+
+
+def product_master_model_data(model, row: dict) -> dict:
+    fields = product_master_model_fields(model)
+    return {key: value for key, value in row.items() if key in fields}
+
+
 class HTMLTableParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -1590,7 +1599,7 @@ def apply_product_master_shared_import_preview(db: Session, source_type: str, pr
             result_details.append(detail)
             continue
         row = detail.get("_data") or {}
-        data = threepl_master_basis_data(row)
+        data = product_master_model_data(model, threepl_master_basis_data(row))
         sku = data.pop("sku")
         if not sku:
             sku = threepl_auto_sku(data, used_skus)
@@ -1682,14 +1691,14 @@ def bulk_save_product_master(db: Session, source_type: str, rows: list[dict], sy
     for row in normalized:
         product = existing_by_barcode.get(row["barcode"]) or existing_by_sku.get(row["sku"])
         if product is None:
-            product = model(**row)
+            product = model(**product_master_model_data(model, row))
             db.add(product)
             existing_by_sku[row["sku"]] = product
             if row["barcode"]:
                 existing_by_barcode[row["barcode"]] = product
         else:
             row = keep_existing_product_master_categories(product, row)
-            for key, value in row.items():
+            for key, value in product_master_model_data(model, row).items():
                 setattr(product, key, value)
             existing_by_sku[row["sku"]] = product
             if row["barcode"]:
@@ -1723,7 +1732,7 @@ def add_product_master(db: Session, source_type: str, row: dict) -> dict:
         if existing_by_barcode_product:
             return {"ok": False, "message": f"이미 등록된 바코드/상품명입니다. ({data['barcode']} / {data['product_name']})", "count": 0}
 
-    db.add(model(**data))
+    db.add(model(**product_master_model_data(model, data)))
     db.commit()
     sync_inventory_from_product_master(db, source_type)
     return {"ok": True, "message": f"{source_type} 상품 단품 추가 완료", "count": 1}

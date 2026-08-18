@@ -96,7 +96,6 @@ class ThirdpartyProductMaster(Base):
     small_category: Mapped[str] = mapped_column(String(120), default="", nullable=False)
     brand: Mapped[str] = mapped_column(String(120), default="", nullable=False)
     supplier: Mapped[str] = mapped_column(String(160), default="", nullable=False)
-    storage_location: Mapped[str] = mapped_column(String(160), default="", nullable=False)
     pack_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     box_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     default_lead_time: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
