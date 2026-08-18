@@ -30,7 +30,9 @@ from backend.models import (
     PurchaseOrder,
     PurchaseRequest,
     ThirdpartyProductMaster,
+    WarehouseInventoryPosition,
     WarehouseProductMaster,
+    WarehouseRack,
 )
 
 try:
@@ -129,7 +131,7 @@ PRODUCT_MASTER_MODEL_BY_SOURCE = {
 
 PURCHASE_METRIC_SOURCE_ORDER = ["창고", "3PL", "오프라인"]
 STOCK_WARNING_RATIO = 0.2
-STOCK_CURRENT_COLUMN_CANDIDATES = ["보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고", "수량", "상품수량"]
+STOCK_CURRENT_COLUMN_CANDIDATES = ["수정재고", "변경재고", "실사재고", "조정재고", "보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고", "수량", "상품수량"]
 STOCK_AVAILABLE_COLUMN_CANDIDATES = ["가용재고", "판매가능재고", "판매 가능 재고", "수량", "상품수량"]
 STOCK_LOCATION_COLUMN_CANDIDATES = ["재고위치", "재고 위치", "보관위치", "보관 위치", "창고위치", "창고 위치", "로케이션", "랙위치", "랙 위치", "location", "storage_location"]
 
@@ -2250,6 +2252,28 @@ def pending_inbound_qty_by_product(db: Session, source_type: str, work_date: dat
     return pending
 
 
+def warehouse_storage_location_by_sku(db: Session) -> dict[str, str]:
+    rows = db.execute(
+        select(WarehouseInventoryPosition, WarehouseRack)
+        .join(WarehouseRack, WarehouseRack.id == WarehouseInventoryPosition.rack_id)
+        .order_by(WarehouseRack.sort_order, WarehouseRack.rack_code, WarehouseInventoryPosition.shelf_no, WarehouseInventoryPosition.sort_order)
+    ).all()
+    locations: dict[str, list[str]] = {}
+    for position, rack in rows:
+        sku = clean_text(position.sku)
+        if not sku:
+            continue
+        rack_label = clean_text(rack.rack_code) or clean_text(rack.rack_name) or clean_text(position.rack_id)
+        shelf_label = f"{int(position.shelf_no or 0)}단" if int(position.shelf_no or 0) else ""
+        label = " / ".join(part for part in (rack_label, shelf_label) if part)
+        if not label:
+            continue
+        bucket = locations.setdefault(sku, [])
+        if label not in bucket:
+            bucket.append(label)
+    return {sku: ", ".join(values[:3]) for sku, values in locations.items()}
+
+
 def ensure_daily_snapshots_from_latest(db: Session, source_type: str, work_date: date, products: list | None = None) -> int:
     if use_legacy_supabase_rest_store():
         return 0
@@ -2360,6 +2384,12 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     query_count += 1
     mark("pending_inbound_load", stage_started_at)
 
+    stage_started_at = time.perf_counter()
+    location_by_sku = warehouse_storage_location_by_sku(db) if source_type == "창고" else {}
+    if source_type == "창고":
+        query_count += 1
+    mark("storage_location_load", stage_started_at)
+
     timings["outbound_load"] = 0.0
     rows = []
     for product in products:
@@ -2418,6 +2448,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "pending_outbound_qty": pending_outbound_qty,
                 "stock_status": status,
                 "barcode": normalize_barcode_text(product.barcode),
+                "storage_location": location_by_sku.get(product_sku, ""),
                 "inbound_cycle": lead_time,
                 "box_qty": box_qty,
                 "pack_qty": int(product.pack_qty or 0),
@@ -2534,6 +2565,7 @@ def inventory_render_log_text(
         ("inventory_history_load", "Inventory history load"),
         ("outbound_load", "Outbound load"),
         ("pending_inbound_load", "Pending inbound load"),
+        ("storage_location_load", "Storage location load"),
         ("safety_stock_calculation", "Safety stock calculation"),
         ("available_stock_calculation", "Available stock calc"),
         ("stock_status_calculation", "Status calculation"),
