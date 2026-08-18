@@ -950,13 +950,12 @@ def render_inbound_tab(source_type: str) -> None:
 
     df = inbound_to_editor(fetch_inbound(source_type))
     inbound_buffer_key = f"{source_type}_inbound_editor_buffer"
-    if inbound_buffer_key not in st.session_state:
-        st.session_state[inbound_buffer_key] = df
-    display_df = st.session_state[inbound_buffer_key].drop(columns=["삭제"], errors="ignore")
+    st.session_state[inbound_buffer_key] = df
+    display_df = df.drop(columns=["삭제"], errors="ignore")
     render_plain_inventory_table(display_df, height=360, empty_message="입고내역 데이터가 없습니다.")
     with st.form(key=f"{source_type}_inbound_editor_form", clear_on_submit=False):
         if st.form_submit_button("입고내역 저장", type="primary", use_container_width=True):
-            rows = inbound_payload(st.session_state[inbound_buffer_key], source_type)
+            rows = inbound_payload(df, source_type)
             outcome = with_db(lambda db: result("입고내역 저장 완료", services.bulk_save_inbound(db, source_type, rows)))
             if outcome and outcome.get("ok", True):
                 clear_inventory_editor_buffer(inbound_buffer_key)
@@ -1659,12 +1658,13 @@ def render_plain_inventory_table(df: pd.DataFrame, height: int = 520, empty_mess
     for column in safe_df.columns:
         safe_df[column] = safe_df[column].map(lambda value: value.isoformat() if hasattr(value, "isoformat") else value)
     html = inventory_visible_table_html(safe_df)
-    render_inventory_html(
+    st.markdown(
         f"""
         <div class="inventory-visible-table-wrap" style="max-height:{int(height)}px;">
             {html}
         </div>
-        """
+        """,
+        unsafe_allow_html=True,
     )
 
 
