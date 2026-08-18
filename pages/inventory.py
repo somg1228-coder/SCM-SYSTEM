@@ -1661,6 +1661,23 @@ def render_inventory_visible_table(df: pd.DataFrame, height: int = 520) -> None:
     )
 
 
+def render_plain_inventory_table(df: pd.DataFrame, height: int = 520, empty_message: str = "표시할 데이터가 없습니다.") -> None:
+    if df is None or df.empty:
+        st.info(empty_message)
+        return
+    safe_df = df.fillna("").copy()
+    for column in safe_df.columns:
+        safe_df[column] = safe_df[column].map(lambda value: value.isoformat() if hasattr(value, "isoformat") else value)
+    html = inventory_visible_table_html(safe_df)
+    render_inventory_html(
+        f"""
+        <div class="inventory-visible-table-wrap" style="max-height:{int(height)}px;">
+            {html}
+        </div>
+        """
+    )
+
+
 def inventory_status_badge_html(value: str) -> str:
     label = clean_cell(value) or "미집계"
     tone = {
@@ -4782,22 +4799,16 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
     editor_df = page_df.drop(columns=["_changed"], errors="ignore").reset_index(drop=True)
     editor_visible_columns = ["SKU", "바코드", "상품명", "카테고리", "보관위치", "업체명", "현재고", "증감수량", "비고"]
     editor_df = editor_df[[column for column in [*editor_visible_columns, "_base_stock"] if column in editor_df.columns]]
-    st.caption(f"데이터 흐름: 전체 {len(full_df):,}건 · 필터 {len(filtered_df):,}건 · 페이지 {len(page_df):,}건 · 편집표 {len(editor_df):,}건")
 
     if page_df.empty:
         st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
     else:
         display_df = editor_df.drop(columns=["_base_stock"], errors="ignore")
-        try:
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=True,
-            )
-        except Exception:
-            st.error("재고 데이터를 불러오는 중 오류가 발생했습니다.")
-            return False
-        st.info("직접 셀 수정은 렌더링 안정화 점검 중이라 잠시 비활성화했습니다. 수정양식 다운로드/업로드로 재고 변경은 계속 처리할 수 있습니다.")
+        render_plain_inventory_table(
+            display_df,
+            height=420,
+            empty_message="현재 필터 조건에 해당하는 재고 데이터가 없습니다.",
+        )
 
     changed_values = []
     for sku, change in changes.items():
