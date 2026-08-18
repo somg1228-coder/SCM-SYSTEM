@@ -57,7 +57,6 @@ THREEPL_MASTER_COLUMNS = [
     "바코드",
     "상품명",
     "업체명",
-    "재고위치",
     "박스/파렛트 단위",
     "담당자",
     "리드타임",
@@ -254,7 +253,7 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                 "엑셀 업로드",
                 type=["xlsx", "xls", "html"],
                 key=f"product_master_{key}_upload",
-                help="3PL 마스터 기준정보를 업로드할 수 있습니다.",
+                help=f"{title} 기준정보를 3PL 마스터 양식으로 업로드할 수 있습니다.",
             )
         with preview_col:
             st.write("")
@@ -262,9 +261,9 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                 if uploaded is None:
                     st.warning(f"먼저 {title} 엑셀을 업로드하세요.")
                 else:
-                    if show_sqlite_write_status("3PL 마스터 업로드 미리보기"):
-                        with st.spinner("3PL 마스터 엑셀을 분석하는 중입니다..."):
-                            preview = with_db(lambda db: services.prepare_threepl_master_import_preview(db, uploaded.getvalue()))
+                    if show_sqlite_write_status(f"{title} 업로드 미리보기"):
+                        with st.spinner(f"{title} 엑셀을 분석하는 중입니다..."):
+                            preview = with_db(lambda db: services.prepare_product_master_shared_import_preview(db, source_type, uploaded.getvalue()))
                         if preview and preview.get("ok", True):
                             st.session_state[preview_key] = preview
                             st.session_state.pop(result_key, None)
@@ -277,8 +276,8 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                 if uploaded is None:
                     st.warning(f"먼저 {title} 엑셀을 업로드하세요.")
                 else:
-                    if show_sqlite_write_status("3PL 마스터 엑셀 반영"):
-                        with st.spinner("3PL 마스터 엑셀을 반영하는 중입니다..."):
+                    if show_sqlite_write_status(f"{title} 엑셀 반영"):
+                        with st.spinner(f"{title} 엑셀을 반영하는 중입니다..."):
                             result = with_db(
                                 lambda db: services.import_product_master_excel(
                                     db,
@@ -364,15 +363,15 @@ def render_threepl_import_preview(source_type: str, key: str, preview_key: str, 
     preview = st.session_state.get(preview_key)
     if not preview:
         return
-    st.markdown("#### 3PL 마스터 업로드 미리보기")
+    st.markdown(f"#### {source_type} 마스터 업로드 미리보기")
     render_threepl_import_summary(preview)
     render_threepl_import_details(preview)
     apply_col, cancel_col, spacer = st.columns([1.0, 1.0, 4.0], gap="small")
     applyable_count = sum(1 for detail in preview.get("details", []) if detail.get("_apply"))
     with apply_col:
         if st.button("미리보기 내용 반영", type="primary", key=f"product_master_{key}_preview_apply", disabled=applyable_count == 0, use_container_width=True):
-            if show_sqlite_write_status("3PL 마스터 업로드 반영"):
-                result = with_db(lambda db: services.apply_threepl_master_import_preview(db, preview, sync_inventory=True))
+            if show_sqlite_write_status(f"{source_type} 마스터 업로드 반영"):
+                result = with_db(lambda db: services.apply_product_master_shared_import_preview(db, source_type, preview, sync_inventory=True))
                 st.session_state[result_key] = result
                 st.session_state.pop(preview_key, None)
                 if result and result.get("ok", True):
@@ -410,14 +409,18 @@ def render_threepl_import_summary(payload: dict) -> None:
         "전체 엑셀 행 수",
         "신규 등록 수",
         "기존 품목 업데이트 수",
-        "변경 없음 수",
-        "파일 내부 중복 수",
-        "경고 수",
-        "실패 수",
+        "중복 수",
+        "미매칭 수",
+        "오류 수",
+        "처리시간",
     ]
     cols = st.columns(len(labels), gap="small")
     for col, label in zip(cols, labels, strict=True):
-        col.metric(label, f"{int(summary.get(label, 0) or 0):,}")
+        value = summary.get(label, 0) or 0
+        if label == "처리시간":
+            col.metric(label, f"{float(value):.2f}초")
+        else:
+            col.metric(label, f"{int(value):,}")
 
 
 def render_threepl_import_details(payload: dict) -> None:
@@ -591,12 +594,11 @@ def render_threepl_row_edit_form(
     is_new: bool = False,
 ) -> None:
     with st.form(key=f"product_master_{key}_{form_suffix}_row_form", clear_on_submit=False):
-        top = st.columns([1.0, 1.15, 2.2, 1.25, 1.25], gap="small")
+        top = st.columns([1.0, 1.15, 2.2, 1.25], gap="small")
         category = top[0].text_input("카테고리", value=clean_value(row.get("카테고리")), key=f"{field_key_prefix}_category")
         barcode = top[1].text_input("바코드", value=clean_value(row.get("바코드")), key=f"{field_key_prefix}_barcode")
         product_name = top[2].text_input("상품명", value=clean_value(row.get("상품명")), key=f"{field_key_prefix}_product_name")
         supplier = top[3].text_input("업체명", value=clean_value(row.get("업체명")), key=f"{field_key_prefix}_supplier")
-        storage_location = top[4].text_input("재고위치", value=clean_value(row.get("재고위치")), key=f"{field_key_prefix}_storage_location")
 
         bottom = st.columns([1.45, 1.0, 0.75, 0.75], gap="small")
         box_pallet_unit = bottom[0].text_input("박스/파렛트 단위", value=clean_value(row.get("박스/파렛트 단위")), key=f"{field_key_prefix}_box_pallet_unit")
@@ -613,7 +615,6 @@ def render_threepl_row_edit_form(
                 "바코드": barcode,
                 "상품명": product_name,
                 "업체명": supplier,
-                "재고위치": storage_location,
                 "박스/파렛트 단위": box_pallet_unit,
                 "담당자": manager,
                 "리드타임": lead_time,
@@ -835,11 +836,11 @@ def source_key(source_type: str) -> str:
 
 
 def uses_simple_master_form(source_type: str) -> bool:
-    return source_type in {"오프라인", "창고"}
+    return False
 
 
 def uses_threepl_master_form(source_type: str) -> bool:
-    return source_type == "3PL"
+    return source_type in {"3PL", "오프라인", "창고"}
 
 
 def format_box_pallet_unit(box_qty, pallet_qty) -> str:
@@ -1103,7 +1104,7 @@ def apply_threepl_master_filters(df: pd.DataFrame, filters: dict) -> pd.DataFram
     filtered = df.copy()
     keyword = clean_value(filters.get("keyword")).lower()
     if keyword:
-        search_columns = ["바코드", "상품명", "업체명", "재고위치", "담당자"]
+        search_columns = ["바코드", "상품명", "업체명", "담당자"]
         search_text = filtered[search_columns].astype(str).agg(" ".join, axis=1).str.lower()
         filtered = filtered[search_text.str.contains(re.escape(keyword), na=False)]
     if filters.get("categories"):
@@ -1231,7 +1232,6 @@ def threepl_master_column_config() -> dict:
         "바코드": st.column_config.TextColumn("바코드", width="medium"),
         "상품명": st.column_config.TextColumn("상품명", width="large"),
         "업체명": st.column_config.TextColumn("업체명", width="medium"),
-        "재고위치": st.column_config.TextColumn("재고위치", width="medium"),
         "박스/파렛트 단위": st.column_config.TextColumn("박스/파렛트 단위", width="medium"),
         "담당자": st.column_config.TextColumn("담당자", width="medium"),
         "리드타임": st.column_config.NumberColumn("리드타임", min_value=0, step=1),
@@ -1305,7 +1305,6 @@ def threepl_master_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
                 "업체명": row.get("supplier", ""),
-                "재고위치": row.get("storage_location", ""),
                 "박스/파렛트 단위": row.get("box_pallet_unit") or format_box_pallet_unit(row.get("box_qty", 0), row.get("pack_qty", 0)),
                 "담당자": row.get("memo", ""),
                 "리드타임": row.get("default_lead_time", 0),
@@ -1405,7 +1404,6 @@ def threepl_editor_to_payload(df: pd.DataFrame) -> list[dict]:
             "카테고리": clean_value(row.get("카테고리")),
             "브랜드": clean_value(row.get("브랜드")),
             "공급처": clean_value(row.get("업체명")),
-            "재고위치": clean_value(row.get("재고위치")),
             "입수": pallet_qty,
             "박스입수": box_qty,
             "기본 리드타임": to_int_value(row.get("리드타임") or row.get("기본 리드타임")),
@@ -1612,7 +1610,6 @@ def threepl_master_excel(df: pd.DataFrame) -> bytes:
             "바코드": 18,
             "상품명": 34,
             "업체명": 20,
-            "재고위치": 18,
             "박스/파렛트 단위": 28,
             "담당자": 16,
             "리드타임": 12,
