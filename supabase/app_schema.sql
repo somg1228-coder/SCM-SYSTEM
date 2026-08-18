@@ -580,7 +580,6 @@ CREATE TABLE IF NOT EXISTS thirdparty_product_master (
 	small_category VARCHAR(120) NOT NULL, 
 	brand VARCHAR(120) NOT NULL, 
 	supplier VARCHAR(160) NOT NULL, 
-	storage_location VARCHAR(160) NOT NULL,
 	pack_qty INTEGER NOT NULL, 
 	box_qty INTEGER NOT NULL, 
 	default_lead_time INTEGER NOT NULL, 

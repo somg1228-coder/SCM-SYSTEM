@@ -1370,7 +1370,6 @@ def ensure_sqlite_columns() -> None:
         },
         "thirdparty_product_master": {
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
-            "storage_location": "VARCHAR(160) NOT NULL DEFAULT ''",
         },
         "warehouse_product_master": {
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
