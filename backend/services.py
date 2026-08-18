@@ -2337,60 +2337,22 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
             rows = [row for row in rows if row.get("is_active") == "사용"]
         return rows
 
-    total_started_at = time.perf_counter()
-    timings: dict[str, float] = {}
-    query_count = 0
-
-    def mark(name: str, started_at: float) -> None:
-        timings[name] = round(time.perf_counter() - started_at, 4)
-
-    def add_time(name: str, started_at: float) -> None:
-        timings[name] = round(float(timings.get(name, 0.0) or 0.0) + (time.perf_counter() - started_at), 4)
-
     model = product_master_model(source_type)
     query = select(model)
     if active_only:
         query = query.where(model.is_active == "사용")
-    stage_started_at = time.perf_counter()
     products = list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
-    query_count += 1
-    mark("inventory_master_load", stage_started_at)
-
-    stage_started_at = time.perf_counter()
-    created_snapshots = ensure_daily_snapshots_from_latest(db, source_type, work_date, products)
-    query_count += 1
-    if created_snapshots:
-        query_count += 1
-    mark("snapshot_seed", stage_started_at)
-
-    stage_started_at = time.perf_counter()
     latest_daily_by_sku = daily_rows_by_product(db, source_type, work_date, products)
-    query_count += 1
-    mark("inventory_snapshot_load", stage_started_at)
 
     # Purchase/order history is intentionally not loaded during the normal page render.
     # The dedicated sync button still updates those metrics when the user asks for it.
-    timings["purchase_history_load"] = 0.0
     purchase_metrics: dict[tuple[str, str], dict] = {}
     inbound_metrics: dict[tuple[str, str], dict] = {}
 
-    stage_started_at = time.perf_counter()
     avg_outbound_by_sku = recent_outbound_average_by_product(db, source_type, work_date, products, business_day_count=5)
-    query_count += 1
-    mark("inventory_history_load", stage_started_at)
-
-    stage_started_at = time.perf_counter()
     pending_by_sku = pending_inbound_qty_by_product(db, source_type, work_date, products)
-    query_count += 1
-    mark("pending_inbound_load", stage_started_at)
-
-    stage_started_at = time.perf_counter()
     location_by_sku = warehouse_storage_location_by_sku(db) if source_type == "창고" else {}
-    if source_type == "창고":
-        query_count += 1
-    mark("storage_location_load", stage_started_at)
 
-    timings["outbound_load"] = 0.0
     rows = []
     for product in products:
         product_sku = clean_text(product.sku)
@@ -2398,13 +2360,9 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         has_snapshot = daily is not None
         current_stock = int(daily.current_stock or 0) if has_snapshot else 0
 
-        step_started_at = time.perf_counter()
         safe_stock = int(product.min_stock or 0)
-        add_time("safety_stock_calculation", step_started_at)
 
-        step_started_at = time.perf_counter()
         status = stock_status_for_values(current_stock, safe_stock) if has_snapshot else "미집계"
-        add_time("stock_status_calculation", step_started_at)
 
         purchase_metric = purchase_metrics.get((source_type, product.sku), {})
         inbound_metric = inbound_metrics.get((source_type, product.sku), {})
@@ -2414,23 +2372,17 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         pending_inbound_qty = int(pending_by_sku.get(product_sku, 0) or 0)
         pending_outbound_qty = int(daily.outbound_qty or 0) if has_snapshot else 0
 
-        step_started_at = time.perf_counter()
         available_stock = current_stock + pending_inbound_qty - pending_outbound_qty if has_snapshot else 0
-        add_time("available_stock_calculation", step_started_at)
 
         shortage_qty = max(safe_stock - current_stock, 0)
         avg_outbound = float(avg_outbound_by_sku.get(product_sku, 0) or 0)
 
-        step_started_at = time.perf_counter()
         needed_days = order_needed_days(available_stock, safe_stock, avg_outbound, lead_time)
-        add_time("order_needed_days_calculation", step_started_at)
 
-        step_started_at = time.perf_counter()
         category = product.large_category
         supplier = product.supplier
         manager = product.memo
         box_pallet_unit = format_box_pallet_unit(product.box_qty, product.pack_qty)
-        add_time("category_supplier_manager_mapping", step_started_at)
 
         rows.append(
             {
@@ -2467,16 +2419,6 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "is_active": product.is_active,
             }
         )
-    total_seconds = time.perf_counter() - total_started_at
-    log_inventory_render_performance(
-        source_type,
-        work_date,
-        timings,
-        total_seconds,
-        row_count=len(rows),
-        query_count=query_count,
-        context="service.master_based_inventory_rows",
-    )
     return rows
 
 
@@ -2882,7 +2824,6 @@ def apply_stock_upload_preview(
     total_started_at = time.perf_counter()
     timings = dict(preview.get("timings") or {})
     count = 0
-    verification = {"ok": True, "verified_count": 0, "failed_count": 0, "message": "DB 저장 검증 완료"}
     history = None
     try:
         rows = [row for row in preview.get("preview_rows", []) if row.get("matched")]
@@ -2902,7 +2843,6 @@ def apply_stock_upload_preview(
         db.flush()
 
         stage_started_at = time.perf_counter()
-        verification_targets = []
         products = list(db.execute(select(product_master_model(source_type))).scalars())
         products_by_sku = {clean_text(product.sku): product for product in products if clean_text(product.sku)}
         daily_by_sku = strict_daily_rows_by_product(db, source_type, work_date, products)
@@ -2959,16 +2899,6 @@ def apply_stock_upload_preview(
             item.outbound_qty = max(new_stock + int(item.inbound_qty or 0) - new_available_stock, 0)
             item.stock_status = stock_status_for_values(new_available_stock, product.min_stock or 0)
             touched_skus.add(clean_text(product.sku))
-            verification_targets.append(
-                {
-                    "product_code": product.sku,
-                    "barcode": normalize_barcode_text(product.barcode),
-                    "product_name": product.product_name,
-                    "storage_location": storage_location,
-                    "current_stock": new_stock,
-                    "available_stock": new_available_stock,
-                }
-            )
             count += 1
         if snapshots:
             db.execute(InventoryUploadSnapshot.__table__.insert(), snapshots)
@@ -2981,10 +2911,6 @@ def apply_stock_upload_preview(
         mark_inventory_update_stage(timings, "inventory_calculation", stage_started_at)
 
         db.commit()
-
-        stage_started_at = time.perf_counter()
-        verification = verify_stock_upload_saved(db, source_type, work_date, verification_targets)
-        mark_inventory_update_stage(timings, "db_verification", stage_started_at)
     except Exception as exc:
         db.rollback()
         record_save_failure(f"inventory upload {source_type} {work_date}", exc)
@@ -2992,30 +2918,11 @@ def apply_stock_upload_preview(
     apply_seconds = time.perf_counter() - total_started_at
     timings["apply_total"] = round(apply_seconds, 4)
     total_seconds = float(timings.get("prepare_total") or 0) + apply_seconds
-    performance_log = log_inventory_update_performance(timings, total_seconds)
     error_count = int(preview.get("invalid_stock_count") or 0) + int(preview.get("negative_stock_count") or 0)
-    if not verification["ok"]:
-        record_save_failure(f"inventory upload verification {source_type} {work_date}")
-        return {
-            "ok": False,
-            "message": verification["message"],
-            "count": count,
-            "history_id": history.id if history else None,
-            "total_rows": int(preview.get("total_rows") or 0),
-            "matched_count": int(preview.get("matched_count") or 0),
-            "unmatched_count": int(preview.get("unmatched_count") or 0),
-            "duplicate_count": int(preview.get("duplicate_count") or 0),
-            "error_count": error_count,
-            "processing_seconds": round(total_seconds, 2),
-            "timings": timings,
-            "performance_log": performance_log,
-            "verified_count": verification["verified_count"],
-            "failed_count": verification["failed_count"],
-        }
     record_save_success(f"inventory upload {source_type} {work_date}")
     return {
         "ok": True,
-        "message": f"재고 반영 완료 / 출고량·최근 10영업일 평균·안전재고·재고상태 재계산 / DB 저장 검증 {verification['verified_count']:,}건",
+        "message": "재고 반영 완료",
         "count": count,
         "history_id": history.id,
         "total_rows": int(preview.get("total_rows") or 0),
@@ -3026,8 +2933,6 @@ def apply_stock_upload_preview(
         "zeroed_count": int(preview.get("zeroed_count") or 0),
         "processing_seconds": round(total_seconds, 2),
         "timings": timings,
-        "performance_log": performance_log,
-        "verified_count": verification["verified_count"],
     }
 
 

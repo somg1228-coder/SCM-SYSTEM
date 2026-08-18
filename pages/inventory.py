@@ -6,14 +6,12 @@ from io import BytesIO
 from math import ceil
 from pathlib import Path
 import re
-import time
 
 import pandas as pd
 import streamlit as st
 from sqlalchemy import delete, func, select
 
 from components.lazy_tabs import lazy_tab_selector
-from backend.perf import perf_span
 from pages import product_master as product_master_page
 
 try:
@@ -22,12 +20,11 @@ except ModuleNotFoundError:
     px = None
 
 try:
-    from backend.database import SessionLocal, init_db
+    from backend.database import SessionLocal
     from backend.models import CategoryBomItem, InventoryDaily, MaterialInventoryItem, ProductionPlan, PurchaseRequest
     from backend import services
 except (ModuleNotFoundError, RuntimeError) as exc:
     SessionLocal = None
-    init_db = None
     CategoryBomItem = None
     InventoryDaily = None
     MaterialInventoryItem = None
@@ -89,32 +86,19 @@ INVENTORY_SOURCE_TABS = ["재고조회", "입고내역", "출고내역", "대시
 
 
 def render_inventory_page() -> None:
-    with perf_span("inventory.inject_css"):
-        inject_inventory_css()
-        product_master_page.inject_product_master_css()
+    inject_inventory_css()
+    product_master_page.inject_product_master_css()
 
-    with perf_span("inventory.available_check"):
-        available = inventory_available()
-    if not available:
+    if not inventory_available():
         st.error(INVENTORY_IMPORT_ERROR or "재고관리 DB를 초기화하지 못했습니다. requirements.txt 설치 상태를 확인해주세요.")
         return
 
-    with perf_span("inventory.session_state.query_sync"):
-        sync_inventory_filter_from_query()
-    with perf_span("inventory.page_lazy_render"):
-        render_inventory_page_lazy()
+    sync_inventory_filter_from_query()
+    render_inventory_page_lazy()
 
 
 def inventory_available() -> bool:
-    if init_db is None or SessionLocal is None or services is None:
-        return False
-    try:
-        init_db(ensure_schema=False)
-    except Exception as exc:
-        global INVENTORY_IMPORT_ERROR
-        INVENTORY_IMPORT_ERROR = f"재고관리 DB 초기화 실패: {exc}"
-        return False
-    return True
+    return SessionLocal is not None and services is not None
 
 
 def render_inventory_page_lazy() -> None:
@@ -122,12 +106,9 @@ def render_inventory_page_lazy() -> None:
 
     if selected_section == "현재재고":
         source_type = INVENTORY_SOURCE_MAP[selected_source]
-        with perf_span("inventory.list_panel_render"):
-            render_inventory_list_panel()
-        with perf_span("inventory.outbound_linked_panel_render"):
-            render_outbound_history_linked_panel()
-        with perf_span("inventory.source_tabs_render", source=source_type):
-            render_source_inventory_tabs_lazy(source_type, selected_tab)
+        render_inventory_list_panel()
+        render_outbound_history_linked_panel()
+        render_source_inventory_tabs_lazy(source_type, selected_tab)
     elif selected_section == "안전재고":
         render_safe_stock_tab()
     elif selected_section == "재고이력":
@@ -143,26 +124,24 @@ def render_inventory_page_lazy() -> None:
 def render_inventory_navigation() -> tuple[str, str, str]:
     with st.container(key="inventory_nav_shell"):
         st.markdown('<div class="inventory-nav-caption">재고관리</div>', unsafe_allow_html=True)
-        with perf_span("inventory.main_section_select"):
-            selected_section = lazy_tab_selector(
-                INVENTORY_MAIN_SECTIONS,
-                "inventory_main_section",
-                default="현재재고",
-                compact=True,
-            )
+        selected_section = lazy_tab_selector(
+            INVENTORY_MAIN_SECTIONS,
+            "inventory_main_section",
+            default="현재재고",
+            compact=True,
+        )
 
         selected_source = ""
         selected_tab = ""
         if selected_section == "현재재고":
             with st.container(key="inventory_nav_source"):
                 st.markdown('<div class="inventory-nav-caption">현재재고 하위 구분</div>', unsafe_allow_html=True)
-                with perf_span("inventory.source_select"):
-                    selected_source = lazy_tab_selector(
-                        INVENTORY_CURRENT_SOURCES,
-                        "inventory_current_source",
-                        default=st.session_state.get("inventory_active_source") or "3PL",
-                        compact=True,
-                    )
+                selected_source = lazy_tab_selector(
+                    INVENTORY_CURRENT_SOURCES,
+                    "inventory_current_source",
+                    default=st.session_state.get("inventory_active_source") or "3PL",
+                    compact=True,
+                )
                 if selected_source not in INVENTORY_CURRENT_SOURCES:
                     selected_source = "3PL"
                 st.session_state["inventory_active_source"] = selected_source
@@ -170,26 +149,24 @@ def render_inventory_navigation() -> tuple[str, str, str]:
             source_type = INVENTORY_SOURCE_MAP[selected_source]
             with st.container(key="inventory_nav_detail"):
                 st.markdown(f'<div class="inventory-nav-caption">{selected_source} 메뉴</div>', unsafe_allow_html=True)
-                with perf_span("inventory.subtab_select", source=source_type):
-                    selected_tab = lazy_tab_selector(
-                        INVENTORY_SOURCE_TABS,
-                        f"inventory_{source_key(source_type)}_section",
-                        default="재고조회",
-                        compact=True,
-                    )
+                selected_tab = lazy_tab_selector(
+                    INVENTORY_SOURCE_TABS,
+                    f"inventory_{source_key(source_type)}_section",
+                    default="재고조회",
+                    compact=True,
+                )
 
     return selected_section, selected_source, selected_tab
 
 
 def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None = None) -> None:
     if not selected_tab:
-        with perf_span("inventory.subtab_select", source=source_type):
-            selected_tab = lazy_tab_selector(
-                INVENTORY_SOURCE_TABS,
-                f"inventory_{source_key(source_type)}_section",
-                default="재고조회",
-                compact=True,
-            )
+        selected_tab = lazy_tab_selector(
+            INVENTORY_SOURCE_TABS,
+            f"inventory_{source_key(source_type)}_section",
+            default="재고조회",
+            compact=True,
+        )
     if selected_tab == "재고조회":
         render_daily_tab(source_type)
     elif selected_tab == "입고내역":
@@ -721,29 +698,23 @@ def render_material_inventory_tab() -> None:
 def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
     st.markdown(f'<div class="inventory-tab-title">{source_type} 재고조회</div>', unsafe_allow_html=True)
     today = date.today()
-    with perf_span("inventory.fetch_work_dates", source=source_type):
-        saved_work_dates = fetch_work_dates(source_type)
+    saved_work_dates = fetch_work_dates(source_type)
     default_work_date = saved_work_dates[0] if saved_work_dates else today
     daily_date_key = f"{source_type}_daily_date"
     pending_daily_date_key = f"{source_type}_daily_date_sync"
-    with perf_span("inventory.daily_session_state", source=source_type):
-        if pending_daily_date_key in st.session_state:
-            st.session_state[daily_date_key] = st.session_state.pop(pending_daily_date_key)
-        elif daily_date_key not in st.session_state:
-            st.session_state[daily_date_key] = default_work_date
+    if pending_daily_date_key in st.session_state:
+        st.session_state[daily_date_key] = st.session_state.pop(pending_daily_date_key)
+    elif daily_date_key not in st.session_state:
+        st.session_state[daily_date_key] = default_work_date
     work_date = st.date_input("기준일자", value=default_work_date, key=daily_date_key)
 
-    with perf_span("inventory.fetch_master_inventory", source=source_type, work_date=work_date):
-        rows = fetch_master_inventory(source_type, work_date)
-    with perf_span("inventory.daily_dataframe", source=source_type, rows=len(rows)):
-        base_df = daily_to_editor(rows)
+    rows = fetch_master_inventory(source_type, work_date)
+    base_df = daily_to_editor(rows)
     if rows and saved_work_dates and work_date not in set(saved_work_dates):
         st.caption(f"{work_date:%Y-%m-%d} 기준 저장된 현재고가 없어 마스터 품목을 0재고로 표시합니다. 최신 저장일자는 {saved_work_dates[0]:%Y-%m-%d}입니다.")
-    with perf_span("inventory.filters_render", source=source_type, rows=len(base_df)):
-        filters = render_inventory_filters(source_type, base_df)
-    with perf_span("inventory.data_processing.filter", source=source_type, rows=len(base_df)):
-        filtered_df = apply_inventory_filters(base_df, filters)
-        paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
+    filters = render_inventory_filters(source_type, base_df)
+    filtered_df = apply_inventory_filters(base_df, filters)
+    paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
     with st.container(key=f"{source_key(source_type)}_daily_summary_metrics"):
         summary_cols = st.columns(6, gap="small")
         summary_cols[0].metric("필터 결과", f"{len(filtered_df):,}개")
@@ -834,14 +805,13 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
         payload = st.session_state.get(output_payload_key, {})
         if st.button("PDF 준비", key=f"{source_type}_daily_pdf_prepare_{work_date}", use_container_width=True):
             try:
-                with perf_span("inventory.output_pdf_build", source=source_type, rows=len(output_df)):
-                    payload = {
-                        **payload,
-                        "signature": output_signature,
-                        "pdf": inventory_pdf_bytes(output_df, source_type, work_date, output_filters),
-                        "pdf_filters": output_filters,
-                        "pdf_count": len(output_df),
-                    }
+                payload = {
+                    **payload,
+                    "signature": output_signature,
+                    "pdf": inventory_pdf_bytes(output_df, source_type, work_date, output_filters),
+                    "pdf_filters": output_filters,
+                    "pdf_count": len(output_df),
+                }
                 st.session_state[output_payload_key] = payload
             except Exception as exc:
                 st.error(f"PDF 생성 준비 중 오류가 발생했습니다: {exc}")
@@ -859,14 +829,13 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
     with action_cols[4]:
         payload = st.session_state.get(output_payload_key, {})
         if st.button("엑셀 준비", key=f"{source_type}_daily_excel_prepare_{work_date}", use_container_width=True):
-            with perf_span("inventory.output_excel_build", source=source_type, rows=len(output_df)):
-                payload = {
-                    **payload,
-                    "signature": output_signature,
-                    "excel": dataframe_to_excel(output_df),
-                    "excel_filters": output_filters,
-                    "excel_count": len(output_df),
-                }
+            payload = {
+                **payload,
+                "signature": output_signature,
+                "excel": dataframe_to_excel(output_df),
+                "excel_filters": output_filters,
+                "excel_count": len(output_df),
+            }
             st.session_state[output_payload_key] = payload
         if isinstance(payload, dict) and payload.get("excel"):
             st.download_button(
@@ -1315,7 +1284,6 @@ def fetch_master_inventory(source_type: str, work_date: date) -> list[dict]:
 def clear_inventory_data_caches() -> None:
     cached_fetch_work_dates.clear()
     cached_fetch_master_inventory.clear()
-    st.cache_data.clear()
 
 
 def fetch_master_category_options(source_type: str, df: pd.DataFrame) -> list[str]:
@@ -1677,21 +1645,20 @@ def inventory_status_output_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def render_inventory_visible_table(df: pd.DataFrame, height: int = 520) -> None:
-    with perf_span("inventory.table_render", rows=0 if df is None else len(df), height=height):
-        if df is None or df.empty:
-            st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
-            return
-        safe_df = inventory_status_output_dataframe(df).fillna("").copy()
-        for column in safe_df.columns:
-            safe_df[column] = safe_df[column].map(lambda value: value.isoformat() if hasattr(value, "isoformat") else value)
-        html = inventory_visible_table_html(safe_df)
-        render_inventory_html(
-            f"""
-            <div class="inventory-visible-table-wrap" style="max-height:{int(height)}px;">
-                {html}
-            </div>
-            """
-        )
+    if df is None or df.empty:
+        st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
+        return
+    safe_df = inventory_status_output_dataframe(df).fillna("").copy()
+    for column in safe_df.columns:
+        safe_df[column] = safe_df[column].map(lambda value: value.isoformat() if hasattr(value, "isoformat") else value)
+    html = inventory_visible_table_html(safe_df)
+    render_inventory_html(
+        f"""
+        <div class="inventory-visible-table-wrap" style="max-height:{int(height)}px;">
+            {html}
+        </div>
+        """
+    )
 
 
 def inventory_status_badge_html(value: str) -> str:
@@ -4810,64 +4777,24 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
     total_pages = max(ceil(len(filtered_df) / int(page_size or 50)), 1)
     current_page = min(max(int(st.session_state.get(page_key, 1) or 1), 1), total_pages)
     st.session_state[page_key] = current_page
-    render_probe_started_at = time.perf_counter()
     start = (current_page - 1) * int(page_size)
     page_df = filtered_df.iloc[start : start + int(page_size)].reset_index(drop=True)
-    paged_ready_seconds = time.perf_counter() - render_probe_started_at
-    editor_prepare_started_at = time.perf_counter()
     editor_df = page_df.drop(columns=["_changed"], errors="ignore").reset_index(drop=True)
     editor_visible_columns = ["SKU", "바코드", "상품명", "카테고리", "보관위치", "업체명", "현재고", "증감수량", "비고"]
     editor_df = editor_df[[column for column in [*editor_visible_columns, "_base_stock"] if column in editor_df.columns]]
-    editor_ready_seconds = time.perf_counter() - editor_prepare_started_at
     st.caption(f"데이터 흐름: 전체 {len(full_df):,}건 · 필터 {len(filtered_df):,}건 · 페이지 {len(page_df):,}건 · 편집표 {len(editor_df):,}건")
-    st.caption(
-        "렌더링 점검: "
-        f"paged_df ready {paged_ready_seconds:.3f}s · "
-        f"editor_df ready {editor_ready_seconds:.3f}s · "
-        "st.data_editor 비활성화, st.dataframe 경로"
-    )
 
     if page_df.empty:
         st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
     else:
         display_df = editor_df.drop(columns=["_base_stock"], errors="ignore")
-        dataframe_started_at = time.perf_counter()
         try:
-            st.caption("before st.dataframe")
             st.dataframe(
                 display_df,
                 use_container_width=True,
                 hide_index=True,
             )
-            dataframe_render_seconds = time.perf_counter() - dataframe_started_at
-            st.caption(f"after st.dataframe {dataframe_render_seconds:.3f}s")
-            services.log_inventory_render_performance(
-                source_type,
-                work_date,
-                {
-                    "stock_registration_paged_df_ready": round(paged_ready_seconds, 4),
-                    "stock_registration_editor_df_ready": round(editor_ready_seconds, 4),
-                    "stock_registration_dataframe_render": round(dataframe_render_seconds, 4),
-                },
-                paged_ready_seconds + editor_ready_seconds + dataframe_render_seconds,
-                row_count=len(display_df),
-                query_count=0,
-                context="stock_registration.dataframe_probe",
-            )
-        except Exception as exc:
-            services.log_inventory_render_performance(
-                source_type,
-                work_date,
-                {
-                    "stock_registration_full_rows": float(len(full_df)),
-                    "stock_registration_filtered_rows": float(len(filtered_df)),
-                    "stock_registration_page_rows": float(len(page_df)),
-                },
-                0.0,
-                row_count=len(page_df),
-                query_count=0,
-                context=f"stock_registration.dataframe_error: {type(exc).__name__}: {exc}",
-            )
+        except Exception:
             st.error("재고 데이터를 불러오는 중 오류가 발생했습니다.")
             return False
         st.info("직접 셀 수정은 렌더링 안정화 점검 중이라 잠시 비활성화했습니다. 수정양식 다운로드/업로드로 재고 변경은 계속 처리할 수 있습니다.")
@@ -5014,12 +4941,6 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
 
 
 def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
-    render_started_at = time.perf_counter()
-    render_timings: dict[str, float] = {}
-
-    def mark_render_stage(name: str, started_at: float) -> None:
-        render_timings[name] = round(time.perf_counter() - started_at, 4)
-
     today = date.today()
     saved_work_dates = fetch_work_dates(source_type)
     default_work_date = saved_work_dates[0] if saved_work_dates else today
@@ -5037,26 +4958,15 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
         )
 
     work_date = render_inventory_update_panel(source_type, daily_date_key)
-    render_timings["erp_save_complete"] = 0.0
 
-    stage_started_at = time.perf_counter()
     rows = fetch_master_inventory(source_type, work_date)
-    mark_render_stage("inventory_data_load_total", stage_started_at)
-
-    stage_started_at = time.perf_counter()
     base_df = daily_to_editor(rows)
-    mark_render_stage("dataframe_creation", stage_started_at)
 
     render_stock_registration_panel(source_type, work_date, rows)
 
-    stage_started_at = time.perf_counter()
     filters = render_inventory_filters(source_type, base_df)
-    mark_render_stage("filter_rendering", stage_started_at)
-
-    stage_started_at = time.perf_counter()
     filtered_df = apply_inventory_filters(base_df, filters)
     paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
-    mark_render_stage("filtering_pagination", stage_started_at)
 
     upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
     preview_df_key = f"{source_type}_inventory_preview_df_{work_date.isoformat()}"
@@ -5065,7 +4975,6 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
     output_payload_key = f"{source_type}_daily_output_payload_{work_date.isoformat()}"
     output_scope_key = f"{source_type}_daily_download_scope_{work_date}"
 
-    stage_started_at = time.perf_counter()
     status_series = filtered_df.get("재고상태", pd.Series(dtype=str))
     render_inventory_kpi_cards(
         [
@@ -5077,7 +4986,6 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
             ("미집계", int((status_series == "미집계").sum()), "items", "unknown"),
         ]
     )
-    mark_render_stage("summary_card_calculation", stage_started_at)
 
     with st.container(key=f"{source_key(source_type)}_inventory_table_actions"):
         toolbar_title, toolbar_scope, toolbar_pdf, toolbar_excel = st.columns([3.8, 1.15, 0.78, 0.78], gap="small")
@@ -5101,7 +5009,6 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
             payload = {}
         with toolbar_pdf:
             if st.button("PDF", key=f"{source_type}_daily_pdf_prepare_{work_date}", use_container_width=True):
-                stage_started_at = time.perf_counter()
                 output_df = inventory_status_output_dataframe(output_source_df.drop(columns=["선택"], errors="ignore"))
                 payload = {
                     **payload,
@@ -5109,13 +5016,11 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
                     "pdf": inventory_pdf_bytes(output_df, source_type, work_date, output_filters),
                     "pdf_count": len(output_df),
                 }
-                mark_render_stage("pdf_data_generation", stage_started_at)
                 st.session_state[output_payload_key] = payload
             if isinstance(payload, dict) and payload.get("pdf"):
                 st.download_button("PDF 저장", data=payload["pdf"], file_name=f"{source_type}_inventory_{work_date:%Y%m%d}.pdf", mime="application/pdf", use_container_width=True, key=f"{source_type}_daily_pdf_download_{work_date}")
         with toolbar_excel:
             if st.button("Excel", key=f"{source_type}_daily_excel_prepare_{work_date}", use_container_width=True):
-                stage_started_at = time.perf_counter()
                 output_df = inventory_status_output_dataframe(output_source_df.drop(columns=["선택"], errors="ignore"))
                 payload = {
                     **payload,
@@ -5123,7 +5028,6 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
                     "excel": dataframe_to_excel(output_df),
                     "excel_count": len(output_df),
                 }
-                mark_render_stage("excel_data_generation", stage_started_at)
                 st.session_state[output_payload_key] = payload
             if isinstance(payload, dict) and payload.get("excel"):
                 st.download_button("Excel 저장", data=payload["excel"], file_name=f"{source_type}_inventory_{work_date:%Y%m%d}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key=f"{source_type}_daily_download_{work_date}")
@@ -5136,9 +5040,7 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
                 st.rerun()
     else:
         with st.container(key=f"{source_key(source_type)}_inventory_table_panel"):
-            table_started_at = time.perf_counter()
             render_inventory_visible_table(paged_df.drop(columns=["선택"], errors="ignore"), height=520)
-            mark_render_stage("table_rendering", table_started_at)
             nav_prev, nav_info, nav_next, spacer = st.columns([0.8, 1, 0.8, 4.6], gap="small")
             filter_key = source_key(source_type)
             with nav_prev:
@@ -5153,19 +5055,6 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
                     st.rerun()
             with spacer:
                 st.empty()
-
-    render_timings.setdefault("pdf_data_generation", 0.0)
-    render_timings.setdefault("excel_data_generation", 0.0)
-    render_timings.setdefault("table_rendering", 0.0)
-    services.log_inventory_render_performance(
-        source_type,
-        work_date,
-        render_timings,
-        time.perf_counter() - render_started_at,
-        row_count=len(base_df),
-        query_count=0,
-        context="page.render_daily_tab",
-    )
 
 
 def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, filters: dict) -> bytes:
@@ -5252,9 +5141,6 @@ def render_stock_upload_apply_result(outcome: dict | None, excluded_df: pd.DataF
     metric_cols[3].metric("중복", f"{int(outcome.get('duplicate_count') or 0):,}건")
     metric_cols[4].metric("오류", f"{int(outcome.get('error_count') or 0):,}건")
     metric_cols[5].metric("처리시간", f"{float(outcome.get('processing_seconds') or 0):,.1f}초")
-    if outcome.get("performance_log"):
-        with st.expander("처리시간 상세 로그", expanded=False):
-            st.code(outcome["performance_log"], language="text")
     if isinstance(excluded_df, pd.DataFrame) and not excluded_df.empty:
         with st.expander(f"미매칭/중복/오류 {len(excluded_df):,}건 확인", expanded=False):
             render_inventory_visible_table(excluded_df, height=260)

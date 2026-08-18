@@ -1,28 +1,21 @@
-import time as _app_import_timer
-_APP_IMPORT_STARTED_AT = _app_import_timer.perf_counter()
-
 from pathlib import Path
 import importlib
 import logging
-import time
 import traceback
 
 import streamlit as st
 
 from components.header import render_header
 from components import sidebar as sidebar_component
-from backend.perf import log_perf, perf_span, record_perf_event, start_streamlit_run, summarize_current_run
 
 
 BASE_DIR = Path(__file__).parent
 APP_ERROR_LOG_PATH = BASE_DIR / "data" / "app_error.log"
-APP_ROUTING_LOG_PATH = BASE_DIR / "data" / "app_routing.log"
 
 
 def import_page_module(module_name: str, label: str):
     try:
-        with perf_span("import_page_module", module=module_name, label=label):
-            return importlib.import_module(module_name)
+        return importlib.import_module(module_name)
     except Exception as exc:
         log_app_exception(exc)
         st.error(f"{label} 화면을 불러오지 못했습니다. 배포 로그와 아래 오류를 확인해주세요.")
@@ -31,12 +24,7 @@ def import_page_module(module_name: str, label: str):
 
 
 def log_route_event(message: str) -> None:
-    try:
-        APP_ROUTING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with APP_ROUTING_LOG_PATH.open("a", encoding="utf-8") as handle:
-            handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
-    except Exception:
-        pass
+    return
 
 
 def log_app_exception(exc: BaseException) -> None:
@@ -77,7 +65,6 @@ def run_sqlite_bootstrap_migration() -> None:
     if supabase_enabled:
         st.session_state["sqlite_bootstrap_migration_checked"] = True
         st.session_state["sqlite_bootstrap_migration_result"] = {"ok": True, "skipped": True, "reason": "supabase-production-skip"}
-        log_perf("sqlite_bootstrap_migration SKIP reason=supabase-production")
         return
 
     if st.session_state.get("sqlite_bootstrap_migration_checked"):
@@ -263,73 +250,35 @@ def render_page(page: str) -> None:
     st.session_state["page"] = page
     st.session_state["selected_menu"] = page
     st.session_state["current_page"] = page
-    route_context = (
-        f"page={page!r} selected_menu={st.session_state.get('selected_menu')!r} "
-        f"current_page={st.session_state.get('current_page')!r}"
-    )
-    log_route_event(f"render_page_start {route_context}")
-    log_perf(f"{page} START")
-    try:
-        from backend.database import begin_page_query_profile
-
-        begin_page_query_profile(page)
-    except Exception:
-        pass
-    started_at = time.perf_counter()
     try:
         if page in {"홈", "대시보드"}:
-            log_route_event("call render_home")
             render_home()
         elif page == "일정관리":
-            log_route_event("call render_schedule")
             render_schedule()
         elif page == "회의자료":
-            log_route_event("call render_meeting")
             render_meeting()
         elif page == "반품/AS 관리":
-            log_route_event("call render_return_as")
             render_return_as()
         elif page == "재고관리":
-            log_route_event("call render_inventory")
             render_inventory()
         elif page in {"구매관리", "발주관리"}:
-            log_route_event("call render_order")
             render_order()
         elif page == "BOM 관리":
-            log_route_event("call render_bom")
             render_bom()
         elif page == "3D 창고관리":
-            log_route_event("call render_warehouse_3d")
             render_warehouse_3d()
         elif page == "업무가이드":
-            log_route_event("call render_guide")
             render_guide()
         elif page == "자료실":
-            log_route_event("call render_files")
             render_files()
         elif page == "관리자":
-            log_route_event("call render_settings")
             render_settings()
         else:
-            log_route_event(f"unknown_page_fallback {page!r}")
             render_home()
     except Exception as exc:
         log_app_exception(exc)
-        log_route_event(f"render_page_error {page!r} {type(exc).__name__}: {exc}")
         st.error(f"{page} 화면 렌더링 중 오류가 발생했습니다.")
         st.exception(exc)
-    finally:
-        elapsed = time.perf_counter() - started_at
-        st.session_state["last_page_render_seconds"] = round(elapsed, 3)
-        record_perf_event("page_render_total", elapsed, page=page)
-        try:
-            from backend.database import finish_page_query_profile
-
-            finish_page_query_profile(page, elapsed)
-        except Exception:
-            pass
-        log_perf(f"{page} TOTAL: {elapsed:.3f}s")
-        log_route_event(f"render_page_done {page!r} seconds={elapsed:.3f}")
 
 
 def inject_route_transition_cleanup(page: str) -> None:
@@ -415,39 +364,23 @@ def sync_query_params_to_state() -> None:
 
 
 def main() -> None:
-    started_at = time.perf_counter()
     st.set_page_config(
         page_title="SCM SYSTEM",
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    start_streamlit_run(str(st.session_state.get("current_page") or st.session_state.get("selected_menu") or "unknown"))
-    record_perf_event("app_import", time.perf_counter() - _APP_IMPORT_STARTED_AT)
-    with perf_span("load_css"):
-        load_css()
-    with perf_span("sqlite_bootstrap_migration"):
-        run_sqlite_bootstrap_migration()
-    with perf_span("sync_query_params"):
-        sync_query_params_to_state()
+    load_css()
+    sync_query_params_to_state()
 
-    with perf_span("sidebar_render"):
-        page = sidebar_component.render_sidebar()
+    page = sidebar_component.render_sidebar()
     st.session_state["page"] = page
     st.session_state["selected_menu"] = page
     st.session_state["current_page"] = page
-    log_perf(f"{st.session_state.get('perf_run_id')} selected_page={page}")
     inject_route_transition_cleanup(page)
 
     if page != "반품/AS 관리":
-        with perf_span("header_render", page=page):
-            render_header(page)
-    with perf_span("route_render", page=page):
-        render_page(page)
-    total_elapsed = time.perf_counter() - started_at
-    st.session_state["last_app_render_seconds"] = round(total_elapsed, 3)
-    record_perf_event("app_render_total", total_elapsed, page=page)
-    summarize_current_run(total_elapsed, page=page)
-    log_perf(f"{st.session_state.get('perf_run_id')} APP TOTAL: {total_elapsed:.3f}s page={page}")
+        render_header(page)
+    render_page(page)
 
 
 if __name__ == "__main__":

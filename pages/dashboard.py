@@ -1,30 +1,26 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from datetime import date, timedelta
 from html import escape
 import math
 from pathlib import Path
 import sqlite3
-import time
 from urllib.parse import urlencode
 
 import pandas as pd
 import streamlit as st
 
 from sqlalchemy import case, func, select
-from backend.perf import perf_span, record_perf_event
 
 try:
     from backend.legacy_storage import connect_sqlite_compatible, legacy_store_available
-    from backend.database import SessionLocal, init_db
+    from backend.database import SessionLocal
     from backend import services
     from backend.models import CategoryBomItem, InventoryDaily, InventoryInbound, ProductionPlan, PurchaseOrder, PurchaseRequest, RfqQuote
 except (ModuleNotFoundError, RuntimeError) as exc:
     connect_sqlite_compatible = None
     legacy_store_available = None
     SessionLocal = None
-    init_db = None
     services = None
     CategoryBomItem = None
     InventoryDaily = None
@@ -46,50 +42,6 @@ PO_INBOUND_DONE = "입고완료"
 PO_INBOUND_WAITING_STATUSES = ["입고대기", "부분입고"]
 PO_PROGRESS_DONE = "발주완료"
 PO_PROGRESS_CANCELED = "취소"
-DASHBOARD_QUERY_CATALOG = {
-    "inventory_latest_work_date": {
-        "table": "inventory_daily",
-        "columns": "max(work_date)",
-        "filter": "-",
-        "purpose": "대시보드 기준 재고 일자",
-        "reusable": True,
-    },
-    "inventory_kpi_summary": {
-        "table": "inventory_daily",
-        "columns": "count, stock sums, inbound/outbound sums, safety flags",
-        "filter": "work_date = latest",
-        "purpose": "상단 KPI 및 재고 위험 통계",
-        "reusable": True,
-    },
-    "inventory_source_group": {
-        "table": "inventory_daily",
-        "columns": "source_type, stock sums, safety flags",
-        "filter": "work_date = latest GROUP BY source_type",
-        "purpose": "재고처별 현황 차트",
-        "reusable": True,
-    },
-    "purchase_snapshot": {
-        "table": "purchase_requests, rfq_quotes, purchase_orders",
-        "columns": "PR count/amount, RFQ count, PO status/month aggregates",
-        "filter": "PO order_date <= work_date OR NULL",
-        "purpose": "구매 KPI 및 진행 현황",
-        "reusable": True,
-    },
-    "purchase_recent_po_5": {
-        "table": "purchase_orders",
-        "columns": "id, po_number, supplier_name, item_name, quantity, inbound/progress dates/status",
-        "filter": "ORDER BY updated_at/order_date/id DESC LIMIT 5",
-        "purpose": "최근 발주/입고 테이블",
-        "reusable": False,
-    },
-    "production_week_rows": {
-        "table": "production_plans",
-        "columns": "id, product_name, plan_qty, due_date, status",
-        "filter": "current week, status != 취소, plan_qty > 0",
-        "purpose": "주간 일정 및 핵심업무 생산 항목",
-        "reusable": True,
-    },
-}
 
 
 def render_html(markup: str) -> None:
@@ -99,122 +51,8 @@ def render_html(markup: str) -> None:
         st.markdown(markup, unsafe_allow_html=True)
 
 
-def log_dashboard_event(message: str) -> None:
-    try:
-        log_path = BASE_DIR / "data" / "dashboard_perf.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
-    except Exception:
-        pass
-
-
-def dashboard_result_size(value) -> str:
-    if isinstance(value, dict):
-        parts = []
-        for key, item in value.items():
-            if isinstance(item, (list, tuple, set)):
-                parts.append(f"{key}={len(item)}")
-        return ", ".join(parts) if parts else f"keys={len(value)}"
-    if isinstance(value, (list, tuple, set)):
-        return f"rows={len(value)}"
-    return type(value).__name__
-
-
-def timed_dashboard_step(name: str, action):
-    started_at = time.perf_counter()
-    log_dashboard_event(f"{name} start")
-    try:
-        result = action()
-        elapsed = time.perf_counter() - started_at
-        log_dashboard_event(f"{name} done seconds={elapsed:.3f} {dashboard_result_size(result)}")
-        record_perf_event(f"dashboard.{name}", elapsed, result=dashboard_result_size(result))
-        return result
-    except Exception as exc:
-        elapsed = time.perf_counter() - started_at
-        log_dashboard_event(f"{name} error seconds={elapsed:.3f} {type(exc).__name__}: {exc}")
-        record_perf_event(f"dashboard.{name}", elapsed, success=False, error=str(exc))
-        raise
-
-
-def dashboard_query_result_size(value) -> str:
-    if isinstance(value, list):
-        return f"rows={len(value)}"
-    if hasattr(value, "__len__") and not isinstance(value, (str, bytes, dict)):
-        try:
-            return f"rows={len(value)}"
-        except TypeError:
-            pass
-    return type(value).__name__
-
-
-def dashboard_statement_preview(statement) -> str:
-    try:
-        text = " ".join(str(statement.compile(compile_kwargs={"literal_binds": False})).split())
-    except Exception:
-        text = " ".join(str(statement).split())
-    if len(text) > 360:
-        return f"{text[:357]}..."
-    return text
-
-
-def dashboard_table_set(table_text: str) -> set[str]:
-    return {part.strip() for part in str(table_text or "").split(",") if part.strip()}
-
-
-def record_dashboard_query_metadata(metrics: dict, label: str, elapsed: float, result_size: str, statement) -> None:
-    catalog = DASHBOARD_QUERY_CATALOG.get(label, {})
-    queries = metrics.setdefault("queries", [])
-    table = str(catalog.get("table") or "")
-    table_set = dashboard_table_set(table)
-    duplicate_table = bool(
-        table_set
-        and any(table_set.intersection(dashboard_table_set(str(item.get("table") or ""))) for item in queries)
-    )
-    query_row = {
-        "label": label,
-        "table": table,
-        "columns": catalog.get("columns", ""),
-        "filter": catalog.get("filter", ""),
-        "purpose": catalog.get("purpose", ""),
-        "elapsed_seconds": round(float(elapsed or 0.0), 4),
-        "result": result_size,
-        "duplicate_table": duplicate_table,
-        "reusable": bool(catalog.get("reusable", False)),
-        "statement": dashboard_statement_preview(statement),
-    }
-    queries.append(query_row)
-    log_dashboard_event(
-        "api_call "
-        f"label={label} table={query_row['table']} columns={query_row['columns']} "
-        f"filter={query_row['filter']} purpose={query_row['purpose']} "
-        f"elapsed={elapsed:.3f}s duplicate_table={duplicate_table} reusable={query_row['reusable']}"
-    )
-
-
-def record_dashboard_stage_skip(metrics: dict, name: str, reason: str) -> None:
-    metrics.setdefault("stages", []).append({"stage": name, "elapsed_seconds": 0.0, "skipped": True, "reason": reason})
-    log_dashboard_event(f"{name} skipped reason={reason}")
-    record_perf_event(f"dashboard.{name}", 0.0, skipped=True, reason=reason)
-
-
-@contextmanager
-def dashboard_stage(metrics: dict, name: str):
-    started_at = time.perf_counter()
-    log_dashboard_event(f"{name} start")
-    try:
-        yield
-    finally:
-        elapsed = time.perf_counter() - started_at
-        metrics.setdefault("stages", []).append({"stage": name, "elapsed_seconds": round(elapsed, 4)})
-        log_dashboard_event(f"{name} done seconds={elapsed:.3f}")
-        record_perf_event(f"dashboard.{name}", elapsed)
-
-
 def dashboard_query(metrics: dict, db, label: str, statement, mode: str = "all"):
-    started_at = time.perf_counter()
     metrics["count"] = int(metrics.get("count", 0)) + 1
-    log_dashboard_event(f"sql {label} start")
     result = db.execute(statement)
     if mode == "one":
         value = result.one()
@@ -224,119 +62,52 @@ def dashboard_query(metrics: dict, db, label: str, statement, mode: str = "all")
         value = list(result.scalars())
     else:
         value = result.all()
-    elapsed = time.perf_counter() - started_at
-    metrics["seconds"] = float(metrics.get("seconds", 0.0)) + elapsed
-    result_size = dashboard_query_result_size(value)
-    record_dashboard_query_metadata(metrics, label, elapsed, result_size, statement)
-    log_dashboard_event(f"sql {label} done seconds={elapsed:.3f} {result_size}")
-    record_perf_event("dashboard.sql", elapsed, label=label, result=result_size)
     return value
 
 
-def dashboard_top_slowest(items: list[dict], limit: int = 10) -> list[dict]:
-    return sorted(items, key=lambda item: float(item.get("elapsed_seconds", 0.0) or 0.0), reverse=True)[:limit]
-
-
-def log_dashboard_perf_summary(dashboard_data: dict, render_stages: list[dict] | None = None) -> None:
-    stage_rows = list(dashboard_data.get("stage_timings", []))
-    if render_stages:
-        stage_rows.extend(render_stages)
-    queries = list(dashboard_data.get("api_calls", []))
-    slowest = dashboard_top_slowest([*stage_rows, *queries], 10)
-    log_dashboard_event(
-        "[PERF] SUMMARY "
-        f"dashboard TOTAL={dashboard_data.get('total_seconds', 0.0)}s "
-        f"DB={dashboard_data.get('db_seconds', 0.0)}s API calls={dashboard_data.get('db_call_count', 0)}"
-    )
-    for index, item in enumerate(slowest, start=1):
-        label = item.get("stage") or item.get("label") or "-"
-        log_dashboard_event(f"[PERF] TOP{index} {label} elapsed={float(item.get('elapsed_seconds', 0.0) or 0.0):.3f}s")
-    for index, query in enumerate(queries, start=1):
-        log_dashboard_event(
-            "[API] "
-            f"{index}. label={query.get('label')} table={query.get('table')} "
-            f"columns={query.get('columns')} filter={query.get('filter')} "
-            f"purpose={query.get('purpose')} elapsed={query.get('elapsed_seconds')}s "
-            f"duplicate_table={query.get('duplicate_table')} reusable={query.get('reusable')}"
-        )
-
-
-def log_dashboard_cache_status(dashboard_data: dict, trend_days: int) -> None:
-    cache_token = dashboard_data.get("cache_created_at")
-    cache_key = f"trend_days={trend_days}|created_at={cache_token}"
-    previous_key = st.session_state.get("dashboard_data_cache_key")
-    status = "HIT" if previous_key == cache_key else "MISS"
-    st.session_state["dashboard_data_cache_key"] = cache_key
-    log_dashboard_event(f"cache {status} key={cache_key}")
-    record_perf_event("dashboard.cache", 0.0, status=status, key=cache_key)
-
-
 def render_dashboard() -> None:
-    log_dashboard_event("render_dashboard start")
-    with perf_span("dashboard.purchase_trend_param"):
-        trend_days = dashboard_purchase_trend_days()
-    dashboard_data = timed_dashboard_step("dashboard_data", lambda: get_dashboard_data(trend_days))
-    log_dashboard_cache_status(dashboard_data, trend_days)
+    trend_days = dashboard_purchase_trend_days()
+    dashboard_data = get_dashboard_data(trend_days)
     inventory_summary = dashboard_data.get("inventory_summary", {})
     work_date = inventory_summary.get("work_date") or date.today()
     purchase_summary = dashboard_data.get("purchase_summary", {})
     core_tasks_summary = dashboard_data.get("core_tasks_summary", {})
     return_case_summary = dashboard_data.get("return_case_summary", {})
     weekly_markup = dashboard_data.get("weekly_markup") or weekly_schedule_html()
-    log_dashboard_event(
-        "dashboard_data metrics "
-        f"db_calls={dashboard_data.get('db_call_count', 0)} "
-        f"db_seconds={float(dashboard_data.get('db_seconds', 0.0)):.3f}"
+    kpi_markup = kpi_cards_html(inventory_summary, purchase_summary)
+    status_grid_markup = issue_donut_html(
+        return_case_summary.get("category_rows", []),
+        return_case_summary.get("total_count", 0),
+        return_case_summary.get("monthly_rows", []),
+        return_case_summary.get("year", date.today().year),
     )
-    log_dashboard_event("dashboard_html render start")
-    render_metrics = {"stages": []}
-    with dashboard_stage(render_metrics, "cards_render"):
-        kpi_markup = kpi_cards_html(inventory_summary, purchase_summary)
-    with dashboard_stage(render_metrics, "charts_render"):
-        status_grid_markup = issue_donut_html(
-            return_case_summary.get("category_rows", []),
-            return_case_summary.get("total_count", 0),
-            return_case_summary.get("monthly_rows", []),
-            return_case_summary.get("year", date.today().year),
-        )
-        warehouse_markup = warehouse_status_html(inventory_summary.get("source_status", []))
-    with dashboard_stage(render_metrics, "tables_render"):
-        recent_orders_markup = recent_orders_html(purchase_summary.get("recent_po_inbound", []))
-        purchase_progress_markup = purchase_progress_html(purchase_summary.get("progress_rows", []))
-        core_tasks_markup = schedule_core_tasks_html(core_tasks_summary)
-    with dashboard_stage(render_metrics, "html_build"):
-        markup = f"""
-            <main class="dashboard-shell">
-                {weekly_markup}
-                {kpi_markup}
-                <section class="dashboard-middle-grid">
-                    {status_grid_markup}
-                    {recent_orders_markup}
-                    {core_tasks_markup}
-                </section>
-                <section class="dashboard-bottom-grid">
-                    {warehouse_markup}
-                    {purchase_progress_markup}
-                </section>
-            </main>
-            """
-    with dashboard_stage(render_metrics, "html_render"):
-        render_html(markup)
-    log_dashboard_perf_summary(dashboard_data, render_metrics.get("stages", []))
-    log_dashboard_event("render_dashboard done")
+    warehouse_markup = warehouse_status_html(inventory_summary.get("source_status", []))
+    recent_orders_markup = recent_orders_html(purchase_summary.get("recent_po_inbound", []))
+    purchase_progress_markup = purchase_progress_html(purchase_summary.get("progress_rows", []))
+    core_tasks_markup = schedule_core_tasks_html(core_tasks_summary)
+    markup = f"""
+        <main class="dashboard-shell">
+            {weekly_markup}
+            {kpi_markup}
+            <section class="dashboard-middle-grid">
+                {status_grid_markup}
+                {recent_orders_markup}
+                {core_tasks_markup}
+            </section>
+            <section class="dashboard-bottom-grid">
+                {warehouse_markup}
+                {purchase_progress_markup}
+            </section>
+        </main>
+        """
+    render_html(markup)
 
 
 def dashboard_available() -> bool:
     global _DASHBOARD_READY
     if _DASHBOARD_READY:
         return True
-    if init_db is None or SessionLocal is None or services is None:
-        return False
-    try:
-        init_db(ensure_schema=False)
-    except Exception as exc:
-        global DASHBOARD_IMPORT_ERROR
-        DASHBOARD_IMPORT_ERROR = f"재고관리 DB 초기화 실패: {exc}"
+    if SessionLocal is None or services is None:
         return False
     _DASHBOARD_READY = True
     return True
@@ -397,7 +168,6 @@ def default_return_case_summary(work_date: date) -> dict:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_dashboard_data(trend_days: int = 7) -> dict:
-    started_at = time.perf_counter()
     metrics = {"count": 0, "seconds": 0.0, "queries": [], "stages": []}
     inventory_summary = default_inventory_summary()
     purchase_summary = default_purchase_summary(trend_days)
@@ -417,38 +187,21 @@ def get_dashboard_data(trend_days: int = 7) -> dict:
             "api_calls": [],
             "stage_timings": [],
             "total_seconds": 0.0,
-            "cache_created_at": started_at,
         }
 
-    with dashboard_stage(metrics, "db_session_and_payload"):
-        db = SessionLocal()
-        try:
-            payload = build_dashboard_data_payload(db, trend_days, metrics)
-        finally:
-            db.close()
+    db = SessionLocal()
+    try:
+        payload = build_dashboard_data_payload(db, trend_days, metrics)
+    finally:
+        db.close()
 
-    with dashboard_stage(metrics, "data_processing.merge_payload"):
-        inventory_summary = {**inventory_summary, **payload.get("inventory_summary", {})}
-        work_date = inventory_summary.get("work_date") or date.today()
-    with dashboard_stage(metrics, "return_case_issue_summary"):
-        return_case_summary = get_return_case_issue_summary(work_date)
-    with dashboard_stage(metrics, "schedule_processing"):
-        inventory_summary["return_as_count"] = 0
-        core_tasks_summary = build_core_tasks_summary_from_schedule(payload.get("production_rows", []))
-        weekly_markup = build_weekly_schedule_html_from_production(payload.get("production_rows", []))
-    with dashboard_stage(metrics, "purchase_summary_merge"):
-        purchase_summary = {**purchase_summary, **payload.get("purchase_summary", {})}
-    elapsed = time.perf_counter() - started_at
-    slowest = dashboard_top_slowest([*metrics.get("stages", []), *metrics.get("queries", [])], 10)
-    log_dashboard_event(
-        f"dashboard_payload done seconds={elapsed:.3f} "
-        f"db_calls={metrics['count']} db_seconds={metrics['seconds']:.3f}"
-    )
-    for index, item in enumerate(slowest, start=1):
-        log_dashboard_event(
-            f"dashboard_payload top{index} name={item.get('stage') or item.get('label')} "
-            f"seconds={float(item.get('elapsed_seconds', 0.0) or 0.0):.3f}"
-        )
+    inventory_summary = {**inventory_summary, **payload.get("inventory_summary", {})}
+    work_date = inventory_summary.get("work_date") or date.today()
+    return_case_summary = get_return_case_issue_summary(work_date)
+    inventory_summary["return_as_count"] = 0
+    core_tasks_summary = build_core_tasks_summary_from_schedule(payload.get("production_rows", []))
+    weekly_markup = build_weekly_schedule_html_from_production(payload.get("production_rows", []))
+    purchase_summary = {**purchase_summary, **payload.get("purchase_summary", {})}
     return {
         "inventory_summary": inventory_summary,
         "purchase_summary": purchase_summary,
@@ -459,40 +212,33 @@ def get_dashboard_data(trend_days: int = 7) -> dict:
         "db_seconds": round(metrics["seconds"], 3),
         "api_calls": metrics.get("queries", []),
         "stage_timings": metrics.get("stages", []),
-        "total_seconds": round(elapsed, 3),
-        "cache_created_at": started_at,
+        "total_seconds": 0.0,
     }
 
 
 def build_dashboard_data_payload(db, trend_days: int, metrics: dict) -> dict:
-    record_dashboard_stage_skip(metrics, "load_product_master", "dashboard does not need product master rows")
-    with dashboard_stage(metrics, "load_inventory"):
-        work_date = dashboard_query(metrics, db, "inventory_latest_work_date", select(func.max(InventoryDaily.work_date)), "scalar") or date.today()
-        inventory_summary = build_dashboard_inventory_summary_optimized(db, work_date, metrics)
-    record_dashboard_stage_skip(metrics, "load_inbound", "inbound KPI is aggregated from inventory_daily")
-    record_dashboard_stage_skip(metrics, "load_outbound", "outbound KPI is aggregated from inventory_daily")
-    with dashboard_stage(metrics, "load_purchase"):
-        purchase_summary = build_dashboard_purchase_summary_optimized(db, work_date, trend_days, metrics)
-    with dashboard_stage(metrics, "load_production"):
-        production_rows = dashboard_query(
-            metrics,
-            db,
-            "production_week_rows",
-            select(
-                ProductionPlan.id,
-                ProductionPlan.product_name,
-                ProductionPlan.plan_qty,
-                ProductionPlan.due_date,
-                ProductionPlan.status,
-            )
-            .where(
-                ProductionPlan.due_date >= week_start_date(work_date),
-                ProductionPlan.due_date <= week_start_date(work_date) + timedelta(days=6),
-                ProductionPlan.status != "취소",
-                ProductionPlan.plan_qty > 0,
-            )
-            .order_by(ProductionPlan.due_date, ProductionPlan.id),
-        ) if ProductionPlan is not None else []
+    work_date = dashboard_query(metrics, db, "inventory_latest_work_date", select(func.max(InventoryDaily.work_date)), "scalar") or date.today()
+    inventory_summary = build_dashboard_inventory_summary_optimized(db, work_date, metrics)
+    purchase_summary = build_dashboard_purchase_summary_optimized(db, work_date, trend_days, metrics)
+    production_rows = dashboard_query(
+        metrics,
+        db,
+        "production_week_rows",
+        select(
+            ProductionPlan.id,
+            ProductionPlan.product_name,
+            ProductionPlan.plan_qty,
+            ProductionPlan.due_date,
+            ProductionPlan.status,
+        )
+        .where(
+            ProductionPlan.due_date >= week_start_date(work_date),
+            ProductionPlan.due_date <= week_start_date(work_date) + timedelta(days=6),
+            ProductionPlan.status != "취소",
+            ProductionPlan.plan_qty > 0,
+        )
+        .order_by(ProductionPlan.due_date, ProductionPlan.id),
+    ) if ProductionPlan is not None else []
     return {
         "inventory_summary": inventory_summary,
         "purchase_summary": purchase_summary,
@@ -505,39 +251,37 @@ def week_start_date(value: date) -> date:
 
 
 def build_dashboard_inventory_summary_optimized(db, work_date: date, metrics: dict) -> dict:
-    with dashboard_stage(metrics, "metrics"):
-        summary_row = dashboard_query(
-            metrics,
-            db,
-            "inventory_kpi_summary",
-            select(
-                func.count(InventoryDaily.id),
-                func.coalesce(func.sum(InventoryDaily.current_stock), 0),
-                func.coalesce(func.sum(InventoryDaily.available_stock), 0),
-                func.coalesce(func.sum(InventoryDaily.outbound_qty), 0),
-                func.coalesce(func.sum(InventoryDaily.inbound_qty), 0),
-                func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
-                func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
-                func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
-            ).where(InventoryDaily.work_date == work_date),
-            "one",
+    summary_row = dashboard_query(
+        metrics,
+        db,
+        "inventory_kpi_summary",
+        select(
+            func.count(InventoryDaily.id),
+            func.coalesce(func.sum(InventoryDaily.current_stock), 0),
+            func.coalesce(func.sum(InventoryDaily.available_stock), 0),
+            func.coalesce(func.sum(InventoryDaily.outbound_qty), 0),
+            func.coalesce(func.sum(InventoryDaily.inbound_qty), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
+        ).where(InventoryDaily.work_date == work_date),
+        "one",
+    )
+    source_rows = dashboard_query(
+        metrics,
+        db,
+        "inventory_source_group",
+        select(
+            InventoryDaily.source_type,
+            func.coalesce(func.sum(InventoryDaily.current_stock), 0),
+            func.coalesce(func.sum(InventoryDaily.available_stock), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
         )
-    with dashboard_stage(metrics, "stock_summary"):
-        source_rows = dashboard_query(
-            metrics,
-            db,
-            "inventory_source_group",
-            select(
-                InventoryDaily.source_type,
-                func.coalesce(func.sum(InventoryDaily.current_stock), 0),
-                func.coalesce(func.sum(InventoryDaily.available_stock), 0),
-                func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
-                func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
-                func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
-            )
-            .where(InventoryDaily.work_date == work_date)
-            .group_by(InventoryDaily.source_type),
-        )
+        .where(InventoryDaily.work_date == work_date)
+        .group_by(InventoryDaily.source_type),
+    )
     source_lookup = {str(row[0] or ""): row for row in source_rows}
     source_status = []
     for source_type in SOURCE_TYPES:
@@ -556,17 +300,14 @@ def build_dashboard_inventory_summary_optimized(db, work_date: date, metrics: di
             }
         )
 
-    record_dashboard_stage_skip(metrics, "inbound_summary", "dashboard only needs latest inbound quantity aggregate")
-    record_dashboard_stage_skip(metrics, "outbound_summary", "dashboard only needs latest outbound quantity aggregate")
-    with dashboard_stage(metrics, "charts_prepare"):
-        charts = {
-            "stock_by_source": [{"label": str(row[0] or "미분류"), "value": int(row[1] or 0)} for row in source_rows],
-            "stock_by_category": [],
-            "outbound_by_category": [],
-            "stock_trend": [],
-            "outbound_trend": [],
-            "need_inbound_top10": [],
-        }
+    charts = {
+        "stock_by_source": [{"label": str(row[0] or "미분류"), "value": int(row[1] or 0)} for row in source_rows],
+        "stock_by_category": [],
+        "outbound_by_category": [],
+        "stock_trend": [],
+        "outbound_trend": [],
+        "need_inbound_top10": [],
+    }
 
     return {
         "sku_count": int(summary_row[0] or 0),
@@ -589,15 +330,12 @@ def build_dashboard_purchase_summary_optimized(db, work_date: date, trend_days: 
     month_start = work_date.replace(day=1)
     prev_month_end = month_start - timedelta(days=1)
     prev_month_start = prev_month_end.replace(day=1)
-    with dashboard_stage(metrics, "purchase_summary"):
-        purchase_snapshot = dashboard_purchase_snapshot(db, work_date, month_start, prev_month_start, prev_month_end, metrics)
+    purchase_snapshot = dashboard_purchase_snapshot(db, work_date, month_start, prev_month_start, prev_month_end, metrics)
     purchase_aggregate = purchase_snapshot[0:10]
     month_amount = purchase_aggregate[4] or 0
     prev_month_amount = purchase_aggregate[5] or 0
-    with dashboard_stage(metrics, "production_summary"):
-        progress_rows = build_purchase_progress_rows_from_aggregate(work_date, purchase_aggregate)
-    with dashboard_stage(metrics, "recent_po_inbound_summary"):
-        recent_rows = get_recent_po_inbound_rows_optimized(db, metrics)
+    progress_rows = build_purchase_progress_rows_from_aggregate(work_date, purchase_aggregate)
+    recent_rows = get_recent_po_inbound_rows_optimized(db, metrics)
     priority_rows = []
     trend_rows = []
     min_delayed_date = purchase_aggregate[3]
@@ -879,18 +617,9 @@ def add_dashboard_production_tasks_from_rows(summary: dict, production_rows: lis
 def with_db(action, label: str = "db_action"):
     if SessionLocal is None:
         return None
-    started_at = time.perf_counter()
-    log_dashboard_event(f"{label} session_open start")
     db = SessionLocal()
     try:
-        result = action(db)
-        elapsed = time.perf_counter() - started_at
-        log_dashboard_event(f"{label} session_done seconds={elapsed:.3f} {dashboard_result_size(result)}")
-        return result
-    except Exception as exc:
-        elapsed = time.perf_counter() - started_at
-        log_dashboard_event(f"{label} session_error seconds={elapsed:.3f} {type(exc).__name__}: {exc}")
-        raise
+        return action(db)
     finally:
         db.close()
 
