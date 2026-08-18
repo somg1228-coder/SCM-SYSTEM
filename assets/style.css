@@ -14910,7 +14910,18 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
     text-shadow: none !important;
 }
 
-/* Final spreadsheet visibility override. Streamlit data_editor is canvas based. */
+/* Final spreadsheet visibility override. Streamlit dataframe/editor are canvas based. */
+.stApp [data-testid="stDataFrame"],
+.stApp .stDataFrame {
+    background: #FFFFFF !important;
+    border: 1px solid #CFC7BC !important;
+    border-radius: 8px !important;
+    color: #172033 !important;
+    opacity: 1 !important;
+    overflow: auto !important;
+    visibility: visible !important;
+}
+
 .stApp [data-testid="stDataEditor"],
 .stApp .stDataEditor,
 .stApp .glideDataEditor {
@@ -14944,6 +14955,15 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
     visibility: visible !important;
 }
 
+.stApp [data-testid="stDataFrame"] canvas,
+.stApp .stDataFrame canvas {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.stApp [data-testid="stDataFrame"] *,
+.stApp .stDataFrame *,
 .stApp [data-testid="stDataEditor"] *,
 .stApp .stDataEditor *,
 .stApp .glideDataEditor * {

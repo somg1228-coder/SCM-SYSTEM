@@ -4788,32 +4788,49 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
     total_pages = max(ceil(len(filtered_df) / int(page_size or 50)), 1)
     current_page = min(max(int(st.session_state.get(page_key, 1) or 1), 1), total_pages)
     st.session_state[page_key] = current_page
+    render_probe_started_at = time.perf_counter()
     start = (current_page - 1) * int(page_size)
     page_df = filtered_df.iloc[start : start + int(page_size)].reset_index(drop=True)
-    page_signature = abs(hash(tuple(page_df.get("SKU", pd.Series(dtype=str)).astype(str).tolist())))
+    paged_ready_seconds = time.perf_counter() - render_probe_started_at
+    editor_prepare_started_at = time.perf_counter()
     editor_df = page_df.drop(columns=["_changed"], errors="ignore").reset_index(drop=True)
     editor_visible_columns = ["SKU", "바코드", "상품명", "카테고리", "보관위치", "업체명", "현재고", "증감수량", "비고"]
     editor_df = editor_df[[column for column in [*editor_visible_columns, "_base_stock"] if column in editor_df.columns]]
+    editor_ready_seconds = time.perf_counter() - editor_prepare_started_at
     st.caption(f"데이터 흐름: 전체 {len(full_df):,}건 · 필터 {len(filtered_df):,}건 · 페이지 {len(page_df):,}건 · 편집표 {len(editor_df):,}건")
+    st.caption(
+        "렌더링 점검: "
+        f"paged_df ready {paged_ready_seconds:.3f}s · "
+        f"editor_df ready {editor_ready_seconds:.3f}s · "
+        "st.data_editor 비활성화, st.dataframe 경로"
+    )
 
     if page_df.empty:
         st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
-        edited_df = pd.DataFrame(columns=editor_df.columns)
     else:
+        display_df = editor_df.drop(columns=["_base_stock"], errors="ignore")
+        dataframe_started_at = time.perf_counter()
         try:
-            edited_df = st.data_editor(
-                editor_df,
-                key=f"{panel_key}_editor_{current_page}_{page_size}_{page_signature}",
+            st.caption("before st.dataframe")
+            st.dataframe(
+                display_df,
                 use_container_width=True,
                 hide_index=True,
-                disabled=["SKU", "바코드", "상품명", "카테고리", "보관위치", "업체명", "증감수량"],
-                column_config={
-                    "현재고": st.column_config.NumberColumn("현재고", min_value=0, step=1),
-                    "증감수량": st.column_config.NumberColumn("증감수량"),
-                    "비고": st.column_config.TextColumn("비고"),
-                    "_base_stock": None,
+            )
+            dataframe_render_seconds = time.perf_counter() - dataframe_started_at
+            st.caption(f"after st.dataframe {dataframe_render_seconds:.3f}s")
+            services.log_inventory_render_performance(
+                source_type,
+                work_date,
+                {
+                    "stock_registration_paged_df_ready": round(paged_ready_seconds, 4),
+                    "stock_registration_editor_df_ready": round(editor_ready_seconds, 4),
+                    "stock_registration_dataframe_render": round(dataframe_render_seconds, 4),
                 },
-                height=460,
+                paged_ready_seconds + editor_ready_seconds + dataframe_render_seconds,
+                row_count=len(display_df),
+                query_count=0,
+                context="stock_registration.dataframe_probe",
             )
         except Exception as exc:
             services.log_inventory_render_performance(
@@ -4827,21 +4844,11 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
                 0.0,
                 row_count=len(page_df),
                 query_count=0,
-                context=f"stock_registration.data_editor_error: {type(exc).__name__}: {exc}",
+                context=f"stock_registration.dataframe_error: {type(exc).__name__}: {exc}",
             )
             st.error("재고 데이터를 불러오는 중 오류가 발생했습니다.")
             return False
-
-    base_stock_by_sku = {
-        clean_cell(row.get("SKU")): to_int(row.get("_base_stock"))
-        for _, row in page_df.iterrows()
-        if clean_cell(row.get("SKU"))
-    }
-    next_changes = update_stock_registration_changes(st.session_state.get(changes_key, {}), edited_df, base_stock_by_sku)
-    if next_changes != st.session_state.get(changes_key, {}):
-        st.session_state[changes_key] = next_changes
-        st.session_state.pop(preview_key, None)
-        st.rerun()
+        st.info("직접 셀 수정은 렌더링 안정화 점검 중이라 잠시 비활성화했습니다. 수정양식 다운로드/업로드로 재고 변경은 계속 처리할 수 있습니다.")
 
     changed_values = []
     for sku, change in changes.items():
