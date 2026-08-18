@@ -1073,7 +1073,7 @@ def normalize_product_master_row(row: dict) -> dict:
 
 
 PRODUCT_MASTER_CATEGORY_FIELDS = ("large_category", "medium_category", "small_category")
-PRODUCT_MASTER_TEXT_REFERENCE_FIELDS = (*PRODUCT_MASTER_CATEGORY_FIELDS, "storage_location", "memo")
+PRODUCT_MASTER_TEXT_REFERENCE_FIELDS = (*PRODUCT_MASTER_CATEGORY_FIELDS, "memo")
 PRODUCT_MASTER_NUMBER_REFERENCE_FIELDS = ("pack_qty", "box_qty")
 PRODUCT_MASTER_CATEGORY_HEADERS = {"카테고리", "중분류", "소분류"}
 

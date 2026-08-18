@@ -1365,14 +1365,12 @@ def ensure_sqlite_columns() -> None:
         },
         "offline_product_master": {
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
-            "storage_location": "VARCHAR(160) NOT NULL DEFAULT ''",
         },
         "thirdparty_product_master": {
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
         },
         "warehouse_product_master": {
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
-            "storage_location": "VARCHAR(160) NOT NULL DEFAULT ''",
         },
         "category_bom_items": {
             "barcode": "VARCHAR(120) NOT NULL DEFAULT ''",
