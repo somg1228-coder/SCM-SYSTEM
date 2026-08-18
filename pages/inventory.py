@@ -45,23 +45,23 @@ SOURCE_KEY_MAP = {
     "창고": "warehouse",
 }
 
-DAILY_COLUMNS = [
-    "선택",
-    "카테고리",
-    "바코드",
-    "상품명",
-    "가용재고",
-    "1주 평균출고수량",
-    "재고상태",
-    "출고예정",
-    "현재고",
-    "발주필요일",
-    "박스/파렛트 단위",
-    "재고위치",
-    "업체명",
-    "담당자",
-    "리드타임",
+INVENTORY_STATUS_COLUMN_CONFIG = [
+    {"key": "category", "label": "카테고리"},
+    {"key": "barcode", "label": "바코드"},
+    {"key": "product_name", "label": "상품명"},
+    {"key": "available_stock", "label": "가용재고"},
+    {"key": "avg_daily_outbound_1w", "label": "1주 평균출고수량"},
+    {"key": "stock_status", "label": "재고상태"},
+    {"key": "pending_outbound_qty", "label": "출고예정"},
+    {"key": "current_stock", "label": "현재고"},
+    {"key": "order_required_date", "label": "발주필요일"},
+    {"key": "box_pallet_unit", "label": "박스/파렛트 단위"},
+    {"key": "supplier", "label": "업체명"},
+    {"key": "manager", "label": "담당자"},
+    {"key": "inbound_cycle", "label": "리드타임"},
 ]
+INVENTORY_STATUS_DISPLAY_COLUMNS = [column["label"] for column in INVENTORY_STATUS_COLUMN_CONFIG]
+DAILY_COLUMNS = ["선택", *INVENTORY_STATUS_DISPLAY_COLUMNS]
 
 INBOUND_COLUMNS = [
     "삭제",
@@ -1229,10 +1229,15 @@ def render_inventory_bar_chart(rows: list[dict], label: str) -> None:
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def fetch_work_dates(source_type: str) -> list[date]:
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_fetch_work_dates(source_type: str) -> list[date]:
     data = with_db(lambda db: services.list_work_dates(db, source_type)) or []
     dates = pd.to_datetime(data, errors="coerce")
     return [value.date() for value in dates if not pd.isna(value)]
+
+
+def fetch_work_dates(source_type: str) -> list[date]:
+    return cached_fetch_work_dates(source_type)
 
 
 def fetch_daily(source_type: str, work_date: date) -> list[dict]:
@@ -1293,11 +1298,24 @@ def apply_master_categories(rows: list[dict], lookup: dict[str, dict[str, str]])
     return normalized
 
 
-def fetch_master_inventory(source_type: str, work_date: date) -> list[dict]:
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_fetch_master_inventory(source_type: str, work_date_iso: str) -> list[dict]:
+    target_date = parse_date_or_today(work_date_iso)
+
     def load_rows(db):
-        return services.master_based_inventory_rows(db, source_type, work_date)
+        return services.master_based_inventory_rows(db, source_type, target_date)
 
     return with_db(load_rows) or []
+
+
+def fetch_master_inventory(source_type: str, work_date: date) -> list[dict]:
+    return cached_fetch_master_inventory(source_type, work_date.isoformat())
+
+
+def clear_inventory_data_caches() -> None:
+    cached_fetch_work_dates.clear()
+    cached_fetch_master_inventory.clear()
+    st.cache_data.clear()
 
 
 def fetch_master_category_options(source_type: str, df: pd.DataFrame) -> list[str]:
@@ -1627,22 +1645,6 @@ def render_inventory_html(markup: str) -> None:
     else:
         st.markdown(markup, unsafe_allow_html=True)
 
-
-INVENTORY_STATUS_DISPLAY_COLUMNS = [
-    "카테고리",
-    "바코드",
-    "상품명",
-    "가용재고",
-    "1주 평균출고수량",
-    "재고상태",
-    "출고예정",
-    "현재고",
-    "발주필요일",
-    "박스/파렛트 단위",
-    "업체명",
-    "담당자",
-    "리드타임",
-]
 
 INVENTORY_STATUS_HIDDEN_COLUMNS = {
     "선택",
@@ -1997,7 +1999,7 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     ]
     story = [Paragraph("SCM 재고관리", styles["title"]), Spacer(1, 4 * mm), Paragraph(" / ".join(meta), styles["meta"]), Spacer(1, 4 * mm)]
     table_data = [[Paragraph(column, styles["center"]) for column in export_df.columns]]
-    numeric_columns = {"가용재고", "1주 평균출고수량", "출고예정", "현재고", "발주필요일", "리드타임"}
+    numeric_columns = {"가용재고", "1주 평균출고수량", "출고예정", "현재고", "리드타임"}
     for _, row in export_df.iterrows():
         cells = []
         for column in export_df.columns:
@@ -2486,7 +2488,6 @@ def inbound_excel(source_type: str) -> bytes:
 def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
     mapped = []
     for row in rows:
-        order_days = row.get("order_needed_days")
         mapped.append(
             {
                 "선택": False,
@@ -2498,7 +2499,7 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "재고상태": clean_cell(row.get("stock_status")) or "미집계",
                 "출고예정": row.get("pending_outbound_qty", 0),
                 "현재고": row.get("current_stock", 0),
-                "발주필요일": "" if order_days is None else int(order_days),
+                "발주필요일": format_order_required_date(row),
                 "박스/파렛트 단위": row.get("box_pallet_unit", ""),
                 "재고위치": row.get("storage_location", ""),
                 "업체명": row.get("supplier", ""),
@@ -2644,6 +2645,42 @@ def date_or_none(value):
     if pd.isna(parsed):
         return None
     return parsed.date().isoformat()
+
+
+def parse_date_or_today(value) -> date:
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return date.today()
+    return parsed.date()
+
+
+def format_order_required_date(row: dict) -> str:
+    avg_outbound = row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0))
+    try:
+        avg_outbound_value = float(avg_outbound or 0)
+    except (TypeError, ValueError):
+        avg_outbound_value = 0.0
+    if avg_outbound_value <= 0:
+        return "-"
+
+    available_stock = to_int(row.get("available_stock"))
+    if available_stock <= 0:
+        return "즉시 발주"
+
+    lead_time_text = clean_cell(row.get("inbound_cycle"))
+    if not lead_time_text:
+        return "리드타임 미설정"
+
+    order_days = row.get("order_needed_days")
+    if order_days is None:
+        return "리드타임 미설정"
+    try:
+        days = int(float(order_days))
+    except (TypeError, ValueError):
+        return "리드타임 미설정"
+    if days <= 0:
+        return "즉시 발주"
+    return (parse_date_or_today(row.get("work_date")) + timedelta(days=days)).isoformat()
 
 
 def dataframe_to_excel(df: pd.DataFrame) -> bytes:
@@ -3950,22 +3987,7 @@ def inject_inventory_css() -> None:
 # screen now uses the normalized Korean labels and the consolidated update flow.
 SOURCE_TYPES = ["3PL", "오프라인", "창고"]
 SOURCE_KEY_MAP = {"3PL": "threepl", "오프라인": "offline", "창고": "warehouse"}
-DAILY_COLUMNS = [
-    "선택",
-    "카테고리",
-    "바코드",
-    "상품명",
-    "가용재고",
-    "1주 평균출고수량",
-    "재고상태",
-    "출고예정",
-    "현재고",
-    "발주필요일",
-    "박스/파렛트 단위",
-    "업체명",
-    "담당자",
-    "리드타임",
-]
+DAILY_COLUMNS = ["선택", *INVENTORY_STATUS_DISPLAY_COLUMNS]
 INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "창고"]
 INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "창고": "창고"}
 INVENTORY_SOURCE_TABS = ["재고", "입고", "출고", "대시보드", "마스터"]
@@ -4073,7 +4095,6 @@ def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None
 def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
     mapped = []
     for row in rows:
-        order_days = row.get("order_needed_days")
         mapped.append(
             {
                 "선택": False,
@@ -4085,7 +4106,7 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "재고상태": clean_cell(row.get("stock_status")) or "미집계",
                 "출고예정": row.get("pending_outbound_qty", 0),
                 "현재고": row.get("current_stock", 0),
-                "발주필요일": "" if order_days is None else int(order_days),
+                "발주필요일": format_order_required_date(row),
                 "박스/파렛트 단위": row.get("box_pallet_unit", ""),
                 "업체명": row.get("supplier", ""),
                 "담당자": row.get("manager", ""),
@@ -4388,6 +4409,7 @@ def render_stock_upload_preview(
             excluded_df = stock_excluded_display_dataframe(preview)
             outcome = with_db(lambda db: services.apply_stock_upload_preview(db, source_type, work_date, preview, current_user_name()))
             if outcome and outcome.get("ok", True):
+                clear_inventory_data_caches()
                 st.session_state[applied_df_key] = applied_df
                 st.session_state[excluded_df_key] = excluded_df
                 st.session_state.pop(preview_key, None)
@@ -4979,6 +5001,7 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
                 outcome = with_db(lambda db: services.apply_stock_upload_preview(db, source_type, work_date, preview, current_user_name()))
                 st.session_state[result_key] = outcome
                 if outcome and outcome.get("ok", True):
+                    clear_inventory_data_caches()
                     st.session_state.pop(preview_key, None)
                     st.session_state.pop(changes_key, None)
                 st.rerun()
@@ -5169,7 +5192,7 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
         "center": ParagraphStyle("inventory_center_v2", fontName=font_name, fontSize=6.7, leading=8.2, alignment=TA_CENTER),
         "right": ParagraphStyle("inventory_right_v2", fontName=font_name, fontSize=6.7, leading=8.2, alignment=TA_RIGHT),
     }
-    export_columns = ["카테고리", "바코드", "상품명", "가용재고", "1주 평균출고수량", "재고상태", "출고예정", "현재고", "발주필요일", "박스/파렛트 단위", "업체명", "담당자", "리드타임"]
+    export_columns = INVENTORY_STATUS_DISPLAY_COLUMNS
     export_df = df[[column for column in export_columns if column in df.columns]].copy()
     meta = [
         f"재고처: {source_type}",
@@ -5180,7 +5203,7 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     ]
     story = [Paragraph("SCM 재고관리", styles["title"]), Spacer(1, 4 * mm), Paragraph(" / ".join(meta), styles["meta"]), Spacer(1, 4 * mm)]
     table_data = [[Paragraph(column, styles["center"]) for column in export_df.columns]]
-    numeric_columns = {"가용재고", "1주 평균출고수량", "출고예정", "현재고", "발주필요일", "리드타임"}
+    numeric_columns = {"가용재고", "1주 평균출고수량", "출고예정", "현재고", "리드타임"}
     for _, row in export_df.iterrows():
         cells = []
         for column in export_df.columns:
@@ -5289,6 +5312,8 @@ def render_inventory_update_panel(
                         st.session_state.pop(key, None)
                     st.session_state[result_key] = outcome
                     st.session_state[excluded_df_key] = excluded_df
+                    if outcome and outcome.get("ok", True):
+                        clear_inventory_data_caches()
                 finally:
                     st.session_state[processing_key] = False
                 st.rerun()

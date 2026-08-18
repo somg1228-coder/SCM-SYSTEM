@@ -2956,7 +2956,7 @@ def apply_stock_upload_preview(
                 item.storage_location = storage_location
             if storage_location and hasattr(product, "storage_location"):
                 product.storage_location = storage_location
-            item.outbound_qty = max(previous_stock + int(item.inbound_qty or 0) - new_available_stock, 0)
+            item.outbound_qty = max(new_stock + int(item.inbound_qty or 0) - new_available_stock, 0)
             item.stock_status = stock_status_for_values(new_available_stock, product.min_stock or 0)
             touched_skus.add(clean_text(product.sku))
             verification_targets.append(
