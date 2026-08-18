@@ -2740,14 +2740,19 @@ def prepare_stock_upload_preview(
             to_int_strict(available_raw) if clean_text(available_raw) else (current_stock, stock_ok)
         )
         errors = []
-        upload_key = (product_name, barcode) if product_name and barcode else (product_code or product_name, barcode)
-        if not barcode:
-            empty_barcode_count += 1
-        elif upload_key in seen_upload_keys:
+        if product_code:
+            upload_key = ("sku", product_code)
+        elif product_name and barcode:
+            upload_key = ("product_barcode", product_name, barcode)
+        else:
+            upload_key = ("fallback", product_name, barcode)
+        if upload_key in seen_upload_keys:
             duplicate_count += 1
-            errors.append("중복 상품명/바코드")
+            errors.append("중복 SKU" if product_code else "중복 상품명/바코드")
         else:
             seen_upload_keys.add(upload_key)
+        if not barcode:
+            empty_barcode_count += 1
         if not stock_ok:
             if clean_text(row.get(current_col)).replace(",", "").startswith("-"):
                 negative_stock_count += 1

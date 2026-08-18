@@ -4532,15 +4532,17 @@ def stock_registration_dataframe(rows: list[dict], changes: dict[str, dict]) -> 
         delta = edited_stock - current_stock
         records.append(
             {
+                "내부 상품 ID": sku,
                 "SKU": sku,
                 "바코드": clean_cell(row.get("barcode")),
                 "상품명": clean_cell(row.get("product_name")),
                 "카테고리": clean_cell(row.get("category")),
                 "보관위치": clean_cell(row.get("storage_location")),
-                "현재고": current_stock,
-                "수정재고": edited_stock,
+                "업체명": clean_cell(row.get("supplier")),
+                "현재고": edited_stock,
                 "증감수량": delta,
                 "비고": clean_cell(change.get("memo")),
+                "_base_stock": current_stock,
                 "_changed": delta != 0,
             }
         )
@@ -4570,10 +4572,34 @@ def stock_registration_filter_dataframe(df: pd.DataFrame, filters: dict) -> pd.D
 
 
 def stock_registration_download_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    columns = ["SKU", "바코드", "상품명", "카테고리", "보관위치", "현재고", "수정재고", "증감수량", "비고"]
+    columns = ["내부 상품 ID", "SKU", "바코드", "상품명", "카테고리", "보관위치", "업체명", "현재고"]
     if df is None or df.empty:
         return pd.DataFrame(columns=columns)
-    return df[[column for column in columns if column in df.columns]].copy()
+    export_df = df.copy()
+    if "_base_stock" in export_df.columns:
+        export_df["현재고"] = export_df["_base_stock"].apply(to_int)
+    return export_df[[column for column in columns if column in export_df.columns]].copy()
+
+
+def stock_registration_template_excel(df: pd.DataFrame) -> bytes:
+    output = BytesIO()
+    export_df = stock_registration_download_dataframe(df)
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        sheet_name = "재고수정"
+        export_df.to_excel(writer, index=False, sheet_name=sheet_name)
+        workbook = writer.book
+        worksheet = writer.sheets[sheet_name]
+        row_count, col_count = export_df.shape
+        if col_count:
+            header_format = workbook.add_format({"bold": True, "bg_color": "#E6E0D7", "border": 1, "align": "center"})
+            number_format = workbook.add_format({"num_format": "#,##0"})
+            worksheet.freeze_panes(1, 0)
+            worksheet.autofilter(0, 0, max(row_count, 1), col_count - 1)
+            for col_idx, column in enumerate(export_df.columns):
+                width = excel_column_width(export_df[column], column)
+                worksheet.set_column(col_idx, col_idx, width, number_format if column == "현재고" else None)
+                worksheet.write(0, col_idx, column, header_format)
+    return output.getvalue()
 
 
 def stock_registration_preview_dataframe(preview: dict) -> pd.DataFrame:
@@ -4626,6 +4652,7 @@ def stock_registration_preview_from_changes(
                 "status": "정상",
                 "matched": True,
                 "memo": clean_cell(change.get("memo")),
+                "change_method": clean_cell(change.get("method")) or method,
             }
         )
     return {
@@ -4672,21 +4699,47 @@ def stock_registration_filter_changed_preview(preview: dict, method: str) -> dic
     return next_preview
 
 
-def update_stock_registration_changes(changes: dict[str, dict], edited_df: pd.DataFrame) -> dict[str, dict]:
+def update_stock_registration_changes(
+    changes: dict[str, dict],
+    edited_df: pd.DataFrame,
+    base_stock_by_sku: dict[str, int] | None = None,
+) -> dict[str, dict]:
     next_changes = dict(changes or {})
+    base_stock_by_sku = base_stock_by_sku or {}
     if edited_df is None or edited_df.empty:
         return next_changes
     for _, row in edited_df.iterrows():
         sku = clean_cell(row.get("SKU"))
         if not sku:
             continue
-        current_stock = to_int(row.get("현재고"))
-        edited_stock = to_int(row.get("수정재고"))
+        current_stock = int(base_stock_by_sku.get(sku, to_int(row.get("_base_stock"))))
+        edited_stock = to_int(row.get("현재고"))
         memo = clean_cell(row.get("비고"))
         if edited_stock != current_stock:
-            next_changes[sku] = {"new_stock": edited_stock, "memo": memo}
+            next_changes[sku] = {"new_stock": edited_stock, "memo": memo, "method": "웹 직접수정"}
         else:
             next_changes.pop(sku, None)
+    return next_changes
+
+
+def merge_stock_registration_excel_changes(changes: dict[str, dict], preview: dict) -> dict[str, dict]:
+    next_changes = dict(changes or {})
+    for row in preview.get("preview_rows", []) or []:
+        if not row.get("matched"):
+            continue
+        sku = clean_cell(row.get("product_code"))
+        if not sku:
+            continue
+        previous_stock = to_int(row.get("previous_stock"))
+        new_stock = to_int(row.get("new_stock"))
+        if previous_stock == new_stock:
+            next_changes.pop(sku, None)
+            continue
+        next_changes[sku] = {
+            "new_stock": new_stock,
+            "memo": clean_cell(row.get("memo")),
+            "method": "엑셀 재고수정",
+        }
     return next_changes
 
 
@@ -4696,6 +4749,9 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
     preview_key = f"{panel_key}_preview"
     result_key = f"{panel_key}_result"
     upload_key = f"{panel_key}_upload"
+    upload_signature_key = f"{panel_key}_upload_signature"
+    current_download_key = f"{panel_key}_current_download"
+    template_download_key = f"{panel_key}_template_download"
     page_key = f"{panel_key}_page"
     page_size_key = f"{panel_key}_page_size"
     changes = st.session_state.setdefault(changes_key, {})
@@ -4733,25 +4789,58 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
     current_page = min(max(int(st.session_state.get(page_key, 1) or 1), 1), total_pages)
     st.session_state[page_key] = current_page
     start = (current_page - 1) * int(page_size)
-    page_df = filtered_df.iloc[start : start + int(page_size)].drop(columns=["_changed"], errors="ignore").reset_index(drop=True)
-    editor_signature = abs(hash(tuple(sorted((sku, to_int(value.get("new_stock"))) for sku, value in changes.items()))))
+    page_df = filtered_df.iloc[start : start + int(page_size)].reset_index(drop=True)
+    page_signature = abs(hash(tuple(page_df.get("SKU", pd.Series(dtype=str)).astype(str).tolist())))
+    editor_df = page_df.drop(columns=["_changed"], errors="ignore").reset_index(drop=True)
+    editor_visible_columns = ["SKU", "바코드", "상품명", "카테고리", "보관위치", "업체명", "현재고", "증감수량", "비고"]
+    editor_df = editor_df[[column for column in [*editor_visible_columns, "_base_stock"] if column in editor_df.columns]]
+    st.caption(f"데이터 흐름: 전체 {len(full_df):,}건 · 필터 {len(filtered_df):,}건 · 페이지 {len(page_df):,}건 · 편집표 {len(editor_df):,}건")
 
-    edited_df = st.data_editor(
-        page_df,
-        key=f"{panel_key}_editor_{current_page}_{page_size}_{editor_signature}",
-        use_container_width=True,
-        hide_index=True,
-        disabled=["SKU", "바코드", "상품명", "카테고리", "보관위치", "현재고", "증감수량"],
-        column_config={
-            "수정재고": st.column_config.NumberColumn("수정재고", min_value=0, step=1),
-            "증감수량": st.column_config.NumberColumn("증감수량"),
-            "비고": st.column_config.TextColumn("비고"),
-        },
-        height=460,
-    )
-    next_changes = update_stock_registration_changes(st.session_state.get(changes_key, {}), edited_df)
+    if page_df.empty:
+        st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
+        edited_df = pd.DataFrame(columns=editor_df.columns)
+    else:
+        try:
+            edited_df = st.data_editor(
+                editor_df,
+                key=f"{panel_key}_editor_{current_page}_{page_size}_{page_signature}",
+                use_container_width=True,
+                hide_index=True,
+                disabled=["SKU", "바코드", "상품명", "카테고리", "보관위치", "업체명", "증감수량"],
+                column_config={
+                    "현재고": st.column_config.NumberColumn("현재고", min_value=0, step=1),
+                    "증감수량": st.column_config.NumberColumn("증감수량"),
+                    "비고": st.column_config.TextColumn("비고"),
+                    "_base_stock": None,
+                },
+                height=460,
+            )
+        except Exception as exc:
+            services.log_inventory_render_performance(
+                source_type,
+                work_date,
+                {
+                    "stock_registration_full_rows": float(len(full_df)),
+                    "stock_registration_filtered_rows": float(len(filtered_df)),
+                    "stock_registration_page_rows": float(len(page_df)),
+                },
+                0.0,
+                row_count=len(page_df),
+                query_count=0,
+                context=f"stock_registration.data_editor_error: {type(exc).__name__}: {exc}",
+            )
+            st.error("재고 데이터를 불러오는 중 오류가 발생했습니다.")
+            return False
+
+    base_stock_by_sku = {
+        clean_cell(row.get("SKU")): to_int(row.get("_base_stock"))
+        for _, row in page_df.iterrows()
+        if clean_cell(row.get("SKU"))
+    }
+    next_changes = update_stock_registration_changes(st.session_state.get(changes_key, {}), edited_df, base_stock_by_sku)
     if next_changes != st.session_state.get(changes_key, {}):
         st.session_state[changes_key] = next_changes
+        st.session_state.pop(preview_key, None)
         st.rerun()
 
     changed_values = []
@@ -4759,7 +4848,7 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
         base_row = full_df[full_df["SKU"] == sku]
         if base_row.empty:
             continue
-        current_stock = to_int(base_row.iloc[0].get("현재고"))
+        current_stock = to_int(base_row.iloc[0].get("_base_stock"))
         new_stock = to_int(change.get("new_stock"))
         if current_stock != new_stock:
             changed_values.append(new_stock - current_stock)
@@ -4771,38 +4860,93 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
     metric_cols[2].metric("증가 예정 수량", f"{increase_qty:,}")
     metric_cols[3].metric("감소 예정 수량", f"{decrease_qty:,}")
 
-    action_cols = st.columns([1.15, 1.15, 1.15, 1.0, 0.75, 0.75, 2.0], gap="small")
+    action_cols = st.columns([1.05, 1.05, 1.2, 1.0, 1.0, 0.72, 0.72, 1.5], gap="small")
+    download_filters = {
+        "search": search,
+        "category": category,
+        "location": location,
+        "zero_only": zero_only,
+        "changed_only": changed_only,
+    }
+    download_signature = inventory_output_signature(filtered_df.drop(columns=["_changed"], errors="ignore"), download_filters)
     with action_cols[0]:
-        st.download_button(
-            "현재 재고 엑셀 다운로드",
-            data=dataframe_to_excel(stock_registration_download_dataframe(full_df.drop(columns=["_changed"], errors="ignore"))),
-            file_name=f"{source_type}_stock_edit_{work_date:%Y%m%d}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key=f"{panel_key}_download",
-        )
+        current_payload = st.session_state.get(current_download_key)
+        if st.button("현재 재고 엑셀 다운로드", key=f"{panel_key}_current_download_prepare", use_container_width=True):
+            st.session_state[current_download_key] = {
+                "signature": download_signature,
+                "bytes": dataframe_to_excel(stock_registration_download_dataframe(filtered_df)),
+            }
+            st.rerun()
+        if isinstance(current_payload, dict) and current_payload.get("signature") == download_signature and current_payload.get("bytes"):
+            st.download_button(
+                "현재 재고 파일 저장",
+                data=current_payload["bytes"],
+                file_name=f"{source_type}_stock_current_{work_date:%Y%m%d}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"{panel_key}_current_download_save",
+            )
     with action_cols[1]:
-        uploaded = st.file_uploader("엑셀 업로드", type=["xlsx", "xls", "csv"], key=upload_key, label_visibility="collapsed")
+        template_payload = st.session_state.get(template_download_key)
+        if st.button("수정양식 다운로드", key=f"{panel_key}_template_download_prepare", use_container_width=True):
+            st.session_state[template_download_key] = {
+                "signature": download_signature,
+                "bytes": stock_registration_template_excel(filtered_df),
+            }
+            st.rerun()
+        if isinstance(template_payload, dict) and template_payload.get("signature") == download_signature and template_payload.get("bytes"):
+            st.download_button(
+                "수정양식 파일 저장",
+                data=template_payload["bytes"],
+                file_name=f"재고수정양식_{work_date:%Y%m%d}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"{panel_key}_template_download_save",
+            )
     with action_cols[2]:
-        if st.button("엑셀 검증", key=f"{panel_key}_excel_preview", use_container_width=True, disabled=uploaded is None):
-            preview = with_db(lambda db: services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, "partial"))
-            if preview and preview.get("ok", True):
-                st.session_state[preview_key] = stock_registration_filter_changed_preview(preview, "엑셀 재고수정")
-            else:
-                show_result(preview)
+        uploaded = st.file_uploader("수정양식 업로드", type=["xlsx", "xls", "csv"], key=upload_key, label_visibility="collapsed")
+        if uploaded is not None:
+            file_bytes = uploaded.getvalue()
+            upload_signature = (uploaded.name, len(file_bytes), abs(hash(file_bytes)))
+            if st.session_state.get(upload_signature_key) != upload_signature:
+                with st.spinner("수정양식을 검증하고 변경된 재고만 비교하는 중입니다..."):
+                    preview = with_db(lambda db: services.prepare_stock_upload_preview(db, source_type, work_date, file_bytes, uploaded.name, "partial"))
+                st.session_state[upload_signature_key] = upload_signature
+                if preview and preview.get("ok", True):
+                    changed_preview = stock_registration_filter_changed_preview(preview, "엑셀 재고수정")
+                    combined_changes = merge_stock_registration_excel_changes(
+                        st.session_state.get(changes_key, {}),
+                        changed_preview,
+                    )
+                    methods = {clean_cell(change.get("method")) for change in combined_changes.values() if clean_cell(change.get("method"))}
+                    combined_method = methods.pop() if len(methods) == 1 else "재고현황 등록"
+                    combined_preview = stock_registration_preview_from_changes(source_type, work_date, rows, combined_changes, combined_method)
+                    excluded_rows = [dict(row) for row in changed_preview.get("preview_rows", []) if not row.get("matched")]
+                    if excluded_rows:
+                        combined_preview["preview_rows"].extend(excluded_rows)
+                        combined_preview["total_rows"] = len(combined_preview["preview_rows"])
+                    combined_preview["failed_count"] = int(changed_preview.get("failed_count") or 0)
+                    combined_preview["duplicate_count"] = int(changed_preview.get("duplicate_count") or 0)
+                    combined_preview["unmatched_count"] = int(changed_preview.get("unmatched_count") or 0)
+                    combined_preview["unchanged_count"] = int(changed_preview.get("unchanged_count") or 0)
+                    st.session_state[changes_key] = combined_changes
+                    st.session_state[preview_key] = combined_preview
+                    st.rerun()
+                else:
+                    show_result(preview)
     with action_cols[3]:
         if st.button("변경내용 확인", key=f"{panel_key}_manual_preview", type="primary", use_container_width=True, disabled=not changed_values):
             st.session_state[preview_key] = stock_registration_preview_from_changes(source_type, work_date, rows, changes, "웹 직접수정")
-    with action_cols[4]:
+    with action_cols[5]:
         if st.button("이전", key=f"{panel_key}_prev", disabled=current_page <= 1, use_container_width=True):
             st.session_state[page_key] = max(current_page - 1, 1)
             st.rerun()
-    with action_cols[5]:
+    with action_cols[6]:
         if st.button("다음", key=f"{panel_key}_next", disabled=current_page >= total_pages, use_container_width=True):
             st.session_state[page_key] = min(current_page + 1, total_pages)
             st.rerun()
-    with action_cols[6]:
-        st.caption(f"{current_page:,} / {total_pages:,} 페이지 · 필터 결과 {len(filtered_df):,}건")
+    with action_cols[7]:
+        st.caption(f"{current_page:,} / {total_pages:,} 페이지 · 필터 결과 {len(filtered_df):,}건 · 표시 {len(page_df):,}건")
 
     preview = st.session_state.get(preview_key)
     if isinstance(preview, dict):
@@ -4824,7 +4968,7 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
                 render_inventory_visible_table(excluded_df, height=260)
         apply_cols = st.columns([1.0, 1.0, 4.0], gap="small")
         with apply_cols[0]:
-            if st.button("재고 반영", key=f"{panel_key}_apply", type="primary", use_container_width=True, disabled=preview_df.empty):
+            if st.button("재고 변경 저장", key=f"{panel_key}_apply", type="primary", use_container_width=True, disabled=preview_df.empty):
                 outcome = with_db(lambda db: services.apply_stock_upload_preview(db, source_type, work_date, preview, current_user_name()))
                 st.session_state[result_key] = outcome
                 if outcome and outcome.get("ok", True):
