@@ -39,6 +39,7 @@ except Exception:
     supabase_store = None
 
 INVENTORY_UPDATE_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "inventory_update_perf.log"
+INVENTORY_RENDER_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "inventory_render_perf.log"
 INVENTORY_LOGGER = logging.getLogger("scm.inventory_update")
 
 
@@ -2108,18 +2109,56 @@ def strict_daily_rows_by_product(db: Session, source_type: str, work_date: date,
 
 
 def latest_daily_rows_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, InventoryDaily]:
+    skus = [clean_text(product.sku) for product in products if clean_text(product.sku)]
+    if not skus:
+        return {}
+
+    sku_set = set(skus)
+    row_number = func.row_number().over(
+        partition_by=InventoryDaily.product_code,
+        order_by=(InventoryDaily.work_date.desc(), InventoryDaily.id.desc()),
+    ).label("row_number")
+    latest_by_sku = (
+        select(InventoryDaily.id, InventoryDaily.product_code, row_number)
+        .where(
+            InventoryDaily.source_type == source_type,
+            InventoryDaily.work_date <= work_date,
+            InventoryDaily.product_code.in_(skus),
+        )
+        .subquery()
+    )
+    matched: dict[str, InventoryDaily] = {}
+    sku_rows = list(
+        db.execute(
+            select(InventoryDaily)
+            .join(latest_by_sku, InventoryDaily.id == latest_by_sku.c.id)
+            .where(latest_by_sku.c.row_number == 1)
+        ).scalars()
+    )
+    for row in sku_rows:
+        sku = clean_text(row.product_code)
+        if sku in sku_set:
+            matched[sku] = row
+    if len(matched) == len(sku_set):
+        return matched
+
+    remaining_products = [product for product in products if clean_text(product.sku) and clean_text(product.sku) not in matched]
+    if not remaining_products:
+        return matched
+
+    cutoff_date = work_date - timedelta(days=120)
     rows = list(
         db.execute(
             select(InventoryDaily)
             .where(
                 InventoryDaily.source_type == source_type,
                 InventoryDaily.work_date <= work_date,
+                InventoryDaily.work_date >= cutoff_date,
             )
             .order_by(InventoryDaily.work_date.desc(), InventoryDaily.id.desc())
         ).scalars()
     )
-    by_sku, by_barcode_name, by_barcode, by_name = product_lookup_maps(products)
-    matched: dict[str, InventoryDaily] = {}
+    by_sku, by_barcode_name, by_barcode, by_name = product_lookup_maps(remaining_products)
     for row in rows:
         product = match_product_from_maps(row.product_code, row.barcode, row.product_name, by_sku, by_barcode_name, by_barcode, by_name)
         if product is None:
@@ -2219,14 +2258,16 @@ def ensure_daily_snapshots_from_latest(db: Session, source_type: str, work_date:
     if products is None:
         products = list(db.execute(select(model).order_by(model.sort_order, model.product_name, model.sku)).scalars())
     existing_by_sku = daily_rows_by_product(db, source_type, work_date, products)
-    previous_by_sku = latest_daily_rows_by_product(db, source_type, work_date - timedelta(days=1), products)
+    missing_products = [product for product in products if clean_text(product.sku) and clean_text(product.sku) not in existing_by_sku]
+    if not missing_products:
+        db.commit()
+        return 0
+
+    previous_by_sku = latest_daily_rows_by_product(db, source_type, work_date - timedelta(days=1), missing_products)
     created = 0
-    for product in products:
+    for product in missing_products:
         sku = clean_text(product.sku)
         if not sku:
-            continue
-        current = existing_by_sku.get(sku)
-        if current is not None:
             continue
 
         previous = previous_by_sku.get(sku)
@@ -2272,25 +2313,69 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
             rows = [row for row in rows if row.get("is_active") == "사용"]
         return rows
 
+    total_started_at = time.perf_counter()
+    timings: dict[str, float] = {}
+    query_count = 0
+
+    def mark(name: str, started_at: float) -> None:
+        timings[name] = round(time.perf_counter() - started_at, 4)
+
+    def add_time(name: str, started_at: float) -> None:
+        timings[name] = round(float(timings.get(name, 0.0) or 0.0) + (time.perf_counter() - started_at), 4)
+
     model = product_master_model(source_type)
     query = select(model)
     if active_only:
         query = query.where(model.is_active == "사용")
+    stage_started_at = time.perf_counter()
     products = list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
-    ensure_daily_snapshots_from_latest(db, source_type, work_date, products)
-    purchase_metrics = purchase_inventory_metrics(db, source_type, products)
-    inbound_metrics = latest_inbound_metrics(db, source_type, products)
-    latest_daily_by_sku = latest_daily_rows_by_product(db, source_type, work_date, products)
+    query_count += 1
+    mark("inventory_master_load", stage_started_at)
+
+    stage_started_at = time.perf_counter()
+    created_snapshots = ensure_daily_snapshots_from_latest(db, source_type, work_date, products)
+    query_count += 1
+    if created_snapshots:
+        query_count += 1
+    mark("snapshot_seed", stage_started_at)
+
+    stage_started_at = time.perf_counter()
+    latest_daily_by_sku = daily_rows_by_product(db, source_type, work_date, products)
+    query_count += 1
+    mark("inventory_snapshot_load", stage_started_at)
+
+    # Purchase/order history is intentionally not loaded during the normal page render.
+    # The dedicated sync button still updates those metrics when the user asks for it.
+    timings["purchase_history_load"] = 0.0
+    purchase_metrics: dict[tuple[str, str], dict] = {}
+    inbound_metrics: dict[tuple[str, str], dict] = {}
+
+    stage_started_at = time.perf_counter()
     avg_outbound_by_sku = recent_outbound_average_by_product(db, source_type, work_date, products, business_day_count=5)
+    query_count += 1
+    mark("inventory_history_load", stage_started_at)
+
+    stage_started_at = time.perf_counter()
     pending_by_sku = pending_inbound_qty_by_product(db, source_type, work_date, products)
+    query_count += 1
+    mark("pending_inbound_load", stage_started_at)
+
+    timings["outbound_load"] = 0.0
     rows = []
     for product in products:
         product_sku = clean_text(product.sku)
         daily = latest_daily_by_sku.get(product_sku)
         has_snapshot = daily is not None
         current_stock = int(daily.current_stock or 0) if has_snapshot else 0
+
+        step_started_at = time.perf_counter()
         safe_stock = int(product.min_stock or 0)
+        add_time("safety_stock_calculation", step_started_at)
+
+        step_started_at = time.perf_counter()
         status = stock_status_for_values(current_stock, safe_stock) if has_snapshot else "미집계"
+        add_time("stock_status_calculation", step_started_at)
+
         purchase_metric = purchase_metrics.get((source_type, product.sku), {})
         inbound_metric = inbound_metrics.get((source_type, product.sku), {})
         measured_lead_time = int(purchase_metric.get("avg_lead_time") or 0)
@@ -2298,19 +2383,34 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         box_qty = int(product.box_qty or product.pack_qty or 0)
         pending_inbound_qty = int(pending_by_sku.get(product_sku, 0) or 0)
         pending_outbound_qty = int(daily.outbound_qty or 0) if has_snapshot else 0
+
+        step_started_at = time.perf_counter()
         available_stock = current_stock + pending_inbound_qty - pending_outbound_qty if has_snapshot else 0
+        add_time("available_stock_calculation", step_started_at)
+
         shortage_qty = max(safe_stock - current_stock, 0)
         avg_outbound = float(avg_outbound_by_sku.get(product_sku, 0) or 0)
+
+        step_started_at = time.perf_counter()
         needed_days = order_needed_days(available_stock, safe_stock, avg_outbound, lead_time)
+        add_time("order_needed_days_calculation", step_started_at)
+
+        step_started_at = time.perf_counter()
+        category = product.large_category
+        supplier = product.supplier
+        manager = product.memo
+        box_pallet_unit = format_box_pallet_unit(product.box_qty, product.pack_qty)
+        add_time("category_supplier_manager_mapping", step_started_at)
+
         rows.append(
             {
                 "source_type": source_type,
                 "work_date": work_date,
-                "category": product.large_category,
+                "category": category,
                 "product_code": product.sku,
                 "product_name": product.product_name,
-                "supplier": product.supplier,
-                "manager": product.memo,
+                "supplier": supplier,
+                "manager": manager,
                 "current_stock": current_stock,
                 "available_stock": available_stock,
                 "safe_stock": safe_stock,
@@ -2321,7 +2421,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "inbound_cycle": lead_time,
                 "box_qty": box_qty,
                 "pack_qty": int(product.pack_qty or 0),
-                "box_pallet_unit": format_box_pallet_unit(product.box_qty, product.pack_qty),
+                "box_pallet_unit": box_pallet_unit,
                 "recommended_boxes": ceil(shortage_qty / box_qty) if box_qty and shortage_qty > 0 else 0,
                 "avg_daily_outbound_1w": avg_outbound,
                 "avg_daily_outbound_2w": avg_outbound,
@@ -2336,6 +2436,16 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "is_active": product.is_active,
             }
         )
+    total_seconds = time.perf_counter() - total_started_at
+    log_inventory_render_performance(
+        source_type,
+        work_date,
+        timings,
+        total_seconds,
+        row_count=len(rows),
+        query_count=query_count,
+        context="service.master_based_inventory_rows",
+    )
     return rows
 
 
@@ -2405,6 +2515,71 @@ def inventory_update_log_text(timings: dict[str, float], total_seconds: float | 
         if key in values:
             lines.append(f"{label:<22}: {float(values[key] or 0):.3f} sec")
     return "\n".join(lines)
+
+
+def inventory_render_log_text(
+    source_type: str,
+    work_date: date,
+    timings: dict[str, float],
+    total_seconds: float | None = None,
+    row_count: int = 0,
+    query_count: int = 0,
+    context: str = "",
+) -> str:
+    ordered = [
+        ("erp_save_complete", "ERP save complete"),
+        ("inventory_master_load", "Inventory master load"),
+        ("snapshot_seed", "Snapshot seed"),
+        ("inventory_snapshot_load", "Inventory snapshot load"),
+        ("inventory_history_load", "Inventory history load"),
+        ("outbound_load", "Outbound load"),
+        ("pending_inbound_load", "Pending inbound load"),
+        ("safety_stock_calculation", "Safety stock calculation"),
+        ("available_stock_calculation", "Available stock calc"),
+        ("stock_status_calculation", "Status calculation"),
+        ("order_needed_days_calculation", "Order date calculation"),
+        ("category_supplier_manager_mapping", "Category/supplier mapping"),
+        ("summary_card_calculation", "Summary card calculation"),
+        ("pdf_data_generation", "PDF data generation"),
+        ("excel_data_generation", "Excel data generation"),
+        ("dataframe_creation", "DataFrame creation"),
+        ("table_rendering", "Table rendering"),
+        ("total", "TOTAL"),
+    ]
+    values = dict(timings or {})
+    if total_seconds is not None:
+        values["total"] = round(total_seconds, 4)
+    lines = [
+        "[INVENTORY RENDER]",
+        f"Context               : {context or '-'}",
+        f"Source / work date    : {source_type} / {work_date}",
+        f"Rows                  : {int(row_count or 0)}",
+        f"DB query count        : {int(query_count or 0)}",
+    ]
+    for key, label in ordered:
+        if key in values:
+            lines.append(f"{label:<24}: {float(values[key] or 0):.3f} sec")
+    return "\n".join(lines)
+
+
+def log_inventory_render_performance(
+    source_type: str,
+    work_date: date,
+    timings: dict[str, float],
+    total_seconds: float | None = None,
+    row_count: int = 0,
+    query_count: int = 0,
+    context: str = "",
+) -> str:
+    text = inventory_render_log_text(source_type, work_date, timings, total_seconds, row_count, query_count, context)
+    INVENTORY_LOGGER.info("\n%s", text)
+    try:
+        INVENTORY_RENDER_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with INVENTORY_RENDER_LOG_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n{text}\n\n")
+    except OSError:
+        pass
+    return text
 
 
 def log_inventory_update_performance(timings: dict[str, float], total_seconds: float | None = None) -> str:

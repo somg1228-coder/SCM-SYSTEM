@@ -6,6 +6,7 @@ from io import BytesIO
 from math import ceil
 from pathlib import Path
 import re
+import time
 
 import pandas as pd
 import streamlit as st
@@ -1294,16 +1295,17 @@ def apply_master_categories(rows: list[dict], lookup: dict[str, dict[str, str]])
 
 def fetch_master_inventory(source_type: str, work_date: date) -> list[dict]:
     def load_rows(db):
-        rows = services.master_based_inventory_rows(db, source_type, work_date)
-        return apply_master_categories(rows, build_master_category_lookup(db, source_type))
+        return services.master_based_inventory_rows(db, source_type, work_date)
 
     return with_db(load_rows) or []
 
 
 def fetch_master_category_options(source_type: str, df: pd.DataFrame) -> list[str]:
-    master_categories = with_db(lambda db: services.list_product_master_categories(db, source_type)) or []
     table_categories = df.get("카테고리", pd.Series(dtype=str)).dropna().unique() if df is not None else []
-    return sorted({clean_cell(value) for value in [*master_categories, *table_categories] if clean_cell(value)})
+    if len(table_categories):
+        return sorted({clean_cell(value) for value in table_categories if clean_cell(value)})
+    master_categories = with_db(lambda db: services.list_product_master_categories(db, source_type)) or []
+    return sorted({clean_cell(value) for value in master_categories if clean_cell(value)})
 
 
 def inventory_output_signature(df: pd.DataFrame, filters: dict) -> tuple:
@@ -4553,6 +4555,12 @@ def render_inventory_update_panel(
 
 
 def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
+    render_started_at = time.perf_counter()
+    render_timings: dict[str, float] = {}
+
+    def mark_render_stage(name: str, started_at: float) -> None:
+        render_timings[name] = round(time.perf_counter() - started_at, 4)
+
     today = date.today()
     saved_work_dates = fetch_work_dates(source_type)
     default_work_date = saved_work_dates[0] if saved_work_dates else today
@@ -4570,12 +4578,24 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
         )
 
     work_date = render_inventory_update_panel(source_type, daily_date_key)
+    render_timings["erp_save_complete"] = 0.0
 
+    stage_started_at = time.perf_counter()
     rows = fetch_master_inventory(source_type, work_date)
+    mark_render_stage("inventory_data_load_total", stage_started_at)
+
+    stage_started_at = time.perf_counter()
     base_df = daily_to_editor(rows)
+    mark_render_stage("dataframe_creation", stage_started_at)
+
+    stage_started_at = time.perf_counter()
     filters = render_inventory_filters(source_type, base_df)
+    mark_render_stage("filter_rendering", stage_started_at)
+
+    stage_started_at = time.perf_counter()
     filtered_df = apply_inventory_filters(base_df, filters)
     paged_df, page, total_pages = paginate_inventory_df(filtered_df, filters)
+    mark_render_stage("filtering_pagination", stage_started_at)
 
     upload_preview_key = f"{source_type}_stock_upload_preview_{work_date.isoformat()}"
     preview_df_key = f"{source_type}_inventory_preview_df_{work_date.isoformat()}"
@@ -4584,6 +4604,7 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
     output_payload_key = f"{source_type}_daily_output_payload_{work_date.isoformat()}"
     output_scope_key = f"{source_type}_daily_download_scope_{work_date}"
 
+    stage_started_at = time.perf_counter()
     status_series = filtered_df.get("재고상태", pd.Series(dtype=str))
     render_inventory_kpi_cards(
         [
@@ -4595,6 +4616,7 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
             ("미집계", int((status_series == "미집계").sum()), "items", "unknown"),
         ]
     )
+    mark_render_stage("summary_card_calculation", stage_started_at)
 
     with st.container(key=f"{source_key(source_type)}_inventory_table_actions"):
         toolbar_title, toolbar_scope, toolbar_pdf, toolbar_excel = st.columns([3.8, 1.15, 0.78, 0.78], gap="small")
@@ -4609,26 +4631,41 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
                 key=output_scope_key,
                 label_visibility="collapsed",
             )
-        output_df = filtered_df if download_scope == "현재 필터" else base_df
-        output_df = inventory_status_output_dataframe(output_df.drop(columns=["선택"], errors="ignore"))
+        output_source_df = filtered_df if download_scope == "현재 필터" else base_df
         output_filters = filters if download_scope == "현재 필터" else {}
-        output_signature = inventory_output_signature(output_df, output_filters)
+        output_signature = inventory_output_signature(output_source_df, output_filters)
         payload = st.session_state.get(output_payload_key, {})
         if isinstance(payload, dict) and payload.get("signature") != output_signature:
             st.session_state.pop(output_payload_key, None)
             payload = {}
         with toolbar_pdf:
             if st.button("PDF", key=f"{source_type}_daily_pdf_prepare_{work_date}", use_container_width=True):
-                payload = {**payload, "signature": output_signature, "pdf": inventory_pdf_bytes(output_df, source_type, work_date, output_filters)}
+                stage_started_at = time.perf_counter()
+                output_df = inventory_status_output_dataframe(output_source_df.drop(columns=["선택"], errors="ignore"))
+                payload = {
+                    **payload,
+                    "signature": output_signature,
+                    "pdf": inventory_pdf_bytes(output_df, source_type, work_date, output_filters),
+                    "pdf_count": len(output_df),
+                }
+                mark_render_stage("pdf_data_generation", stage_started_at)
                 st.session_state[output_payload_key] = payload
             if isinstance(payload, dict) and payload.get("pdf"):
-                st.download_button("PDF 저장", data=payload["pdf"], file_name=inventory_file_name("pdf", output_df, output_filters), mime="application/pdf", use_container_width=True, key=f"{source_type}_daily_pdf_download_{work_date}")
+                st.download_button("PDF 저장", data=payload["pdf"], file_name=f"{source_type}_inventory_{work_date:%Y%m%d}.pdf", mime="application/pdf", use_container_width=True, key=f"{source_type}_daily_pdf_download_{work_date}")
         with toolbar_excel:
             if st.button("Excel", key=f"{source_type}_daily_excel_prepare_{work_date}", use_container_width=True):
-                payload = {**payload, "signature": output_signature, "excel": dataframe_to_excel(output_df)}
+                stage_started_at = time.perf_counter()
+                output_df = inventory_status_output_dataframe(output_source_df.drop(columns=["선택"], errors="ignore"))
+                payload = {
+                    **payload,
+                    "signature": output_signature,
+                    "excel": dataframe_to_excel(output_df),
+                    "excel_count": len(output_df),
+                }
+                mark_render_stage("excel_data_generation", stage_started_at)
                 st.session_state[output_payload_key] = payload
             if isinstance(payload, dict) and payload.get("excel"):
-                st.download_button("Excel 저장", data=payload["excel"], file_name=inventory_file_name("xlsx", output_df, output_filters), mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key=f"{source_type}_daily_download_{work_date}")
+                st.download_button("Excel 저장", data=payload["excel"], file_name=f"{source_type}_inventory_{work_date:%Y%m%d}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True, key=f"{source_type}_daily_download_{work_date}")
 
     if filtered_df.empty:
         with st.container(key=f"{source_key(source_type)}_inventory_table_panel"):
@@ -4638,7 +4675,9 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
                 st.rerun()
     else:
         with st.container(key=f"{source_key(source_type)}_inventory_table_panel"):
+            table_started_at = time.perf_counter()
             render_inventory_visible_table(paged_df.drop(columns=["선택"], errors="ignore"), height=520)
+            mark_render_stage("table_rendering", table_started_at)
             nav_prev, nav_info, nav_next, spacer = st.columns([0.8, 1, 0.8, 4.6], gap="small")
             filter_key = source_key(source_type)
             with nav_prev:
@@ -4653,6 +4692,19 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
                     st.rerun()
             with spacer:
                 st.empty()
+
+    render_timings.setdefault("pdf_data_generation", 0.0)
+    render_timings.setdefault("excel_data_generation", 0.0)
+    render_timings.setdefault("table_rendering", 0.0)
+    services.log_inventory_render_performance(
+        source_type,
+        work_date,
+        render_timings,
+        time.perf_counter() - render_started_at,
+        row_count=len(base_df),
+        query_count=0,
+        context="page.render_daily_tab",
+    )
 
 
 def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, filters: dict) -> bytes:
