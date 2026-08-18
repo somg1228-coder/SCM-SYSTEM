@@ -1334,50 +1334,23 @@ def inventory_single_category_toggle(options: list[str], state_key: str, widget_
         current = "전체"
 
     if not options:
-        st.caption("카테고리: 데이터 없음")
         st.session_state[state_key] = "전체"
-        return "전체"
+        choices = ["전체"]
+        current = "전체"
 
-    open_key = f"{widget_key}_open"
-    st.session_state.setdefault(open_key, False)
-    selected = current
-    trigger_label = "카테고리 선택" if current == "전체" else f"카테고리 : {current}"
+    st.session_state.pop(f"{widget_key}_open", None)
+    if clean_cell(st.session_state.get(widget_key)) not in choices:
+        st.session_state[widget_key] = current
 
-    with st.container(key=f"{widget_key}_dropdown"):
-        if hasattr(st, "popover"):
-            with st.popover(f"{trigger_label} ▼", use_container_width=True):
-                for index, label in enumerate(choices):
-                    if st.button(
-                        label,
-                        key=f"{widget_key}_option_{index}",
-                        type="primary" if label == current else "secondary",
-                        use_container_width=True,
-                    ):
-                        selected = label
-                        st.session_state[state_key] = selected
-                        st.session_state.pop(widget_key, None)
-                        st.rerun()
-        else:
-            fallback_label = f"{trigger_label} {'▲' if st.session_state[open_key] else '▼'}"
-            if st.button(fallback_label, key=f"{widget_key}_trigger", use_container_width=True):
-                st.session_state[open_key] = not st.session_state[open_key]
-                st.rerun()
-
-            if st.session_state[open_key]:
-                with st.container(key=f"{widget_key}_options"):
-                    for index, label in enumerate(choices):
-                        if st.button(
-                            label,
-                            key=f"{widget_key}_option_{index}",
-                            type="primary" if label == current else "secondary",
-                            use_container_width=True,
-                        ):
-                            selected = label
-                            st.session_state[state_key] = selected
-                            st.session_state[open_key] = False
-                            st.session_state.pop(widget_key, None)
-                            st.rerun()
-
+    with st.container(key=f"{widget_key}_select"):
+        selected = st.selectbox(
+            "카테고리 선택",
+            choices,
+            index=choices.index(current),
+            key=widget_key,
+            disabled=not options,
+        )
+    selected = clean_cell(selected) or "전체"
     st.session_state[state_key] = selected
     return selected
 
@@ -4139,32 +4112,25 @@ def inventory_single_category_toggle(options: list[str], state_key: str, widget_
     if current not in choices:
         current = "전체"
     if not options:
-        st.caption("카테고리: 데이터 없음")
         st.session_state[state_key] = "전체"
-        return "전체"
+        choices = ["전체"]
+        current = "전체"
 
-    label = "카테고리 선택 ▼" if current == "전체" else f"카테고리 : {current} ▼"
-    if hasattr(st, "popover"):
-        with st.popover(label, use_container_width=True):
-            for index, choice in enumerate(choices):
-                if st.button(choice, key=f"{widget_key}_option_{index}", type="primary" if choice == current else "secondary", use_container_width=True):
-                    st.session_state[state_key] = choice
-                    st.session_state.pop(f"{widget_key}_open", None)
-                    st.rerun()
-    else:
-        open_key = f"{widget_key}_open"
-        st.session_state.setdefault(open_key, False)
-        if st.button(label, key=f"{widget_key}_trigger", use_container_width=True):
-            st.session_state[open_key] = not st.session_state[open_key]
-            st.rerun()
-        if st.session_state[open_key]:
-            for index, choice in enumerate(choices):
-                if st.button(choice, key=f"{widget_key}_option_{index}", type="primary" if choice == current else "secondary", use_container_width=True):
-                    st.session_state[state_key] = choice
-                    st.session_state[open_key] = False
-                    st.rerun()
-    st.session_state[state_key] = current
-    return current
+    st.session_state.pop(f"{widget_key}_open", None)
+    if clean_cell(st.session_state.get(widget_key)) not in choices:
+        st.session_state[widget_key] = current
+
+    with st.container(key=f"{widget_key}_select"):
+        selected = st.selectbox(
+            "카테고리 선택",
+            choices,
+            index=choices.index(current),
+            key=widget_key,
+            disabled=not options,
+        )
+    selected = clean_cell(selected) or "전체"
+    st.session_state[state_key] = selected
+    return selected
 
 
 def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
