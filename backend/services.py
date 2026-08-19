@@ -3071,6 +3071,33 @@ def apply_stock_upload_preview(
     }
 
 
+def apply_erp_stock_upload_preview(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    preview: dict,
+    uploaded_by: str = "",
+) -> dict:
+    """Apply an ERP snapshot upload after the common parsing/matching preview."""
+    next_preview = dict(preview or {})
+    next_preview["change_method"] = "ERP 재고 업데이트"
+    return apply_stock_upload_preview(db, source_type, work_date, next_preview, uploaded_by)
+
+
+def apply_manual_stock_adjustment_preview(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    preview: dict,
+    uploaded_by: str = "",
+) -> dict:
+    """Apply a reviewed manual stock adjustment preview."""
+    next_preview = dict(preview or {})
+    next_preview["change_method"] = clean_text(next_preview.get("change_method")) or "재고 수정"
+    next_preview["upload_mode"] = clean_text(next_preview.get("upload_mode")) or "manual_adjustment"
+    return apply_stock_upload_preview(db, source_type, work_date, next_preview, uploaded_by)
+
+
 def recalculate_uploaded_inventory_rows(
     db: Session,
     source_type: str,
