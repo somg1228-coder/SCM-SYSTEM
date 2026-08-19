@@ -10,6 +10,7 @@ import threading
 from html import escape
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 from sqlalchemy import select
@@ -833,10 +834,22 @@ def render_warehouse3d_page() -> None:
     with building_col:
         building = st.selectbox("위치 선택", building_options, key="warehouse3d_building")
 
+    view_aliases = {
+        "3D 배치": "3D 창고",
+        "재고 위치표": "재고위치표",
+        "창고 재고": "재고관리",
+    }
     for stale_key in ("warehouse3d_view_selected", "warehouse3d_view_widget"):
-        if st.session_state.get(stale_key) == "창고 재고":
-            st.session_state.pop(stale_key, None)
-    selected_view = lazy_tab_selector(["3D 배치", "재고 위치표"], "warehouse3d_view")
+        stale_value = st.session_state.get(stale_key)
+        if stale_value in view_aliases:
+            st.session_state[stale_key] = view_aliases[stale_value]
+    selected_view = lazy_tab_selector(["3D 창고", "재고위치표", "재고관리"], "warehouse3d_view")
+
+    if selected_view == "재고관리":
+        with perf_span("warehouse3d.fetch_inventory", component="inventory_tab"):
+            inventory_rows, work_date = fetch_latest_warehouse_inventory()
+        render_warehouse_inventory_tab(inventory_rows, work_date)
+        return
 
     with perf_span("warehouse3d.fetch_inventory"):
         inventory_rows, work_date = fetch_latest_warehouse_inventory()
@@ -857,7 +870,7 @@ def render_warehouse3d_page() -> None:
         else:
             st.error(message)
 
-    if selected_view == "3D 배치":
+    if selected_view == "3D 창고":
         with perf_span("warehouse3d.component_html_build", component="scene3d"):
             scene_html = warehouse_scene3d_html(
                 building=building,
@@ -1518,6 +1531,126 @@ def warehouse_summary(racks: list[dict], inventory_rows: list[dict]) -> dict:
         "sku_count": len(inventory_rows),
         "total_stock": total_stock,
     }
+
+
+def warehouse3d_text(value) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def warehouse3d_int(value) -> int:
+    try:
+        return int(float(str(value or 0).replace(",", "")))
+    except (TypeError, ValueError):
+        return 0
+
+
+def warehouse3d_float(value) -> float:
+    try:
+        return float(str(value or 0).replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def warehouse_inventory_filter_options(rows: list[dict], field: str) -> list[str]:
+    values = sorted({warehouse3d_text(row.get(field)) for row in rows if warehouse3d_text(row.get(field))})
+    return ["전체", *values]
+
+
+def warehouse_inventory_display_rows(rows: list[dict]) -> list[dict]:
+    output = []
+    for row in rows:
+        output.append(
+            {
+                "상품코드": row.get("product_code", ""),
+                "바코드": row.get("barcode", ""),
+                "상품명": row.get("product_name", ""),
+                "카테고리": row.get("category", ""),
+                "업체명": row.get("supplier", ""),
+                "현재고": warehouse3d_int(row.get("current_stock")),
+                "가용재고": warehouse3d_int(row.get("available_stock")),
+                "안전재고": warehouse3d_int(row.get("safe_stock")),
+                "평균출고": round(warehouse3d_float(row.get("avg_daily_outbound_1w")), 1),
+                "적재위치": row.get("storage_location", ""),
+                "재고상태": row.get("stock_status", ""),
+                "위치상태": row.get("location_status", ""),
+            }
+        )
+    return output
+
+
+def render_warehouse_inventory_tab(inventory_rows: list[dict], work_date: str) -> None:
+    st.markdown("#### 재고관리")
+    st.caption(f"창고재고 원본 기준 현재고 조회 · 기준일자 {work_date or '-'}")
+    if not inventory_rows:
+        st.info("표시할 창고 재고 데이터가 없습니다.")
+        return
+
+    filter_cols = st.columns([1.7, 1.0, 1.0, 0.75, 0.75, 2.6], gap="small")
+    search = filter_cols[0].text_input("상품 검색", placeholder="상품코드 / 바코드 / 상품명", key="warehouse3d_inventory_search")
+    category = filter_cols[1].selectbox(
+        "카테고리",
+        warehouse_inventory_filter_options(inventory_rows, "category"),
+        key="warehouse3d_inventory_category",
+    )
+    supplier = filter_cols[2].selectbox(
+        "업체 필터",
+        warehouse_inventory_filter_options(inventory_rows, "supplier"),
+        key="warehouse3d_inventory_supplier",
+    )
+    stock_only = filter_cols[3].checkbox("재고 있음", key="warehouse3d_inventory_stock_only")
+    location_only = filter_cols[4].checkbox("위치 있음", key="warehouse3d_inventory_location_only")
+    with filter_cols[5]:
+        st.empty()
+
+    keyword = warehouse3d_text(search).lower()
+    filtered = []
+    for row in inventory_rows:
+        if keyword:
+            haystack = " ".join(
+                warehouse3d_text(row.get(field))
+                for field in ("product_code", "barcode", "product_name")
+            ).lower()
+            if keyword not in haystack:
+                continue
+        if category != "전체" and warehouse3d_text(row.get("category")) != category:
+            continue
+        if supplier != "전체" and warehouse3d_text(row.get("supplier")) != supplier:
+            continue
+        if stock_only and warehouse3d_int(row.get("current_stock")) <= 0:
+            continue
+        if location_only and not warehouse3d_text(row.get("storage_location")):
+            continue
+        filtered.append(row)
+
+    page_size = 50
+    page_key = "warehouse3d_inventory_page"
+    filter_signature = f"{keyword}|{category}|{supplier}|{int(stock_only)}|{int(location_only)}"
+    signature_key = "warehouse3d_inventory_filter_signature"
+    if st.session_state.get(signature_key) != filter_signature:
+        st.session_state[signature_key] = filter_signature
+        st.session_state[page_key] = 1
+    total_pages = max((len(filtered) + page_size - 1) // page_size, 1)
+    page = min(max(int(st.session_state.get(page_key, 1) or 1), 1), total_pages)
+    st.session_state[page_key] = page
+    start = (page - 1) * page_size
+    page_rows = filtered[start : start + page_size]
+    display_df = pd.DataFrame(warehouse_inventory_display_rows(page_rows))
+
+    st.caption(f"필터 결과 {len(filtered):,}개 상품 · 전체 {len(inventory_rows):,}개 · {page}/{total_pages} 페이지")
+    if display_df.empty:
+        st.info("현재 필터 조건에 해당하는 창고 재고가 없습니다.")
+    else:
+        st.dataframe(display_df, hide_index=True, use_container_width=True, height=520)
+
+    nav_cols = st.columns([0.65, 0.65, 1.2, 4.8], gap="small")
+    if nav_cols[0].button("이전", key="warehouse3d_inventory_prev", disabled=page <= 1, use_container_width=True):
+        st.session_state[page_key] = max(page - 1, 1)
+        st.rerun()
+    if nav_cols[1].button("다음", key="warehouse3d_inventory_next", disabled=page >= total_pages, use_container_width=True):
+        st.session_state[page_key] = min(page + 1, total_pages)
+        st.rerun()
+    nav_cols[2].caption(f"{page} / {total_pages}")
+    nav_cols[3].caption("적재위치 상세 관리는 재고위치표에서 수행합니다.")
 
 
 def resolve_drawing(building: str, uploaded_file) -> dict:
