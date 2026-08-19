@@ -1578,6 +1578,112 @@ def warehouse_inventory_display_rows(rows: list[dict]) -> list[dict]:
     return output
 
 
+def warehouse_inventory_badge_html(value: object) -> str:
+    label = warehouse3d_text(value) or "미집계"
+    tone = {
+        "정상": "normal",
+        "주의": "warning",
+        "부족": "short",
+        "품절": "soldout",
+        "미집계": "unknown",
+        "위치미등록": "warning",
+        "미배치": "warning",
+        "수량불일치": "short",
+    }.get(label, "unknown")
+    return f'<span class="warehouse-inventory-badge {tone}">{escape(label)}</span>'
+
+
+def warehouse_inventory_table_html(df: pd.DataFrame) -> str:
+    numeric_columns = {"현재고", "가용재고", "안전재고", "평균출고"}
+    badge_columns = {"재고상태", "위치상태"}
+    headers = "".join(f"<th>{escape(str(column))}</th>" for column in df.columns)
+    rows = []
+    for _, row in df.fillna("").iterrows():
+        cells = []
+        for column in df.columns:
+            value = row.get(column, "")
+            class_name = ' class="numeric"' if column in numeric_columns else ""
+            if column in badge_columns:
+                cells.append(f"<td{class_name}>{warehouse_inventory_badge_html(value)}</td>")
+            elif column in numeric_columns:
+                number = warehouse3d_float(value) if column == "평균출고" else warehouse3d_int(value)
+                formatted = f"{number:,.1f}" if column == "평균출고" else f"{int(number):,}"
+                cells.append(f"<td{class_name}>{formatted}</td>")
+            else:
+                cells.append(f"<td{class_name}>{escape(str(value))}</td>")
+        rows.append(f"<tr>{''.join(cells)}</tr>")
+    return f"""
+    <style>
+        .warehouse-inventory-table-wrap {{
+            width: 100%;
+            max-height: 520px;
+            overflow: auto;
+            border: 1px solid #D8D2C8;
+            border-radius: 8px;
+            background: #FAF8F5;
+        }}
+        .warehouse-inventory-table {{
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: auto;
+            min-width: 1120px;
+            font-size: 13px;
+        }}
+        .warehouse-inventory-table th {{
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            padding: 10px 12px;
+            background: #EDE8E1;
+            border-bottom: 1px solid #D8D2C8;
+            color: #2F4659;
+            font-weight: 800;
+            text-align: left;
+            white-space: nowrap;
+        }}
+        .warehouse-inventory-table td {{
+            padding: 9px 12px;
+            border-bottom: 1px solid #E2DCD4;
+            background: #FAF8F5;
+            color: #1F2933;
+            vertical-align: middle;
+            white-space: nowrap;
+        }}
+        .warehouse-inventory-table tr:nth-child(even) td {{
+            background: #F2EFEA;
+        }}
+        .warehouse-inventory-table td.numeric {{
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }}
+        .warehouse-inventory-badge {{
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 3px 9px;
+            border-radius: 999px;
+            border: 1px solid #CBD5E1;
+            background: #F1F5F9;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 800;
+            white-space: nowrap;
+        }}
+        .warehouse-inventory-badge.normal {{ background: #ECFDF3; border-color: #BBF7D0; color: #166534; }}
+        .warehouse-inventory-badge.warning {{ background: #FFFBEB; border-color: #FDE68A; color: #92400E; }}
+        .warehouse-inventory-badge.short {{ background: #FEF2F2; border-color: #FECACA; color: #991B1B; }}
+        .warehouse-inventory-badge.soldout {{ background: #7F1D1D; border-color: #7F1D1D; color: #FFFFFF; }}
+        .warehouse-inventory-badge.unknown {{ background: #F1F5F9; border-color: #CBD5E1; color: #475569; }}
+    </style>
+    <div class="warehouse-inventory-table-wrap">
+        <table class="warehouse-inventory-table">
+            <thead><tr>{headers}</tr></thead>
+            <tbody>{''.join(rows)}</tbody>
+        </table>
+    </div>
+    """
+
+
 def render_warehouse_inventory_tab(inventory_rows: list[dict], work_date: str) -> None:
     st.markdown("#### 재고관리")
     st.caption(f"창고재고 원본 기준 현재고 조회 · 기준일자 {work_date or '-'}")
@@ -1640,7 +1746,7 @@ def render_warehouse_inventory_tab(inventory_rows: list[dict], work_date: str) -
     if display_df.empty:
         st.info("현재 필터 조건에 해당하는 창고 재고가 없습니다.")
     else:
-        st.dataframe(display_df, hide_index=True, use_container_width=True, height=520)
+        st.markdown(warehouse_inventory_table_html(display_df), unsafe_allow_html=True)
 
     nav_cols = st.columns([0.65, 0.65, 1.2, 4.8], gap="small")
     if nav_cols[0].button("이전", key="warehouse3d_inventory_prev", disabled=page <= 1, use_container_width=True):
