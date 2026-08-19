@@ -179,6 +179,7 @@ class PostgresSqliteCompatConnection:
                 cursor._rows = []
         except SQLAlchemyError as exc:
             database.log_database_exception("legacy sqlite-compatible query", exc)
+            self.rollback()
             raise sqlite3.Error(database.sanitize_database_text(repr(exc))) from exc
 
 

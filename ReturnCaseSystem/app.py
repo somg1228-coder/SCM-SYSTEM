@@ -1370,6 +1370,27 @@ def render_return_case_system():
 
     c = conn.cursor()
 
+    def execute_case_maintenance(statement: str, parameters=None) -> bool:
+        try:
+            c.execute(statement, parameters or ())
+            conn.commit()
+            return True
+        except sqlite3.Error as exc:
+            conn.rollback()
+            st.warning(f"반품/AS DB 보정 작업을 건너뛰었습니다: {exc}")
+            return False
+
+    def ensure_case_column(column_name: str, sqlite_type: str) -> None:
+        c.execute("PRAGMA table_info(cases)")
+        existing_columns = {row[1] for row in c.fetchall()}
+        if column_name in existing_columns:
+            return
+        column_type = sqlite_type if legacy_uses_local_sqlite() else {"BLOB": "BYTEA"}.get(sqlite_type.upper(), sqlite_type)
+        clause = f"ALTER TABLE cases ADD COLUMN {column_name} {column_type}"
+        if not legacy_uses_local_sqlite():
+            clause = f"ALTER TABLE cases ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
+        execute_case_maintenance(clause)
+
     c.execute("""
     CREATE TABLE IF NOT EXISTS cases(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1392,29 +1413,24 @@ def render_return_case_system():
 
     conn.commit()
 
-    c.execute("PRAGMA table_info(cases)")
-    case_columns = {row[1] for row in c.fetchall()}
-
-    if "case_image_original" not in case_columns:
-        c.execute("ALTER TABLE cases ADD COLUMN case_image_original BLOB")
-        c.execute("""
+    ensure_case_column("case_image_original", "BLOB")
+    execute_case_maintenance(
+        """
         UPDATE cases
         SET case_image_original = case_image
         WHERE case_image_original IS NULL
-        """)
-        conn.commit()
-
-    if "repair_image_original" not in case_columns:
-        c.execute("ALTER TABLE cases ADD COLUMN repair_image_original BLOB")
-        c.execute("""
+        """
+    )
+    ensure_case_column("repair_image_original", "BLOB")
+    execute_case_maintenance(
+        """
         UPDATE cases
         SET repair_image_original = repair_image
         WHERE repair_image_original IS NULL
-        """)
-        conn.commit()
+        """
+    )
 
-    c.execute("UPDATE cases SET category='누락' WHERE category='변심'")
-    conn.commit()
+    execute_case_maintenance("UPDATE cases SET category='누락' WHERE category='변심'")
 
     def get_case_image_original(case_id):
         c.execute(
