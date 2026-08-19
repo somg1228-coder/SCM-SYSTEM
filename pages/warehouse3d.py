@@ -49,6 +49,14 @@ except (ModuleNotFoundError, RuntimeError) as exc:
 else:
     WAREHOUSE_IMPORT_ERROR = ""
 
+try:
+    from pages import inventory as inventory_page
+except (ModuleNotFoundError, RuntimeError) as exc:
+    inventory_page = None
+    WAREHOUSE_INVENTORY_IMPORT_ERROR = str(exc)
+else:
+    WAREHOUSE_INVENTORY_IMPORT_ERROR = ""
+
 
 DEFAULT_LOGIN_DRAWING_PATH = Path.home() / "Downloads" / "[FAC-001~005] 시설 도면_Rev. 1_260305.pdf"
 LOGIN_FLOORS = ["1층", "2층", "3층", "4층"]
@@ -687,6 +695,8 @@ def handle_warehouse3d_layout_save_request(save_request: dict | None) -> bool:
         st.session_state["warehouse3d_save_notice"] = ("error", f"배치저장 실패: {exc}")
         return True
 
+    if inventory_page is not None and hasattr(inventory_page, "clear_inventory_data_caches"):
+        inventory_page.clear_inventory_data_caches()
     st.session_state["warehouse3d_save_notice"] = ("success", "배치저장 완료")
     return True
 
@@ -828,14 +838,24 @@ def render_warehouse3d_page() -> None:
         st.error(WAREHOUSE_IMPORT_ERROR or "창고관리 DB를 초기화하지 못했습니다.")
         return
 
-    with perf_span("warehouse3d.fetch_inventory"):
-        inventory_rows, work_date = fetch_latest_warehouse_inventory()
     building_col, _ = st.columns([1.05, 2.3], gap="small")
     building_options = list(LOCATIONS)
     if st.session_state.get("warehouse3d_building") not in building_options:
         st.session_state["warehouse3d_building"] = building_options[0]
     with building_col:
         building = st.selectbox("위치 선택", building_options, key="warehouse3d_building")
+
+    selected_view = lazy_tab_selector(["3D 배치", "재고 위치표", "창고 재고"], "warehouse3d_view")
+    if selected_view == "창고 재고":
+        if inventory_page is None:
+            st.error(WAREHOUSE_INVENTORY_IMPORT_ERROR or "창고 재고 화면을 불러오지 못했습니다.")
+            return
+        with st.container(key="warehouse3d_inventory_tab"):
+            inventory_page.render_daily_tab("창고", "창고")
+        return
+
+    with perf_span("warehouse3d.fetch_inventory"):
+        inventory_rows, work_date = fetch_latest_warehouse_inventory()
     with perf_span("warehouse3d.layout_sync_tools"):
         shared_layout_store = render_warehouse_layout_sync_tools()
     default_floor = LOCATIONS[building]["default_floor"]
@@ -853,7 +873,6 @@ def render_warehouse3d_page() -> None:
         else:
             st.error(message)
 
-    selected_view = lazy_tab_selector(["3D 배치", "재고 위치표"], "warehouse3d_view")
     if selected_view == "3D 배치":
         with perf_span("warehouse3d.component_html_build", component="scene3d"):
             scene_html = warehouse_scene3d_html(

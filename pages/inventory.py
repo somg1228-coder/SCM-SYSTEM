@@ -695,6 +695,31 @@ def render_material_inventory_tab() -> None:
         st.empty()
 
 
+def render_warehouse_location_detail_panel(df: pd.DataFrame) -> None:
+    if df is None or df.empty or "위치상세" not in df.columns:
+        return
+    detail_rows = []
+    for _, row in df.iterrows():
+        detail_text = clean_cell(row.get("위치상세"))
+        if not detail_text:
+            continue
+        for detail in [part.strip() for part in detail_text.split(";") if part.strip()]:
+            location, _, quantity = detail.rpartition(" / ")
+            detail_rows.append(
+                {
+                    "상품명": row.get("상품명", ""),
+                    "바코드": row.get("바코드", ""),
+                    "위치": location or detail,
+                    "위치별 수량": quantity.replace("개", "").strip(),
+                }
+            )
+    if not detail_rows:
+        return
+    detail_df = pd.DataFrame(detail_rows)
+    with st.expander(f"적재위치 상세 {len(detail_df):,}건", expanded=False):
+        render_plain_inventory_table(detail_df, height=300, empty_message="표시할 적재위치 상세가 없습니다.")
+
+
 def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
     st.markdown(f'<div class="inventory-tab-title">{source_type} 재고조회</div>', unsafe_allow_html=True)
     today = date.today()
@@ -723,6 +748,8 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
         summary_cols[3].metric("부족", f"{int((filtered_df.get('재고상태', pd.Series(dtype=str)) == '부족').sum()):,}개")
         summary_cols[4].metric("품절", f"{int((filtered_df.get('재고상태', pd.Series(dtype=str)) == '품절').sum()):,}개")
         summary_cols[5].metric("가용재고", f"{filtered_df.get('가용재고', pd.Series(dtype=int)).apply(to_int).sum():,}개")
+    if source_type == "창고":
+        render_warehouse_location_detail_panel(filtered_df)
 
     download_scope = st.radio(
         "다운로드 범위",
@@ -1609,6 +1636,7 @@ INVENTORY_STATUS_HIDDEN_COLUMNS = {
     "입고예정",
     "최근재고반영일",
     "최근2주 평균출고",
+    "위치상세",
 }
 
 
@@ -4068,27 +4096,41 @@ def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None
 
 def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
     mapped = []
+    show_warehouse_locations = any(clean_cell(row.get("source_type")) == "창고" for row in rows)
     for row in rows:
         category = clean_cell(row.get("category") or row.get("large_category") or row.get("medium_category") or row.get("small_category"))
-        mapped.append(
-            {
-                "선택": False,
-                "카테고리": category or "미분류",
-                "바코드": row.get("barcode", ""),
-                "상품명": row.get("product_name", ""),
-                "가용재고": row.get("available_stock", 0),
-                "1주 평균출고수량": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
-                "재고상태": clean_cell(row.get("stock_status")) or "미집계",
-                "출고예정": row.get("pending_outbound_qty", 0),
-                "현재고": row.get("current_stock", 0),
-                "발주필요일": format_order_required_date(row),
-                "박스/파렛트 단위": row.get("box_pallet_unit", ""),
-                "업체명": row.get("supplier", ""),
-                "담당자": row.get("manager", ""),
-                "리드타임": row.get("inbound_cycle", 0) or 0,
-            }
-        )
-    return pd.DataFrame(mapped, columns=DAILY_COLUMNS)
+        mapped_row = {
+            "선택": False,
+            "카테고리": category or "미분류",
+            "바코드": row.get("barcode", ""),
+            "상품명": row.get("product_name", ""),
+            "가용재고": row.get("available_stock", 0),
+            "1주 평균출고수량": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
+            "재고상태": clean_cell(row.get("stock_status")) or "미집계",
+            "출고예정": row.get("pending_outbound_qty", 0),
+            "현재고": row.get("current_stock", 0),
+            "발주필요일": format_order_required_date(row),
+            "박스/파렛트 단위": row.get("box_pallet_unit", ""),
+            "업체명": row.get("supplier", ""),
+            "담당자": row.get("manager", ""),
+            "리드타임": row.get("inbound_cycle", 0) or 0,
+        }
+        if show_warehouse_locations:
+            mapped_row.update(
+                {
+                    "적재위치": row.get("storage_location", ""),
+                    "위치배치수량": row.get("placed_quantity", 0),
+                    "미배치수량": row.get("unplaced_quantity", 0),
+                    "위치상태": row.get("location_status", "위치미등록"),
+                    "위치상세": row.get("location_detail", ""),
+                    "비고": row.get("memo", ""),
+                }
+            )
+        mapped.append(mapped_row)
+    columns = list(DAILY_COLUMNS)
+    if show_warehouse_locations:
+        columns.extend(["적재위치", "위치배치수량", "미배치수량", "위치상태", "위치상세", "비고"])
+    return pd.DataFrame(mapped, columns=columns)
 
 
 def inventory_output_signature(df: pd.DataFrame, filters: dict) -> tuple:
@@ -4244,7 +4286,7 @@ def apply_inventory_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     if statuses:
         filtered = filtered[filtered["재고상태"].isin(statuses)]
     if search:
-        search_columns = ["바코드", "상품명", "업체명", "재고위치", "담당자"]
+        search_columns = [column for column in ["바코드", "상품명", "업체명", "재고위치", "적재위치", "비고", "담당자"] if column in filtered.columns]
         search_text = filtered[search_columns].astype(str).agg(" ".join, axis=1).str.lower()
         filtered = filtered[search_text.str.contains(re.escape(search), na=False)]
     if filters.get("stock_presence") == "보유":

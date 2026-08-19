@@ -31,6 +31,7 @@ from backend.models import (
     PurchaseRequest,
     ThirdpartyProductMaster,
     WarehouseInventoryPosition,
+    WarehouseLayout,
     WarehouseProductMaster,
     WarehouseRack,
 )
@@ -2297,26 +2298,97 @@ def pending_inbound_qty_by_product(db: Session, source_type: str, work_date: dat
     return pending
 
 
-def warehouse_storage_location_by_sku(db: Session) -> dict[str, str]:
+def warehouse_position_label(layout: WarehouseLayout, rack: WarehouseRack, position: WarehouseInventoryPosition) -> tuple[str, str]:
+    building = clean_text(getattr(layout, "building", ""))
+    floor = clean_text(getattr(layout, "floor", ""))
+    rack_label = clean_text(rack.rack_code) or clean_text(rack.rack_name) or clean_text(position.rack_id)
+    shelf_no = int(position.shelf_no or 0)
+    shelf_label = f"{shelf_no:02d}" if shelf_no else ""
+    short_rack = f"{rack_label}-{shelf_label}" if rack_label and shelf_label else rack_label or shelf_label
+    short_label = " ".join(part for part in (floor, short_rack) if part)
+    detail_label = " / ".join(
+        part
+        for part in (
+            building,
+            floor,
+            rack_label,
+            f"{shelf_no}단" if shelf_no else "",
+        )
+        if part
+    )
+    return short_label, detail_label or short_label
+
+
+def warehouse_position_status(current_stock: int, placed_qty: int, has_locations: bool) -> str:
+    if not has_locations:
+        return "위치미등록"
+    if current_stock == placed_qty:
+        return "정상"
+    if current_stock > placed_qty:
+        return "미배치"
+    return "수량불일치"
+
+
+def warehouse_inventory_position_summaries(db: Session) -> dict[str, dict]:
     rows = db.execute(
-        select(WarehouseInventoryPosition, WarehouseRack)
+        select(WarehouseInventoryPosition, WarehouseRack, WarehouseLayout)
         .join(WarehouseRack, WarehouseRack.id == WarehouseInventoryPosition.rack_id)
-        .order_by(WarehouseRack.sort_order, WarehouseRack.rack_code, WarehouseInventoryPosition.shelf_no, WarehouseInventoryPosition.sort_order)
+        .join(WarehouseLayout, WarehouseLayout.id == WarehouseRack.layout_id)
+        .where(WarehouseLayout.is_active.is_(True))
+        .order_by(
+            WarehouseLayout.building,
+            WarehouseLayout.floor,
+            WarehouseRack.sort_order,
+            WarehouseRack.rack_code,
+            WarehouseInventoryPosition.shelf_no,
+            WarehouseInventoryPosition.sort_order,
+        )
     ).all()
-    locations: dict[str, list[str]] = {}
-    for position, rack in rows:
-        sku = clean_text(position.sku)
-        if not sku:
+    summaries: dict[str, dict] = {}
+    for position, rack, layout in rows:
+        key = clean_text(position.sku)
+        if not key:
             continue
-        rack_label = clean_text(rack.rack_code) or clean_text(rack.rack_name) or clean_text(position.rack_id)
-        shelf_label = f"{int(position.shelf_no or 0)}단" if int(position.shelf_no or 0) else ""
-        label = " / ".join(part for part in (rack_label, shelf_label) if part)
-        if not label:
+        quantity = max(0, int(position.quantity or 0))
+        if quantity <= 0:
             continue
-        bucket = locations.setdefault(sku, [])
-        if label not in bucket:
-            bucket.append(label)
-    return {sku: ", ".join(values[:3]) for sku, values in locations.items()}
+        short_label, detail_label = warehouse_position_label(layout, rack, position)
+        if not short_label:
+            continue
+        summary = summaries.setdefault(
+            key,
+            {
+                "placed_quantity": 0,
+                "locations": [],
+                "details": [],
+                "seen": set(),
+            },
+        )
+        summary["placed_quantity"] += quantity
+        if short_label not in summary["seen"]:
+            summary["locations"].append(short_label)
+            summary["seen"].add(short_label)
+        summary["details"].append({"location": detail_label, "quantity": quantity})
+
+    for summary in summaries.values():
+        locations = summary["locations"]
+        if len(locations) > 1:
+            display_location = f"{locations[0]} 외 {len(locations) - 1}곳"
+        else:
+            display_location = locations[0] if locations else ""
+        summary["display_location"] = display_location
+        summary["location_count"] = len(locations)
+        summary["detail_text"] = "; ".join(
+            f"{detail['location']} / {int(detail['quantity']):,}개"
+            for detail in summary["details"]
+        )
+        summary.pop("seen", None)
+    return summaries
+
+
+def warehouse_storage_location_by_sku(db: Session) -> dict[str, str]:
+    summaries = warehouse_inventory_position_summaries(db)
+    return {sku: clean_text(summary.get("display_location")) for sku, summary in summaries.items()}
 
 
 def ensure_daily_snapshots_from_latest(db: Session, source_type: str, work_date: date, products: list | None = None) -> int:
@@ -2396,14 +2468,19 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
 
     avg_outbound_by_sku = recent_outbound_average_by_product(db, source_type, work_date, products, business_day_count=5)
     pending_by_sku = pending_inbound_qty_by_product(db, source_type, work_date, products)
-    location_by_sku = warehouse_storage_location_by_sku(db) if source_type == "창고" else {}
+    location_summaries = warehouse_inventory_position_summaries(db) if source_type == "창고" else {}
 
     rows = []
     for product in products:
         product_sku = clean_text(product.sku)
+        product_barcode = normalize_barcode_text(product.barcode)
+        location_summary = location_summaries.get(product_sku) or location_summaries.get(product_barcode) or {}
         daily = latest_daily_by_sku.get(product_sku)
         has_snapshot = daily is not None
         current_stock = int(daily.current_stock or 0) if has_snapshot else 0
+        placed_quantity = int(location_summary.get("placed_quantity") or 0)
+        has_locations = bool(location_summary.get("location_count") or placed_quantity)
+        unplaced_quantity = max(current_stock - placed_quantity, 0)
 
         safe_stock = int(product.min_stock or 0)
 
@@ -2452,8 +2529,12 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "pending_inbound_qty": pending_inbound_qty,
                 "pending_outbound_qty": pending_outbound_qty,
                 "stock_status": status,
-                "barcode": normalize_barcode_text(product.barcode),
-                "storage_location": location_by_sku.get(product_sku, ""),
+                "barcode": product_barcode,
+                "storage_location": clean_text(location_summary.get("display_location")),
+                "placed_quantity": placed_quantity,
+                "unplaced_quantity": unplaced_quantity,
+                "location_status": warehouse_position_status(current_stock, placed_quantity, has_locations),
+                "location_detail": clean_text(location_summary.get("detail_text")),
                 "inbound_cycle": lead_time,
                 "box_qty": box_qty,
                 "pack_qty": int(product.pack_qty or 0),
@@ -2468,6 +2549,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "last_purchase_order_date": purchase_metric.get("last_order_date"),
                 "last_purchase_inbound_date": purchase_metric.get("last_inbound_date") or inbound_metric.get("last_inbound_date"),
                 "last_po_number": purchase_metric.get("last_po_number", ""),
+                "memo": clean_text(getattr(daily, "memo", "")) if has_snapshot else "",
                 "sort_order": product.sort_order or 0,
                 "is_active": product.is_active,
             }

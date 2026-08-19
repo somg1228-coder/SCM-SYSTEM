@@ -292,14 +292,6 @@ def inject_route_transition_cleanup(page: str) -> None:
             display: none !important;
         }
         .stApp:has(.route-warehouse3d-active) .st-key-inventory_nav_shell,
-        .stApp:has(.route-warehouse3d-active) div[class*="st-key-inventory_filter_"],
-        .stApp:has(.route-warehouse3d-active) div[class*="_daily_header"],
-        .stApp:has(.route-warehouse3d-active) div[class*="_inventory_update"],
-        .stApp:has(.route-warehouse3d-active) div[class*="_inventory_table_actions"],
-        .stApp:has(.route-warehouse3d-active) div[class*="_inventory_table_panel"],
-        .stApp:has(.route-warehouse3d-active) .inventory-tab-title,
-        .stApp:has(.route-warehouse3d-active) .inventory-page-header,
-        .stApp:has(.route-warehouse3d-active) .inventory-visible-table-wrap,
         .stApp:has(.route-warehouse3d-active) .product-master-title,
         .stApp:has(.route-warehouse3d-active) .product-master-control-title,
         .stApp:has(.route-warehouse3d-active) .product-master-form-title,
