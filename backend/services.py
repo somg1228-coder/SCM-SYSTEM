@@ -15,7 +15,7 @@ import unicodedata
 from decimal import Decimal, InvalidOperation
 
 import pandas as pd
-from sqlalchemy import case, delete, func, select, tuple_
+from sqlalchemy import case, delete, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -3199,16 +3199,71 @@ def list_inbound(db: Session, source_type: str) -> list[InventoryInbound]:
     )
 
 
-def list_outbound(db: Session, source_type: str) -> list[InventoryDaily]:
+def _outbound_query(
+    source_type: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    keyword: str | None = None,
+):
+    query = select(InventoryDaily).where(InventoryDaily.source_type == source_type, InventoryDaily.outbound_qty != 0)
+    if start_date:
+        query = query.where(InventoryDaily.work_date >= start_date)
+    if end_date:
+        query = query.where(InventoryDaily.work_date <= end_date)
+    normalized_keyword = clean_text(keyword).lower()
+    if normalized_keyword:
+        pattern = f"%{normalized_keyword}%"
+        query = query.where(
+            or_(
+                func.lower(func.coalesce(InventoryDaily.product_code, "")).like(pattern),
+                func.lower(func.coalesce(InventoryDaily.barcode, "")).like(pattern),
+                func.lower(func.coalesce(InventoryDaily.product_name, "")).like(pattern),
+            )
+        )
+    return query
+
+
+def count_outbound(
+    db: Session,
+    source_type: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    keyword: str | None = None,
+) -> int:
     if use_legacy_supabase_rest_store():
-        return supabase_store.list_outbound(source_type)
-    return list(
-        db.execute(
-            select(InventoryDaily)
-            .where(InventoryDaily.source_type == source_type, InventoryDaily.outbound_qty != 0)
-            .order_by(InventoryDaily.work_date.desc(), InventoryDaily.product_name)
-        ).scalars()
+        return supabase_store.count_outbound(source_type, start_date=start_date, end_date=end_date, keyword=keyword)
+    count_query = select(func.count()).select_from(_outbound_query(source_type, start_date, end_date, keyword).subquery())
+    return int(db.execute(count_query).scalar() or 0)
+
+
+def list_outbound(
+    db: Session,
+    source_type: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    keyword: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[InventoryDaily]:
+    if use_legacy_supabase_rest_store():
+        return supabase_store.list_outbound(
+            source_type,
+            start_date=start_date,
+            end_date=end_date,
+            keyword=keyword,
+            limit=limit,
+            offset=offset,
+        )
+    query = _outbound_query(source_type, start_date, end_date, keyword).order_by(
+        InventoryDaily.work_date.desc(),
+        InventoryDaily.product_name,
+        InventoryDaily.id.desc(),
     )
+    if offset:
+        query = query.offset(max(int(offset), 0))
+    if limit is not None:
+        query = query.limit(max(int(limit), 0))
+    return list(db.execute(query).scalars())
 
 
 def create_date(db: Session, source_type: str, work_date: date | None = None) -> dict:

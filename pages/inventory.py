@@ -6,6 +6,7 @@ from io import BytesIO
 from math import ceil
 from pathlib import Path
 import re
+from time import perf_counter
 
 import pandas as pd
 import streamlit as st
@@ -418,21 +419,28 @@ def fetch_dashboard_filter_rows(filter_key: str, work_date: date) -> list[dict]:
 
 
 def fetch_outbound_history_rows(item_name: str, start_date: date, end_date: date) -> list[dict]:
-    keyword = clean_cell(item_name).lower()
+    keyword = clean_cell(item_name)
     if not keyword:
         return []
     rows = []
     for source_type in SOURCE_TYPES:
-        source_rows = with_db(lambda db, source_type=source_type: [services.daily_to_dict(row) for row in services.list_outbound(db, source_type)]) or []
+        source_rows = with_db(
+            lambda db, source_type=source_type: [
+                services.daily_to_dict(row)
+                for row in services.list_outbound(
+                    db,
+                    source_type,
+                    start_date=start_date,
+                    end_date=end_date,
+                    keyword=keyword,
+                    limit=None,
+                    offset=0,
+                )
+            ]
+        ) or []
         for row in source_rows:
             work_date = parse_date_value(row.get("work_date"))
-            if not work_date or work_date < start_date or work_date > end_date:
-                continue
-            haystack = " ".join(
-                clean_cell(row.get(field)).lower()
-                for field in ("product_name", "product_code", "barcode")
-            )
-            if keyword not in haystack:
+            if not work_date:
                 continue
             rows.append(
                 {
@@ -1003,18 +1011,64 @@ def render_inbound_tab(source_type: str) -> None:
 
 def render_outbound_tab(source_type: str) -> None:
     st.markdown(f'<div class="inventory-tab-title">{source_type} 출고내역</div>', unsafe_allow_html=True)
-    linked_item = clean_cell(st.session_state.get("outbound_item_filter"))
-    default_end = parse_date_value(st.session_state.get("outbound_end_date")) or date.today()
-    default_start = parse_date_value(st.session_state.get("outbound_start_date")) or (default_end - timedelta(days=30))
+    source_token = source_key(source_type)
+    linked_item = clean_cell(st.session_state.get(f"{source_type}_outbound_item_filter"))
+    default_end = parse_date_value(st.session_state.get(f"{source_type}_outbound_end")) or date.today()
+    default_start = parse_date_value(st.session_state.get(f"{source_type}_outbound_start")) or (default_end - timedelta(days=30))
     filter_cols = st.columns([1.35, 0.95, 0.95, 2.7], gap="small")
     item_filter = filter_cols[0].text_input("품목 필터", value=linked_item, placeholder="상품명 / SKU / 바코드", key=f"{source_type}_outbound_item_filter")
     start_date = filter_cols[1].date_input("시작일", value=default_start, key=f"{source_type}_outbound_start")
     end_date = filter_cols[2].date_input("종료일", value=default_end, key=f"{source_type}_outbound_end")
     with filter_cols[3]:
         st.caption("출고수량이 있는 기준일자별 품목 이력을 표시합니다.")
+    if start_date > end_date:
+        st.warning("시작일은 종료일보다 늦을 수 없습니다.")
+        return
 
-    rows = with_db(lambda db: [services.daily_to_dict(row) for row in services.list_outbound(db, source_type)]) or []
-    df = pd.DataFrame(
+    keyword = clean_cell(item_filter)
+    page_size = 50
+    signature = f"{source_type}|{start_date.isoformat()}|{end_date.isoformat()}|{keyword}"
+    signature_key = f"{source_token}_outbound_filter_signature"
+    page_key = f"{source_token}_outbound_page"
+    download_key = f"{source_token}_outbound_download_payload"
+    if st.session_state.get(signature_key) != signature:
+        st.session_state[signature_key] = signature
+        st.session_state[page_key] = 1
+        st.session_state.pop(download_key, None)
+    page = max(int(st.session_state.get(page_key, 1) or 1), 1)
+
+    timings: dict[str, float] = {}
+    db_started = perf_counter()
+
+    def load_page(db):
+        total = services.count_outbound(db, source_type, start_date=start_date, end_date=end_date, keyword=keyword)
+        if total <= 0:
+            return {"total": 0, "rows": [], "query_count": 1}
+        max_page = max(ceil(total / page_size), 1)
+        current_page = min(page, max_page)
+        current_offset = (current_page - 1) * page_size
+        page_rows = services.list_outbound(
+            db,
+            source_type,
+            start_date=start_date,
+            end_date=end_date,
+            keyword=keyword,
+            limit=page_size,
+            offset=current_offset,
+        )
+        return {"total": total, "rows": [services.daily_to_dict(row) for row in page_rows], "page": current_page, "query_count": 2}
+
+    payload = with_db(load_page)
+    timings["DB 조회"] = (perf_counter() - db_started) * 1000
+    if payload is None:
+        st.error("출고내역을 불러오지 못했습니다.")
+        return
+
+    total_count = int(payload.get("total") or 0)
+    page = int(payload.get("page") or page)
+    st.session_state[page_key] = page
+    df_started = perf_counter()
+    page_df = pd.DataFrame(
         [
             {
                 "기준일자": row.get("work_date"),
@@ -1024,30 +1078,106 @@ def render_outbound_tab(source_type: str) -> None:
                 "출고수량": row.get("outbound_qty", 0),
                 "재고상태": row.get("stock_status", ""),
             }
-            for row in rows
+            for row in payload.get("rows", [])
         ]
     )
-    if not df.empty:
-        df["기준일자"] = pd.to_datetime(df["기준일자"], errors="coerce")
-        df = df.dropna(subset=["기준일자"])
-        df = df[(df["기준일자"].dt.date >= start_date) & (df["기준일자"].dt.date <= end_date)]
-        keyword = clean_cell(item_filter).lower()
-        if keyword:
-            mask = df[["상품명", "SKU", "바코드"]].fillna("").astype(str).agg(" ".join, axis=1).str.lower().str.contains(keyword, regex=False)
-            df = df[mask]
-        df["기준일자"] = df["기준일자"].dt.date
-    if df.empty:
-        st.info("선택한 기간의 출고 데이터가 없습니다.")
-        return
-    st.dataframe(df, hide_index=True, use_container_width=True)
-    st.download_button(
-        "출고내역 엑셀 다운로드",
-        data=dataframe_to_excel(df),
-        file_name=f"{source_type}_출고내역.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=False,
-        key=f"{source_type}_outbound_download",
+    if not page_df.empty:
+        page_df["기준일자"] = pd.to_datetime(page_df["기준일자"], errors="coerce").dt.date
+    timings["DataFrame 가공"] = (perf_counter() - df_started) * 1000
+
+    pagination_started = perf_counter()
+    total_pages = max(ceil(total_count / page_size), 1)
+    timings["pagination"] = (perf_counter() - pagination_started) * 1000
+
+    download_cols = st.columns([0.95, 0.95, 4.0], gap="small")
+    prepare_download = download_cols[0].button(
+        "출고내역 엑셀 준비",
+        key=f"{source_token}_outbound_download_prepare",
+        disabled=total_count <= 0,
+        use_container_width=True,
     )
+    if prepare_download:
+        export_started = perf_counter()
+
+        def load_export(db):
+            return [
+                services.daily_to_dict(row)
+                for row in services.list_outbound(
+                    db,
+                    source_type,
+                    start_date=start_date,
+                    end_date=end_date,
+                    keyword=keyword,
+                    limit=None,
+                    offset=0,
+                )
+            ]
+
+        export_rows = with_db(load_export) or []
+        export_df = pd.DataFrame(
+            [
+                {
+                    "기준일자": row.get("work_date"),
+                    "SKU": row.get("product_code", ""),
+                    "바코드": row.get("barcode", ""),
+                    "상품명": row.get("product_name", ""),
+                    "출고수량": row.get("outbound_qty", 0),
+                    "재고상태": row.get("stock_status", ""),
+                }
+                for row in export_rows
+            ]
+        )
+        if not export_df.empty:
+            export_df["기준일자"] = pd.to_datetime(export_df["기준일자"], errors="coerce").dt.date
+        st.session_state[download_key] = {
+            "signature": signature,
+            "bytes": dataframe_to_excel(export_df),
+            "count": len(export_df),
+            "elapsed_ms": (perf_counter() - export_started) * 1000,
+        }
+    prepared_download = st.session_state.get(download_key)
+    if prepared_download and prepared_download.get("signature") == signature:
+        download_cols[1].download_button(
+            "출고내역 엑셀 다운로드",
+            data=prepared_download.get("bytes", b""),
+            file_name=f"{source_type}_출고내역_{start_date:%Y%m%d}_{end_date:%Y%m%d}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key=f"{source_token}_outbound_download",
+        )
+        download_cols[2].caption(f"다운로드 준비 완료: {int(prepared_download.get('count') or 0):,}건")
+
+    if total_count <= 0:
+        st.info("해당 기간에 출고내역이 없습니다.")
+    else:
+        render_started = perf_counter()
+        st.caption(f"조회 결과 {total_count:,}건 중 {page:,}/{total_pages:,}페이지, 현재 화면 {len(page_df):,}건")
+        render_plain_inventory_table(page_df, height=420, empty_message="해당 기간에 출고내역이 없습니다.")
+        timings["UI 렌더링 준비"] = (perf_counter() - render_started) * 1000
+
+        pager_cols = st.columns([0.55, 0.8, 0.55, 5.0], gap="small")
+        if pager_cols[0].button("이전", key=f"{source_token}_outbound_prev", disabled=page <= 1, use_container_width=True):
+            st.session_state[page_key] = max(page - 1, 1)
+            st.rerun()
+        pager_cols[1].caption(f"{page} / {total_pages}")
+        if pager_cols[2].button("다음", key=f"{source_token}_outbound_next", disabled=page >= total_pages, use_container_width=True):
+            st.session_state[page_key] = min(page + 1, total_pages)
+            st.rerun()
+
+    with st.expander("출고내역 처리 로그", expanded=False):
+        st.write(
+            {
+                "DB 조회": f"{timings.get('DB 조회', 0):.1f} ms",
+                "수신 row": len(payload.get("rows", [])),
+                "필터 결과 row": total_count,
+                "상품마스터 조회": "별도 호출 없음",
+                "JOIN/가공": f"{timings.get('DataFrame 가공', 0):.1f} ms",
+                "필터링": "DB query 단계 적용",
+                "pagination": f"{timings.get('pagination', 0):.1f} ms",
+                "UI 렌더링 준비": f"{timings.get('UI 렌더링 준비', 0):.1f} ms",
+                "DB 조회 건수": int(payload.get("query_count") or 0),
+            }
+        )
 
 
 def render_inventory_dashboard_tab(source_type: str) -> None:

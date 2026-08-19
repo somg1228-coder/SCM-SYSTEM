@@ -617,19 +617,70 @@ def list_inbound(source_type: str) -> list[SimpleNamespace]:
     return result
 
 
-def list_outbound(source_type: str) -> list[SimpleNamespace]:
-    rows = (
+def outbound_date_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return clean(value)[:10]
+
+
+def outbound_row_matches_keyword(row: dict, keyword: str | None) -> bool:
+    needle = clean(keyword).lower()
+    if not needle:
+        return True
+    item = row.get("inventory_items") or {}
+    haystack = " ".join(
+        clean(value)
+        for value in (
+            item.get("sku"),
+            item.get("barcode"),
+            item.get("product_name"),
+        )
+    ).lower()
+    return needle in haystack
+
+
+def outbound_transaction_query(source_type: str, start_date=None, end_date=None):
+    query = (
         client()
         .table("inventory_transactions")
         .select("*,inventory_items(sku,barcode,product_name,category,supplier_name,min_stock,default_lead_time)")
         .eq("source_type", source_type)
         .eq("transaction_type", "OUT")
-        .order("transaction_date", desc=True)
-        .limit(1000)
-        .execute()
-        .data
-        or []
     )
+    start_text = outbound_date_text(start_date)
+    end_text = outbound_date_text(end_date)
+    if start_text:
+        query = query.gte("transaction_date", start_text)
+    if end_text:
+        query = query.lte("transaction_date", end_text)
+    return query.order("transaction_date", desc=True)
+
+
+def count_outbound(source_type: str, start_date=None, end_date=None, keyword: str | None = None) -> int:
+    response = outbound_transaction_query(source_type, start_date, end_date).limit(10000).execute()
+    rows = response.data or []
+    return sum(1 for row in rows if outbound_row_matches_keyword(row, keyword))
+
+
+def list_outbound(
+    source_type: str,
+    start_date=None,
+    end_date=None,
+    keyword: str | None = None,
+    limit: int | None = 1000,
+    offset: int = 0,
+) -> list[SimpleNamespace]:
+    fetch_limit = 10000 if clean(keyword) or limit is None else max(int(offset or 0) + int(limit or 0), int(limit or 0))
+    rows = outbound_transaction_query(source_type, start_date, end_date).limit(max(int(fetch_limit or 0), 0)).execute().data or []
+    rows = [row for row in rows if outbound_row_matches_keyword(row, keyword)]
+    if offset or limit is not None:
+        start_index = max(int(offset or 0), 0)
+        end_index = start_index + max(int(limit or 0), 0) if limit is not None else None
+        rows = rows[start_index:end_index]
     result = []
     for row in rows:
         item = row.get("inventory_items") or {}
