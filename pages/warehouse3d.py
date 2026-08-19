@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 import base64
-from datetime import datetime
+from datetime import date, datetime
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from components.lazy_tabs import lazy_tab_selector
 from backend.perf import perf_span
@@ -28,7 +28,7 @@ try:
         record_save_success,
         writable_runtime_data_dir,
     )
-    from backend.models import InventoryDaily, WarehouseInventoryPosition, WarehouseLayout, WarehouseRack
+    from backend.models import WarehouseInventoryPosition, WarehouseLayout, WarehouseRack
     from backend import services, supabase_store
 except (ModuleNotFoundError, RuntimeError) as exc:
     DATABASE_URL = ""
@@ -39,7 +39,6 @@ except (ModuleNotFoundError, RuntimeError) as exc:
     record_save_failure = None
     record_save_success = None
     writable_runtime_data_dir = None
-    InventoryDaily = None
     WarehouseInventoryPosition = None
     WarehouseLayout = None
     WarehouseRack = None
@@ -48,15 +47,6 @@ except (ModuleNotFoundError, RuntimeError) as exc:
     WAREHOUSE_IMPORT_ERROR = str(exc)
 else:
     WAREHOUSE_IMPORT_ERROR = ""
-
-try:
-    from pages import inventory as inventory_page
-except (ModuleNotFoundError, RuntimeError) as exc:
-    inventory_page = None
-    WAREHOUSE_INVENTORY_IMPORT_ERROR = str(exc)
-else:
-    WAREHOUSE_INVENTORY_IMPORT_ERROR = ""
-
 
 DEFAULT_LOGIN_DRAWING_PATH = Path.home() / "Downloads" / "[FAC-001~005] 시설 도면_Rev. 1_260305.pdf"
 LOGIN_FLOORS = ["1층", "2층", "3층", "4층"]
@@ -695,8 +685,6 @@ def handle_warehouse3d_layout_save_request(save_request: dict | None) -> bool:
         st.session_state["warehouse3d_save_notice"] = ("error", f"배치저장 실패: {exc}")
         return True
 
-    if inventory_page is not None and hasattr(inventory_page, "clear_inventory_data_caches"):
-        inventory_page.clear_inventory_data_caches()
     st.session_state["warehouse3d_save_notice"] = ("success", "배치저장 완료")
     return True
 
@@ -845,14 +833,10 @@ def render_warehouse3d_page() -> None:
     with building_col:
         building = st.selectbox("위치 선택", building_options, key="warehouse3d_building")
 
-    selected_view = lazy_tab_selector(["3D 배치", "재고 위치표", "창고 재고"], "warehouse3d_view")
-    if selected_view == "창고 재고":
-        if inventory_page is None:
-            st.error(WAREHOUSE_INVENTORY_IMPORT_ERROR or "창고 재고 화면을 불러오지 못했습니다.")
-            return
-        with st.container(key="warehouse3d_inventory_tab"):
-            inventory_page.render_daily_tab("창고", "창고")
-        return
+    for stale_key in ("warehouse3d_view_selected", "warehouse3d_view_widget"):
+        if st.session_state.get(stale_key) == "창고 재고":
+            st.session_state.pop(stale_key, None)
+    selected_view = lazy_tab_selector(["3D 배치", "재고 위치표"], "warehouse3d_view")
 
     with perf_span("warehouse3d.fetch_inventory"):
         inventory_rows, work_date = fetch_latest_warehouse_inventory()
@@ -1468,21 +1452,11 @@ def with_db(action):
 
 def fetch_latest_warehouse_inventory() -> tuple[list[dict], str]:
     def action(db):
-        if InventoryDaily is None:
+        if services is None:
             return [], ""
-        work_date = db.scalar(
-            select(func.max(InventoryDaily.work_date)).where(InventoryDaily.source_type == "창고")
-        )
-        if not work_date:
-            return [], ""
-        rows = [
-            services.daily_to_dict(row)
-            for row in db.execute(
-                select(InventoryDaily)
-                .where(InventoryDaily.source_type == "창고", InventoryDaily.work_date == work_date)
-                .order_by(InventoryDaily.category, InventoryDaily.product_name, InventoryDaily.barcode)
-            ).scalars()
-        ]
+        work_dates = services.list_work_dates(db, "창고")
+        work_date = work_dates[0] if work_dates else date.today()
+        rows = services.master_based_inventory_rows(db, "창고", work_date)
         return rows, work_date.isoformat()
 
     return with_db(action) or ([], "")
@@ -1514,10 +1488,14 @@ def build_rack_layout(inventory_rows: list[dict], floor: str) -> list[dict]:
                 "status": status,
                 "items": [
                     {
+                        "sku": row.get("product_code", ""),
+                        "product_code": row.get("product_code", ""),
                         "name": row.get("product_name", ""),
                         "barcode": row.get("barcode", ""),
                         "storage_location": row.get("storage_location", ""),
                         "stock": int(row.get("current_stock") or 0),
+                        "current_stock": int(row.get("current_stock") or 0),
+                        "available_stock": int(row.get("available_stock") or 0),
                         "safe": int(row.get("safe_stock") or 0),
                         "status": row.get("stock_status", ""),
                     }
@@ -1712,9 +1690,12 @@ def warehouse_scene_html(
     inventory_payload = json.dumps(
         [
             {
+                "sku": row.get("product_code", ""),
+                "product_code": row.get("product_code", ""),
                 "name": row.get("product_name", ""),
                 "barcode": row.get("barcode", ""),
                 "stock": int(row.get("current_stock") or 0),
+                "available_stock": int(row.get("available_stock") or 0),
                 "status": row.get("stock_status", ""),
             }
             for row in inventory_rows
@@ -2645,9 +2626,12 @@ def warehouse_scene3d_html(
     inventory_payload = json.dumps(
         [
             {
+                "sku": row.get("product_code", ""),
+                "product_code": row.get("product_code", ""),
                 "name": row.get("product_name", ""),
                 "barcode": row.get("barcode", ""),
                 "stock": int(row.get("current_stock") or 0),
+                "available_stock": int(row.get("available_stock") or 0),
                 "status": row.get("stock_status", ""),
             }
             for row in inventory_rows
@@ -6352,9 +6336,12 @@ def warehouse_scene3d_html(
                 const packageValues = packageValuesFromInputs();
                 const isManual = Boolean(manualName || manualBarcode);
                 return normalizeLoadPackageFields({{
+                    sku: inventoryItem?.sku || inventoryItem?.product_code || "",
+                    product_code: inventoryItem?.product_code || inventoryItem?.sku || "",
                     name,
                     barcode,
                     stock: Number(inventoryItem?.stock || 0),
+                    current_stock: Number(inventoryItem?.stock || 0),
                     status: isManual ? "manual" : (inventoryItem?.status || ""),
                     storage_unit: packageValues.unit,
                     package_type: packageValues.unit,
