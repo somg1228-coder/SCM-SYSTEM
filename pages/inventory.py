@@ -264,6 +264,23 @@ def parse_date_value(value) -> date | None:
     return parsed.date()
 
 
+def inventory_date_from_filename(file_name: str) -> date | None:
+    text = clean_cell(file_name)
+    patterns = [
+        r"(?<!\d)(20\d{2})[-_.\s]?(0[1-9]|1[0-2])[-_.\s]?([0-2]\d|3[01])(?!\d)",
+        r"(?<!\d)(20\d{2})[-_.\s]+([1-9]|1[0-2])[-_.\s]+([1-9]|[12]\d|3[01])(?!\d)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        try:
+            return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            return None
+    return None
+
+
 def dashboard_filter_work_date() -> date:
     session_date = parse_date_value(st.session_state.get("inventory_filter_date"))
     if session_date:
@@ -5584,8 +5601,8 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
 
 def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date_key: str) -> None:
     panel_key = f"{source_key(source_type)}_lookup_erp_update_{work_date.isoformat()}"
-    result_key = f"{panel_key}_result"
-    excluded_df_key = f"{panel_key}_excluded"
+    result_key = f"{source_key(source_type)}_lookup_erp_update_result"
+    excluded_df_key = f"{source_key(source_type)}_lookup_erp_update_excluded"
     processing_key = f"{panel_key}_processing"
     with st.container(key=panel_key):
         render_inventory_html(
@@ -5617,10 +5634,14 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
             disabled = uploaded is None or bool(st.session_state.get(processing_key))
             if st.button("재고 반영", key=f"{panel_key}_apply", type="primary", use_container_width=True, disabled=disabled):
                 st.session_state[processing_key] = True
-                st.session_state[f"_pending_{daily_date_key}"] = work_date
+                file_work_date = inventory_date_from_filename(uploaded.name) if uploaded is not None else None
+                target_work_date = file_work_date or work_date
+                st.session_state[f"_pending_{daily_date_key}"] = target_work_date
                 try:
                     with st.status("ERP 재고 업데이트", expanded=True) as status:
                         st.write("파일 확인 중...")
+                        if file_work_date and file_work_date != work_date:
+                            st.write(f"파일명 기준일자 {file_work_date:%Y-%m-%d}로 반영합니다.")
                         file_bytes = uploaded.getvalue()
                         st.write("상품 매칭 중...")
                         mode = "full" if upload_mode == "전체 재고" else "partial"
@@ -5629,7 +5650,7 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
                             return services.apply_erp_stock_upload_file(
                                 db,
                                 source_type,
-                                work_date,
+                                target_work_date,
                                 file_bytes,
                                 uploaded.name,
                                 current_user_name(),
@@ -5637,6 +5658,10 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
                             )
 
                         outcome = with_db(upload_action)
+                        if isinstance(outcome, dict):
+                            outcome["work_date"] = target_work_date.isoformat()
+                            if file_work_date:
+                                outcome["file_work_date"] = file_work_date.isoformat()
                         st.write(f"{int(outcome.get('count') or 0):,}건 재고 반영 중...")
                         if outcome and outcome.get("ok", True):
                             clear_inventory_data_caches()
