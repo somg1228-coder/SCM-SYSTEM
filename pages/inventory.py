@@ -4198,6 +4198,49 @@ def inject_inventory_css() -> None:
             color: #26384A !important;
             -webkit-text-fill-color: #26384A !important;
         }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] {
+            width: fit-content !important;
+            max-width: 230px !important;
+            margin: 0 0 0.72rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] {
+            width: 210px !important;
+            max-width: 210px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] [data-baseweb="input"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] [data-baseweb="input"] > div {
+            width: 210px !important;
+            max-width: 210px !important;
+            background: #FAF8F5 !important;
+            background-color: #FAF8F5 !important;
+            border-color: #E4DED6 !important;
+            border-radius: 8px !important;
+            box-shadow: none !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] label p {
+            margin-bottom: 0.22rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] input {
+            width: 210px !important;
+            max-width: 210px !important;
+            min-height: 36px !important;
+            background: #FAF8F5 !important;
+            background-color: #FAF8F5 !important;
+            color: #26384A !important;
+            -webkit-text-fill-color: #26384A !important;
+            box-shadow: none !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] input::-webkit-datetime-edit,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] input::-webkit-datetime-edit-fields-wrapper,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] input::-webkit-datetime-edit-year-field,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] input::-webkit-datetime-edit-month-field,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_date_wrapper"] [data-testid="stDateInput"] input::-webkit-datetime-edit-day-field {
+            background: transparent !important;
+            background-color: transparent !important;
+            color: #26384A !important;
+            -webkit-text-fill-color: #26384A !important;
+        }
         @media (max-width: 1024px) {
             .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tabs {
                 gap: 8px 14px !important;
@@ -5574,7 +5617,7 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
             disabled = uploaded is None or bool(st.session_state.get(processing_key))
             if st.button("재고 반영", key=f"{panel_key}_apply", type="primary", use_container_width=True, disabled=disabled):
                 st.session_state[processing_key] = True
-                st.session_state[daily_date_key] = work_date
+                st.session_state[f"_pending_{daily_date_key}"] = work_date
                 try:
                     with st.status("ERP 재고 업데이트", expanded=True) as status:
                         st.write("파일 확인 중...")
@@ -5849,7 +5892,11 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
     saved_work_dates = fetch_work_dates(source_type)
     default_work_date = saved_work_dates[0] if saved_work_dates else today
     daily_date_key = f"{source_type}_daily_date"
-    st.session_state.setdefault(daily_date_key, default_work_date)
+    pending_daily_date_key = f"_pending_{daily_date_key}"
+    if pending_daily_date_key in st.session_state:
+        st.session_state[daily_date_key] = st.session_state.pop(pending_daily_date_key)
+    else:
+        st.session_state.setdefault(daily_date_key, default_work_date)
     with st.container(key=f"{source_key(source_type)}_daily_header"):
         display_source = source_label or source_type
         render_inventory_html(
@@ -5873,7 +5920,8 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
         render_inventory_change_history_panel(source_type)
         return
 
-    work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
+    with st.container(key=f"{source_key(source_type)}_daily_date_wrapper"):
+        work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
     rows = fetch_master_inventory(source_type, work_date)
     if rows and saved_work_dates and work_date not in set(saved_work_dates):
         st.caption(f"{work_date:%Y-%m-%d} 기준 저장된 현재고가 없어 마스터 품목을 0재고로 표시합니다. 최신 저장일자는 {saved_work_dates[0]:%Y-%m-%d}입니다.")
