@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import hashlib
 import logging
 from html.parser import HTMLParser
@@ -3117,6 +3117,340 @@ def prepare_stock_upload_preview(
         "negative_stock_count": negative_stock_count,
         "zeroed_count": len(zero_rows),
         "preview_rows": preview_rows,
+    }
+
+
+def normalize_erp_stock_barcode(value) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    if text.endswith(".0"):
+        text = text[:-2]
+    return text
+
+
+def normalize_erp_stock_product_name(value) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip()
+
+
+def erp_stock_match_key(barcode, product_name) -> tuple[str, str]:
+    return (normalize_erp_stock_barcode(barcode), normalize_erp_stock_product_name(product_name))
+
+
+def read_erp_stock_upload_file(file_bytes: bytes, file_name: str = "") -> pd.DataFrame:
+    suffix = Path(clean_text(file_name).lower()).suffix
+    if suffix == ".csv":
+        for encoding in ("utf-8-sig", "cp949", "euc-kr"):
+            try:
+                raw_df = pd.read_csv(BytesIO(file_bytes), dtype=str, encoding=encoding)
+                return normalize_import_headers(raw_df)
+            except UnicodeDecodeError:
+                continue
+        return normalize_import_headers(pd.read_csv(BytesIO(file_bytes), dtype=str))
+    return read_excel(file_bytes)
+
+
+def apply_erp_stock_upload_file(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    file_bytes: bytes,
+    file_name: str = "",
+    uploaded_by: str = "",
+    upload_mode: str = "partial",
+) -> dict:
+    total_started_at = time.perf_counter()
+    timings: dict[str, float] = {}
+
+    stage_started_at = time.perf_counter()
+    df = read_erp_stock_upload_file(file_bytes, file_name)
+    mark_inventory_update_stage(timings, "excel_parsing", stage_started_at)
+    if df is None or df.empty:
+        return {
+            "ok": False,
+            "message": "업로드한 파일에서 재고 데이터를 찾지 못했습니다.",
+            "total_rows": 0,
+            "matched_count": 0,
+            "unmatched_count": 0,
+            "duplicate_count": 0,
+            "error_count": 0,
+            "count": 0,
+            "processing_seconds": round(time.perf_counter() - total_started_at, 2),
+            "unmatched_rows": [],
+            "failure_rows": [],
+            "timings": timings,
+        }
+
+    try:
+        try:
+            stock_col = find_column(df, STOCK_CURRENT_COLUMN_CANDIDATES)
+        except ValueError:
+            stock_col = find_column(df, STOCK_AVAILABLE_COLUMN_CANDIDATES)
+        barcode_col = find_column(df, ["88바코드", "바코드", "옵션바코드", "barcode"])
+        name_col = find_column(df, ["상품명", "품목", "품목명", "product_name"])
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "message": clean_text(exc),
+            "total_rows": len(df.index),
+            "matched_count": 0,
+            "unmatched_count": len(df.index),
+            "duplicate_count": 0,
+            "error_count": 1,
+            "count": 0,
+            "processing_seconds": round(time.perf_counter() - total_started_at, 2),
+            "unmatched_rows": [],
+            "failure_rows": [{"failure_reason": clean_text(exc)}],
+            "timings": timings,
+        }
+
+    stage_started_at = time.perf_counter()
+    model = product_master_model(source_type)
+    products = list(db.execute(select(model)).scalars())
+    products_by_key: dict[tuple[str, str], object] = {}
+    for product in products:
+        key = erp_stock_match_key(product.barcode, product.product_name)
+        if key[0] and key[1]:
+            products_by_key.setdefault(key, product)
+    mark_inventory_update_stage(timings, "db_master_loading", stage_started_at)
+
+    stage_started_at = time.perf_counter()
+    daily_rows = list(
+        db.execute(
+            select(InventoryDaily).where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date == work_date,
+            )
+        ).scalars()
+    )
+    daily_by_sku = {
+        normalize_product_code_text(row.product_code): row
+        for row in daily_rows
+        if normalize_product_code_text(row.product_code)
+    }
+    daily_by_key = {}
+    for row in daily_rows:
+        key = erp_stock_match_key(row.barcode, row.product_name)
+        if key[0] and key[1]:
+            daily_by_key.setdefault(key, row)
+    mark_inventory_update_stage(timings, "db_inventory_loading", stage_started_at)
+
+    stage_started_at = time.perf_counter()
+    unmatched_rows = []
+    matched_by_sku: dict[str, dict] = {}
+    for row_no, row in enumerate(df.fillna("").to_dict("records"), start=1):
+        barcode = normalize_erp_stock_barcode(row.get(barcode_col))
+        product_name = normalize_erp_stock_product_name(row.get(name_col))
+        uploaded_stock, stock_ok = to_int_strict(row.get(stock_col))
+        product = products_by_key.get((barcode, product_name))
+        reason = ""
+        if not barcode or not product_name:
+            reason = "바코드/상품명 없음"
+        elif not stock_ok:
+            reason = "재고수량 오류"
+        elif product is None:
+            reason = "바코드+상품명 매칭 실패"
+        if reason:
+            unmatched_rows.append(
+                {
+                    "row_no": row_no,
+                    "barcode": barcode,
+                    "product_name": product_name,
+                    "uploaded_stock": row.get(stock_col, ""),
+                    "new_stock": row.get(stock_col, ""),
+                    "reason": reason,
+                    "failure_reason": reason,
+                }
+            )
+            continue
+        matched_by_sku[normalize_product_code_text(product.sku)] = {
+            "row_no": row_no,
+            "barcode": barcode,
+            "product_name": product_name,
+            "stock": uploaded_stock,
+            "product": product,
+        }
+    mark_inventory_update_stage(timings, "barcode_matching_validation", stage_started_at)
+
+    zeroed_by_sku: dict[str, dict] = {}
+    if upload_mode == "full":
+        for product in products:
+            product_sku = normalize_product_code_text(product.sku)
+            if not product_sku or product_sku in matched_by_sku:
+                continue
+            item = daily_by_sku.get(product_sku)
+            previous_stock = int(item.current_stock or 0) if item else 0
+            if previous_stock == 0:
+                continue
+            zeroed_by_sku[product_sku] = {
+                "row_no": "",
+                "barcode": normalize_erp_stock_barcode(product.barcode),
+                "product_name": product.product_name,
+                "stock": 0,
+                "product": product,
+                "zero_missing": True,
+            }
+    apply_by_sku = {**matched_by_sku, **zeroed_by_sku}
+
+    history = None
+    failure_rows = []
+    try:
+        stage_started_at = time.perf_counter()
+        history = InventoryUploadHistory(
+            source_type=source_type,
+            work_date=work_date,
+            file_name=clean_text(file_name),
+            uploaded_by=clean_text(uploaded_by) or "SYSTEM",
+            upload_mode="ERP 재고 업데이트" if upload_mode == "partial" else "ERP 재고 업데이트(전체)",
+            total_rows=len(df.index),
+            matched_count=len(apply_by_sku),
+            failed_count=len(unmatched_rows),
+            duplicate_count=0,
+            zeroed_count=len(zeroed_by_sku),
+        )
+        db.add(history)
+        db.flush()
+
+        now = datetime.utcnow()
+        update_rows = []
+        insert_rows = []
+        snapshots = []
+        for product_sku, matched in apply_by_sku.items():
+            product = matched["product"]
+            product_key = erp_stock_match_key(product.barcode, product.product_name)
+            item = daily_by_sku.get(product_sku) or daily_by_key.get(product_key)
+            previous_stock = int(item.current_stock or 0) if item else 0
+            new_stock = int(matched["stock"] or 0)
+            category = clean_text(product.large_category) or clean_text(product.medium_category) or clean_text(product.small_category)
+            values = {
+                "source_type": source_type,
+                "work_date": work_date,
+                "category": category,
+                "product_code": product.sku,
+                "product_name": product.product_name,
+                "barcode": normalize_erp_stock_barcode(product.barcode),
+                "supplier": product.supplier,
+                "current_stock": new_stock,
+                "available_stock": new_stock,
+                "safe_stock": int(product.min_stock or 0),
+                "stock_status": stock_status_for_values(new_stock, int(product.min_stock or 0)),
+                "outbound_qty": 0,
+                "inbound_cycle": product.default_lead_time or None,
+                "updated_at": now,
+            }
+            if item:
+                update_rows.append({"id": item.id, **values})
+            else:
+                insert_rows.append(values)
+            snapshots.append(
+                {
+                    "upload_history_id": history.id,
+                    "source_type": source_type,
+                    "work_date": work_date,
+                    "product_code": product.sku,
+                    "barcode": normalize_erp_stock_barcode(product.barcode),
+                    "product_name": product.product_name,
+                    "previous_stock": previous_stock,
+                    "new_stock": new_stock,
+                }
+            )
+
+        if update_rows:
+            db.bulk_update_mappings(InventoryDaily, update_rows)
+        if insert_rows:
+            db.bulk_insert_mappings(InventoryDaily, insert_rows)
+        if snapshots:
+            db.execute(InventoryUploadSnapshot.__table__.insert(), snapshots)
+        db.flush()
+        mark_inventory_update_stage(timings, "inventory_db_save", stage_started_at)
+
+        stage_started_at = time.perf_counter()
+        db.expire_all()
+        verification_rows = list(
+            db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == source_type,
+                    InventoryDaily.work_date == work_date,
+                )
+            ).scalars()
+        )
+        verified_by_sku = {
+            normalize_product_code_text(row.product_code): row
+            for row in verification_rows
+            if normalize_product_code_text(row.product_code)
+        }
+        for product_sku, matched in apply_by_sku.items():
+            verified = verified_by_sku.get(product_sku)
+            expected_stock = int(matched["stock"] or 0)
+            if verified is None or int(verified.current_stock or 0) != expected_stock:
+                failure_rows.append(
+                    {
+                        "row_no": matched.get("row_no", ""),
+                        "product_code": matched["product"].sku,
+                        "barcode": matched.get("barcode", ""),
+                        "product_name": matched.get("product_name", ""),
+                        "new_stock": expected_stock,
+                        "failure_reason": "DB 재조회 검증 실패",
+                    }
+                )
+        mark_inventory_update_stage(timings, "db_verification", stage_started_at)
+        if failure_rows:
+            raise RuntimeError(f"ERP 재고 DB 검증 실패 {len(failure_rows)}건")
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        record_save_failure(f"erp inventory upload {source_type} {work_date}", exc)
+        if not failure_rows:
+            failure_rows.append({"failure_reason": clean_text(exc)})
+        return {
+            "ok": False,
+            "message": "ERP 재고 반영 검증에 실패했습니다.",
+            "count": 0,
+            "history_id": history.id if history else None,
+            "total_rows": len(df.index),
+            "matched_count": len(apply_by_sku),
+            "unmatched_count": len(unmatched_rows),
+            "duplicate_count": 0,
+            "apply_failed_count": len(failure_rows),
+            "failure_rows": failure_rows,
+            "error_count": len(failure_rows),
+            "zeroed_count": len(zeroed_by_sku),
+            "processing_seconds": round(time.perf_counter() - total_started_at, 2),
+            "timings": timings,
+            "unmatched_rows": unmatched_rows,
+        }
+
+    processing_seconds = time.perf_counter() - total_started_at
+    timings["apply_total"] = round(processing_seconds, 4)
+    record_save_success(f"erp inventory upload {source_type} {work_date}")
+    return {
+        "ok": True,
+        "message": "ERP 재고 반영 완료",
+        "count": len(apply_by_sku),
+        "history_id": history.id if history else None,
+        "total_rows": len(df.index),
+        "matched_count": len(apply_by_sku),
+        "unmatched_count": len(unmatched_rows),
+        "duplicate_count": 0,
+        "apply_failed_count": 0,
+        "failure_rows": [],
+        "error_count": 0,
+        "zeroed_count": len(zeroed_by_sku),
+        "processing_seconds": round(processing_seconds, 2),
+        "timings": timings,
+        "unmatched_rows": unmatched_rows,
     }
 
 

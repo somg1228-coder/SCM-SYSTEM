@@ -4962,6 +4962,20 @@ def stock_excluded_display_dataframe(preview: dict) -> pd.DataFrame:
     return excluded
 
 
+def erp_unmatched_display_dataframe(outcome: dict | None) -> pd.DataFrame:
+    rows = []
+    for row in (outcome or {}).get("unmatched_rows", []):
+        rows.append(
+            {
+                "바코드": clean_cell(row.get("barcode")),
+                "상품명": clean_cell(row.get("product_name")),
+                "업로드재고": row.get("uploaded_stock", ""),
+                "미매칭 사유": clean_cell(row.get("reason")),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def inventory_master_diagnostics_dataframe(result: dict) -> pd.DataFrame:
     rows = []
     for row in (result or {}).get("problem_rows", []):
@@ -5525,6 +5539,78 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
     return bool(st.session_state.get(result_key))
 
 
+def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date_key: str) -> None:
+    panel_key = f"{source_key(source_type)}_lookup_erp_update_{work_date.isoformat()}"
+    result_key = f"{panel_key}_result"
+    excluded_df_key = f"{panel_key}_excluded"
+    processing_key = f"{panel_key}_processing"
+    with st.container(key=panel_key):
+        render_inventory_html(
+            """
+            <div class="inventory-update-heading">
+                <div>
+                    <h2>ERP 재고 업데이트</h2>
+                    <p>업로드 파일의 바코드와 상품명이 모두 일치하는 상품의 현재고를 선택 기준일자에 바로 반영합니다.</p>
+                </div>
+            </div>
+            """
+        )
+        upload_cols = st.columns([2.4, 1.15, 0.9, 2.2], gap="large")
+        with upload_cols[0]:
+            uploaded = st.file_uploader(
+                "파일 선택 또는 Drag & Drop",
+                type=["xlsx", "xls", "csv"],
+                key=f"{panel_key}_file",
+            )
+        with upload_cols[1]:
+            upload_mode = st.radio(
+                "반영 범위",
+                ["일부 재고", "전체 재고"],
+                horizontal=False,
+                key=f"{panel_key}_mode",
+            )
+        with upload_cols[2]:
+            st.write("")
+            disabled = uploaded is None or bool(st.session_state.get(processing_key))
+            if st.button("재고 반영", key=f"{panel_key}_apply", type="primary", use_container_width=True, disabled=disabled):
+                st.session_state[processing_key] = True
+                st.session_state[daily_date_key] = work_date
+                try:
+                    with st.status("ERP 재고 업데이트", expanded=True) as status:
+                        st.write("파일 확인 중...")
+                        file_bytes = uploaded.getvalue()
+                        st.write("상품 매칭 중...")
+                        mode = "full" if upload_mode == "전체 재고" else "partial"
+
+                        def upload_action(db):
+                            return services.apply_erp_stock_upload_file(
+                                db,
+                                source_type,
+                                work_date,
+                                file_bytes,
+                                uploaded.name,
+                                current_user_name(),
+                                mode,
+                            )
+
+                        outcome = with_db(upload_action)
+                        st.write(f"{int(outcome.get('count') or 0):,}건 재고 반영 중...")
+                        if outcome and outcome.get("ok", True):
+                            clear_inventory_data_caches()
+                            st.write("재고조회 갱신 중...")
+                            status.update(label="ERP 재고 업데이트 완료", state="complete")
+                        else:
+                            status.update(label="ERP 재고 업데이트 오류", state="error")
+                    st.session_state[result_key] = outcome
+                    st.session_state[excluded_df_key] = erp_unmatched_display_dataframe(outcome)
+                finally:
+                    st.session_state[processing_key] = False
+                st.rerun()
+        with upload_cols[3]:
+            st.info("ERP 업데이트와 아래 재고조회는 같은 기준일자와 같은 현재고 데이터를 사용합니다.")
+        render_stock_upload_apply_result(st.session_state.get(result_key), st.session_state.get(excluded_df_key))
+
+
 def render_inventory_lookup_panel(source_type: str, work_date: date, rows: list[dict]) -> None:
     base_df = daily_to_editor(rows)
     filters = render_inventory_filters(source_type, base_df)
@@ -5543,6 +5629,8 @@ def render_inventory_lookup_panel(source_type: str, work_date: date, rows: list[
         changed_only = st.checkbox("수정된 상품만", key=f"{source_key(source_type)}_lookup_changed_only_{work_date}")
     with extra_cols[3]:
         st.empty()
+
+    render_lookup_erp_update_panel(source_type, work_date, f"{source_type}_daily_date")
 
     filtered_df = apply_inventory_filters(base_df, filters)
     if location_column and clean_cell(location_filter) and location_filter != "전체":
@@ -5768,22 +5856,19 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
             f"""
             <div class="inventory-page-header">
                 <h1>{escape(display_source)} 재고조회</h1>
-                <p>조회, ERP Snapshot 반영, 수동 재고 수정, 변경이력을 업무 흐름별로 분리했습니다.</p>
+                <p>조회 화면에서 ERP Snapshot 반영과 재고 확인을 한 번에 처리하고, 수동 재고 수정과 변경이력은 별도 흐름으로 관리합니다.</p>
             </div>
             """
         )
 
     workflow = inventory_text_tab_selector(
-        ["재고 조회", "ERP 재고 업데이트", "재고 수정", "변경이력"],
+        ["재고 조회", "재고 수정", "변경이력"],
         f"{source_key(source_type)}_inventory_workflow",
         default="재고 조회",
         item_weight=0.72,
         trailing_weight=5.8,
     )
 
-    if workflow == "ERP 재고 업데이트":
-        render_inventory_update_panel(source_type, daily_date_key)
-        return
     if workflow == "변경이력":
         render_inventory_change_history_panel(source_type)
         return
@@ -5876,7 +5961,11 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
 def render_stock_upload_apply_result(outcome: dict | None, excluded_df: pd.DataFrame | None = None) -> None:
     if not isinstance(outcome, dict):
         return
-    st.markdown('<div class="inventory-subsection-title">재고 반영 완료</div>', unsafe_allow_html=True)
+    ok = outcome.get("ok", True)
+    result_title = "재고 반영 완료" if ok else "재고 반영 오류"
+    st.markdown(f'<div class="inventory-subsection-title">{result_title}</div>', unsafe_allow_html=True)
+    if not ok and outcome.get("message"):
+        st.error(str(outcome.get("message")))
     metric_cols = st.columns(6, gap="small")
     metric_cols[0].metric("총 데이터", f"{int(outcome.get('total_rows') or 0):,}건")
     success_count = outcome.get("count") if "count" in outcome else outcome.get("matched_count")
