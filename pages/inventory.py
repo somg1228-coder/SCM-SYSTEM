@@ -5137,7 +5137,7 @@ def render_inventory_update_panel(
             </div>
             """
         )
-        upload_cols = st.columns([0.92, 2.35, 0.95, 0.92, 1.35], gap="large")
+        upload_cols = st.columns([0.92, 2.35, 0.92, 2.3], gap="large")
         with upload_cols[0]:
             work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
 
@@ -5148,17 +5148,14 @@ def render_inventory_update_panel(
         with upload_cols[1]:
             uploaded = st.file_uploader("파일 선택 또는 Drag & Drop", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
         with upload_cols[2]:
-            upload_mode = st.radio("반영 범위", ["일부 재고", "전체 재고"], horizontal=False, key=f"{source_type}_stock_upload_mode")
-        with upload_cols[3]:
             st.write("")
             if st.button("엑셀업로드", key=f"{source_type}_stock_upload_btn_{work_date}", type="primary", use_container_width=True):
                 if uploaded is None:
                     st.warning("먼저 ERP 재고 Excel 파일을 선택하세요.")
                 else:
-                    mode = "full" if upload_mode == "전체 재고" else "partial"
                     with st.spinner("엑셀을 읽고 재고를 바로 반영하는 중입니다..."):
                         def upload_action(db):
-                            preview = services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode)
+                            preview = services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, "partial")
                             if not preview or not preview.get("ok", True):
                                 return preview
                             return services.apply_stock_upload_preview(db, source_type, work_date, preview, current_user_name())
@@ -5167,7 +5164,7 @@ def render_inventory_update_panel(
                     for key in [upload_preview_key, preview_df_key, applied_df_key, excluded_df_key]:
                         st.session_state.pop(key, None)
                     show_result(outcome)
-        with upload_cols[4]:
+        with upload_cols[3]:
             st.info("엑셀업로드를 누르면 저장과 재고 계산이 바로 실행됩니다. 재고위치 컬럼이 있으면 창고 위치표에도 함께 반영됩니다.")
         return work_date
 
@@ -5747,7 +5744,7 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
             </div>
             """
         )
-        upload_cols = st.columns([2.4, 1.15, 0.9, 2.2], gap="large")
+        upload_cols = st.columns([2.4, 0.9, 3.35], gap="large")
         with upload_cols[0]:
             uploaded = st.file_uploader(
                 "파일 선택 또는 Drag & Drop",
@@ -5755,13 +5752,6 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
                 key=f"{panel_key}_file",
             )
         with upload_cols[1]:
-            upload_mode = st.radio(
-                "반영 범위",
-                ["일부 재고", "전체 재고"],
-                horizontal=False,
-                key=f"{panel_key}_mode",
-            )
-        with upload_cols[2]:
             st.write("")
             disabled = uploaded is None or bool(st.session_state.get(processing_key))
             if st.button("재고 반영", key=f"{panel_key}_apply", type="primary", use_container_width=True, disabled=disabled):
@@ -5776,7 +5766,6 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
                             st.write(f"파일명 기준일자 {file_work_date:%Y-%m-%d}로 반영합니다.")
                         file_bytes = uploaded.getvalue()
                         st.write("상품 매칭 중...")
-                        mode = "full" if upload_mode == "전체 재고" else "partial"
 
                         def upload_action(db):
                             return services.apply_erp_stock_upload_file(
@@ -5786,7 +5775,6 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
                                 file_bytes,
                                 uploaded.name,
                                 current_user_name(),
-                                mode,
                             )
 
                         outcome = with_db(upload_action)
@@ -5806,7 +5794,7 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
                 finally:
                     st.session_state[processing_key] = False
                 st.rerun()
-        with upload_cols[3]:
+        with upload_cols[2]:
             st.info("ERP 업데이트와 아래 재고조회는 같은 기준일자와 같은 현재고 데이터를 사용합니다.")
         render_stock_upload_apply_result(st.session_state.get(result_key), st.session_state.get(excluded_df_key))
 
@@ -6192,7 +6180,7 @@ def render_inventory_update_panel(
             </div>
             """
         )
-        upload_cols = st.columns([0.92, 2.35, 0.95, 0.92, 1.35], gap="large")
+        upload_cols = st.columns([0.92, 2.35, 0.92, 2.3], gap="large")
         with upload_cols[0]:
             work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
 
@@ -6206,17 +6194,14 @@ def render_inventory_update_panel(
         with upload_cols[1]:
             uploaded = st.file_uploader("파일 선택 또는 Drag & Drop", type=["xlsx", "xls", "csv"], key=f"{source_type}_stock_master_upload_{work_date}")
         with upload_cols[2]:
-            upload_mode = st.radio("반영 범위", ["일부 재고", "전체 재고"], horizontal=False, key=f"{source_type}_stock_upload_mode")
-        with upload_cols[3]:
             st.write("")
             disabled = uploaded is None or bool(st.session_state.get(processing_key))
             if st.button("재고 반영", key=f"{source_type}_stock_upload_btn_{work_date}", type="primary", use_container_width=True, disabled=disabled):
-                mode = "full" if upload_mode == "전체 재고" else "partial"
                 st.session_state[processing_key] = True
                 try:
                     with st.spinner("ERP 재고를 반영하고 있습니다..."):
                         def upload_action(db):
-                            preview = services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, mode)
+                            preview = services.prepare_stock_upload_preview(db, source_type, work_date, uploaded.getvalue(), uploaded.name, "partial")
                             if not preview or not preview.get("ok", True):
                                 return preview, pd.DataFrame()
                             excluded_df = stock_excluded_display_dataframe(preview)
@@ -6234,7 +6219,7 @@ def render_inventory_update_panel(
                 finally:
                     st.session_state[processing_key] = False
                 st.rerun()
-        with upload_cols[4]:
+        with upload_cols[3]:
             st.info("파일 선택 후 재고 반영을 누르면 매칭·중복·유효성 검사를 내부 실행한 뒤 저장합니다.")
         render_stock_upload_apply_result(st.session_state.get(result_key), st.session_state.get(excluded_df_key))
         return work_date

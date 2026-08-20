@@ -3169,7 +3169,6 @@ def apply_erp_stock_upload_file(
     file_bytes: bytes,
     file_name: str = "",
     uploaded_by: str = "",
-    upload_mode: str = "partial",
 ) -> dict:
     total_started_at = time.perf_counter()
     timings: dict[str, float] = {}
@@ -3284,25 +3283,7 @@ def apply_erp_stock_upload_file(
         }
     mark_inventory_update_stage(timings, "barcode_matching_validation", stage_started_at)
 
-    zeroed_by_sku: dict[str, dict] = {}
-    if upload_mode == "full":
-        for product in products:
-            product_sku = normalize_product_code_text(product.sku)
-            if not product_sku or product_sku in matched_by_sku:
-                continue
-            item = daily_by_sku.get(product_sku)
-            previous_stock = int(item.current_stock or 0) if item else 0
-            if previous_stock == 0:
-                continue
-            zeroed_by_sku[product_sku] = {
-                "row_no": "",
-                "barcode": normalize_erp_stock_barcode(product.barcode),
-                "product_name": product.product_name,
-                "stock": 0,
-                "product": product,
-                "zero_missing": True,
-            }
-    apply_by_sku = {**matched_by_sku, **zeroed_by_sku}
+    apply_by_sku = matched_by_sku
 
     history = None
     failure_rows = []
@@ -3313,12 +3294,12 @@ def apply_erp_stock_upload_file(
             work_date=work_date,
             file_name=clean_text(file_name),
             uploaded_by=clean_text(uploaded_by) or "SYSTEM",
-            upload_mode="ERP 재고 업데이트" if upload_mode == "partial" else "ERP 재고 업데이트(전체)",
+            upload_mode="ERP 재고 업데이트",
             total_rows=len(df.index),
             matched_count=len(apply_by_sku),
             failed_count=len(unmatched_rows),
             duplicate_count=0,
-            zeroed_count=len(zeroed_by_sku),
+            zeroed_count=0,
         )
         db.add(history)
         db.flush()
@@ -3426,7 +3407,7 @@ def apply_erp_stock_upload_file(
             "apply_failed_count": len(failure_rows),
             "failure_rows": failure_rows,
             "error_count": len(failure_rows),
-            "zeroed_count": len(zeroed_by_sku),
+            "zeroed_count": 0,
             "processing_seconds": round(time.perf_counter() - total_started_at, 2),
             "timings": timings,
             "unmatched_rows": unmatched_rows,
@@ -3447,7 +3428,7 @@ def apply_erp_stock_upload_file(
         "apply_failed_count": 0,
         "failure_rows": [],
         "error_count": 0,
-        "zeroed_count": len(zeroed_by_sku),
+        "zeroed_count": 0,
         "processing_seconds": round(processing_seconds, 2),
         "timings": timings,
         "unmatched_rows": unmatched_rows,
