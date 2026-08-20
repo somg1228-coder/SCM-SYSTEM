@@ -7,6 +7,7 @@ from math import ceil
 from pathlib import Path
 import re
 from time import perf_counter
+from urllib.parse import urlencode
 
 import pandas as pd
 import streamlit as st
@@ -4126,6 +4127,89 @@ def inject_inventory_css() -> None:
             font-size: 0.84rem !important;
         }
 
+        /* Final inventory navigation: underline text tabs, no pill/card buttons, viewport-safe wrapping. */
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tabs {
+            align-items: flex-end !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            flex-flow: row wrap !important;
+            gap: 8px 16px !important;
+            justify-content: flex-start !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            width: 100% !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tab {
+            align-items: center !important;
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+            color: #52697F !important;
+            display: inline-flex !important;
+            flex: 0 0 auto !important;
+            font-size: 0.9rem !important;
+            font-weight: 820 !important;
+            justify-content: center !important;
+            line-height: 1.2 !important;
+            min-height: 34px !important;
+            min-width: 72px !important;
+            padding: 0.22rem 0.04rem 0.28rem !important;
+            text-align: center !important;
+            text-decoration: none !important;
+            white-space: nowrap !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tab:hover {
+            border-bottom-color: #9FB3CA !important;
+            color: #2F4051 !important;
+            text-decoration: none !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tab.active {
+            border-bottom-color: #0F2B54 !important;
+            color: #0F2B54 !important;
+            font-weight: 950 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source .inventory-text-tab {
+            font-size: 0.96rem !important;
+            min-height: 38px !important;
+            min-width: 88px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail .inventory-text-tab {
+            min-width: 74px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_header"] + div .inventory-text-tabs,
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-page-header + .inventory-text-tabs {
+            margin-top: 0.58rem !important;
+        }
+        @media (max-width: 1024px) {
+            .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tabs {
+                gap: 8px 14px !important;
+            }
+        }
+        @media (max-width: 768px) {
+            .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tabs {
+                gap: 7px 12px !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tab {
+                min-width: 76px !important;
+            }
+        }
+        @media (max-width: 480px) {
+            .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tabs {
+                gap: 7px 10px !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail .inventory-text-tab,
+            .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tabs-threepl_inventory_workflow .inventory-text-tab,
+            .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tabs-offline_inventory_workflow .inventory-text-tab,
+            .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tabs-warehouse_inventory_workflow .inventory-text-tab {
+                min-width: calc((100% - 10px) / 2) !important;
+            }
+        }
+
         /* Viewport-safe inventory tabs. Keep every inventory navigation level on the same underline tab system. */
         .stApp:has(.st-key-inventory_nav_shell),
         .stApp:has(.st-key-inventory_nav_shell) [data-testid="stAppViewBlockContainer"],
@@ -4386,6 +4470,21 @@ def inventory_nav_token(value: str) -> str:
     return token or "item"
 
 
+def inventory_tab_query_key(key: str) -> str:
+    return f"inventory_tab_{inventory_nav_token(key)}"
+
+
+def inventory_tab_href(key: str, label: str) -> str:
+    params = {}
+    try:
+        for name, value in st.query_params.items():
+            params[name] = value[-1] if isinstance(value, list) and value else value
+    except Exception:
+        params = {}
+    params[inventory_tab_query_key(key)] = label
+    return "?" + urlencode(params, doseq=False)
+
+
 def inventory_text_tab_selector(
     options: list[str],
     key: str,
@@ -4394,30 +4493,28 @@ def inventory_text_tab_selector(
     trailing_weight: float = 0.0,
     item_weights: list[float] | None = None,
 ) -> str:
+    _ = (item_weight, trailing_weight, item_weights)
     labels = [str(option) for option in options]
     state_key = f"{key}_selected"
-    current = st.session_state.get(state_key) or default or (labels[0] if labels else "")
+    query_selected = query_value(inventory_tab_query_key(key))
+    current = query_selected if query_selected in labels else st.session_state.get(state_key) or default or (labels[0] if labels else "")
     if current not in labels and labels:
         current = labels[0]
     st.session_state[state_key] = current
     if not labels:
         return ""
 
-    weights = item_weights if item_weights and len(item_weights) == len(labels) else [item_weight] * len(labels)
-    if trailing_weight:
-        weights.append(trailing_weight)
-    columns = st.columns(weights, gap="small")
+    items = []
     for index, label in enumerate(labels):
         active = "active" if label == current else "idle"
-        token = inventory_nav_token(f"{index}_{label}")
-        with columns[index]:
-            with st.container(key=f"{key}_{token}_{active}"):
-                if st.button(label, key=f"{key}_{token}_button", use_container_width=True):
-                    st.session_state[state_key] = label
-                    st.rerun()
-    if trailing_weight:
-        with columns[-1]:
-            st.empty()
+        href = inventory_tab_href(key, label)
+        items.append(
+            f'<a class="inventory-text-tab {active}" href="{escape(href, quote=True)}" target="_self" data-index="{index}">{escape(label)}</a>'
+        )
+    st.markdown(
+        f'<nav class="inventory-text-tabs inventory-text-tabs-{inventory_nav_token(key)}" aria-label="{escape(key)}">{"".join(items)}</nav>',
+        unsafe_allow_html=True,
+    )
     return current
 
 
