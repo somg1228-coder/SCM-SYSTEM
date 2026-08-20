@@ -44,6 +44,7 @@ except Exception:
 INVENTORY_UPDATE_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "inventory_update_perf.log"
 INVENTORY_RENDER_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "inventory_render_perf.log"
 INVENTORY_LOGGER = logging.getLogger("scm.inventory_update")
+INVENTORY_TRACE_BARCODE = "8809722102830"
 
 
 def use_legacy_supabase_rest_store() -> bool:
@@ -2169,7 +2170,7 @@ def daily_rows_by_product(db: Session, source_type: str, work_date: date, produc
             select(InventoryDaily).where(
                 InventoryDaily.source_type == source_type,
                 InventoryDaily.work_date == work_date,
-            )
+            ).order_by(InventoryDaily.id)
         ).scalars()
     )
     by_sku: dict[str, InventoryDaily] = {}
@@ -2203,6 +2204,31 @@ def daily_rows_by_product(db: Session, source_type: str, work_date: date, produc
             row = by_name[product_name][0]
         if row is not None and product_sku:
             matched[product_sku] = row
+    trace_barcode = normalize_barcode_text(INVENTORY_TRACE_BARCODE)
+    trace_products = [product for product in products if normalize_barcode_text(getattr(product, "barcode", "")) == trace_barcode]
+    trace_daily_rows = [row for row in rows if normalize_barcode_text(getattr(row, "barcode", "")) == trace_barcode]
+    write_inventory_trace(
+        INVENTORY_RENDER_LOG_PATH,
+        "INVENTORY SNAPSHOT JOIN TRACE",
+        {
+            "조회 table": getattr(InventoryDaily, "__tablename__", "inventory_daily"),
+            "source_type": source_type,
+            "work_date": work_date,
+            "barcode": trace_barcode,
+            "product_name": [clean_text(getattr(product, "product_name", "")) for product in trace_products],
+            "inventory_rows_found": len(rows),
+            "master_rows": len(products),
+            "joined_rows": len(matched),
+            "trace_master_rows": [product_trace_row(product) for product in trace_products],
+            "trace_inventory_rows": [inventory_trace_row(row) for row in trace_daily_rows],
+            "trace_joined_skus": [
+                normalize_product_code_text(getattr(product, "sku", ""))
+                for product in trace_products
+                if normalize_product_code_text(getattr(product, "sku", "")) in matched
+            ],
+            "join_key": "normalized product_code first, barcode+product_name fallback, unique barcode/name fallback",
+        },
+    )
     return matched
 
 
@@ -2474,7 +2500,11 @@ def ensure_daily_snapshots_from_latest(db: Session, source_type: str, work_date:
     if products is None:
         products = list(db.execute(select(model).order_by(model.sort_order, model.product_name, model.sku)).scalars())
     existing_by_sku = daily_rows_by_product(db, source_type, work_date, products)
-    missing_products = [product for product in products if clean_text(product.sku) and clean_text(product.sku) not in existing_by_sku]
+    missing_products = [
+        product
+        for product in products
+        if normalize_product_code_text(product.sku) and normalize_product_code_text(product.sku) not in existing_by_sku
+    ]
     if not missing_products:
         db.commit()
         return 0
@@ -2482,7 +2512,7 @@ def ensure_daily_snapshots_from_latest(db: Session, source_type: str, work_date:
     previous_by_sku = latest_daily_rows_by_product(db, source_type, work_date - timedelta(days=1), missing_products)
     created = 0
     for product in missing_products:
-        sku = clean_text(product.sku)
+        sku = normalize_product_code_text(product.sku)
         if not sku:
             continue
 
@@ -2548,9 +2578,10 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     rows = []
     for product in products:
         product_sku = clean_text(product.sku)
+        product_sku_key = normalize_product_code_text(product.sku)
         product_barcode = normalize_barcode_text(product.barcode)
-        location_summary = location_summaries.get(product_sku) or location_summaries.get(product_barcode) or {}
-        daily = latest_daily_by_sku.get(product_sku)
+        location_summary = location_summaries.get(product_sku) or location_summaries.get(product_sku_key) or location_summaries.get(product_barcode) or {}
+        daily = latest_daily_by_sku.get(product_sku_key)
         has_snapshot = daily is not None
         current_stock = int(daily.current_stock or 0) if has_snapshot else 0
         placed_quantity = int(location_summary.get("placed_quantity") or 0)
@@ -2568,13 +2599,13 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         measured_lead_time = int(purchase_metric.get("avg_lead_time") or 0)
         lead_time = measured_lead_time or product.default_lead_time or 0
         box_qty = int(product.box_qty or product.pack_qty or 0)
-        pending_inbound_qty = int(pending_by_sku.get(product_sku, 0) or 0)
+        pending_inbound_qty = int(pending_by_sku.get(product_sku, pending_by_sku.get(product_sku_key, 0)) or 0)
         pending_outbound_qty = int(daily.outbound_qty or 0) if has_snapshot else 0
 
         available_stock = current_stock + pending_inbound_qty - pending_outbound_qty if has_snapshot else 0
 
         shortage_qty = max(safe_stock - current_stock, 0)
-        avg_outbound = float(avg_outbound_by_sku.get(product_sku, 0) or 0)
+        avg_outbound = float(avg_outbound_by_sku.get(product_sku, avg_outbound_by_sku.get(product_sku_key, 0)) or 0)
 
         needed_days = order_needed_days(available_stock, safe_stock, avg_outbound, lead_time)
 
@@ -2874,6 +2905,48 @@ def log_inventory_update_performance(timings: dict[str, float], total_seconds: f
     except OSError:
         pass
     return text
+
+
+def inventory_trace_row(row) -> dict:
+    if row is None:
+        return {}
+    return {
+        "id": getattr(row, "id", None),
+        "source_type": getattr(row, "source_type", ""),
+        "work_date": getattr(row, "work_date", None),
+        "product_code": getattr(row, "product_code", ""),
+        "barcode": normalize_barcode_text(getattr(row, "barcode", "")),
+        "product_name": clean_text(getattr(row, "product_name", "")),
+        "current_stock": getattr(row, "current_stock", None),
+        "available_stock": getattr(row, "available_stock", None),
+        "stock_status": getattr(row, "stock_status", ""),
+    }
+
+
+def product_trace_row(product) -> dict:
+    if product is None:
+        return {}
+    return {
+        "id": getattr(product, "id", None),
+        "sku": getattr(product, "sku", ""),
+        "normalized_sku": normalize_product_code_text(getattr(product, "sku", "")),
+        "barcode": normalize_barcode_text(getattr(product, "barcode", "")),
+        "product_name": clean_text(getattr(product, "product_name", "")),
+        "category": clean_text(getattr(product, "large_category", ""))
+        or clean_text(getattr(product, "medium_category", ""))
+        or clean_text(getattr(product, "small_category", "")),
+    }
+
+
+def write_inventory_trace(path: Path, title: str, payload: dict) -> None:
+    text = f"[{title}]\n{json.dumps(payload, ensure_ascii=False, default=str, indent=2)}"
+    INVENTORY_LOGGER.info("\n%s", text)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n{text}\n\n")
+    except OSError:
+        pass
 
 
 def prepare_stock_upload_preview(
@@ -3231,7 +3304,7 @@ def apply_erp_stock_upload_file(
             select(InventoryDaily).where(
                 InventoryDaily.source_type == source_type,
                 InventoryDaily.work_date == work_date,
-            )
+            ).order_by(InventoryDaily.id)
         ).scalars()
     )
     daily_by_sku = {
@@ -3249,11 +3322,23 @@ def apply_erp_stock_upload_file(
     stage_started_at = time.perf_counter()
     unmatched_rows = []
     matched_by_sku: dict[str, dict] = {}
+    trace_barcode = normalize_erp_stock_barcode(INVENTORY_TRACE_BARCODE)
+    trace_upload_rows = []
     for row_no, row in enumerate(df.fillna("").to_dict("records"), start=1):
         barcode = normalize_erp_stock_barcode(row.get(barcode_col))
         product_name = normalize_erp_stock_product_name(row.get(name_col))
         uploaded_stock, stock_ok = to_int_strict(row.get(stock_col))
         product = products_by_key.get((barcode, product_name))
+        if barcode == trace_barcode:
+            trace_upload_rows.append(
+                {
+                    "row_no": row_no,
+                    "barcode": barcode,
+                    "product_name": product_name,
+                    "current_stock": uploaded_stock if stock_ok else row.get(stock_col, ""),
+                    "matched_product": product_trace_row(product),
+                }
+            )
         reason = ""
         if not barcode or not product_name:
             reason = "바코드/상품명 없음"
@@ -3387,6 +3472,41 @@ def apply_erp_stock_upload_file(
                     }
                 )
         mark_inventory_update_stage(timings, "db_verification", stage_started_at)
+        trace_master_rows = [
+            product_trace_row(product)
+            for product in products
+            if normalize_erp_stock_barcode(getattr(product, "barcode", "")) == trace_barcode
+        ]
+        trace_verified_rows = [
+            inventory_trace_row(row)
+            for row in verification_rows
+            if normalize_erp_stock_barcode(getattr(row, "barcode", "")) == trace_barcode
+        ]
+        write_inventory_trace(
+            INVENTORY_UPDATE_LOG_PATH,
+            "ERP INVENTORY SAVE TRACE",
+            {
+                "저장 table": getattr(InventoryDaily, "__tablename__", "inventory_daily"),
+                "source_type": source_type,
+                "work_date": work_date,
+                "barcode": trace_barcode,
+                "product_name": [row.get("product_name", "") for row in trace_upload_rows],
+                "current_stock": [row.get("current_stock") for row in trace_upload_rows],
+                "실제 upsert 건수": len(update_rows) + len(insert_rows),
+                "uploaded_rows": len(df.index),
+                "matched_rows": len(matched_by_sku),
+                "upserted_rows": len(update_rows) + len(insert_rows),
+                "inventory_rows_found": len(verification_rows),
+                "joined_rows": len(verified_by_sku),
+                "unmatched_rows": len(unmatched_rows),
+                "updated_rows": len(update_rows),
+                "inserted_rows": len(insert_rows),
+                "trace_upload_rows": trace_upload_rows,
+                "trace_master_rows": trace_master_rows,
+                "trace_saved_rows": trace_verified_rows,
+                "save_key": "matched product sku stored to inventory_daily.product_code; barcode is stored as canonical text",
+            },
+        )
         if failure_rows:
             raise RuntimeError(f"ERP 재고 DB 검증 실패 {len(failure_rows)}건")
         db.commit()
