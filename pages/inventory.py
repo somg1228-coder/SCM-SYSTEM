@@ -4394,8 +4394,31 @@ def inventory_text_tab_selector(
     trailing_weight: float = 0.0,
     item_weights: list[float] | None = None,
 ) -> str:
-    _ = (item_weight, trailing_weight, item_weights)
-    return lazy_tab_selector(options, key, default=default, compact=True)
+    labels = [str(option) for option in options]
+    state_key = f"{key}_selected"
+    current = st.session_state.get(state_key) or default or (labels[0] if labels else "")
+    if current not in labels and labels:
+        current = labels[0]
+    st.session_state[state_key] = current
+    if not labels:
+        return ""
+
+    weights = item_weights if item_weights and len(item_weights) == len(labels) else [item_weight] * len(labels)
+    if trailing_weight:
+        weights.append(trailing_weight)
+    columns = st.columns(weights, gap="small")
+    for index, label in enumerate(labels):
+        active = "active" if label == current else "idle"
+        token = inventory_nav_token(f"{index}_{label}")
+        with columns[index]:
+            with st.container(key=f"{key}_{token}_{active}"):
+                if st.button(label, key=f"{key}_{token}_button", use_container_width=True):
+                    st.session_state[state_key] = label
+                    st.rerun()
+    if trailing_weight:
+        with columns[-1]:
+            st.empty()
+    return current
 
 
 def render_inventory_navigation() -> tuple[str, str]:
