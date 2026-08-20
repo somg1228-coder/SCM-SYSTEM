@@ -1,6 +1,9 @@
 from pathlib import Path
+from contextlib import nullcontext
 import importlib
 import logging
+import re
+import time
 import traceback
 
 import streamlit as st
@@ -11,6 +14,16 @@ from components import sidebar as sidebar_component
 
 BASE_DIR = Path(__file__).parent
 APP_ERROR_LOG_PATH = BASE_DIR / "data" / "app_error.log"
+CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+
+
+def perf_tools():
+    try:
+        from backend.perf import perf_span, start_streamlit_run, summarize_current_run
+
+        return perf_span, start_streamlit_run, summarize_current_run
+    except Exception:
+        return (lambda *_args, **_kwargs: nullcontext()), (lambda *_args, **_kwargs: ""), (lambda *_args, **_kwargs: {})
 
 
 def import_page_module(module_name: str, label: str):
@@ -46,7 +59,9 @@ def log_app_exception(exc: BaseException) -> None:
 
 @st.cache_data(show_spinner=False)
 def read_css_text(css_path: str, mtime: float) -> str:
-    return Path(css_path).read_text(encoding="utf-8")
+    css = Path(css_path).read_text(encoding="utf-8")
+    css = CSS_COMMENT_RE.sub("", css)
+    return "\n".join(line.strip() for line in css.splitlines() if line.strip())
 
 
 def load_css() -> None:
@@ -361,18 +376,31 @@ def main() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    load_css()
-    sync_query_params_to_state()
+    total_started_at = time.perf_counter()
+    perf_span, start_streamlit_run, summarize_current_run = perf_tools()
+    page_hint = query_value("page") or st.session_state.get("current_page") or st.session_state.get("selected_menu") or st.session_state.get("page") or "대시보드"
+    start_streamlit_run(page_hint)
 
-    page = sidebar_component.render_sidebar()
+    with perf_span("app.sync_query_params"):
+        sync_query_params_to_state()
+
+    with perf_span("app.load_css"):
+        load_css()
+
+    with perf_span("app.sidebar_render"):
+        page = sidebar_component.render_sidebar()
     st.session_state["page"] = page
     st.session_state["selected_menu"] = page
     st.session_state["current_page"] = page
-    inject_route_transition_cleanup(page)
+    with perf_span("app.route_cleanup", page=page):
+        inject_route_transition_cleanup(page)
 
     if page != "반품/AS 관리":
-        render_header(page)
-    render_page(page)
+        with perf_span("app.header_render", page=page):
+            render_header(page)
+    with perf_span("app.page_render", page=page):
+        render_page(page)
+    summarize_current_run(time.perf_counter() - total_started_at, page=page)
 
 
 if __name__ == "__main__":

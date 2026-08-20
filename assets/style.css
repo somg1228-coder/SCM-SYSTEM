@@ -1,4 +1,22 @@
 :root {
+    --initial-app-bg: #F7F5F2;
+    --initial-app-text: #1F2937;
+}
+
+html,
+body,
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+.main,
+.block-container {
+    background: var(--initial-app-bg) !important;
+    color: var(--initial-app-text) !important;
+    transition: none !important;
+}
+
+:root {
     color-scheme: light;
     --bg: #F8F7F4;
     --sidebar: #FFFFFF;
@@ -84,14 +102,6 @@ body,
 .stApp,
 [data-testid="stAppViewContainer"] {
     color-scheme: light !important;
-}
-
-.stApp {
-    background:
-        radial-gradient(circle at 48% 4%, rgba(18, 155, 139, 0.24), transparent 34%),
-        radial-gradient(circle at 76% 48%, rgba(13, 107, 99, 0.18), transparent 30%),
-        linear-gradient(135deg, #F8F7F4 0%, #FBFAF8 44%, #FFFFFF 100%) !important;
-    color: var(--text) !important;
 }
 
 .stApp,
@@ -800,14 +810,6 @@ body,
     min-height: 100vh;
     margin: 0 !important;
     padding: 0 !important;
-}
-
-.stApp {
-    background:
-        radial-gradient(circle at 48% 4%, rgba(18, 155, 139, 0.24), transparent 34%),
-        radial-gradient(circle at 76% 48%, rgba(13, 107, 99, 0.18), transparent 30%),
-        linear-gradient(135deg, #F8F7F4 0%, #FBFAF8 44%, #FFFFFF 100%);
-    color: var(--text);
 }
 
 .stApp,
@@ -3393,11 +3395,6 @@ body,
     color-scheme: light;
 }
 
-.stApp {
-    background: #f8fafc !important;
-    color: var(--text) !important;
-}
-
 .stApp,
 .stApp [data-testid="stMarkdownContainer"],
 .stApp [data-testid="stCaptionContainer"],
@@ -4053,14 +4050,6 @@ body,
 .stApp,
 [data-testid="stAppViewContainer"] {
     color-scheme: light !important;
-}
-
-.stApp {
-    background:
-        radial-gradient(circle at 48% 4%, rgba(18, 155, 139, 0.24), transparent 34%),
-        radial-gradient(circle at 76% 48%, rgba(13, 107, 99, 0.18), transparent 30%),
-        linear-gradient(135deg, #F8F7F4 0%, #FBFAF8 44%, #FFFFFF 100%) !important;
-    color: var(--text) !important;
 }
 
 .stApp,
@@ -7032,12 +7021,6 @@ body,
     color-scheme: light !important;
 }
 
-.stApp,
-[data-testid="stAppViewContainer"] {
-    background: #fff8f1 !important;
-    color: #1f2937 !important;
-}
-
 .stApp [data-testid="stHeader"],
 .stApp [data-testid="stToolbar"],
 .stApp [data-testid="stDecoration"] {
@@ -7607,14 +7590,6 @@ body,
 .main,
 .block-container {
     color-scheme: light !important;
-}
-
-.stApp,
-[data-testid="stAppViewContainer"],
-[data-testid="stMain"],
-[data-testid="stMainBlockContainer"] {
-    background: var(--erp-bg) !important;
-    color: var(--erp-text) !important;
 }
 
 .stApp *,
@@ -10524,13 +10499,6 @@ select:focus,
     --orange: var(--erp-amber);
     --red: var(--erp-red);
     --purple: #747986;
-}
-
-.stApp,
-[data-testid="stAppViewContainer"],
-[data-testid="stMain"],
-[data-testid="stMainBlockContainer"] {
-    background: linear-gradient(135deg, #F0F1EF 0%, #F3F3F0 48%, #F6F5F2 100%) !important;
 }
 
 .panel,
