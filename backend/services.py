@@ -3526,6 +3526,8 @@ def apply_stock_upload_preview(
                     storage_location = clean_text(row.get("storage_location")) or getattr(product, "storage_location", "")
                     item.current_stock = new_stock
                     item.available_stock = new_available_stock
+                    if "memo" in row:
+                        item.memo = clean_text(row.get("memo"))
                     if model_has_field(InventoryDaily, "storage_location"):
                         item.storage_location = storage_location
                     if storage_location and hasattr(product, "storage_location"):
