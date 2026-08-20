@@ -27,6 +27,7 @@ try:
         InventoryDaily,
         InventoryOutputHistory,
         InventoryUploadHistory,
+        InventoryUploadSnapshot,
         MaterialInventoryItem,
         ProductionPlan,
         PurchaseRequest,
@@ -38,6 +39,7 @@ except (ModuleNotFoundError, RuntimeError) as exc:
     InventoryDaily = None
     InventoryOutputHistory = None
     InventoryUploadHistory = None
+    InventoryUploadSnapshot = None
     MaterialInventoryItem = None
     ProductionPlan = None
     PurchaseRequest = None
@@ -4827,6 +4829,39 @@ def stock_excluded_display_dataframe(preview: dict) -> pd.DataFrame:
     return excluded
 
 
+def inventory_master_diagnostics_dataframe(result: dict) -> pd.DataFrame:
+    rows = []
+    for row in (result or {}).get("problem_rows", []):
+        rows.append(
+            {
+                "상품코드": clean_cell(row.get("product_code")),
+                "바코드": clean_cell(row.get("barcode")),
+                "상품명": clean_cell(row.get("product_name")),
+                "재고 카테고리": clean_cell(row.get("inventory_category")),
+                "마스터 카테고리": clean_cell(row.get("master_category")),
+                "매칭방식": clean_cell(row.get("match_method")),
+                "원인": clean_cell(row.get("reason")),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def inventory_apply_failure_dataframe(outcome: dict) -> pd.DataFrame:
+    rows = []
+    for row in (outcome or {}).get("failure_rows", []):
+        rows.append(
+            {
+                "엑셀 행": clean_cell(row.get("row_no")),
+                "상품코드": clean_cell(row.get("product_code")),
+                "바코드": clean_cell(row.get("barcode")),
+                "상품명": clean_cell(row.get("product_name")),
+                "실재고": row.get("new_stock", ""),
+                "실패사유": clean_cell(row.get("failure_reason")),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def render_inventory_kpi_cards(cards: list[tuple[str, int, str, str]]) -> None:
     icons = {
         "neutral": "▦",
@@ -5221,6 +5256,27 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
     with action_cols[3]:
         st.info("수정파일 업로드 후 검증 결과가 생성되면 변경내용 확인과 최종 수정 반영을 진행할 수 있습니다.")
 
+    with st.expander("상품마스터 매칭/미분류 진단", expanded=False):
+        diag_key = f"{panel_key}_master_diagnostics"
+        if st.button("현재 재고-상품마스터 매칭 점검", key=f"{panel_key}_diagnostics_btn", use_container_width=True):
+            st.session_state[diag_key] = with_db(lambda db: services.inventory_master_match_diagnostics(db, source_type, work_date))
+        diagnostics = st.session_state.get(diag_key)
+        if isinstance(diagnostics, dict):
+            stats = diagnostics.get("stats", {})
+            metric_cols = st.columns(7, gap="small")
+            metric_cols[0].metric("전체 재고 상품", f"{int(stats.get('total_inventory_items') or 0):,}")
+            metric_cols[1].metric("상품코드 정상 매칭", f"{int(stats.get('sku_match_count') or 0):,}")
+            metric_cols[2].metric("바코드 fallback 매칭", f"{int(stats.get('barcode_fallback_match_count') or 0):,}")
+            metric_cols[3].metric("마스터 없음", f"{int(stats.get('master_missing_count') or 0):,}")
+            metric_cols[4].metric("카테고리 없음", f"{int(stats.get('category_empty_count') or 0):,}")
+            metric_cols[5].metric("상품코드 중복", f"{int(stats.get('duplicate_product_code_count') or 0):,}")
+            metric_cols[6].metric("바코드 중복", f"{int(stats.get('duplicate_barcode_count') or 0):,}")
+            diagnostics_df = inventory_master_diagnostics_dataframe(diagnostics)
+            if diagnostics_df.empty:
+                st.success("상품마스터 매칭/카테고리 진단에서 문제가 발견되지 않았습니다.")
+            else:
+                render_inventory_visible_table(diagnostics_df, height=280)
+
     filter_cols = st.columns([0.9, 1.8, 1.0, 1.0, 0.9, 0.9], gap="small")
     with filter_cols[0]:
         st.date_input("기준일자", value=work_date, disabled=True, key=f"{panel_key}_date")
@@ -5470,9 +5526,9 @@ def render_inventory_lookup_panel(source_type: str, work_date: date, rows: list[
                 st.empty()
 
 
-def fetch_inventory_change_history(source_type: str, limit: int = 100) -> tuple[pd.DataFrame, pd.DataFrame]:
-    if InventoryUploadHistory is None or InventoryOutputHistory is None:
-        return pd.DataFrame(), pd.DataFrame()
+def fetch_inventory_change_history(source_type: str, limit: int = 100) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if InventoryUploadHistory is None or InventoryOutputHistory is None or InventoryUploadSnapshot is None:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     def load(db):
         upload_rows = list(
@@ -5491,9 +5547,18 @@ def fetch_inventory_change_history(source_type: str, limit: int = 100) -> tuple[
                 .limit(limit)
             ).scalars()
         )
-        return upload_rows, output_rows
+        snapshot_rows = list(
+            db.execute(
+                select(InventoryUploadSnapshot, InventoryUploadHistory.created_at, InventoryUploadHistory.upload_mode)
+                .join(InventoryUploadHistory, InventoryUploadSnapshot.upload_history_id == InventoryUploadHistory.id)
+                .where(InventoryUploadSnapshot.source_type == source_type)
+                .order_by(InventoryUploadHistory.created_at.desc(), InventoryUploadSnapshot.id.desc())
+                .limit(limit)
+            ).all()
+        )
+        return upload_rows, snapshot_rows, output_rows
 
-    uploads, outputs = with_db(load) or ([], [])
+    uploads, snapshots, outputs = with_db(load) or ([], [], [])
     upload_df = pd.DataFrame(
         [
             {
@@ -5523,17 +5588,36 @@ def fetch_inventory_change_history(source_type: str, limit: int = 100) -> tuple[
             for row in outputs
         ]
     )
-    return upload_df, output_df
+    snapshot_df = pd.DataFrame(
+        [
+            {
+                "수정일시": created_at,
+                "기준일자": snapshot.work_date,
+                "수정방식": upload_mode,
+                "상품코드": snapshot.product_code,
+                "바코드": snapshot.barcode,
+                "상품명": snapshot.product_name,
+                "기존재고": snapshot.previous_stock,
+                "수정재고": snapshot.new_stock,
+                "차이": int(snapshot.new_stock or 0) - int(snapshot.previous_stock or 0),
+            }
+            for snapshot, created_at, upload_mode in snapshots
+        ]
+    )
+    return upload_df, snapshot_df, output_df
 
 
 def render_inventory_change_history_panel(source_type: str) -> None:
     st.markdown('<div class="inventory-subsection-title">변경이력</div>', unsafe_allow_html=True)
-    upload_df, output_df = fetch_inventory_change_history(source_type)
+    upload_df, snapshot_df, output_df = fetch_inventory_change_history(source_type)
     if upload_df.empty:
         st.info("표시할 재고 변경 이력이 없습니다.")
     else:
         st.markdown("#### 재고 반영/수정 이력")
         render_plain_inventory_table(upload_df, height=360, empty_message="표시할 재고 변경 이력이 없습니다.")
+    if not snapshot_df.empty:
+        with st.expander("상품별 실재고 수정 상세", expanded=True):
+            render_plain_inventory_table(snapshot_df, height=360, empty_message="표시할 상품별 수정 상세가 없습니다.")
     if not output_df.empty:
         with st.expander("출력/다운로드 이력", expanded=False):
             render_plain_inventory_table(output_df, height=260, empty_message="표시할 출력 이력이 없습니다.")
@@ -5662,7 +5746,8 @@ def render_stock_upload_apply_result(outcome: dict | None, excluded_df: pd.DataF
     st.markdown('<div class="inventory-subsection-title">재고 반영 완료</div>', unsafe_allow_html=True)
     metric_cols = st.columns(6, gap="small")
     metric_cols[0].metric("총 데이터", f"{int(outcome.get('total_rows') or 0):,}건")
-    metric_cols[1].metric("정상 반영", f"{int(outcome.get('count') or outcome.get('matched_count') or 0):,}건")
+    success_count = outcome.get("count") if "count" in outcome else outcome.get("matched_count")
+    metric_cols[1].metric("정상 반영", f"{int(success_count or 0):,}건")
     metric_cols[2].metric("미매칭", f"{int(outcome.get('unmatched_count') or 0):,}건")
     metric_cols[3].metric("중복", f"{int(outcome.get('duplicate_count') or 0):,}건")
     metric_cols[4].metric("오류", f"{int(outcome.get('error_count') or 0):,}건")
@@ -5670,6 +5755,10 @@ def render_stock_upload_apply_result(outcome: dict | None, excluded_df: pd.DataF
     if isinstance(excluded_df, pd.DataFrame) and not excluded_df.empty:
         with st.expander(f"미매칭/중복/오류 {len(excluded_df):,}건 확인", expanded=False):
             render_inventory_visible_table(excluded_df, height=260)
+    failure_df = inventory_apply_failure_dataframe(outcome)
+    if not failure_df.empty:
+        with st.expander(f"업데이트 실패 {len(failure_df):,}건 확인", expanded=True):
+            render_inventory_visible_table(failure_df, height=260)
 
 
 def render_inventory_update_panel(
