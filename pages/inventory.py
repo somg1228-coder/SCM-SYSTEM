@@ -4123,6 +4123,226 @@ def inject_inventory_css() -> None:
         .inventory-page-header p {
             font-size: 0.84rem !important;
         }
+
+        /* Viewport-safe inventory tabs. Keep every inventory navigation level on the same underline tab system. */
+        .stApp:has(.st-key-inventory_nav_shell),
+        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stAppViewBlockContainer"],
+        .stApp:has(.st-key-inventory_nav_shell) [data-testid="stMainBlockContainer"],
+        .stApp:has(.st-key-inventory_nav_shell) .block-container {
+            box-sizing: border-box !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow-x: hidden !important;
+            width: 100% !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_daily_header"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_actions"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_table_panel"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inventory_update"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-"][class*="_inbound_import_panel"] {
+            box-sizing: border-box !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            width: 100% !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell {
+            overflow-x: hidden !important;
+            padding: clamp(0.42rem, 1.1vw, 0.7rem) clamp(0.48rem, 1.4vw, 0.9rem) !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source {
+            border-bottom: 1px solid #D8D0C4 !important;
+            margin: 0 0 0.42rem !important;
+            padding: 0 0 0.42rem !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] {
+            display: block !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow: visible !important;
+            width: 100% !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="radiogroup"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="group"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="group"] {
+            align-items: flex-end !important;
+            display: flex !important;
+            flex-flow: row wrap !important;
+            gap: 8px 16px !important;
+            justify-content: flex-start !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow: visible !important;
+            width: 100% !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label {
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+            flex: 0 0 auto !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+            min-width: 72px !important;
+            padding: 0 !important;
+            white-space: nowrap !important;
+            width: auto !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[data-testid="stPills"] label,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[data-testid="stPills"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[data-testid="stSegmentedControl"] label {
+            min-width: 86px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] label,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] label {
+            min-width: 84px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label > div {
+            align-items: center !important;
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+            color: #52697F !important;
+            display: inline-flex !important;
+            font-size: 0.88rem !important;
+            font-weight: 780 !important;
+            justify-content: center !important;
+            line-height: 1.2 !important;
+            min-height: 34px !important;
+            overflow: visible !important;
+            padding: 0.26rem 0.06rem 0.32rem !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+            width: 100% !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label > div *,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button *,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label > div * {
+            color: inherit !important;
+            font-size: inherit !important;
+            font-weight: inherit !important;
+            line-height: 1.2 !important;
+            max-width: 100% !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            white-space: nowrap !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label:hover > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button:hover,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label:hover > div {
+            background: transparent !important;
+            border-bottom-color: #9FB3CA !important;
+            color: #2F4051 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label:has(input:checked) > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label:has([aria-checked="true"]) > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label[aria-checked="true"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label[data-checked="true"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button[aria-pressed="true"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] [aria-selected="true"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label:has(input:checked) > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label[aria-checked="true"] > div {
+            background: transparent !important;
+            border-bottom-color: #0F2B54 !important;
+            color: #0F2B54 !important;
+            font-weight: 900 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[data-testid="stPills"] label > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[data-testid="stPills"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[data-testid="stSegmentedControl"] label > div {
+            font-size: 0.95rem !important;
+            min-height: 38px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-page-header,
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-page-header * {
+            box-sizing: border-box !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow-wrap: break-word !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-page-header h1,
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-page-header p {
+            max-width: 100% !important;
+        }
+        @media (max-width: 1024px) {
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="radiogroup"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="group"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="group"] {
+                gap: 8px 14px !important;
+            }
+        }
+        @media (max-width: 768px) {
+            .stApp:has(.st-key-inventory_nav_shell) [data-testid="stAppViewBlockContainer"] {
+                padding-left: 0.75rem !important;
+                padding-right: 0.75rem !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell {
+                margin-bottom: 0.72rem !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] div[role="radiogroup"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] div[role="group"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] div[role="group"] {
+                gap: 7px 12px !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label,
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button,
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label {
+                min-width: 80px !important;
+            }
+        }
+        @media (max-width: 480px) {
+            .stApp:has(.st-key-inventory_nav_shell) [data-testid="stAppViewBlockContainer"] {
+                padding-left: 0.56rem !important;
+                padding-right: 0.56rem !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell {
+                padding-left: 0.44rem !important;
+                padding-right: 0.44rem !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="radiogroup"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] div[role="group"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="group"] {
+                gap: 7px 10px !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] label,
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] button,
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] label {
+                min-width: calc((100% - 10px) / 2) !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label > div,
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button,
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] label > div {
+                font-size: 0.82rem !important;
+                min-height: 32px !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .inventory-page-header h1 {
+                font-size: 1.12rem !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .inventory-page-header p {
+                font-size: 0.78rem !important;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -4172,31 +4392,8 @@ def inventory_text_tab_selector(
     trailing_weight: float = 0.0,
     item_weights: list[float] | None = None,
 ) -> str:
-    labels = [str(option) for option in options]
-    state_key = f"{key}_selected"
-    current = st.session_state.get(state_key) or default or (labels[0] if labels else "")
-    if current not in labels and labels:
-        current = labels[0]
-    st.session_state[state_key] = current
-    if not labels:
-        return ""
-
-    weights = item_weights if item_weights and len(item_weights) == len(labels) else [item_weight] * len(labels)
-    if trailing_weight:
-        weights.append(trailing_weight)
-    columns = st.columns(weights, gap="small")
-    for index, label in enumerate(labels):
-        active = "active" if label == current else "idle"
-        token = inventory_nav_token(f"{index}_{label}")
-        with columns[index]:
-            with st.container(key=f"{key}_{token}_{active}"):
-                if st.button(label, key=f"{key}_{token}_button", use_container_width=True):
-                    st.session_state[state_key] = label
-                    st.rerun()
-    if trailing_weight:
-        with columns[-1]:
-            st.empty()
-    return current
+    _ = (item_weight, trailing_weight, item_weights)
+    return lazy_tab_selector(options, key, default=default, compact=True)
 
 
 def render_inventory_navigation() -> tuple[str, str]:
