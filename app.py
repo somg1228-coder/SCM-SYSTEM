@@ -70,6 +70,24 @@ def load_css() -> None:
         st.markdown(f"<style>{read_css_text(str(css_path), css_path.stat().st_mtime)}</style>", unsafe_allow_html=True)
 
 
+@st.cache_resource(show_spinner=False)
+def ensure_database_schema_once() -> bool:
+    from backend.database import init_db
+
+    init_db(force=True, ensure_schema=True)
+    return True
+
+
+def ensure_database_schema() -> None:
+    try:
+        ensure_database_schema_once()
+    except Exception as exc:
+        log_app_exception(exc)
+        st.error("DB 스키마 확인 중 오류가 발생했습니다. 배포 로그의 상세 오류를 확인해주세요.")
+        st.exception(exc)
+        st.stop()
+
+
 def run_sqlite_bootstrap_migration() -> None:
     try:
         from backend.config import config_bool_value
@@ -386,6 +404,9 @@ def main() -> None:
 
     with perf_span("app.load_css"):
         load_css()
+
+    with perf_span("app.ensure_database_schema"):
+        ensure_database_schema()
 
     with perf_span("app.sidebar_render"):
         page = sidebar_component.render_sidebar()
