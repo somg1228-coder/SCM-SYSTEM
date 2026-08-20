@@ -4185,6 +4185,19 @@ def inject_inventory_css() -> None:
         .stApp:has(.st-key-inventory_nav_shell) .inventory-page-header + .inventory-text-tabs {
             margin-top: 0.58rem !important;
         }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_header"] [data-testid="stDateInput"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_header"] [data-testid="stDateInput"] [data-baseweb="input"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_header"] [data-testid="stDateInput"] [data-baseweb="input"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_header"] [data-testid="stDateInput"] input {
+            background: #FAF8F5 !important;
+            background-color: #FAF8F5 !important;
+            border-color: #E4DED6 !important;
+            box-shadow: none !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_daily_header"] [data-testid="stDateInput"] input {
+            color: #26384A !important;
+            -webkit-text-fill-color: #26384A !important;
+        }
         @media (max-width: 1024px) {
             .stApp:has(.st-key-inventory_nav_shell) .inventory-text-tabs {
                 gap: 8px 14px !important;
