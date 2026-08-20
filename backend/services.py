@@ -72,6 +72,7 @@ KNOWN_IMPORT_HEADERS = {
     "상품분류",
     "업체명",
     "재고위치",
+    "위치상태",
     "보관위치",
     "박스/파렛트 단위",
     "담당자",
@@ -90,6 +91,7 @@ IMPORT_HEADER_ALIASES = {
     "상품명": ("상품명", "품목", "품목명", "product_name"),
     "업체명": ("업체명", "공급처", "거래처", "supplier"),
     "재고위치": ("재고위치", "재고 위치", "보관위치", "보관 위치", "창고위치", "창고 위치", "로케이션", "랙위치", "랙 위치", "location", "storage_location"),
+    "위치상태": ("위치상태", "위치 상태", "location_status", "location_registered"),
     "박스/파렛트 단위": ("박스/파렛트 단위", "박스파렛트단위", "파렛트,박스단위"),
     "담당자": ("담당자", "비고", "memo"),
     "리드타임": ("리드타임", "기본 리드타임", "제조기간", "default_lead_time"),
@@ -103,6 +105,7 @@ PRODUCT_MASTER_COLUMNS = [
     "브랜드",
     "공급처",
     "재고위치",
+    "위치상태",
     "입수",
     "박스입수",
     "기본 리드타임",
@@ -123,6 +126,8 @@ SHARED_MASTER_FORM_COLUMNS = [
 ]
 
 SHARED_MASTER_REQUIRED_COLUMNS = set(SHARED_MASTER_FORM_COLUMNS)
+SHARED_MASTER_OPTIONAL_COLUMNS = {"위치상태"}
+SHARED_MASTER_KNOWN_COLUMNS = SHARED_MASTER_REQUIRED_COLUMNS | SHARED_MASTER_OPTIONAL_COLUMNS
 
 PRODUCT_MASTER_MODEL_BY_SOURCE = {
     "오프라인": OfflineProductMaster,
@@ -152,6 +157,29 @@ def product_master_model_data(model, row: dict) -> dict:
 
 def model_has_field(model, field_name: str) -> bool:
     return field_name in model.__table__.columns
+
+
+def normalize_location_registered(value) -> bool:
+    text = clean_text(value).replace(" ", "").lower()
+    if not text:
+        return False
+    return text in {
+        "위치등록",
+        "등록",
+        "등록됨",
+        "있음",
+        "위치있음",
+        "y",
+        "yes",
+        "true",
+        "1",
+        "o",
+        "ok",
+    }
+
+
+def location_status_label(value) -> str:
+    return "위치등록" if bool(value) else "위치미등록"
 
 
 def product_master_lookup(db: Session, source_type: str) -> dict[str, dict[str, object]]:
@@ -625,6 +653,8 @@ def product_master_to_dict(row) -> dict:
         "brand": row.brand,
         "supplier": row.supplier,
         "storage_location": getattr(row, "storage_location", ""),
+        "location_registered": bool(getattr(row, "location_registered", False)),
+        "location_status": location_status_label(getattr(row, "location_registered", False)),
         "pack_qty": row.pack_qty,
         "box_qty": row.box_qty,
         "default_lead_time": row.default_lead_time,
@@ -1005,6 +1035,7 @@ def product_master_dataframe(rows: list) -> pd.DataFrame:
                 "브랜드": row.brand,
                 "공급처": row.supplier,
                 "재고위치": getattr(row, "storage_location", ""),
+                "위치상태": location_status_label(getattr(row, "location_registered", False)),
                 "입수": row.pack_qty,
                 "박스입수": row.box_qty,
                 "기본 리드타임": row.default_lead_time,
@@ -1099,6 +1130,12 @@ def normalize_product_master_row(row: dict) -> dict:
             or data.get("location")
             or data.get("storage_location")
         ),
+        "location_registered": normalize_location_registered(
+            data.get("위치상태")
+            or data.get("위치 상태")
+            or data.get("location_status")
+            or data.get("location_registered")
+        ),
         "pack_qty": combined_pallet_qty or to_int(data.get("입수") or data.get("pack_qty")),
         "box_qty": combined_box_qty or to_int(data.get("박스입수") or data.get("box_qty")) or to_box_unit_int(data.get("파렛트,박스단위")),
         "default_lead_time": to_int(
@@ -1141,7 +1178,7 @@ def fill_down_product_master_categories(df: pd.DataFrame) -> pd.DataFrame:
         column
         for column in df.columns
         if normalize_import_header_name(str(column))
-        in {"SKU", "바코드", "상품명", "업체명", "재고위치", "박스/파렛트 단위", "담당자", "리드타임"}
+        in {"SKU", "바코드", "상품명", "업체명", "재고위치", "위치상태", "박스/파렛트 단위", "담당자", "리드타임"}
     ]
     last_values = {column: "" for column in category_columns}
     for index in df.index:
@@ -1272,6 +1309,7 @@ THREEPL_MASTER_IMPORT_FIELDS = [
     ("box_pallet_unit", "박스/파렛트 단위"),
     ("memo", "담당자"),
     ("default_lead_time", "리드타임"),
+    ("location_registered", "위치상태"),
 ]
 
 
@@ -1298,6 +1336,7 @@ def threepl_master_basis_data(row: dict) -> dict:
         "brand": clean_text(row.get("brand")),
         "supplier": clean_text(row.get("supplier")),
         "storage_location": clean_text(row.get("storage_location")),
+        "location_registered": bool(row.get("location_registered")),
         "pack_qty": to_int(row.get("pack_qty")),
         "box_qty": to_int(row.get("box_qty")),
         "default_lead_time": to_int(row.get("default_lead_time")),
@@ -1310,6 +1349,9 @@ def threepl_master_display_value(row: dict | object, field: str) -> str:
         if isinstance(row, dict):
             return format_box_pallet_unit(row.get("box_qty"), row.get("pack_qty"))
         return format_box_pallet_unit(getattr(row, "box_qty", 0), getattr(row, "pack_qty", 0))
+    if field == "location_registered":
+        value = row.get(field) if isinstance(row, dict) else getattr(row, field, False)
+        return location_status_label(value)
     value = row.get(field) if isinstance(row, dict) else getattr(row, field, "")
     return str(to_int(value)) if field == "default_lead_time" else clean_text(value)
 
@@ -1395,7 +1437,7 @@ def validate_shared_master_headers(df: pd.DataFrame) -> tuple[bool, list[str], l
     unexpected = [
         str(column)
         for column in df.columns
-        if normalize_import_header_name(str(column)) not in SHARED_MASTER_REQUIRED_COLUMNS
+        if normalize_import_header_name(str(column)) not in SHARED_MASTER_KNOWN_COLUMNS
         and clean_text(column)
     ]
     return not missing, missing, unexpected
@@ -2320,13 +2362,7 @@ def warehouse_position_label(layout: WarehouseLayout, rack: WarehouseRack, posit
 
 
 def warehouse_position_status(current_stock: int, placed_qty: int, has_locations: bool) -> str:
-    if not has_locations:
-        return "위치미등록"
-    if current_stock == placed_qty:
-        return "정상"
-    if current_stock > placed_qty:
-        return "미배치"
-    return "수량불일치"
+    return "위치등록" if has_locations else "위치미등록"
 
 
 def warehouse_inventory_position_summaries(db: Session) -> dict[str, dict]:
@@ -2479,7 +2515,9 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         has_snapshot = daily is not None
         current_stock = int(daily.current_stock or 0) if has_snapshot else 0
         placed_quantity = int(location_summary.get("placed_quantity") or 0)
-        has_locations = bool(location_summary.get("location_count") or placed_quantity)
+        actual_locations = bool(location_summary.get("location_count") or placed_quantity)
+        master_location_registered = bool(getattr(product, "location_registered", False))
+        has_locations = actual_locations if source_type == "창고" else master_location_registered
         unplaced_quantity = max(current_stock - placed_quantity, 0)
 
         safe_stock = int(product.min_stock or 0)

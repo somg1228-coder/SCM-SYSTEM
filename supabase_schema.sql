@@ -250,6 +250,7 @@ CREATE TABLE IF NOT EXISTS "offline_product_master" (
     "default_lead_time" INTEGER NOT NULL,
     "min_stock" INTEGER NOT NULL,
     "is_active" VARCHAR(20) NOT NULL,
+    "location_registered" BOOLEAN DEFAULT false NOT NULL,
     "memo" VARCHAR(500) NOT NULL,
     "created_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
     "updated_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
@@ -277,6 +278,7 @@ CREATE TABLE IF NOT EXISTS "product_master" (
     "default_lead_time" INTEGER NOT NULL,
     "min_stock" INTEGER NOT NULL,
     "is_active" VARCHAR(20) NOT NULL,
+    "location_registered" BOOLEAN DEFAULT false NOT NULL,
     "memo" VARCHAR(500) NOT NULL,
     "created_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
     "updated_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL
@@ -688,6 +690,7 @@ CREATE TABLE IF NOT EXISTS "thirdparty_product_master" (
     "min_stock" INTEGER NOT NULL,
     "sort_order" INTEGER DEFAULT 0 NOT NULL,
     "is_active" VARCHAR(20) NOT NULL,
+    "location_registered" BOOLEAN DEFAULT false NOT NULL,
     "memo" VARCHAR(500) NOT NULL,
     "created_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
     "updated_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL
@@ -770,6 +773,7 @@ CREATE TABLE IF NOT EXISTS "warehouse_product_master" (
     "default_lead_time" INTEGER NOT NULL,
     "min_stock" INTEGER NOT NULL,
     "is_active" VARCHAR(20) NOT NULL,
+    "location_registered" BOOLEAN DEFAULT false NOT NULL,
     "memo" VARCHAR(500) NOT NULL,
     "created_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
     "updated_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL,

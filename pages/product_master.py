@@ -43,6 +43,7 @@ MASTER_COLUMNS = [
     "카테고리",
     "브랜드",
     "공급처",
+    "위치상태",
     "입수",
     "박스입수",
     "기본 리드타임",
@@ -60,6 +61,7 @@ THREEPL_MASTER_COLUMNS = [
     "박스/파렛트 단위",
     "담당자",
     "리드타임",
+    "위치상태",
 ]
 
 THREEPL_MASTER_INTERNAL_COLUMNS = ["SKU", "브랜드", "안전재고", "정렬순서", "사용여부"]
@@ -72,6 +74,7 @@ OFFLINE_MASTER_COLUMNS = [
     "리드타임",
     "정렬순서",
     "사용여부",
+    "위치상태",
     "비고",
 ]
 
@@ -528,11 +531,11 @@ def render_product_master_row_edit_form(source_type: str, key: str, df: pd.DataF
 def blank_product_master_row(source_type: str) -> dict:
     if uses_threepl_master_form(source_type):
         row = {column: "" for column in [*THREEPL_MASTER_COLUMNS, *THREEPL_MASTER_INTERNAL_COLUMNS]}
-        row.update({"리드타임": 0, "안전재고": 0, "정렬순서": 0, "사용여부": "사용"})
+        row.update({"리드타임": 0, "안전재고": 0, "정렬순서": 0, "사용여부": "사용", "위치상태": "위치미등록"})
         return row
     if uses_simple_master_form(source_type):
         row = {column: "" for column in OFFLINE_MASTER_COLUMNS}
-        row.update({"미사용 처리": False, "리드타임": 0, "정렬순서": 0, "사용여부": "사용"})
+        row.update({"미사용 처리": False, "리드타임": 0, "정렬순서": 0, "사용여부": "사용", "위치상태": "위치미등록"})
         return row
     row = {column: "" for column in MASTER_COLUMNS}
     row.update(
@@ -544,6 +547,7 @@ def blank_product_master_row(source_type: str) -> dict:
             "최소재고": 0,
             "정렬순서": 0,
             "사용여부": "사용",
+            "위치상태": "위치미등록",
         }
     )
     return row
@@ -600,11 +604,12 @@ def render_threepl_row_edit_form(
         product_name = top[2].text_input("상품명", value=clean_value(row.get("상품명")), key=f"{field_key_prefix}_product_name")
         supplier = top[3].text_input("업체명", value=clean_value(row.get("업체명")), key=f"{field_key_prefix}_supplier")
 
-        bottom = st.columns([1.45, 1.0, 0.75, 0.75], gap="small")
+        bottom = st.columns([1.35, 0.95, 0.75, 0.75, 0.9], gap="small")
         box_pallet_unit = bottom[0].text_input("박스/파렛트 단위", value=clean_value(row.get("박스/파렛트 단위")), key=f"{field_key_prefix}_box_pallet_unit")
         manager = bottom[1].text_input("담당자", value=clean_value(row.get("담당자")), key=f"{field_key_prefix}_manager")
         lead_time = bottom[2].number_input("리드타임", min_value=0, step=1, value=to_int_value(row.get("리드타임")), key=f"{field_key_prefix}_lead_time")
         is_active = bottom[3].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")), key=f"{field_key_prefix}_is_active")
+        location_status = bottom[4].selectbox("위치상태", ["위치미등록", "위치등록"], index=location_status_select_index(row.get("위치상태")), key=f"{field_key_prefix}_location_status")
 
         submitted = st.form_submit_button("상품 등록" if is_new else "수정 저장", type="primary", use_container_width=True)
     if submitted:
@@ -619,6 +624,7 @@ def render_threepl_row_edit_form(
                 "담당자": manager,
                 "리드타임": lead_time,
                 "사용여부": is_active,
+                "위치상태": location_status,
             }
         )
         save_product_master_rows(source_type, key, threepl_editor_to_payload(pd.DataFrame([edited_row])))
@@ -639,11 +645,12 @@ def render_simple_row_edit_form(
         product_name = top[1].text_input("상품명", value=clean_value(row.get("상품명")), key=f"{field_key_prefix}_product_name")
         barcode = top[2].text_input(barcode_label, value=clean_value(row.get(barcode_label)), key=f"{field_key_prefix}_barcode")
 
-        bottom = st.columns([0.85, 0.85, 0.85, 2.2], gap="small")
+        bottom = st.columns([0.85, 0.85, 0.85, 0.9, 1.65], gap="small")
         lead_time = bottom[0].number_input("리드타임", min_value=0, step=1, value=to_int_value(row.get("리드타임")), key=f"{field_key_prefix}_lead_time")
         sort_order = bottom[1].number_input("정렬순서", min_value=0, step=1, value=to_int_value(row.get("정렬순서")), key=f"{field_key_prefix}_sort_order")
         is_active = bottom[2].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")), key=f"{field_key_prefix}_is_active")
-        memo = bottom[3].text_input("비고", value=clean_value(row.get("비고")), key=f"{field_key_prefix}_memo")
+        location_status = bottom[3].selectbox("위치상태", ["위치미등록", "위치등록"], index=location_status_select_index(row.get("위치상태")), key=f"{field_key_prefix}_location_status")
+        memo = bottom[4].text_input("비고", value=clean_value(row.get("비고")), key=f"{field_key_prefix}_memo")
 
         submitted = st.form_submit_button("상품 등록" if is_new else "수정 저장", type="primary", use_container_width=True)
     if submitted:
@@ -656,6 +663,7 @@ def render_simple_row_edit_form(
                 "리드타임": lead_time,
                 "정렬순서": sort_order,
                 "사용여부": is_active,
+                "위치상태": location_status,
                 "비고": memo,
             }
         )
@@ -685,10 +693,11 @@ def render_standard_row_edit_form(
         lead_time = row2[4].number_input("기본 리드타임", min_value=0, step=1, value=to_int_value(row.get("기본 리드타임")), key=f"{field_key_prefix}_lead_time")
         min_stock = row2[5].number_input("최소재고", min_value=0, step=1, value=to_int_value(row.get("최소재고")), key=f"{field_key_prefix}_min_stock")
 
-        row3 = st.columns([0.8, 0.8, 2.4], gap="small")
+        row3 = st.columns([0.8, 0.8, 0.95, 1.85], gap="small")
         sort_order = row3[0].number_input("정렬순서", min_value=0, step=1, value=to_int_value(row.get("정렬순서")), key=f"{field_key_prefix}_sort_order")
         is_active = row3[1].selectbox("사용여부", ["사용", "미사용"], index=active_select_index(row.get("사용여부")), key=f"{field_key_prefix}_is_active")
-        memo = row3[2].text_input("비고", value=clean_value(row.get("비고")), key=f"{field_key_prefix}_memo")
+        location_status = row3[2].selectbox("위치상태", ["위치미등록", "위치등록"], index=location_status_select_index(row.get("위치상태")), key=f"{field_key_prefix}_location_status")
+        memo = row3[3].text_input("비고", value=clean_value(row.get("비고")), key=f"{field_key_prefix}_memo")
 
         submitted = st.form_submit_button("상품 등록" if is_new else "수정 저장", type="primary", use_container_width=True)
     if submitted:
@@ -707,6 +716,7 @@ def render_standard_row_edit_form(
                 "최소재고": min_stock,
                 "정렬순서": sort_order,
                 "사용여부": is_active,
+                "위치상태": location_status,
                 "비고": memo,
             }
         )
@@ -715,6 +725,10 @@ def render_standard_row_edit_form(
 
 def active_select_index(value) -> int:
     return 1 if clean_value(value) == "미사용" else 0
+
+
+def location_status_select_index(value) -> int:
+    return 1 if clean_value(value) == "위치등록" else 0
 
 
 def save_product_master_rows(source_type: str, key: str, payload: list[dict]) -> None:
@@ -764,7 +778,7 @@ def render_single_product_form(source_type: str, key: str) -> None:
             with row2[3]:
                 memo = st.text_input("비고", key=f"product_master_{key}_single_memo")
 
-            row3 = st.columns([0.8, 0.8, 0.9, 0.8, 0.8, 0.9], gap="small")
+            row3 = st.columns([0.78, 0.78, 0.88, 0.78, 0.78, 0.82, 0.95], gap="small")
             with row3[0]:
                 pack_qty = st.number_input("입수", min_value=0, step=1, key=f"product_master_{key}_single_pack_qty")
             with row3[1]:
@@ -777,6 +791,8 @@ def render_single_product_form(source_type: str, key: str) -> None:
                 sort_order = st.number_input("정렬순서", min_value=0, step=1, key=f"product_master_{key}_single_sort_order")
             with row3[5]:
                 is_active = st.selectbox("사용여부", ["사용", "미사용"], key=f"product_master_{key}_single_is_active")
+            with row3[6]:
+                location_status = st.selectbox("위치상태", ["위치미등록", "위치등록"], key=f"product_master_{key}_single_location_status")
 
             submitted = st.form_submit_button("단품 추가", type="primary", use_container_width=True)
             if submitted:
@@ -793,6 +809,7 @@ def render_single_product_form(source_type: str, key: str) -> None:
                     "최소재고": min_stock,
                     "정렬순서": sort_order,
                     "사용여부": is_active,
+                    "위치상태": location_status,
                     "비고": memo,
                 }
                 outcome = with_db(lambda db: services.add_product_master(db, source_type, row))
@@ -1176,10 +1193,20 @@ def show_sqlite_write_status(context: str) -> bool:
 
 def fetch_master(source_type: str, keyword: str, active_filter: str) -> list[dict]:
     def action(db):
-        return [
+        rows = [
             services.product_master_to_dict(row)
             for row in services.list_product_master(db, source_type, keyword, active_filter)
         ]
+        if source_type == "창고":
+            location_summaries = services.warehouse_inventory_position_summaries(db)
+            for row in rows:
+                sku = clean_value(row.get("sku"))
+                barcode = services.normalize_barcode_text(row.get("barcode"))
+                summary = location_summaries.get(sku) or location_summaries.get(barcode) or {}
+                actual_registered = bool(summary.get("location_count") or summary.get("placed_quantity"))
+                row["location_registered"] = actual_registered
+                row["location_status"] = services.location_status_label(actual_registered)
+        return rows
 
     return with_db(action) or []
 
@@ -1193,6 +1220,7 @@ def master_column_config() -> dict:
         "카테고리": st.column_config.TextColumn("카테고리", width="medium"),
         "브랜드": st.column_config.TextColumn("브랜드", width="medium"),
         "공급처": st.column_config.TextColumn("공급처", width="medium"),
+        "위치상태": st.column_config.SelectboxColumn("위치상태", options=["위치미등록", "위치등록"]),
         "입수": st.column_config.NumberColumn("입수", min_value=0, step=1),
         "박스입수": st.column_config.NumberColumn("박스입수", min_value=0, step=1),
         "기본 리드타임": st.column_config.NumberColumn("기본 리드타임", min_value=0, step=1),
@@ -1211,6 +1239,7 @@ def threepl_master_column_config() -> dict:
         "박스/파렛트 단위": st.column_config.TextColumn("박스/파렛트 단위", width="medium"),
         "담당자": st.column_config.TextColumn("담당자", width="medium"),
         "리드타임": st.column_config.NumberColumn("리드타임", min_value=0, step=1),
+        "위치상태": st.column_config.SelectboxColumn("위치상태", options=["위치미등록", "위치등록"]),
     }
 
 
@@ -1223,6 +1252,7 @@ def offline_master_column_config() -> dict:
         "리드타임": st.column_config.NumberColumn("리드타임", min_value=0, step=1),
         "정렬순서": st.column_config.NumberColumn("정렬순서", min_value=0, step=1),
         "사용여부": st.column_config.SelectboxColumn("사용여부", options=["사용", "미사용"]),
+        "위치상태": st.column_config.SelectboxColumn("위치상태", options=["위치미등록", "위치등록"]),
     }
 
 
@@ -1260,6 +1290,7 @@ def master_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "카테고리": row.get("large_category", ""),
                 "브랜드": row.get("brand", ""),
                 "공급처": row.get("supplier", ""),
+                "위치상태": row.get("location_status", "위치미등록"),
                 "입수": row.get("pack_qty", 0),
                 "박스입수": row.get("box_qty", 0),
                 "기본 리드타임": row.get("default_lead_time", 0),
@@ -1284,6 +1315,7 @@ def threepl_master_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "박스/파렛트 단위": row.get("box_pallet_unit") or format_box_pallet_unit(row.get("box_qty", 0), row.get("pack_qty", 0)),
                 "담당자": row.get("memo", ""),
                 "리드타임": row.get("default_lead_time", 0),
+                "위치상태": row.get("location_status", "위치미등록"),
                 "SKU": row.get("sku", ""),
                 "브랜드": row.get("brand", ""),
                 "안전재고": row.get("min_stock", 0),
@@ -1308,6 +1340,7 @@ def offline_master_to_editor(rows: list[dict], keyword: str = "", active_filter:
                 "리드타임": row.get("default_lead_time", 0),
                 "정렬순서": row.get("sort_order", 0),
                 "사용여부": row.get("is_active", "사용"),
+                "위치상태": row.get("location_status", "위치미등록"),
                 "비고": row.get("memo", ""),
             }
         )
@@ -1357,6 +1390,7 @@ def editor_to_payload(df: pd.DataFrame) -> list[dict]:
         ):
             continue
         payload = row.to_dict()
+        payload["위치상태"] = clean_value(payload.get("위치상태")) or "위치미등록"
         if bool(payload.get("미사용 처리", False)):
             payload["사용여부"] = "미사용"
         payload.pop("미사용 처리", None)
@@ -1386,6 +1420,7 @@ def threepl_editor_to_payload(df: pd.DataFrame) -> list[dict]:
             "최소재고": to_int_value(row.get("안전재고")),
             "정렬순서": to_int_value(row.get("정렬순서")),
             "사용여부": clean_value(row.get("사용여부")) or "사용",
+            "위치상태": clean_value(row.get("위치상태")) or "위치미등록",
             "비고": clean_value(row.get("담당자")),
         }
         if bool(row.get("미사용 처리", False)):
@@ -1411,6 +1446,7 @@ def offline_editor_to_payload(df: pd.DataFrame) -> list[dict]:
             "기본 리드타임": to_int_value(row.get("리드타임")),
             "정렬순서": to_int_value(row.get("정렬순서")),
             "사용여부": clean_value(row.get("사용여부")) or "사용",
+            "위치상태": clean_value(row.get("위치상태")) or "위치미등록",
             "비고": clean_value(row.get("비고")),
         }
         if bool(row.get("미사용 처리", False)):

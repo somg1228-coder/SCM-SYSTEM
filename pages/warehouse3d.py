@@ -1586,6 +1586,7 @@ def warehouse_inventory_badge_html(value: object) -> str:
         "부족": "short",
         "품절": "soldout",
         "미집계": "unknown",
+        "위치등록": "normal",
         "위치미등록": "warning",
         "미배치": "warning",
         "수량불일치": "short",
@@ -1672,7 +1673,7 @@ def warehouse_inventory_table_html(df: pd.DataFrame) -> str:
         .warehouse-inventory-badge.normal {{ background: #ECFDF3; border-color: #BBF7D0; color: #166534; }}
         .warehouse-inventory-badge.warning {{ background: #FFFBEB; border-color: #FDE68A; color: #92400E; }}
         .warehouse-inventory-badge.short {{ background: #FEF2F2; border-color: #FECACA; color: #991B1B; }}
-        .warehouse-inventory-badge.soldout {{ background: #7F1D1D; border-color: #7F1D1D; color: #FFFFFF; }}
+        .warehouse-inventory-badge.soldout {{ background: #7F1D1D; border-color: #7F1D1D; color: #FFFFFF !important; font-weight: 900 !important; }}
         .warehouse-inventory-badge.unknown {{ background: #F1F5F9; border-color: #CBD5E1; color: #475569; }}
     </style>
     <div class="warehouse-inventory-table-wrap">

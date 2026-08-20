@@ -1149,12 +1149,15 @@ def ensure_sqlite_columns() -> None:
         },
         "offline_product_master": {
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
+            "location_registered": "BOOLEAN NOT NULL DEFAULT 0",
         },
         "thirdparty_product_master": {
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
+            "location_registered": "BOOLEAN NOT NULL DEFAULT 0",
         },
         "warehouse_product_master": {
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
+            "location_registered": "BOOLEAN NOT NULL DEFAULT 0",
         },
         "category_bom_items": {
             "barcode": "VARCHAR(120) NOT NULL DEFAULT ''",

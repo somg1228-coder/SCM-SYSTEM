@@ -1845,6 +1845,8 @@ def inventory_status_badge_html(value: str) -> str:
         "부족": "short",
         "품절": "soldout",
         "미집계": "unknown",
+        "위치등록": "normal",
+        "위치미등록": "warning",
     }.get(label, "unknown")
     return f'<span class="inventory-table-status {tone}">{escape(label)}</span>'
 
@@ -1856,7 +1858,7 @@ def inventory_visible_table_html(df: pd.DataFrame) -> str:
         cells = []
         for column in df.columns:
             value = row.get(column, "")
-            if column == "재고상태":
+            if column in {"재고상태", "위치상태"}:
                 cells.append(f"<td>{inventory_status_badge_html(str(value))}</td>")
             else:
                 cells.append(f"<td>{escape(str(value))}</td>")
@@ -3567,7 +3569,7 @@ def inject_inventory_css() -> None:
         .inventory-table-status.normal { background: #ECFDF3; border-color: #BBF7D0; color: #166534; }
         .inventory-table-status.warning { background: #FFFBEB; border-color: #FDE68A; color: #92400E; }
         .inventory-table-status.short { background: #FEF2F2; border-color: #FECACA; color: #991B1B; }
-        .inventory-table-status.soldout { background: #7F1D1D; border-color: #7F1D1D; color: #FFFFFF; }
+        .inventory-table-status.soldout { background: #7F1D1D; border-color: #7F1D1D; color: #FFFFFF !important; font-weight: 900 !important; }
         .inventory-table-status.unknown { background: #F1F5F9; border-color: #CBD5E1; color: #475569; }
 
         @media (max-width: 1180px) {
@@ -3682,6 +3684,7 @@ def inject_inventory_css() -> None:
             background: #7F1D1D !important;
             border-color: #7F1D1D !important;
             color: #FFFFFF !important;
+            font-weight: 900 !important;
         }
         @media (max-width: 1280px) {
             .stApp:has(.st-key-inventory_nav_shell) div[class*="st-key-inventory_filter_"][class*="_panel"] [data-testid="stHorizontalBlock"],
