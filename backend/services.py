@@ -1914,6 +1914,56 @@ def merge_inventory_daily_rows(target: InventoryDaily, duplicate: InventoryDaily
     return target
 
 
+def find_inventory_daily_unique_conflict(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    product_name: str,
+    barcode: str = "",
+    exclude_id: int | None = None,
+) -> InventoryDaily | None:
+    """Return an existing daily row with the same unique inventory identity."""
+    target_name = clean_text(product_name)
+    target_barcode = normalize_barcode_text(barcode)
+    query = select(InventoryDaily).where(
+        InventoryDaily.source_type == source_type,
+        InventoryDaily.work_date == work_date,
+        InventoryDaily.product_name == target_name,
+        InventoryDaily.barcode == target_barcode,
+    )
+    if exclude_id is not None:
+        query = query.where(InventoryDaily.id != exclude_id)
+    with db.no_autoflush:
+        return db.execute(query.order_by(InventoryDaily.id)).scalars().first()
+
+
+def resolve_inventory_daily_edit_target(
+    db: Session,
+    daily: InventoryDaily | None,
+    source_type: str,
+    work_date: date,
+    product_name: str,
+    barcode: str = "",
+) -> tuple[InventoryDaily, bool]:
+    """Choose the row to update for an inventory edit without violating the daily unique key."""
+    conflict = find_inventory_daily_unique_conflict(
+        db,
+        source_type,
+        work_date,
+        product_name,
+        barcode,
+        exclude_id=daily.id if daily is not None else None,
+    )
+    if conflict is not None:
+        if daily is not None and daily.id != conflict.id:
+            db.delete(daily)
+        return conflict, True
+    if daily is None:
+        daily = InventoryDaily(source_type=source_type, work_date=work_date)
+        db.add(daily)
+    return daily, False
+
+
 def apply_product_master_to_daily_without_unique_conflict(
     db: Session,
     item: InventoryDaily,

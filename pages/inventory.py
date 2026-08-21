@@ -5451,7 +5451,7 @@ def save_stock_registration_form(
     original_barcode = clean_cell(selected_row.get("바코드"))
     original_name = clean_cell(selected_row.get("상품명"))
     sku = clean_cell(form_data.get("sku"))
-    barcode = clean_cell(form_data.get("barcode"))
+    barcode = services.normalize_barcode_text(form_data.get("barcode"))
     product_name = clean_cell(form_data.get("product_name"))
     category = clean_cell(form_data.get("category"))
     supplier = clean_cell(form_data.get("supplier"))
@@ -5495,17 +5495,6 @@ def save_stock_registration_form(
             )
         ).scalar_one_or_none()
 
-    daily_conflict = db.execute(
-        select(InventoryDaily).where(
-            InventoryDaily.source_type == source_type,
-            InventoryDaily.work_date == work_date,
-            InventoryDaily.barcode == barcode,
-            InventoryDaily.product_name == product_name,
-        )
-    ).scalar_one_or_none()
-    if daily_conflict is not None and (daily is None or daily_conflict.id != daily.id):
-        return {"ok": False, "message": f"기준일 재고에 같은 바코드/상품명이 이미 있습니다. ({barcode} / {product_name})", "count": 0}
-
     if product is None:
         product = model(sku=sku, barcode=barcode, product_name=product_name)
         db.add(product)
@@ -5518,9 +5507,14 @@ def save_stock_registration_form(
     product.memo = memo
     db.flush()
 
-    if daily is None:
-        daily = InventoryDaily(source_type=source_type, work_date=work_date)
-        db.add(daily)
+    daily, merged_into_existing_daily = services.resolve_inventory_daily_edit_target(
+        db,
+        daily,
+        source_type,
+        work_date,
+        product_name,
+        barcode,
+    )
     daily.product_code = sku
     daily.barcode = barcode
     daily.product_name = product_name
@@ -5541,6 +5535,7 @@ def save_stock_registration_form(
         "failed_count": 0,
         "duplicate_count": 0,
         "zeroed_count": 0,
+        "merged_daily_conflict_count": 1 if merged_into_existing_daily else 0,
         "preview_rows": [
             {
                 "matched": True,
