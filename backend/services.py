@@ -16,6 +16,8 @@ from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 from sqlalchemy import case, delete, func, or_, select, tuple_
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1984,6 +1986,83 @@ def replace_inventory_daily_lookup_row(
         lookup[normalized_sku] = row
 
 
+def inventory_daily_upsert_statement(db: Session, values: dict):
+    dialect_name = db.get_bind().dialect.name
+    insert_fn = postgresql_insert if dialect_name == "postgresql" else sqlite_insert
+    statement = insert_fn(InventoryDaily).values(**values)
+    update_values = {
+        key: statement.excluded[key]
+        for key in values
+        if key not in {"source_type", "work_date", "product_name", "barcode"}
+    }
+    return statement.on_conflict_do_update(
+        index_elements=["source_type", "work_date", "product_name", "barcode"],
+        set_=update_values,
+    )
+
+
+def delete_stale_inventory_daily_product_rows(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    product_code: str,
+    product_name: str,
+    barcode: str,
+) -> int:
+    sku = normalize_product_code_text(product_code)
+    if not sku:
+        return 0
+    result = db.execute(
+        delete(InventoryDaily).where(
+            InventoryDaily.source_type == source_type,
+            InventoryDaily.work_date == work_date,
+            InventoryDaily.product_code == sku,
+            or_(
+                InventoryDaily.product_name != clean_text(product_name),
+                InventoryDaily.barcode != normalize_barcode_text(barcode),
+            ),
+        )
+    )
+    return int(result.rowcount or 0)
+
+
+def previous_inventory_daily_stock(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    product_code: str,
+    product_name: str,
+    barcode: str,
+) -> int:
+    final_row = find_inventory_daily_unique_conflict(db, source_type, work_date, product_name, barcode)
+    if final_row is not None:
+        return int(final_row.current_stock or 0)
+    sku = normalize_product_code_text(product_code)
+    if not sku:
+        return 0
+    with db.no_autoflush:
+        stale_row = db.execute(
+            select(InventoryDaily)
+            .where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date == work_date,
+                InventoryDaily.product_code == sku,
+            )
+            .order_by(InventoryDaily.id)
+        ).scalars().first()
+    return int(stale_row.current_stock or 0) if stale_row is not None else 0
+
+
+def product_by_barcode_name_map(products: list) -> dict[tuple[str, str], object]:
+    lookup: dict[tuple[str, str], object] = {}
+    for product in products:
+        barcode = normalize_barcode_text(getattr(product, "barcode", ""))
+        product_name = clean_text(getattr(product, "product_name", ""))
+        if barcode and product_name:
+            lookup.setdefault((barcode, product_name), product)
+    return lookup
+
+
 def apply_product_master_to_daily_without_unique_conflict(
     db: Session,
     item: InventoryDaily,
@@ -3378,27 +3457,6 @@ def apply_erp_stock_upload_file(
     mark_inventory_update_stage(timings, "db_master_loading", stage_started_at)
 
     stage_started_at = time.perf_counter()
-    daily_rows = list(
-        db.execute(
-            select(InventoryDaily).where(
-                InventoryDaily.source_type == source_type,
-                InventoryDaily.work_date == work_date,
-            ).order_by(InventoryDaily.id)
-        ).scalars()
-    )
-    daily_by_sku = {
-        normalize_product_code_text(row.product_code): row
-        for row in daily_rows
-        if normalize_product_code_text(row.product_code)
-    }
-    daily_by_key = {}
-    for row in daily_rows:
-        key = erp_stock_match_key(row.barcode, row.product_name)
-        if key[0] and key[1]:
-            daily_by_key.setdefault(key, row)
-    mark_inventory_update_stage(timings, "db_inventory_loading", stage_started_at)
-
-    stage_started_at = time.perf_counter()
     unmatched_rows = []
     matched_by_sku: dict[str, dict] = {}
     trace_barcode = normalize_erp_stock_barcode(INVENTORY_TRACE_BARCODE)
@@ -3476,30 +3534,23 @@ def apply_erp_stock_upload_file(
         snapshots = []
         for product_sku, matched in apply_by_sku.items():
             product = matched["product"]
-            product_key = erp_stock_match_key(product.barcode, product.product_name)
-            original_item = daily_by_sku.get(product_sku) or daily_by_key.get(product_key)
             new_stock = int(matched["stock"] or 0)
             uploaded_category = clean_text(matched.get("category"))
             if uploaded_category and not product_category_text(product):
                 product.large_category = uploaded_category
             category = product_category_text(product) or uploaded_category
-            item, _merged_existing = resolve_inventory_daily_edit_target(
-                db,
-                original_item,
-                source_type,
-                work_date,
-                product.product_name,
-                normalize_erp_stock_barcode(product.barcode),
-            )
-            previous_stock = int(item.current_stock or 0)
-            was_insert = item.id is None
+            product_barcode = normalize_erp_stock_barcode(product.barcode)
+            product_name = clean_text(product.product_name)
+            final_row = find_inventory_daily_unique_conflict(db, source_type, work_date, product_name, product_barcode)
+            previous_stock = previous_inventory_daily_stock(db, source_type, work_date, product.sku, product_name, product_barcode)
+            delete_stale_inventory_daily_product_rows(db, source_type, work_date, product.sku, product_name, product_barcode)
             values = {
                 "source_type": source_type,
                 "work_date": work_date,
                 "category": category,
                 "product_code": product.sku,
-                "product_name": product.product_name,
-                "barcode": normalize_erp_stock_barcode(product.barcode),
+                "product_name": product_name,
+                "barcode": product_barcode,
                 "supplier": product.supplier,
                 "current_stock": new_stock,
                 "available_stock": new_stock,
@@ -3509,18 +3560,11 @@ def apply_erp_stock_upload_file(
                 "inbound_cycle": product.default_lead_time or None,
                 "updated_at": now,
             }
-            for field, value in values.items():
-                setattr(item, field, value)
-            replace_inventory_daily_lookup_row(daily_by_sku, product.sku, item, original_item)
-            item_id = item.id
-            for key, candidate in list(daily_by_key.items()):
-                if key != product_key and (candidate is item or (item_id is not None and candidate.id == item_id)):
-                    daily_by_key.pop(key, None)
-            daily_by_key[product_key] = item
-            if was_insert:
-                inserted_count += 1
-            else:
+            db.execute(inventory_daily_upsert_statement(db, values))
+            if final_row is not None:
                 updated_count += 1
+            else:
+                inserted_count += 1
             snapshots.append(
                 {
                     "upload_history_id": history.id,
@@ -3686,59 +3730,70 @@ def apply_stock_upload_preview(
 
         stage_started_at = time.perf_counter()
         products = list(db.execute(select(product_master_model(source_type))).scalars())
+        products_by_key = product_by_barcode_name_map(products)
         products_by_sku = {normalize_product_code_text(product.sku): product for product in products if normalize_product_code_text(product.sku)}
-        daily_by_sku = strict_daily_rows_by_product(db, source_type, work_date, products)
         touched_skus: set[str] = set()
         snapshots = []
         apply_failures = []
         for row in rows:
-            product_sku = normalize_product_code_text(row.get("product_code"))
-            product = products_by_sku.get(product_sku)
+            row_barcode = normalize_barcode_text(row.get("barcode"))
+            row_product_name = clean_text(row.get("product_name"))
+            product = products_by_key.get((row_barcode, row_product_name))
+            product_sku = normalize_product_code_text(getattr(product, "sku", ""))
             try:
                 if not product:
-                    raise ValueError("상품마스터 재조회 실패")
+                    raise ValueError("바코드+상품명 상품마스터 재조회 실패")
                 with db.begin_nested():
                     uploaded_category = clean_text(row.get("category"))
-                    original_item = daily_by_sku.get(normalize_product_code_text(product.sku))
-                    item, _merged_existing = resolve_inventory_daily_edit_target(
-                        db,
-                        original_item,
-                        source_type,
-                        work_date,
-                        product.product_name,
-                        normalize_barcode_text(product.barcode),
-                    )
-                    replace_inventory_daily_lookup_row(daily_by_sku, product.sku, item, original_item)
-                    item.product_code = product.sku
-                    item.product_name = product.product_name
-                    item.barcode = normalize_barcode_text(product.barcode)
-                    item.supplier = product.supplier
-                    item.inbound_cycle = product.default_lead_time or None
                     if uploaded_category and not product_category_text(product):
                         product.large_category = uploaded_category
-                    item.category = product_category_text(product) or uploaded_category or item.category
-                    previous_stock = int(item.current_stock or 0)
                     new_stock = to_int(row.get("new_stock"))
                     new_available_stock = to_int(row.get("new_available_stock")) if "new_available_stock" in row else new_stock
                     storage_location = clean_text(row.get("storage_location")) or getattr(product, "storage_location", "")
-                    item.current_stock = new_stock
-                    item.available_stock = new_available_stock
-                    if "memo" in row:
-                        item.memo = clean_text(row.get("memo"))
-                    if model_has_field(InventoryDaily, "storage_location"):
-                        item.storage_location = storage_location
                     if storage_location and hasattr(product, "storage_location"):
                         product.storage_location = storage_location
-                    item.outbound_qty = max(new_stock + int(item.inbound_qty or 0) - new_available_stock, 0)
-                    item.stock_status = stock_status_for_values(new_available_stock, product.min_stock or 0)
+                    product_barcode = normalize_barcode_text(product.barcode)
+                    product_name = clean_text(product.product_name)
+                    previous_stock = previous_inventory_daily_stock(
+                        db,
+                        source_type,
+                        work_date,
+                        product.sku,
+                        product_name,
+                        product_barcode,
+                    )
+                    delete_stale_inventory_daily_product_rows(
+                        db,
+                        source_type,
+                        work_date,
+                        product.sku,
+                        product_name,
+                        product_barcode,
+                    )
+                    values = {
+                        "source_type": source_type,
+                        "work_date": work_date,
+                        "category": product_category_text(product) or uploaded_category,
+                        "product_code": product.sku,
+                        "product_name": product_name,
+                        "barcode": product_barcode,
+                        "supplier": product.supplier,
+                        "current_stock": new_stock,
+                        "available_stock": new_available_stock,
+                        "safe_stock": int(product.min_stock or 0),
+                        "stock_status": stock_status_for_values(new_available_stock, product.min_stock or 0),
+                        "outbound_qty": max(new_stock - new_available_stock, 0),
+                        "inbound_cycle": product.default_lead_time or None,
+                        "updated_at": datetime.utcnow(),
+                    }
+                    if "memo" in row:
+                        values["memo"] = clean_text(row.get("memo"))
+                    if model_has_field(InventoryDaily, "storage_location"):
+                        values["storage_location"] = storage_location
+                    db.execute(inventory_daily_upsert_statement(db, values))
                     db.flush()
-                    db.expire(item)
-                    verified = db.get(InventoryDaily, item.id)
-                    if (
-                        verified is None
-                        or int(verified.current_stock or 0) != int(new_stock)
-                        or int(verified.available_stock or 0) != int(new_available_stock)
-                    ):
+                    verified = find_inventory_daily_unique_conflict(db, source_type, work_date, product_name, product_barcode)
+                    if verified is None or int(verified.current_stock or 0) != int(new_stock) or int(verified.available_stock or 0) != int(new_available_stock):
                         raise RuntimeError(
                             f"DB 재조회 검증 실패: 요청 현재고 {new_stock}, 요청 가용재고 {new_available_stock}"
                         )
@@ -3766,7 +3821,6 @@ def apply_stock_upload_preview(
                     "failure_reason": clean_text(row_exc),
                 }
                 apply_failures.append(failure)
-                daily_by_sku.pop(product_sku, None)
                 INVENTORY_LOGGER.exception("Inventory row update failed: %s", failure)
         if snapshots:
             db.execute(InventoryUploadSnapshot.__table__.insert(), snapshots)
@@ -3777,6 +3831,20 @@ def apply_stock_upload_preview(
         mark_inventory_update_stage(timings, "inventory_db_save", stage_started_at)
 
         stage_started_at = time.perf_counter()
+        refreshed_daily_rows = list(
+            db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == source_type,
+                    InventoryDaily.work_date == work_date,
+                    InventoryDaily.product_code.in_(list(touched_skus)),
+                )
+            ).scalars()
+        ) if touched_skus else []
+        daily_by_sku = {
+            normalize_product_code_text(row.product_code): row
+            for row in refreshed_daily_rows
+            if normalize_product_code_text(row.product_code)
+        }
         recalculate_uploaded_inventory_rows(db, source_type, work_date, products_by_sku, daily_by_sku, touched_skus)
         db.flush()
         mark_inventory_update_stage(timings, "inventory_calculation", stage_started_at)
@@ -4169,79 +4237,8 @@ def get_or_create_daily(db: Session, source_type: str, work_date: date, product_
 
 
 def import_stock(db: Session, source_type: str, work_date: date, file_bytes: bytes) -> dict:
-    if use_legacy_supabase_rest_store():
-        preview = prepare_stock_upload_preview(db, source_type, work_date, file_bytes)
-        return apply_stock_upload_preview(db, source_type, work_date, preview)
-
-    df = read_excel(file_bytes)
-    name_col = find_column(df, ["상품명", "품목"])
-    try:
-        current_col = find_column(df, STOCK_CURRENT_COLUMN_CANDIDATES)
-    except ValueError:
-        current_col = None
-    try:
-        available_col = find_column(df, STOCK_AVAILABLE_COLUMN_CANDIDATES)
-    except ValueError:
-        available_col = current_col
-    if current_col is None and available_col is None:
-        raise ValueError("필수 컬럼을 찾지 못했습니다: 보유재고, 현재고, 가용재고")
-    try:
-        product_code_col = find_column(df, ["SKU", "상품코드", "품목코드", "상품번호"])
-    except ValueError:
-        product_code_col = None
-    try:
-        barcode_col = find_column(df, ["88바코드", "바코드", "옵션바코드"])
-    except ValueError:
-        barcode_col = None
-    try:
-        safe_col = find_column(df, ["안전재고", "최소재고", "경고수량", "위험수량", "safe_stock"])
-    except ValueError:
-        safe_col = None
-    try:
-        status_col = find_column(df, ["재고상태", "상태", "stock_status"])
-    except ValueError:
-        status_col = None
-    try:
-        lead_time_col = find_column(df, ["리드타임", "리드 타임", "leadtime", "lead_time", "제조기간", "입고주기", "입고 주기"])
-    except ValueError:
-        lead_time_col = None
-    try:
-        location_col = find_column(df, STOCK_LOCATION_COLUMN_CANDIDATES)
-    except ValueError:
-        location_col = None
-
-    count = 0
-    for _, row in df.iterrows():
-        product_name = clean_text(row.get(name_col))
-        if not product_name:
-            continue
-        barcode = normalize_barcode_text(row.get(barcode_col)) if barcode_col else ""
-        product_code = clean_text(row.get(product_code_col)) if product_code_col else ""
-        product = find_product_master(db, source_type, product_code, barcode, product_name)
-        if product:
-            item = ensure_daily_for_product(db, source_type, work_date, product)
-        else:
-            item = get_or_create_daily(db, source_type, work_date, product_name, barcode)
-            if product_code:
-                item.product_code = product_code
-        if current_col:
-            item.current_stock = to_int(row.get(current_col))
-        elif available_col:
-            item.current_stock = to_int(row.get(available_col))
-        item.available_stock = to_int(row.get(available_col)) if available_col and clean_text(row.get(available_col)) else item.current_stock
-        if location_col and model_has_field(InventoryDaily, "storage_location"):
-            item.storage_location = clean_text(row.get(location_col))
-        if safe_col:
-            item.safe_stock = to_int(row.get(safe_col))
-        if status_col:
-            item.stock_status = clean_text(row.get(status_col))
-        if lead_time_col:
-            item.inbound_cycle = to_int(row.get(lead_time_col)) or None
-        count += 1
-    db.commit()
-    if status_col is None:
-        update_status(db, source_type, work_date)
-    return import_result(count, df)
+    preview = prepare_stock_upload_preview(db, source_type, work_date, file_bytes)
+    return apply_stock_upload_preview(db, source_type, work_date, preview)
 
 
 def import_order(db: Session, source_type: str, work_date: date, file_bytes: bytes) -> dict:
