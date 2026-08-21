@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from math import ceil
 import re
+import sys
 
 import pandas as pd
 import streamlit as st
@@ -228,6 +229,7 @@ def render_master_tab(source_type: str, title: str) -> None:
                             "ok": True,
                             "message": f"{title} 기준 재고 데이터 동기화 완료",
                             "count": services.sync_inventory_from_product_master(db, source_type),
+                            "_clear_inventory_cache": True,
                         }
                     )
                 )
@@ -355,6 +357,7 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                             "ok": True,
                             "message": f"{title} 기준 재고 데이터 동기화 완료",
                             "count": services.sync_inventory_from_product_master(db, source_type),
+                            "_clear_inventory_cache": True,
                         }
                     )
                 )
@@ -846,6 +849,22 @@ def clear_inventory_view_state_for_source(key: str) -> None:
         "category_toggle_widget_open",
     ]:
         st.session_state.pop(f"{key}_{suffix}", None)
+    clear_downstream_inventory_caches()
+
+
+def clear_downstream_inventory_caches() -> None:
+    inventory_page = sys.modules.get("pages.inventory")
+    if inventory_page is not None and hasattr(inventory_page, "clear_inventory_data_caches"):
+        try:
+            inventory_page.clear_inventory_data_caches()
+        except Exception:
+            pass
+    warehouse3d_page = sys.modules.get("pages.warehouse3d")
+    if warehouse3d_page is not None and hasattr(warehouse3d_page, "cached_fetch_latest_warehouse_inventory"):
+        try:
+            warehouse3d_page.cached_fetch_latest_warehouse_inventory.clear()
+        except Exception:
+            pass
 
 
 def source_key(source_type: str) -> str:
@@ -1638,6 +1657,8 @@ def show_result(result) -> None:
     if not result:
         return
     if result.get("ok", True):
+        if result.get("_clear_inventory_cache"):
+            clear_downstream_inventory_caches()
         st.success(f'{result.get("message", "처리 완료")} ({result.get("count", 0)}건)')
         st.rerun()
     else:

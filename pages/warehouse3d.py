@@ -5,6 +5,7 @@ from datetime import date, datetime
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import re
 import tempfile
 import threading
 from html import escape
@@ -206,7 +207,7 @@ def load_database_warehouse_layout_store() -> dict:
             continue
         if not isinstance(row.layout_data, dict):
             continue
-        locations.setdefault(building, {})[row.floor] = row.layout_data
+        locations.setdefault(building, {})[row.floor] = normalize_warehouse3d_floor_rack_codes(dict(row.layout_data))
     return {"version": 1, "locations": locations}
 
 
@@ -218,6 +219,59 @@ def stable_warehouse_id(*parts: object, prefix: str = "wh") -> str:
     raw = "|".join(str(part or "").strip() for part in parts)
     digest = hashlib.sha1(raw.encode("utf-8", errors="ignore")).hexdigest()[:24]
     return f"{prefix}_{digest}"
+
+
+def warehouse3d_rack_code_from_index(index: int) -> str:
+    number = max(1, int(index or 1))
+    zone_index = (number - 1) // 99
+    rack_number = (number - 1) % 99 + 1
+    zone = chr(ord("A") + zone_index)
+    return f"{zone}-{rack_number:02d}"
+
+
+def canonical_warehouse3d_rack_code(value: object, fallback_index: int = 1) -> str:
+    text = str(value or "").strip().upper()
+    match = re.fullmatch(r"R-(\d{1,3})", text)
+    if match:
+        return warehouse3d_rack_code_from_index(int(match.group(1)))
+    match = re.fullmatch(r"([A-Z])-(\d{1,3})", text)
+    if match:
+        return f"{match.group(1)}-{int(match.group(2)):02d}"
+    if text:
+        return text
+    return warehouse3d_rack_code_from_index(fallback_index)
+
+
+def normalize_warehouse3d_floor_rack_codes(floor_data: dict) -> dict:
+    if not isinstance(floor_data, dict):
+        return floor_data
+    racks = floor_data.get("racks")
+    if not isinstance(racks, list):
+        return floor_data
+    used: set[str] = set()
+    id_map: dict[str, str] = {}
+    next_index = 1
+    for index, rack_data in enumerate(racks, start=1):
+        if not isinstance(rack_data, dict):
+            continue
+        original_id = str(rack_data.get("id") or rack_data.get("rack_code") or "").strip()
+        candidate = canonical_warehouse3d_rack_code(original_id, index)
+        while candidate in used:
+            candidate = warehouse3d_rack_code_from_index(next_index)
+            next_index += 1
+        used.add(candidate)
+        if original_id:
+            id_map[original_id] = candidate
+        rack_data["id"] = candidate
+        rack_data["rack_code"] = candidate
+        next_index = max(next_index, index + 1)
+    for rack_data in racks:
+        if not isinstance(rack_data, dict):
+            continue
+        parent_id = str(rack_data.get("parentRackId") or "").strip()
+        if parent_id in id_map:
+            rack_data["parentRackId"] = id_map[parent_id]
+    return floor_data
 
 
 def safe_float(value, default: float = 0.0) -> float:
@@ -281,6 +335,8 @@ def sync_warehouse_layout_detail_tables(db, layout_rows: list) -> None:
     ensure_warehouse_detail_tables(db)
     for layout in layout_rows:
         floor_data = layout.layout_data if isinstance(layout.layout_data, dict) else {}
+        floor_data = normalize_warehouse3d_floor_rack_codes(floor_data)
+        layout.layout_data = floor_data
         racks = floor_data.get("racks") if isinstance(floor_data.get("racks"), list) else []
         current_rack_codes: set[str] = set()
         existing_racks = {
@@ -292,7 +348,7 @@ def sync_warehouse_layout_detail_tables(db, layout_rows: list) -> None:
         for index, rack_data in enumerate(racks):
             if not isinstance(rack_data, dict):
                 continue
-            rack_code = str(rack_data.get("id") or rack_data.get("rack_code") or f"R-{index + 1:03d}").strip()
+            rack_code = canonical_warehouse3d_rack_code(rack_data.get("id") or rack_data.get("rack_code"), index + 1)
             if not rack_code:
                 continue
             current_rack_codes.add(rack_code)
@@ -392,6 +448,7 @@ def save_database_warehouse_layout_store(payload: dict) -> int:
                 for floor, floor_data in floors.items():
                     if floor not in LOCATIONS[building]["floors"] or not isinstance(floor_data, dict):
                         continue
+                    floor_data = normalize_warehouse3d_floor_rack_codes(floor_data)
                     if not (floor_data.get("racks") or floor_data.get("fixtures") or floor_data.get("floor_size")):
                         continue
                     existing = db.execute(
@@ -562,6 +619,7 @@ def save_warehouse_layout_store(payload: dict) -> Path:
     saved_db_rows = save_database_warehouse_layout_store(store)
     if saved_db_rows:
         write_warehouse_layout_log(f"Saved layout to SQLAlchemy DB: {saved_db_rows} rows.")
+        clear_warehouse3d_data_caches()
         return path
     if app_database_is_postgresql() and warehouse_layout_has_data(store):
         message = "Supabase PostgreSQL mode is enabled, but warehouse_layouts could not be saved."
@@ -579,7 +637,21 @@ def save_warehouse_layout_store(payload: dict) -> Path:
                 write_warehouse_layout_log("Saved layout to Supabase.")
         except Exception as exc:
             write_warehouse_layout_log(f"Supabase layout save failed: {exc}")
+    clear_warehouse3d_data_caches()
     return path
+
+
+def clear_warehouse3d_data_caches() -> None:
+    try:
+        cached_fetch_latest_warehouse_inventory.clear()
+    except Exception:
+        pass
+    try:
+        from pages import inventory as inventory_page
+
+        inventory_page.clear_inventory_data_caches()
+    except Exception:
+        pass
 
 
 class WarehouseLayoutApiHandler(BaseHTTPRequestHandler):
@@ -1176,6 +1248,49 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                 return fallback;
             }}
 
+            function nextRackIdFromSet(existingIds, start = 1) {{
+                let number = Math.max(1, Number(start) || 1);
+                let id = "";
+                do {{
+                    const zoneIndex = Math.floor((number - 1) / 99);
+                    const rackNumber = ((number - 1) % 99) + 1;
+                    id = `${{String.fromCharCode(65 + zoneIndex)}}-${{String(rackNumber).padStart(2, "0")}}`;
+                    number += 1;
+                }} while (existingIds.has(id));
+                return id;
+            }}
+
+            function canonicalRackId(value, fallbackIndex = 1) {{
+                const raw = String(value || "").trim().toUpperCase();
+                const legacy = raw.match(/^R-(\\d{{1,3}})$/);
+                if (legacy) return nextRackIdFromSet(new Set(), Number(legacy[1]) || fallbackIndex);
+                const current = raw.match(/^([A-Z])-(\\d{{1,3}})$/);
+                if (current) return `${{current[1]}}-${{String(Number(current[2]) || fallbackIndex).padStart(2, "0")}}`;
+                return raw || nextRackIdFromSet(new Set(), fallbackIndex);
+            }}
+
+            function normalizeRackIds(layout) {{
+                const existingIds = new Set();
+                const idMap = new Map();
+                return (Array.isArray(layout) ? layout : []).map((rack, index) => {{
+                    const rawId = String(rack?.id || rack?.rack_code || "").trim();
+                    const currentId = canonicalRackId(rawId, index + 1);
+                    const id = currentId && !existingIds.has(currentId)
+                        ? currentId
+                        : nextRackIdFromSet(existingIds, index + 1);
+                    rack.id = id;
+                    rack.rack_code = id;
+                    if (rawId) idMap.set(rawId, id);
+                    existingIds.add(id);
+                    return rack;
+                }}).map(rack => {{
+                    if (rack.parentRackId && idMap.has(String(rack.parentRackId))) {{
+                        rack.parentRackId = idMap.get(String(rack.parentRackId));
+                    }}
+                    return rack;
+                }});
+            }}
+
             function uniqueKeys(keys) {{
                 return keys.filter(Boolean).filter((key, index, list) => list.indexOf(key) === index);
             }}
@@ -1205,7 +1320,7 @@ def warehouse_stock_position_html(building: str, inventory_rows: list[dict], sha
                 if (!Array.isArray(saved)) {{
                     saved = loadJsonKeys(layoutStorageKeyCandidates(buildingName, floorName), null);
                 }}
-                return Array.isArray(saved) ? saved : (defaultRacksByLocationFloor[optionKey] || []);
+                return normalizeRackIds(Array.isArray(saved) ? saved : (defaultRacksByLocationFloor[optionKey] || []));
             }}
 
             function loadFixtures(buildingName, floorName) {{
@@ -1463,7 +1578,8 @@ def with_db(action):
         db.close()
 
 
-def fetch_latest_warehouse_inventory() -> tuple[list[dict], str]:
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_fetch_latest_warehouse_inventory() -> tuple[list[dict], str]:
     def action(db):
         if services is None:
             return [], ""
@@ -1473,6 +1589,10 @@ def fetch_latest_warehouse_inventory() -> tuple[list[dict], str]:
         return rows, work_date.isoformat()
 
     return with_db(action) or ([], "")
+
+
+def fetch_latest_warehouse_inventory() -> tuple[list[dict], str]:
+    return cached_fetch_latest_warehouse_inventory()
 
 
 def build_rack_layout(inventory_rows: list[dict], floor: str) -> list[dict]:
@@ -1561,18 +1681,13 @@ def warehouse_inventory_display_rows(rows: list[dict]) -> list[dict]:
     for row in rows:
         output.append(
             {
-                "상품코드": row.get("product_code", ""),
+                "SKU": row.get("product_code", ""),
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
-                "카테고리": row.get("category", ""),
                 "업체명": row.get("supplier", ""),
                 "현재고": warehouse3d_int(row.get("current_stock")),
-                "가용재고": warehouse3d_int(row.get("available_stock")),
-                "안전재고": warehouse3d_int(row.get("safe_stock")),
-                "평균출고": round(warehouse3d_float(row.get("avg_daily_outbound_1w")), 1),
-                "적재위치": row.get("storage_location", ""),
-                "재고상태": row.get("stock_status", ""),
-                "위치상태": row.get("location_status", ""),
+                "적재위치": warehouse3d_text(row.get("storage_location")) or "위치미등록",
+                "비고": row.get("memo", ""),
             }
         )
     return output
@@ -1595,8 +1710,8 @@ def warehouse_inventory_badge_html(value: object) -> str:
 
 
 def warehouse_inventory_table_html(df: pd.DataFrame) -> str:
-    numeric_columns = {"현재고", "가용재고", "안전재고", "평균출고"}
-    badge_columns = {"재고상태", "위치상태"}
+    numeric_columns = {"현재고"}
+    badge_columns = set()
     headers = "".join(f"<th>{escape(str(column))}</th>" for column in df.columns)
     rows = []
     for _, row in df.fillna("").iterrows():
@@ -1604,11 +1719,11 @@ def warehouse_inventory_table_html(df: pd.DataFrame) -> str:
         for column in df.columns:
             value = row.get(column, "")
             class_name = ' class="numeric"' if column in numeric_columns else ""
-            if column in badge_columns:
+            if column in badge_columns or (column == "적재위치" and warehouse3d_text(value) == "위치미등록"):
                 cells.append(f"<td{class_name}>{warehouse_inventory_badge_html(value)}</td>")
             elif column in numeric_columns:
-                number = warehouse3d_float(value) if column == "평균출고" else warehouse3d_int(value)
-                formatted = f"{number:,.1f}" if column == "평균출고" else f"{int(number):,}"
+                number = warehouse3d_int(value)
+                formatted = f"{int(number):,}"
                 cells.append(f"<td{class_name}>{formatted}</td>")
             else:
                 cells.append(f"<td{class_name}>{escape(str(value))}</td>")
@@ -1627,7 +1742,7 @@ def warehouse_inventory_table_html(df: pd.DataFrame) -> str:
             width: 100%;
             border-collapse: collapse;
             table-layout: auto;
-            min-width: 1120px;
+            min-width: 820px;
             font-size: 13px;
         }}
         .warehouse-inventory-table th {{
@@ -1693,7 +1808,7 @@ def render_warehouse_inventory_tab(inventory_rows: list[dict], work_date: str) -
         return
 
     filter_cols = st.columns([1.7, 1.0, 1.0, 0.75, 0.75, 2.6], gap="small")
-    search = filter_cols[0].text_input("상품 검색", placeholder="상품코드 / 바코드 / 상품명", key="warehouse3d_inventory_search")
+    search = filter_cols[0].text_input("상품 검색", placeholder="SKU / 바코드 / 상품명", key="warehouse3d_inventory_search")
     category = filter_cols[1].selectbox(
         "카테고리",
         warehouse_inventory_filter_options(inventory_rows, "category"),
@@ -1715,7 +1830,7 @@ def render_warehouse_inventory_tab(inventory_rows: list[dict], work_date: str) -
         if keyword:
             haystack = " ".join(
                 warehouse3d_text(row.get(field))
-                for field in ("product_code", "barcode", "product_name")
+                for field in ("product_code", "barcode", "product_name", "supplier", "storage_location", "memo")
             ).lower()
             if keyword not in haystack:
                 continue
@@ -1725,7 +1840,8 @@ def render_warehouse_inventory_tab(inventory_rows: list[dict], work_date: str) -
             continue
         if stock_only and warehouse3d_int(row.get("current_stock")) <= 0:
             continue
-        if location_only and not warehouse3d_text(row.get("storage_location")):
+        location_text = warehouse3d_text(row.get("storage_location"))
+        if location_only and (not location_text or location_text == "위치미등록"):
             continue
         filtered.append(row)
 
@@ -1757,7 +1873,7 @@ def render_warehouse_inventory_tab(inventory_rows: list[dict], work_date: str) -
         st.session_state[page_key] = min(page + 1, total_pages)
         st.rerun()
     nav_cols[2].caption(f"{page} / {total_pages}")
-    nav_cols[3].caption("적재위치 상세 관리는 재고위치표에서 수행합니다.")
+    nav_cols[3].caption("적재위치는 3D 창고 배치에서 설정됩니다.")
 
 
 def resolve_drawing(building: str, uploaded_file) -> dict:
@@ -2566,30 +2682,52 @@ def warehouse_scene_html(
                 let number = Math.max(1, Number(start) || 1);
                 let id = "";
                 do {{
-                    id = `R-${{String(number).padStart(2, "0")}}`;
+                    const zoneIndex = Math.floor((number - 1) / 99);
+                    const rackNumber = ((number - 1) % 99) + 1;
+                    id = `${{String.fromCharCode(65 + zoneIndex)}}-${{String(rackNumber).padStart(2, "0")}}`;
                     number += 1;
                 }} while (existingIds.has(id));
                 return id;
             }}
 
+            function canonicalRackId(value, fallbackIndex = 1) {{
+                const raw = String(value || "").trim().toUpperCase();
+                const legacy = raw.match(/^R-(\\d{{1,3}})$/);
+                if (legacy) return nextRackIdFromSet(new Set(), Number(legacy[1]) || fallbackIndex);
+                const current = raw.match(/^([A-Z])-(\\d{{1,3}})$/);
+                if (current) return `${{current[1]}}-${{String(Number(current[2]) || fallbackIndex).padStart(2, "0")}}`;
+                return raw || nextRackIdFromSet(new Set(), fallbackIndex);
+            }}
+
             function nextRackId() {{
                 const existingIds = new Set(racks.map(rack => String(rack.id || "").trim()).filter(Boolean));
                 const maxNumber = racks.reduce((max, rack) => {{
-                    const match = String(rack.id || "").match(/^R-(\\d+)$/);
-                    return match ? Math.max(max, Number(match[1]) || 0) : max;
+                    const match = String(rack.id || "").match(/^([A-Z])-(\\d+)$/);
+                    if (!match) return max;
+                    const zoneOffset = Math.max(0, match[1].charCodeAt(0) - 65) * 99;
+                    return Math.max(max, zoneOffset + (Number(match[2]) || 0));
                 }}, 0);
                 return nextRackIdFromSet(existingIds, Math.max(racks.length + 1, maxNumber + 1));
             }}
 
             function normalizeRackIds(layout) {{
                 const existingIds = new Set();
+                const idMap = new Map();
                 return (Array.isArray(layout) ? layout : []).map((rack, index) => {{
-                    const currentId = String(rack?.id || "").trim();
+                    const rawId = String(rack?.id || rack?.rack_code || "").trim();
+                    const currentId = canonicalRackId(rawId, index + 1);
                     const id = currentId && !existingIds.has(currentId)
                         ? currentId
                         : nextRackIdFromSet(existingIds, index + 1);
                     rack.id = id;
+                    rack.rack_code = id;
+                    if (rawId) idMap.set(rawId, id);
                     existingIds.add(id);
+                    return rack;
+                }}).map(rack => {{
+                    if (rack.parentRackId && idMap.has(String(rack.parentRackId))) {{
+                        rack.parentRackId = idMap.get(String(rack.parentRackId));
+                    }}
                     return rack;
                 }});
             }}
@@ -4475,7 +4613,7 @@ def warehouse_scene3d_html(
                     Object.entries(floors || {{}}).forEach(([floorName, floorData]) => {{
                         const layoutId = layoutIdByKey.get(`${{buildingName}}|${{floorName}}`) || layoutStableId(buildingName, floorName);
                         (Array.isArray(floorData?.racks) ? floorData.racks : []).forEach((rack, index) => {{
-                            const rackCode = String(rack?.id || rack?.rack_code || `R-${{String(index + 1).padStart(3, "0")}}`).trim();
+                            const rackCode = canonicalRackId(rack?.id || rack?.rack_code, index + 1);
                             if (!rackCode) return;
                             rows.push({{
                                 id: rackStableId(layoutId, rackCode),
@@ -4507,7 +4645,7 @@ def warehouse_scene3d_html(
                     Object.entries(floors || {{}}).forEach(([floorName, floorData]) => {{
                         const layoutId = layoutIdByKey.get(`${{buildingName}}|${{floorName}}`) || layoutStableId(buildingName, floorName);
                         (Array.isArray(floorData?.racks) ? floorData.racks : []).forEach((rack, rackIndex) => {{
-                            const rackCode = String(rack?.id || rack?.rack_code || `R-${{String(rackIndex + 1).padStart(3, "0")}}`).trim();
+                            const rackCode = canonicalRackId(rack?.id || rack?.rack_code, rackIndex + 1);
                             const rackId = rackIdByKey.get(`${{layoutId}}|${{rackCode}}`) || rackStableId(layoutId, rackCode);
                             const aggregated = new Map();
                             (Array.isArray(rack?.items) ? rack.items : []).forEach((item, itemIndex) => {{
@@ -4941,30 +5079,52 @@ def warehouse_scene3d_html(
                 let number = Math.max(1, Number(start) || 1);
                 let id = "";
                 do {{
-                    id = `R-${{String(number).padStart(2, "0")}}`;
+                    const zoneIndex = Math.floor((number - 1) / 99);
+                    const rackNumber = ((number - 1) % 99) + 1;
+                    id = `${{String.fromCharCode(65 + zoneIndex)}}-${{String(rackNumber).padStart(2, "0")}}`;
                     number += 1;
                 }} while (existingIds.has(id));
                 return id;
             }}
 
+            function canonicalRackId(value, fallbackIndex = 1) {{
+                const raw = String(value || "").trim().toUpperCase();
+                const legacy = raw.match(/^R-(\\d{{1,3}})$/);
+                if (legacy) return nextRackIdFromSet(new Set(), Number(legacy[1]) || fallbackIndex);
+                const current = raw.match(/^([A-Z])-(\\d{{1,3}})$/);
+                if (current) return `${{current[1]}}-${{String(Number(current[2]) || fallbackIndex).padStart(2, "0")}}`;
+                return raw || nextRackIdFromSet(new Set(), fallbackIndex);
+            }}
+
             function nextRackId() {{
                 const existingIds = new Set(racks.map(rack => String(rack.id || "").trim()).filter(Boolean));
                 const maxNumber = racks.reduce((max, rack) => {{
-                    const match = String(rack.id || "").match(/^R-(\\d+)$/);
-                    return match ? Math.max(max, Number(match[1]) || 0) : max;
+                    const match = String(rack.id || "").match(/^([A-Z])-(\\d+)$/);
+                    if (!match) return max;
+                    const zoneOffset = Math.max(0, match[1].charCodeAt(0) - 65) * 99;
+                    return Math.max(max, zoneOffset + (Number(match[2]) || 0));
                 }}, 0);
                 return nextRackIdFromSet(existingIds, Math.max(racks.length + 1, maxNumber + 1));
             }}
 
             function normalizeRackIds(layout) {{
                 const existingIds = new Set();
+                const idMap = new Map();
                 return (Array.isArray(layout) ? layout : []).map((rack, index) => {{
-                    const currentId = String(rack?.id || "").trim();
+                    const rawId = String(rack?.id || rack?.rack_code || "").trim();
+                    const currentId = canonicalRackId(rawId, index + 1);
                     const id = currentId && !existingIds.has(currentId)
                         ? currentId
                         : nextRackIdFromSet(existingIds, index + 1);
                     rack.id = id;
+                    rack.rack_code = id;
+                    if (rawId) idMap.set(rawId, id);
                     existingIds.add(id);
+                    return rack;
+                }}).map(rack => {{
+                    if (rack.parentRackId && idMap.has(String(rack.parentRackId))) {{
+                        rack.parentRackId = idMap.get(String(rack.parentRackId));
+                    }}
                     return rack;
                 }});
             }}
@@ -7826,6 +7986,72 @@ def inject_warehouse3d_css() -> None:
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+        div[class*="st-key-warehouse3d_view_widget"] [data-testid="stSegmentedControl"],
+        div[class*="st-key-warehouse3d_view_widget"] [data-baseweb="radio-group"],
+        div[class*="st-key-warehouse3d_view_widget"] [role="radiogroup"] {
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            display: flex !important;
+            gap: 18px !important;
+            min-height: 36px !important;
+            padding: 0 !important;
+            width: fit-content !important;
+        }
+        div[class*="st-key-warehouse3d_view_widget"] [data-testid="stSegmentedControl"] > div,
+        div[class*="st-key-warehouse3d_view_widget"] [data-baseweb="radio-group"] > div,
+        div[class*="st-key-warehouse3d_view_widget"] [role="radiogroup"] > div {
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            gap: 18px !important;
+            padding: 0 !important;
+        }
+        div[class*="st-key-warehouse3d_view_widget"] button,
+        div[class*="st-key-warehouse3d_view_widget"] label,
+        div[class*="st-key-warehouse3d_view_widget"] [role="radio"] {
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            color: #52697F !important;
+            font-size: 0.9rem !important;
+            font-weight: 820 !important;
+            line-height: 1.2 !important;
+            min-height: 34px !important;
+            min-width: 72px !important;
+            padding: 0.22rem 0.04rem 0.28rem !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+        }
+        div[class*="st-key-warehouse3d_view_widget"] button:hover,
+        div[class*="st-key-warehouse3d_view_widget"] label:hover,
+        div[class*="st-key-warehouse3d_view_widget"] [role="radio"]:hover {
+            border-bottom-color: #9FB3CA !important;
+            color: #2F4051 !important;
+        }
+        div[class*="st-key-warehouse3d_view_widget"] button[kind="primary"],
+        div[class*="st-key-warehouse3d_view_widget"] button[data-testid="stBaseButton-primary"],
+        div[class*="st-key-warehouse3d_view_widget"] [aria-checked="true"],
+        div[class*="st-key-warehouse3d_view_widget"] [aria-selected="true"] {
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid #0F2B54 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            color: #0F2B54 !important;
+            font-weight: 950 !important;
+        }
+        div[class*="st-key-warehouse3d_view_widget"] button *,
+        div[class*="st-key-warehouse3d_view_widget"] label *,
+        div[class*="st-key-warehouse3d_view_widget"] [role="radio"] * {
+            color: inherit !important;
+            font-size: inherit !important;
+            font-weight: inherit !important;
         }
         @media (max-width: 1100px) {
             .warehouse3d-kpi-grid {

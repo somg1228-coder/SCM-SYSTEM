@@ -74,7 +74,7 @@ def load_css() -> None:
 def ensure_database_schema_once() -> bool:
     from backend.database import init_db
 
-    init_db(force=True, ensure_schema=True)
+    init_db()
     return True
 
 

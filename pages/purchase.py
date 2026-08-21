@@ -4812,29 +4812,122 @@ def inject_purchase_css() -> None:
             font-weight: 800;
             margin: 1rem 0 0.45rem;
         }
+        .st-key-purchase_main_section_widget[data-testid="stSegmentedControl"],
+        .st-key-purchase_main_section_widget[data-baseweb="radio-group"],
+        .st-key-purchase_main_section_widget[role="radiogroup"],
+        div[class*="st-key-purchase_main_section_widget"] [data-testid="stSegmentedControl"],
+        div[class*="st-key-purchase_main_section_widget"] [data-baseweb="radio-group"],
+        div[class*="st-key-purchase_main_section_widget"] [role="radiogroup"] {
+            align-items: flex-end !important;
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            flex-flow: row wrap !important;
+            gap: 8px 16px !important;
+            justify-content: flex-start !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            width: 100% !important;
+        }
+        .st-key-purchase_main_section_widget[data-testid="stSegmentedControl"] > div,
+        .st-key-purchase_main_section_widget[data-baseweb="radio-group"] > div,
+        .st-key-purchase_main_section_widget[role="radiogroup"] > div,
+        div[class*="st-key-purchase_main_section_widget"] [data-testid="stSegmentedControl"] > div,
+        div[class*="st-key-purchase_main_section_widget"] [data-baseweb="radio-group"] > div,
+        div[class*="st-key-purchase_main_section_widget"] [role="radiogroup"] > div {
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            display: flex !important;
+            flex-flow: row wrap !important;
+            gap: 8px 16px !important;
+            padding: 0 !important;
+        }
+        div[class*="st-key-purchase_main_section_widget"] button,
+        div[class*="st-key-purchase_main_section_widget"] label,
+        div[class*="st-key-purchase_main_section_widget"] [role="radio"] {
+            align-items: center !important;
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+            color: #52697F !important;
+            display: inline-flex !important;
+            flex: 0 0 auto !important;
+            font-size: 0.9rem !important;
+            font-weight: 820 !important;
+            justify-content: center !important;
+            line-height: 1.2 !important;
+            min-height: 34px !important;
+            min-width: max-content !important;
+            padding: 0.22rem 0.04rem 0.28rem !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+        }
+        div[class*="st-key-purchase_main_section_widget"] button:hover,
+        div[class*="st-key-purchase_main_section_widget"] label:hover,
+        div[class*="st-key-purchase_main_section_widget"] [role="radio"]:hover {
+            border-bottom-color: #9FB3CA !important;
+            color: #2F4051 !important;
+        }
+        div[class*="st-key-purchase_main_section_widget"] label:has(input:checked),
+        div[class*="st-key-purchase_main_section_widget"] button[kind="primary"],
+        div[class*="st-key-purchase_main_section_widget"] button[data-testid="stBaseButton-primary"],
+        div[class*="st-key-purchase_main_section_widget"] [aria-pressed="true"],
+        div[class*="st-key-purchase_main_section_widget"] [aria-checked="true"],
+        div[class*="st-key-purchase_main_section_widget"] [aria-selected="true"] {
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid #0F2B54 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            color: #0F2B54 !important;
+            font-weight: 950 !important;
+        }
+        div[class*="st-key-purchase_main_section_widget"] button *,
+        div[class*="st-key-purchase_main_section_widget"] label *,
+        div[class*="st-key-purchase_main_section_widget"] [role="radio"] * {
+            color: inherit !important;
+            font-size: inherit !important;
+            font-weight: inherit !important;
+            line-height: inherit !important;
+        }
         [data-testid="stTabs"] [data-baseweb="tab-list"] {
             background: transparent !important;
             border-bottom: 1px solid #d7dde2 !important;
-            gap: 0.25rem !important;
+            gap: 8px 16px !important;
         }
         [data-testid="stTabs"] [data-baseweb="tab"] {
             background: transparent !important;
-            border-radius: 7px 7px 0 0 !important;
-            color: #52606e !important;
-            font-weight: 720 !important;
-            padding: 0.55rem 0.75rem !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            color: #52697F !important;
+            font-size: 0.9rem !important;
+            font-weight: 820 !important;
+            padding: 0.22rem 0.04rem 0.28rem !important;
         }
         [data-testid="stTabs"] [data-baseweb="tab"]:hover {
-            background: #e9eef1 !important;
-            color: #24303c !important;
+            background: transparent !important;
+            border-bottom-color: #9FB3CA !important;
+            color: #2F4051 !important;
         }
         [data-testid="stTabs"] [aria-selected="true"] {
-            background: #e3e9ed !important;
-            color: #3f596f !important;
-            font-weight: 800 !important;
+            background: transparent !important;
+            border-bottom-color: #0F2B54 !important;
+            color: #0F2B54 !important;
+            font-weight: 950 !important;
         }
         [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
-            background-color: #536d84 !important;
+            background-color: transparent !important;
         }
         div[role="radiogroup"][aria-label="협력사관리 내부 하위 탭"],
         div[role="radiogroup"][aria-label="예산관리 내부 하위 탭"] {

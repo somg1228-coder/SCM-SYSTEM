@@ -2405,21 +2405,33 @@ def pending_inbound_qty_by_product(db: Session, source_type: str, work_date: dat
     return pending
 
 
+def canonical_warehouse_rack_code(value: object, fallback_index: int = 1) -> str:
+    text = clean_text(value).upper()
+    match = re.fullmatch(r"R-(\d{1,3})", text)
+    if match:
+        return f"A-{int(match.group(1)):02d}"
+    match = re.fullmatch(r"([A-Z])-(\d{1,3})", text)
+    if match:
+        return f"{match.group(1)}-{int(match.group(2)):02d}"
+    if text:
+        return text
+    return f"A-{max(1, int(fallback_index or 1)):02d}"
+
+
 def warehouse_position_label(layout: WarehouseLayout, rack: WarehouseRack, position: WarehouseInventoryPosition) -> tuple[str, str]:
     building = clean_text(getattr(layout, "building", ""))
     floor = clean_text(getattr(layout, "floor", ""))
-    rack_label = clean_text(rack.rack_code) or clean_text(rack.rack_name) or clean_text(position.rack_id)
-    shelf_no = int(position.shelf_no or 0)
-    shelf_label = f"{shelf_no:02d}" if shelf_no else ""
-    short_rack = f"{rack_label}-{shelf_label}" if rack_label and shelf_label else rack_label or shelf_label
-    short_label = " ".join(part for part in (floor, short_rack) if part)
+    rack_label = canonical_warehouse_rack_code(
+        clean_text(rack.rack_code) or clean_text(rack.rack_name) or clean_text(position.rack_id)
+    )
+    location_prefix = " ".join(part for part in (building, floor) if part)
+    short_label = " / ".join(part for part in (location_prefix, rack_label) if part)
     detail_label = " / ".join(
         part
         for part in (
             building,
             floor,
             rack_label,
-            f"{shelf_no}단" if shelf_no else "",
         )
         if part
     )
@@ -2473,10 +2485,7 @@ def warehouse_inventory_position_summaries(db: Session) -> dict[str, dict]:
 
     for summary in summaries.values():
         locations = summary["locations"]
-        if len(locations) > 1:
-            display_location = f"{locations[0]} 외 {len(locations) - 1}곳"
-        else:
-            display_location = locations[0] if locations else ""
+        display_location = f"{locations[0]} 외 {len(locations) - 1}곳" if len(locations) > 1 else locations[0] if locations else "위치미등록"
         summary["display_location"] = display_location
         summary["location_count"] = len(locations)
         summary["detail_text"] = "; ".join(
@@ -2635,7 +2644,11 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "pending_outbound_qty": pending_outbound_qty,
                 "stock_status": status,
                 "barcode": product_barcode,
-                "storage_location": clean_text(location_summary.get("display_location")),
+                "storage_location": (
+                    clean_text(location_summary.get("display_location")) or "위치미등록"
+                    if source_type == "창고"
+                    else clean_text(getattr(product, "storage_location", ""))
+                ),
                 "placed_quantity": placed_quantity,
                 "unplaced_quantity": unplaced_quantity,
                 "location_status": warehouse_position_status(current_stock, placed_quantity, has_locations),

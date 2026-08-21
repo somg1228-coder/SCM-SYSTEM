@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime
 import logging
+import os
 from pathlib import Path
 import time
 from typing import Any
@@ -11,6 +12,10 @@ from typing import Any
 LOGGER = logging.getLogger("scm.perf")
 MAX_EVENTS = 600
 PERF_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "perf_trace.log"
+
+
+def perf_trace_enabled() -> bool:
+    return str(os.getenv("SCM_PERF_TRACE", "")).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _session_state():
@@ -37,6 +42,8 @@ def _current_run_id() -> str:
 
 
 def log_perf(message: str) -> None:
+    if not perf_trace_enabled():
+        return
     text = f"[PERF] {message}"
     LOGGER.info(text)
     print(text, flush=True)
