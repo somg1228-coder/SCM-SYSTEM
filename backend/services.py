@@ -15,7 +15,7 @@ import unicodedata
 from decimal import Decimal, InvalidOperation
 
 import pandas as pd
-from sqlalchemy import case, delete, func, or_, select, tuple_
+from sqlalchemy import case, delete, func, inspect as sqlalchemy_inspect, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -1041,6 +1041,9 @@ def product_master_operational_metrics(db: Session, source_type: str) -> dict[st
 
 def apply_product_master_to_daily(item: InventoryDaily, product) -> None:
     if not product:
+        return
+    state = sqlalchemy_inspect(item)
+    if not (state.transient or state.pending):
         return
     item.product_code = product.sku
     item.barcode = normalize_barcode_text(product.barcode)
@@ -2104,49 +2107,52 @@ def sync_inventory_from_product_master(db: Session, source_type: str | None = No
 
     count = 0
     sources = [source_type] if source_type else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
-    lookup_by_source = {}
+    lookup_by_source: dict[str, dict[tuple[str, str], object]] = {}
     for source in sources:
         model = product_master_model(source)
         products = list(db.execute(select(model)).scalars())
-        lookup_by_source[source] = product_lookup_maps(products)
+        lookup_by_source[source] = product_by_barcode_name_map(products)
 
     daily_query = select(InventoryDaily)
     inbound_query = select(InventoryInbound)
     if source_type:
         daily_query = daily_query.where(InventoryDaily.source_type == source_type)
         inbound_query = inbound_query.where(InventoryInbound.source_type == source_type)
-    deleted_daily_ids: set[int] = set()
-    daily_targets: dict[tuple[str, date, str, str], InventoryDaily] = {}
     for item in list(db.execute(daily_query).scalars()):
-        if item.id in deleted_daily_ids:
-            continue
         maps = lookup_by_source.get(item.source_type)
-        if maps is None:
+        if not maps:
             continue
-        product = match_product_from_maps(item.product_code, item.barcode, item.product_name, *maps)
+        product = maps.get((normalize_barcode_text(item.barcode), clean_text(item.product_name)))
         if product:
-            target_key = (
-                item.source_type,
-                item.work_date,
-                product.product_name,
-                normalize_barcode_text(product.barcode),
-            )
-            target = daily_targets.get(target_key)
-            if target is not None and target.id != item.id:
-                merge_inventory_daily_rows(target, item)
-                db.delete(item)
-                if item.id is not None:
-                    deleted_daily_ids.add(item.id)
-                item = target
-            else:
-                daily_targets[target_key] = item
-            apply_product_master_to_daily(item, product)
+            values = {
+                "source_type": item.source_type,
+                "work_date": item.work_date,
+                "category": product_category_text(product) or clean_text(item.category),
+                "product_code": product.sku,
+                "product_name": clean_text(product.product_name),
+                "barcode": normalize_barcode_text(product.barcode),
+                "supplier": product.supplier,
+                "current_stock": int(item.current_stock or 0),
+                "available_stock": int(item.available_stock or 0),
+                "safe_stock": int(item.safe_stock or product.min_stock or 0),
+                "stock_status": item.stock_status,
+                "outbound_qty": int(item.outbound_qty or 0),
+                "previous_inbound_date": item.previous_inbound_date,
+                "last_inbound_date": item.last_inbound_date,
+                "inbound_qty": int(item.inbound_qty or 0),
+                "inbound_cycle": item.inbound_cycle or product.default_lead_time or None,
+                "memo": clean_text(item.memo),
+                "updated_at": datetime.utcnow(),
+            }
+            if model_has_field(InventoryDaily, "storage_location"):
+                values["storage_location"] = clean_text(getattr(product, "storage_location", "")) or clean_text(getattr(item, "storage_location", ""))
+            db.execute(inventory_daily_upsert_statement(db, values))
             count += 1
     for item in list(db.execute(inbound_query).scalars()):
         maps = lookup_by_source.get(item.source_type)
-        if maps is None:
+        if not maps:
             continue
-        product = match_product_from_maps(item.product_code, item.barcode, item.product_name, *maps)
+        product = maps.get((normalize_barcode_text(item.barcode), clean_text(item.product_name)))
         if product:
             apply_product_master_to_inbound(item, product)
             count += 1
