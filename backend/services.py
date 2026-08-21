@@ -3123,17 +3123,12 @@ def prepare_stock_upload_preview(
 
     stage_started_at = time.perf_counter()
     products = list(db.execute(select(product_master_model(source_type))).scalars())
-    by_sku: dict[str, list[object]] = {}
-    by_barcode: dict[str, list[object]] = {}
+    by_barcode_name: dict[tuple[str, str], object] = {}
     for product in products:
-        sku_key = normalize_product_code_text(product.sku)
         barcode_key = normalize_barcode_text(product.barcode)
-        if sku_key:
-            by_sku.setdefault(sku_key, []).append(product)
-        if barcode_key:
-            by_barcode.setdefault(barcode_key, []).append(product)
-    duplicate_master_skus = {sku for sku, rows in by_sku.items() if len(rows) > 1}
-    duplicate_master_barcodes = {barcode for barcode, rows in by_barcode.items() if len(rows) > 1}
+        product_name_key = clean_text(product.product_name)
+        if barcode_key and product_name_key:
+            by_barcode_name.setdefault((barcode_key, product_name_key), product)
     mark_inventory_update_stage(timings, "db_master_loading", stage_started_at)
 
     stage_started_at = time.perf_counter()
@@ -3158,15 +3153,9 @@ def prepare_stock_upload_preview(
             to_int_strict(available_raw) if clean_text(available_raw) else (current_stock, stock_ok)
         )
         errors = []
-        if product_code:
-            upload_key = ("sku", product_code)
-        elif barcode:
-            upload_key = ("barcode", barcode)
-        else:
-            upload_key = ("missing_key", product_name or f"row_{index}")
+        upload_key = (barcode, product_name) if barcode and product_name else ("missing_key", product_name or f"row_{index}")
         if upload_key in seen_upload_keys:
             duplicate_count += 1
-            errors.append("업로드 중복 상품코드" if product_code else "업로드 중복 바코드" if barcode else "업로드 중복 식별자")
         else:
             seen_upload_keys.add(upload_key)
         if not barcode:
@@ -3188,31 +3177,16 @@ def prepare_stock_upload_preview(
 
         product = None
         match_method = ""
-        if product_code:
-            sku_matches = by_sku.get(product_code, [])
-            if len(sku_matches) == 1:
-                product = sku_matches[0]
-                match_method = "상품코드"
-            elif len(sku_matches) > 1 or product_code in duplicate_master_skus:
-                duplicate_count += 1
-                errors.append("마스터 중복 상품코드")
+        if barcode and product_name:
+            product = by_barcode_name.get((barcode, product_name))
+            if product:
+                match_method = "바코드+상품명"
             else:
                 unmatched_count += 1
-                errors.append("상품코드 매칭 실패")
-        elif barcode:
-            barcode_matches = by_barcode.get(barcode, [])
-            if len(barcode_matches) == 1:
-                product = barcode_matches[0]
-                match_method = "바코드"
-            elif len(barcode_matches) > 1 or barcode in duplicate_master_barcodes:
-                duplicate_count += 1
-                errors.append("마스터 중복 바코드")
-            else:
-                unmatched_count += 1
-                errors.append("바코드 매칭 실패")
+                errors.append("바코드+상품명 매칭 실패")
         else:
             unmatched_count += 1
-            errors.append("상품코드/바코드 없음")
+            errors.append("바코드/상품명 없음")
 
         previous_stock = 0
         matched_category = uploaded_category
