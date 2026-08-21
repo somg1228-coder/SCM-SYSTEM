@@ -1593,7 +1593,9 @@ def master_excel(df: pd.DataFrame, title: str) -> bytes:
 
 
 def threepl_master_excel(df: pd.DataFrame) -> bytes:
-    export_df = df[THREEPL_MASTER_COLUMNS] if not df.empty else pd.DataFrame(columns=THREEPL_MASTER_COLUMNS)
+    export_df = df[THREEPL_MASTER_COLUMNS].copy() if not df.empty else pd.DataFrame(columns=THREEPL_MASTER_COLUMNS)
+    if "바코드" in export_df.columns:
+        export_df["바코드"] = export_df["바코드"].fillna("").astype(str).str.strip()
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         sheet_name = "3PL 마스터"
@@ -1622,6 +1624,14 @@ def threepl_master_excel(df: pd.DataFrame) -> bytes:
             }
         )
         cell_format = workbook.add_format({"border": 1, "border_color": "#C9D7D1", "valign": "vcenter"})
+        barcode_format = workbook.add_format(
+            {
+                "border": 1,
+                "border_color": "#C9D7D1",
+                "num_format": "@",
+                "valign": "vcenter",
+            }
+        )
         number_format = workbook.add_format(
             {
                 "border": 1,
@@ -1647,7 +1657,13 @@ def threepl_master_excel(df: pd.DataFrame) -> bytes:
         }
         for idx, column in enumerate(THREEPL_MASTER_COLUMNS):
             worksheet.write(1, idx, column, header_format)
-            worksheet.set_column(idx, idx, widths.get(column, 16), number_format if column in numeric_columns else cell_format)
+            if column == "바코드":
+                column_format = barcode_format
+            elif column in numeric_columns:
+                column_format = number_format
+            else:
+                column_format = cell_format
+            worksheet.set_column(idx, idx, widths.get(column, 16), column_format)
         worksheet.freeze_panes(2, 0)
         worksheet.autofilter(1, 0, max(len(export_df) + 1, 1), last_col)
     return output.getvalue()

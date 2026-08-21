@@ -317,6 +317,10 @@ def normalize_barcode_text(value) -> str:
     return text
 
 
+def normalize_barcode_identifier(value) -> str:
+    return clean_text(value)
+
+
 def normalize_code_text(value, uppercase: bool = True) -> str:
     text = clean_text(value).replace(",", "")
     if not text:
@@ -352,6 +356,17 @@ def normalize_inventory_upload_code_columns(df: pd.DataFrame) -> pd.DataFrame:
             next_df[column] = next_df[column].map(normalize_product_code_text)
         elif key in barcode_keys:
             next_df[column] = next_df[column].map(normalize_barcode_text)
+    next_df.attrs.update(getattr(df, "attrs", {}))
+    return next_df
+
+
+def normalize_product_master_barcode_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    next_df = df.copy()
+    for column in next_df.columns:
+        if normalize_import_header_name(str(column)) == "바코드":
+            next_df[column] = next_df[column].fillna("").astype(str).map(normalize_barcode_identifier)
     next_df.attrs.update(getattr(df, "attrs", {}))
     return next_df
 
@@ -1124,9 +1139,9 @@ def normalize_product_master_row(row: dict) -> dict:
         or data.get("상품번호")
         or data.get("대표상품코드")
     )
-    barcode = normalize_barcode_text(data.get("바코드") or data.get("88바코드") or data.get("옵션바코드") or data.get("barcode"))
+    barcode = normalize_barcode_identifier(data.get("바코드") or data.get("88바코드") or data.get("옵션바코드") or data.get("barcode"))
     if not barcode and sku:
-        barcode = normalize_barcode_text(sku)
+        barcode = normalize_barcode_identifier(sku)
     product_name = clean_text(data.get("상품명") or data.get("품목") or data.get("product_name"))
     is_active = clean_text(data.get("사용여부") or data.get("is_active") or "사용")
     if is_active == "사용 중":
@@ -1279,7 +1294,7 @@ def keep_existing_threepl_category(product, row: dict) -> dict:
 
 
 def prepare_product_master_import_rows(df: pd.DataFrame, source_type: str = "") -> tuple[list[dict], list[str]]:
-    df = fill_down_product_master_categories(df)
+    df = fill_down_product_master_categories(normalize_product_master_barcode_columns(df))
     rows = []
     warnings = []
     seen_skus: set[str] = set()
@@ -1292,7 +1307,7 @@ def prepare_product_master_import_rows(df: pd.DataFrame, source_type: str = "") 
         row = normalize_product_master_row(record)
         if source_type in {"오프라인", "창고"} and row["product_name"]:
             if not row["barcode"]:
-                row["barcode"] = normalize_barcode_text(explicit_sku or row["product_name"])
+                row["barcode"] = normalize_barcode_identifier(explicit_sku or row["product_name"])
             if not explicit_sku:
                 row["sku"] = ""
         if not row["sku"] and not row["barcode"] and not row["product_name"]:
@@ -1329,8 +1344,8 @@ def validate_product_master_rows(db: Session, source_type: str, rows: list[dict]
     seen_skus: set[str] = set()
     seen_barcode_products: set[tuple[str, str]] = set()
     sku_rows = db.execute(select(model.sku, model.barcode, model.product_name)).all()
-    existing_sku_to_barcode = {sku: normalize_barcode_text(barcode) for sku, barcode, _product_name in sku_rows}
-    existing_barcode_product_to_sku = {(normalize_barcode_text(barcode), product_name): sku for sku, barcode, product_name in sku_rows}
+    existing_sku_to_barcode = {sku: normalize_barcode_identifier(barcode) for sku, barcode, _product_name in sku_rows}
+    existing_barcode_product_to_sku = {(normalize_barcode_identifier(barcode), product_name): sku for sku, barcode, product_name in sku_rows}
     used_skus = {clean_text(sku) for sku, _barcode, _product_name in sku_rows if clean_text(sku)}
 
     for index, row in enumerate(normalized, start=1):
@@ -1384,7 +1399,7 @@ def explicit_sku_value(row: dict) -> str:
 def threepl_master_basis_data(row: dict) -> dict:
     return {
         "sku": clean_text(row.get("sku")),
-        "barcode": normalize_barcode_text(row.get("barcode")),
+        "barcode": normalize_barcode_identifier(row.get("barcode")),
         "product_name": clean_text(row.get("product_name")),
         "large_category": clean_text(row.get("large_category")),
         "medium_category": clean_text(row.get("medium_category")),
@@ -1424,7 +1439,7 @@ def describe_threepl_master_changes(product, row: dict) -> list[str]:
 
 def threepl_master_identity(row: dict) -> str:
     sku = clean_text(row.get("sku"))
-    barcode = normalize_barcode_text(row.get("barcode"))
+    barcode = normalize_barcode_identifier(row.get("barcode"))
     product_name = clean_text(row.get("product_name"))
     if barcode:
         return f"barcode:{barcode}"
@@ -1443,7 +1458,7 @@ def auto_product_master_sku(row: dict, used_skus: set[str], default_prefix: str 
         used_skus.add(sku)
         return sku
 
-    barcode = normalize_barcode_text(row.get("barcode"))
+    barcode = normalize_barcode_identifier(row.get("barcode"))
     product_name = clean_text(row.get("product_name"))
     base = barcode or product_name
     if base and base not in used_skus:
@@ -1468,7 +1483,7 @@ def find_threepl_master_for_import(
     row: dict,
 ):
     sku = clean_text(row.get("sku"))
-    barcode = normalize_barcode_text(row.get("barcode"))
+    barcode = normalize_barcode_identifier(row.get("barcode"))
     product_name = clean_text(row.get("product_name"))
     if barcode:
         barcode_matches = existing_by_barcode.get(barcode, [])
@@ -1500,7 +1515,7 @@ def validate_shared_master_headers(df: pd.DataFrame) -> tuple[bool, list[str], l
 
 
 def find_master_by_barcode(existing_by_barcode: dict[str, list[object]], row: dict):
-    barcode = normalize_barcode_text(row.get("barcode"))
+    barcode = normalize_barcode_identifier(row.get("barcode"))
     if not barcode:
         return None
     matches = existing_by_barcode.get(barcode, [])
@@ -1509,7 +1524,7 @@ def find_master_by_barcode(existing_by_barcode: dict[str, list[object]], row: di
 
 def prepare_product_master_shared_import_preview(db: Session, source_type: str, file_bytes: bytes) -> dict:
     started_at = time.perf_counter()
-    df = fill_down_threepl_master_categories(read_excel(file_bytes))
+    df = fill_down_threepl_master_categories(normalize_product_master_barcode_columns(read_excel(file_bytes)))
     total_rows = len(df)
     parsed_rows: list[dict] = []
     details: list[dict] = []
@@ -1579,14 +1594,14 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
     existing_by_barcode: dict[str, list[object]] = {}
     existing_by_barcode_name = {}
     for product in existing_products:
-        product_barcode = normalize_barcode_text(product.barcode)
+        product_barcode = normalize_barcode_identifier(product.barcode)
         if product_barcode:
             existing_by_barcode.setdefault(product_barcode, []).append(product)
             if product.product_name:
                 existing_by_barcode_name[(product_barcode, product.product_name)] = product
     barcode_to_skus: dict[str, set[str]] = {}
     for product in existing_products:
-        product_barcode = normalize_barcode_text(product.barcode)
+        product_barcode = normalize_barcode_identifier(product.barcode)
         if product_barcode:
             barcode_to_skus.setdefault(product_barcode, set()).add(product.sku)
 
@@ -1740,7 +1755,7 @@ def apply_product_master_shared_import_preview(db: Session, source_type: str, pr
     existing_by_barcode: dict[str, list[object]] = {}
     existing_by_barcode_name = {}
     for product in existing_products:
-        product_barcode = normalize_barcode_text(product.barcode)
+        product_barcode = normalize_barcode_identifier(product.barcode)
         if product_barcode:
             existing_by_barcode.setdefault(product_barcode, []).append(product)
             if product.product_name:
@@ -1836,9 +1851,9 @@ def bulk_save_product_master(db: Session, source_type: str, rows: list[dict], sy
     existing_products = list(db.execute(select(model)).scalars())
     existing_by_sku = {clean_text(product.sku): product for product in existing_products if clean_text(product.sku)}
     existing_by_barcode = {
-        normalize_barcode_text(product.barcode): product
+        normalize_barcode_identifier(product.barcode): product
         for product in existing_products
-        if normalize_barcode_text(product.barcode)
+        if normalize_barcode_identifier(product.barcode)
     }
     for row in normalized:
         product = existing_by_barcode.get(row["barcode"]) or existing_by_sku.get(row["sku"])
