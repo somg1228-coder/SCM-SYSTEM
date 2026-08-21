@@ -140,6 +140,7 @@ PURCHASE_METRIC_SOURCE_ORDER = ["창고", "3PL", "오프라인"]
 STOCK_WARNING_RATIO = 0.2
 STOCK_CURRENT_COLUMN_CANDIDATES = ["수정재고", "변경재고", "실사재고", "조정재고", "보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고", "수량", "상품수량"]
 STOCK_AVAILABLE_COLUMN_CANDIDATES = ["가용재고", "판매가능재고", "판매 가능 재고", "수량", "상품수량"]
+STOCK_CATEGORY_COLUMN_CANDIDATES = ["카테고리", "카테고리명", "상품카테고리", "상품 카테고리", "대분류", "대분류명", "분류", "상품분류", "category", "large_category"]
 STOCK_LOCATION_COLUMN_CANDIDATES = ["재고위치", "재고 위치", "보관위치", "보관 위치", "창고위치", "창고 위치", "로케이션", "랙위치", "랙 위치", "location", "storage_location"]
 
 
@@ -1042,7 +1043,7 @@ def apply_product_master_to_daily(item: InventoryDaily, product) -> None:
     item.product_code = product.sku
     item.barcode = normalize_barcode_text(product.barcode)
     item.product_name = product.product_name
-    item.category = product.large_category
+    item.category = product_category_text(product) or item.category
     item.supplier = product.supplier
     if model_has_field(InventoryDaily, "storage_location"):
         item.storage_location = getattr(product, "storage_location", "") or getattr(item, "storage_location", "")
@@ -1056,8 +1057,18 @@ def apply_product_master_to_inbound(item: InventoryInbound, product) -> None:
     item.product_code = product.sku
     item.barcode = normalize_barcode_text(product.barcode)
     item.product_name = product.product_name
-    item.category = product.large_category
+    item.category = product_category_text(product) or item.category
     item.vendor = product.supplier or item.vendor
+
+
+def product_category_text(product) -> str:
+    if not product:
+        return ""
+    return (
+        clean_text(getattr(product, "large_category", ""))
+        or clean_text(getattr(product, "medium_category", ""))
+        or clean_text(getattr(product, "small_category", ""))
+    )
 
 
 def product_master_template_df() -> pd.DataFrame:
@@ -2618,7 +2629,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
 
         needed_days = order_needed_days(available_stock, safe_stock, avg_outbound, lead_time)
 
-        category = clean_text(product.large_category) or clean_text(product.medium_category) or clean_text(product.small_category)
+        category = product_category_text(product)
         category_diagnostic = "" if category else "CATEGORY_EMPTY"
         supplier = product.supplier
         manager = product.memo
@@ -2630,9 +2641,9 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "work_date": work_date,
                 "category": category,
                 "category_diagnostic": category_diagnostic,
-                "large_category": product.large_category,
-                "medium_category": product.medium_category,
-                "small_category": product.small_category,
+                "large_category": clean_text(getattr(product, "large_category", "")),
+                "medium_category": clean_text(getattr(product, "medium_category", "")),
+                "small_category": clean_text(getattr(product, "small_category", "")),
                 "product_code": product.sku,
                 "product_name": product.product_name,
                 "supplier": supplier,
@@ -3024,6 +3035,10 @@ def prepare_stock_upload_preview(
     except ValueError:
         location_col = None
     try:
+        category_col = find_column(df, STOCK_CATEGORY_COLUMN_CANDIDATES)
+    except ValueError:
+        category_col = None
+    try:
         product_code_col = find_column(df, ["SKU", "상품코드", "품목코드", "상품번호"])
     except ValueError:
         product_code_col = None
@@ -3065,6 +3080,7 @@ def prepare_stock_upload_preview(
         barcode = normalize_barcode_text(row.get(barcode_col)) if barcode_col else ""
         product_code = normalize_product_code_text(row.get(product_code_col)) if product_code_col else ""
         product_name = clean_text(row.get(name_col)) if name_col else ""
+        uploaded_category = clean_text(row.get(category_col)) if category_col else ""
         storage_location = clean_text(row.get(location_col)) if location_col else ""
         current_stock, stock_ok = to_int_strict(row.get(current_col))
         available_raw = row.get(available_col) if available_col else ""
@@ -3129,9 +3145,11 @@ def prepare_stock_upload_preview(
             errors.append("상품코드/바코드 없음")
 
         previous_stock = 0
+        matched_category = uploaded_category
         if product:
             daily = daily_by_sku.get(normalize_product_code_text(product.sku))
             previous_stock = int(daily.current_stock or 0) if daily else 0
+            matched_category = product_category_text(product) or uploaded_category
 
         if errors:
             failed_count += 1
@@ -3143,7 +3161,7 @@ def prepare_stock_upload_preview(
             {
                 "row_no": index,
                 "product_code": product.sku if product else product_code,
-                "category": product.large_category if product else "",
+                "category": matched_category,
                 "product_name": product.product_name if product else product_name,
                 "barcode": normalize_barcode_text(product.barcode) if product else barcode,
                 "storage_location": storage_location or (getattr(product, "storage_location", "") if product else ""),
@@ -3285,6 +3303,10 @@ def apply_erp_stock_upload_file(
             stock_col = find_column(df, STOCK_AVAILABLE_COLUMN_CANDIDATES)
         barcode_col = find_column(df, ["88바코드", "바코드", "옵션바코드", "barcode"])
         name_col = find_column(df, ["상품명", "품목", "품목명", "product_name"])
+        try:
+            category_col = find_column(df, STOCK_CATEGORY_COLUMN_CANDIDATES)
+        except ValueError:
+            category_col = None
     except ValueError as exc:
         return {
             "ok": False,
@@ -3340,6 +3362,7 @@ def apply_erp_stock_upload_file(
     for row_no, row in enumerate(df.fillna("").to_dict("records"), start=1):
         barcode = normalize_erp_stock_barcode(row.get(barcode_col))
         product_name = normalize_erp_stock_product_name(row.get(name_col))
+        uploaded_category = clean_text(row.get(category_col)) if category_col else ""
         uploaded_stock, stock_ok = to_int_strict(row.get(stock_col))
         product = products_by_key.get((barcode, product_name))
         if barcode == trace_barcode:
@@ -3377,6 +3400,7 @@ def apply_erp_stock_upload_file(
             "barcode": barcode,
             "product_name": product_name,
             "stock": uploaded_stock,
+            "category": uploaded_category,
             "product": product,
         }
     mark_inventory_update_stage(timings, "barcode_matching_validation", stage_started_at)
@@ -3412,7 +3436,10 @@ def apply_erp_stock_upload_file(
             item = daily_by_sku.get(product_sku) or daily_by_key.get(product_key)
             previous_stock = int(item.current_stock or 0) if item else 0
             new_stock = int(matched["stock"] or 0)
-            category = clean_text(product.large_category) or clean_text(product.medium_category) or clean_text(product.small_category)
+            uploaded_category = clean_text(matched.get("category"))
+            if uploaded_category and not product_category_text(product):
+                product.large_category = uploaded_category
+            category = product_category_text(product) or uploaded_category
             values = {
                 "source_type": source_type,
                 "work_date": work_date,
@@ -3615,25 +3642,29 @@ def apply_stock_upload_preview(
                 with db.begin_nested():
                     item = daily_by_sku.get(normalize_product_code_text(product.sku))
                     if item is None:
+                        uploaded_category = clean_text(row.get("category"))
                         item = InventoryDaily(
                             source_type=source_type,
                             work_date=work_date,
                             product_code=product.sku,
                             product_name=product.product_name,
                             barcode=normalize_barcode_text(product.barcode),
-                            category=product.large_category,
+                            category=product_category_text(product) or uploaded_category,
                             supplier=product.supplier,
                             safe_stock=product.min_stock,
                             inbound_cycle=product.default_lead_time or None,
                         )
                         db.add(item)
                         daily_by_sku[normalize_product_code_text(product.sku)] = item
-                    item.category = product.large_category
                     item.product_code = product.sku
                     item.product_name = product.product_name
                     item.barcode = normalize_barcode_text(product.barcode)
                     item.supplier = product.supplier
                     item.inbound_cycle = product.default_lead_time or None
+                    uploaded_category = clean_text(row.get("category"))
+                    if uploaded_category and not product_category_text(product):
+                        product.large_category = uploaded_category
+                    item.category = product_category_text(product) or uploaded_category or item.category
                     previous_stock = int(item.current_stock or 0)
                     new_stock = to_int(row.get("new_stock"))
                     new_available_stock = to_int(row.get("new_available_stock")) if "new_available_stock" in row else new_stock
