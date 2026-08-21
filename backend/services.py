@@ -1964,6 +1964,26 @@ def resolve_inventory_daily_edit_target(
     return daily, False
 
 
+def replace_inventory_daily_lookup_row(
+    lookup: dict[str, InventoryDaily],
+    sku: str,
+    row: InventoryDaily,
+    replaced: InventoryDaily | None = None,
+) -> None:
+    normalized_sku = normalize_product_code_text(sku)
+    if replaced is not None and replaced is not row:
+        replaced_id = replaced.id
+        for key, candidate in list(lookup.items()):
+            if candidate is replaced or (replaced_id is not None and candidate.id == replaced_id):
+                lookup.pop(key, None)
+    row_id = row.id
+    for key, candidate in list(lookup.items()):
+        if key != normalized_sku and (candidate is row or (row_id is not None and candidate.id == row_id)):
+            lookup.pop(key, None)
+    if normalized_sku:
+        lookup[normalized_sku] = row
+
+
 def apply_product_master_to_daily_without_unique_conflict(
     db: Session,
     item: InventoryDaily,
@@ -3477,19 +3497,28 @@ def apply_erp_stock_upload_file(
         db.flush()
 
         now = datetime.utcnow()
-        update_rows = []
-        insert_rows = []
+        updated_count = 0
+        inserted_count = 0
         snapshots = []
         for product_sku, matched in apply_by_sku.items():
             product = matched["product"]
             product_key = erp_stock_match_key(product.barcode, product.product_name)
-            item = daily_by_sku.get(product_sku) or daily_by_key.get(product_key)
-            previous_stock = int(item.current_stock or 0) if item else 0
+            original_item = daily_by_sku.get(product_sku) or daily_by_key.get(product_key)
             new_stock = int(matched["stock"] or 0)
             uploaded_category = clean_text(matched.get("category"))
             if uploaded_category and not product_category_text(product):
                 product.large_category = uploaded_category
             category = product_category_text(product) or uploaded_category
+            item, _merged_existing = resolve_inventory_daily_edit_target(
+                db,
+                original_item,
+                source_type,
+                work_date,
+                product.product_name,
+                normalize_erp_stock_barcode(product.barcode),
+            )
+            previous_stock = int(item.current_stock or 0)
+            was_insert = item.id is None
             values = {
                 "source_type": source_type,
                 "work_date": work_date,
@@ -3506,10 +3535,18 @@ def apply_erp_stock_upload_file(
                 "inbound_cycle": product.default_lead_time or None,
                 "updated_at": now,
             }
-            if item:
-                update_rows.append({"id": item.id, **values})
+            for field, value in values.items():
+                setattr(item, field, value)
+            replace_inventory_daily_lookup_row(daily_by_sku, product.sku, item, original_item)
+            item_id = item.id
+            for key, candidate in list(daily_by_key.items()):
+                if key != product_key and (candidate is item or (item_id is not None and candidate.id == item_id)):
+                    daily_by_key.pop(key, None)
+            daily_by_key[product_key] = item
+            if was_insert:
+                inserted_count += 1
             else:
-                insert_rows.append(values)
+                updated_count += 1
             snapshots.append(
                 {
                     "upload_history_id": history.id,
@@ -3523,10 +3560,7 @@ def apply_erp_stock_upload_file(
                 }
             )
 
-        if update_rows:
-            db.bulk_update_mappings(InventoryDaily, update_rows)
-        if insert_rows:
-            db.bulk_insert_mappings(InventoryDaily, insert_rows)
+        db.flush()
         if snapshots:
             db.execute(InventoryUploadSnapshot.__table__.insert(), snapshots)
         db.flush()
@@ -3582,15 +3616,15 @@ def apply_erp_stock_upload_file(
                 "barcode": trace_barcode,
                 "product_name": [row.get("product_name", "") for row in trace_upload_rows],
                 "current_stock": [row.get("current_stock") for row in trace_upload_rows],
-                "실제 upsert 건수": len(update_rows) + len(insert_rows),
+                "실제 upsert 건수": updated_count + inserted_count,
                 "uploaded_rows": len(df.index),
                 "matched_rows": len(matched_by_sku),
-                "upserted_rows": len(update_rows) + len(insert_rows),
+                "upserted_rows": updated_count + inserted_count,
                 "inventory_rows_found": len(verification_rows),
                 "joined_rows": len(verified_by_sku),
                 "unmatched_rows": len(unmatched_rows),
-                "updated_rows": len(update_rows),
-                "inserted_rows": len(insert_rows),
+                "updated_rows": updated_count,
+                "inserted_rows": inserted_count,
                 "trace_upload_rows": trace_upload_rows,
                 "trace_master_rows": trace_master_rows,
                 "trace_saved_rows": trace_verified_rows,
@@ -3690,28 +3724,22 @@ def apply_stock_upload_preview(
                 if not product:
                     raise ValueError("상품마스터 재조회 실패")
                 with db.begin_nested():
-                    item = daily_by_sku.get(normalize_product_code_text(product.sku))
-                    if item is None:
-                        uploaded_category = clean_text(row.get("category"))
-                        item = InventoryDaily(
-                            source_type=source_type,
-                            work_date=work_date,
-                            product_code=product.sku,
-                            product_name=product.product_name,
-                            barcode=normalize_barcode_text(product.barcode),
-                            category=product_category_text(product) or uploaded_category,
-                            supplier=product.supplier,
-                            safe_stock=product.min_stock,
-                            inbound_cycle=product.default_lead_time or None,
-                        )
-                        db.add(item)
-                        daily_by_sku[normalize_product_code_text(product.sku)] = item
+                    uploaded_category = clean_text(row.get("category"))
+                    original_item = daily_by_sku.get(normalize_product_code_text(product.sku))
+                    item, _merged_existing = resolve_inventory_daily_edit_target(
+                        db,
+                        original_item,
+                        source_type,
+                        work_date,
+                        product.product_name,
+                        normalize_barcode_text(product.barcode),
+                    )
+                    replace_inventory_daily_lookup_row(daily_by_sku, product.sku, item, original_item)
                     item.product_code = product.sku
                     item.product_name = product.product_name
                     item.barcode = normalize_barcode_text(product.barcode)
                     item.supplier = product.supplier
                     item.inbound_cycle = product.default_lead_time or None
-                    uploaded_category = clean_text(row.get("category"))
                     if uploaded_category and not product_category_text(product):
                         product.large_category = uploaded_category
                     item.category = product_category_text(product) or uploaded_category or item.category
