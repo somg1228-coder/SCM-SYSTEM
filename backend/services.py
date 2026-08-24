@@ -2464,6 +2464,13 @@ def stock_status_for_values(current_stock: int, safe_stock: int, warning_ratio: 
     return "정상"
 
 
+def stock_status_for_snapshot(has_snapshot: bool, available_stock, current_stock, safe_stock: int) -> str:
+    if not has_snapshot:
+        return "미집계"
+    stock_value = int(available_stock if available_stock is not None else current_stock or 0)
+    return stock_status_for_values(stock_value, safe_stock)
+
+
 def format_box_pallet_unit(box_qty: int | None, pallet_qty: int | None) -> str:
     parts = []
     if int(box_qty or 0):
@@ -2967,6 +2974,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         daily = latest_daily_by_sku.get(product_sku_key)
         has_snapshot = daily is not None
         current_stock = int(daily.current_stock or 0) if has_snapshot else 0
+        available_stock = int(daily.available_stock if daily and daily.available_stock is not None else current_stock) if has_snapshot else 0
         placed_quantity = int(location_summary.get("placed_quantity") or 0)
         actual_locations = bool(location_summary.get("location_count") or placed_quantity)
         master_location_registered = bool(getattr(product, "location_registered", False))
@@ -2975,7 +2983,12 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
 
         safe_stock = int(product.min_stock or 0)
 
-        status = stock_status_for_values(current_stock, safe_stock) if has_snapshot else "미집계"
+        status = stock_status_for_snapshot(
+            has_snapshot,
+            daily.available_stock if daily is not None else None,
+            daily.current_stock if daily is not None else None,
+            safe_stock,
+        )
 
         purchase_metric = purchase_metrics.get((source_type, product.sku), {})
         inbound_metric = inbound_metrics.get((source_type, product.sku), {})
@@ -2984,8 +2997,6 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         box_qty = int(product.box_qty or product.pack_qty or 0)
         pending_inbound_qty = int(pending_by_sku.get(product_sku, pending_by_sku.get(product_sku_key, 0)) or 0)
         pending_outbound_qty = int(daily.outbound_qty or 0) if has_snapshot else 0
-
-        available_stock = int(daily.available_stock if daily and daily.available_stock is not None else current_stock) if has_snapshot else 0
 
         shortage_qty = max(safe_stock - current_stock, 0)
         avg_outbound = float(avg_outbound_by_sku.get(product_sku, avg_outbound_by_sku.get(product_sku_key, 0)) or 0)
