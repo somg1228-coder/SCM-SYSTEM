@@ -144,8 +144,8 @@ STOCK_WARNING_RATIO = 0.2
 STOCK_CURRENT_COLUMN_CANDIDATES = ["수정재고", "변경재고", "실사재고", "조정재고", "보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고", "수량", "상품수량"]
 STOCK_AVAILABLE_COLUMN_CANDIDATES = ["가용재고", "판매가능재고", "판매 가능 재고", "수량", "상품수량"]
 ERP_AVAILABLE_STOCK_COLUMN_CANDIDATES = ["가용재고", "판매가능재고", "판매 가능 재고", "available_stock"]
-ERP_INVOICE_COLUMN_CANDIDATES = ["송장", "송장수량", "송장 수량", "invoice_qty", "invoice"]
-ERP_RECEIVED_COLUMN_CANDIDATES = ["접수", "접수수량", "접수 수량", "received_qty", "accepted_qty", "receipt"]
+ERP_INVOICE_COLUMN_CANDIDATES = ["송장", "송장수량", "송장 수량", "invoice"]
+ERP_RECEIVED_COLUMN_CANDIDATES = ["접수", "접수수량", "접수 수량", "accepted_qty", "receipt"]
 STOCK_CATEGORY_COLUMN_CANDIDATES = ["카테고리", "카테고리명", "상품카테고리", "상품 카테고리", "대분류", "대분류명", "분류", "상품분류", "category", "large_category"]
 STOCK_LOCATION_COLUMN_CANDIDATES = ["재고위치", "재고 위치", "보관위치", "보관 위치", "창고위치", "창고 위치", "로케이션", "랙위치", "랙 위치", "location", "storage_location"]
 
@@ -2084,7 +2084,7 @@ def import_product_master_excel(db: Session, source_type: str, file_bytes: bytes
 def merge_inventory_daily_rows(target: InventoryDaily, duplicate: InventoryDaily) -> InventoryDaily:
     if target.id == duplicate.id:
         return target
-    for field in ("current_stock", "available_stock", "outbound_qty", "invoice_qty", "received_qty", "inbound_qty"):
+    for field in ("current_stock", "available_stock", "outbound_qty", "inbound_qty"):
         setattr(target, field, int(getattr(target, field) or 0) + int(getattr(duplicate, field) or 0))
     target.safe_stock = max(int(target.safe_stock or 0), int(duplicate.safe_stock or 0))
     target.inbound_cycle = target.inbound_cycle or duplicate.inbound_cycle
@@ -3016,8 +3016,6 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "safe_stock": safe_stock,
                 "pending_inbound_qty": pending_inbound_qty,
                 "pending_outbound_qty": pending_outbound_qty,
-                "invoice_qty": int(getattr(daily, "invoice_qty", 0) or 0) if has_snapshot else 0,
-                "received_qty": int(getattr(daily, "received_qty", 0) or 0) if has_snapshot else 0,
                 "stock_status": status,
                 "barcode": product_barcode,
                 "storage_location": (
@@ -3308,8 +3306,6 @@ def inventory_trace_row(row) -> dict:
         "product_name": clean_text(getattr(row, "product_name", "")),
         "current_stock": getattr(row, "current_stock", None),
         "available_stock": getattr(row, "available_stock", None),
-        "invoice_qty": getattr(row, "invoice_qty", None),
-        "received_qty": getattr(row, "received_qty", None),
         "outbound_qty": getattr(row, "outbound_qty", None),
         "stock_status": getattr(row, "stock_status", ""),
     }
@@ -3702,13 +3698,13 @@ def apply_erp_stock_upload_file(
         uploaded_stock, stock_ok = to_int_strict(row.get(stock_col))
         invoice_raw = row.get(invoice_col)
         received_raw = row.get(received_col)
-        invoice_qty, invoice_ok = to_int_strict(invoice_raw)
-        received_qty, received_ok = to_int_strict(received_raw)
+        invoice_count, invoice_ok = to_int_strict(invoice_raw)
+        received_count, received_ok = to_int_strict(received_raw)
         if not clean_text(invoice_raw):
-            invoice_qty, invoice_ok = 0, True
+            invoice_count, invoice_ok = 0, True
         if not clean_text(received_raw):
-            received_qty, received_ok = 0, True
-        outbound_qty = invoice_qty + received_qty if invoice_ok and received_ok else 0
+            received_count, received_ok = 0, True
+        outbound_qty = invoice_count + received_count if invoice_ok and received_ok else 0
         product = products_by_sku.get(product_code) if product_code else None
         if product is None:
             product = products_by_key.get((barcode, product_name))
@@ -3720,8 +3716,8 @@ def apply_erp_stock_upload_file(
                     "barcode": barcode,
                     "product_name": product_name,
                     "available_stock": uploaded_stock if stock_ok else row.get(stock_col, ""),
-                    "invoice_qty": invoice_qty if invoice_ok else row.get(invoice_col, ""),
-                    "received_qty": received_qty if received_ok else row.get(received_col, ""),
+                    "송장": invoice_count if invoice_ok else row.get(invoice_col, ""),
+                    "접수": received_count if received_ok else row.get(received_col, ""),
                     "outbound_qty": outbound_qty,
                     "matched_product": product_trace_row(product),
                 }
@@ -3746,8 +3742,8 @@ def apply_erp_stock_upload_file(
                     "product_name": product_name,
                     "uploaded_stock": row.get(stock_col, ""),
                     "new_stock": row.get(stock_col, ""),
-                    "invoice_qty": row.get(invoice_col, ""),
-                    "received_qty": row.get(received_col, ""),
+                    "송장": row.get(invoice_col, ""),
+                    "접수": row.get(received_col, ""),
                     "reason": reason,
                     "failure_reason": reason,
                 }
@@ -3758,8 +3754,6 @@ def apply_erp_stock_upload_file(
             "barcode": barcode,
             "product_name": product_name,
             "stock": uploaded_stock,
-            "invoice_qty": invoice_qty,
-            "received_qty": received_qty,
             "outbound_qty": outbound_qty,
             "category": uploaded_category,
             "product": product,
@@ -3794,8 +3788,6 @@ def apply_erp_stock_upload_file(
         for product_sku, matched in apply_by_sku.items():
             product = matched["product"]
             new_stock = int(matched["stock"] or 0)
-            invoice_qty = int(matched.get("invoice_qty") or 0)
-            received_qty = int(matched.get("received_qty") or 0)
             outbound_qty = int(matched.get("outbound_qty") or 0)
             uploaded_category = clean_text(matched.get("category"))
             if uploaded_category and not product_category_text(product):
@@ -3819,8 +3811,6 @@ def apply_erp_stock_upload_file(
                 "safe_stock": int(product.min_stock or 0),
                 "stock_status": stock_status_for_values(new_stock, int(product.min_stock or 0)),
                 "outbound_qty": outbound_qty,
-                "invoice_qty": invoice_qty,
-                "received_qty": received_qty,
                 "inbound_cycle": product.default_lead_time or None,
                 "updated_at": now,
             }
@@ -3905,8 +3895,8 @@ def apply_erp_stock_upload_file(
                 "barcode": trace_barcode,
                 "product_name": [row.get("product_name", "") for row in trace_upload_rows],
                 "available_stock": [row.get("available_stock") for row in trace_upload_rows],
-                "invoice_qty": [row.get("invoice_qty") for row in trace_upload_rows],
-                "received_qty": [row.get("received_qty") for row in trace_upload_rows],
+                "송장": [row.get("송장") for row in trace_upload_rows],
+                "접수": [row.get("접수") for row in trace_upload_rows],
                 "outbound_qty": [row.get("outbound_qty") for row in trace_upload_rows],
                 "실제 upsert 건수": updated_count + inserted_count,
                 "uploaded_rows": len(df.index),
@@ -4845,8 +4835,6 @@ def daily_to_dict(row: InventoryDaily) -> dict:
         "safe_stock": row.safe_stock,
         "stock_status": row.stock_status,
         "outbound_qty": row.outbound_qty,
-        "invoice_qty": getattr(row, "invoice_qty", 0),
-        "received_qty": getattr(row, "received_qty", 0),
         "previous_inbound_date": row.previous_inbound_date,
         "last_inbound_date": row.last_inbound_date,
         "inbound_qty": row.inbound_qty,
