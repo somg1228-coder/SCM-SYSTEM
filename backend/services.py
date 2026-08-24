@@ -131,6 +131,7 @@ SHARED_MASTER_FORM_COLUMNS = [
 SHARED_MASTER_REQUIRED_COLUMNS = set(SHARED_MASTER_FORM_COLUMNS)
 SHARED_MASTER_OPTIONAL_COLUMNS = {"위치상태"}
 SHARED_MASTER_KNOWN_COLUMNS = SHARED_MASTER_REQUIRED_COLUMNS | SHARED_MASTER_OPTIONAL_COLUMNS
+THREEPL_MASTER_SHEET_NAME = "3PL 마스터"
 
 PRODUCT_MASTER_MODEL_BY_SOURCE = {
     "오프라인": OfflineProductMaster,
@@ -321,7 +322,19 @@ def normalize_barcode_text(value) -> str:
 
 
 def normalize_barcode_identifier(value) -> str:
-    return clean_text(value)
+    text = clean_text(value).replace(",", "")
+    if not text:
+        return ""
+    if re.fullmatch(r"\d+\.0+", text):
+        return text.split(".", 1)[0]
+    if re.search(r"[eE]", text):
+        try:
+            numeric = Decimal(text)
+        except InvalidOperation:
+            return text
+        if numeric == numeric.to_integral_value():
+            return format(numeric.quantize(Decimal(1)), "f")
+    return text
 
 
 def normalize_product_name_match_key(value) -> str:
@@ -615,6 +628,59 @@ def read_excel(file_bytes: bytes) -> pd.DataFrame:
         return df
 
 
+def read_threepl_master_excel(file_bytes: bytes) -> pd.DataFrame:
+    try:
+        workbook = pd.ExcelFile(BytesIO(file_bytes), engine="openpyxl")
+    except Exception:
+        return read_excel(file_bytes)
+    if not workbook.sheet_names:
+        return pd.DataFrame()
+
+    sheet_name = THREEPL_MASTER_SHEET_NAME if THREEPL_MASTER_SHEET_NAME in workbook.sheet_names else workbook.sheet_names[0]
+    raw_df = workbook.parse(sheet_name=sheet_name, header=None, dtype=object)
+    if raw_df is None or raw_df.dropna(how="all").empty:
+        return pd.DataFrame()
+
+    required_headers = {normalize_import_header_name(column) for column in SHARED_MASTER_FORM_COLUMNS}
+    header_index = None
+    header_values: list[str] = []
+    scan_limit = min(len(raw_df), 20)
+    for index in range(scan_limit):
+        values = ["" if pd.isna(value) else normalize_html_cell(str(value)) for value in raw_df.iloc[index].tolist()]
+        normalized_values = {normalize_import_header_name(value) for value in values if clean_text(value)}
+        if required_headers.issubset(normalized_values):
+            header_index = index
+            last_header_position = max((position for position, value in enumerate(values) if clean_text(value)), default=0)
+            header_values = values[: last_header_position + 1]
+            break
+
+    if header_index is None:
+        df = normalize_import_headers(raw_df)
+        df.attrs["read_method"] = "excel"
+        df.attrs["selected_sheet"] = sheet_name
+        df.attrs["sheet_names"] = list(workbook.sheet_names)
+        df.attrs["header_row_number"] = None
+        return df
+
+    headers = unique_headers(header_values)
+    width = len(headers)
+    data_df = raw_df.iloc[header_index + 1 :].copy()
+    data_df = data_df.iloc[:, :width]
+    data_df.columns = headers
+    data_df = data_df.dropna(how="all").reset_index(drop=True)
+    data_df.attrs["read_method"] = "excel"
+    data_df.attrs["selected_sheet"] = sheet_name
+    data_df.attrs["sheet_names"] = list(workbook.sheet_names)
+    data_df.attrs["header_row_number"] = header_index + 1
+    data_df.attrs["raw_shape"] = tuple(raw_df.shape)
+    data_df.attrs["raw_columns"] = [str(value) for value in header_values]
+    data_df.attrs["raw_head"] = raw_df.head(5).fillna("").astype(str).to_dict("records")
+    data_df.attrs["normalized_shape"] = tuple(data_df.shape)
+    data_df.attrs["normalized_columns"] = [str(column) for column in data_df.columns]
+    data_df.attrs["normalized_head"] = data_df.head(5).fillna("").astype(str).to_dict("records")
+    return data_df
+
+
 def read_seonghyun_inbound_statement(file_bytes: bytes) -> pd.DataFrame | None:
     uploaded_file = BytesIO(file_bytes)
     try:
@@ -722,6 +788,7 @@ def product_master_to_dict(row) -> dict:
         "location_status": location_status_label(getattr(row, "location_registered", False)),
         "pack_qty": row.pack_qty,
         "box_qty": row.box_qty,
+        "box_pallet_unit": format_box_pallet_unit(row.box_qty, row.pack_qty) or "0",
         "default_lead_time": row.default_lead_time,
         "min_stock": row.min_stock,
         "sort_order": row.sort_order,
@@ -1387,7 +1454,6 @@ THREEPL_MASTER_IMPORT_FIELDS = [
     ("box_pallet_unit", "박스/파렛트 단위"),
     ("memo", "담당자"),
     ("default_lead_time", "리드타임"),
-    ("location_registered", "위치상태"),
 ]
 
 
@@ -1404,7 +1470,7 @@ def explicit_sku_value(row: dict) -> str:
 
 
 def threepl_master_basis_data(row: dict) -> dict:
-    return {
+    data = {
         "sku": clean_text(row.get("sku")),
         "barcode": normalize_barcode_identifier(row.get("barcode")),
         "product_name": clean_text(row.get("product_name")),
@@ -1420,13 +1486,18 @@ def threepl_master_basis_data(row: dict) -> dict:
         "default_lead_time": to_int(row.get("default_lead_time")),
         "memo": clean_text(row.get("memo")),
     }
+    return data
 
 
 def threepl_master_display_value(row: dict | object, field: str) -> str:
     if field == "box_pallet_unit":
         if isinstance(row, dict):
-            return format_box_pallet_unit(row.get("box_qty"), row.get("pack_qty"))
-        return format_box_pallet_unit(getattr(row, "box_qty", 0), getattr(row, "pack_qty", 0))
+            box_qty = to_int(row.get("box_qty"))
+            pack_qty = to_int(row.get("pack_qty"))
+        else:
+            box_qty = to_int(getattr(row, "box_qty", 0))
+            pack_qty = to_int(getattr(row, "pack_qty", 0))
+        return format_box_pallet_unit(box_qty, pack_qty) or "0"
     if field == "location_registered":
         value = row.get(field) if isinstance(row, dict) else getattr(row, field, False)
         return location_status_label(value)
@@ -1543,11 +1614,11 @@ def find_master_for_shared_import(
     row: dict,
 ):
     if source_type == "3PL":
-        return find_master_by_product_name(existing_by_product_name, row)
+        return find_master_by_barcode(existing_by_barcode, row) or find_master_by_product_name(existing_by_product_name, row)
     return find_master_by_barcode(existing_by_barcode, row)
 
 
-def keep_existing_threepl_details_for_name_match(product, row: dict) -> dict:
+def merge_threepl_uploaded_row_with_existing(product, row: dict) -> dict:
     if product is None:
         return row
     next_row = dict(row)
@@ -1555,24 +1626,27 @@ def keep_existing_threepl_details_for_name_match(product, row: dict) -> dict:
     existing_barcode = normalize_barcode_identifier(getattr(product, "barcode", ""))
     next_row["sku"] = clean_text(getattr(product, "sku", ""))
     next_row["barcode"] = uploaded_barcode or existing_barcode
-    next_row["product_name"] = clean_text(getattr(product, "product_name", "")) or clean_text(row.get("product_name"))
-    for field in ("large_category", "medium_category", "small_category", "brand", "supplier", "storage_location", "memo"):
-        next_row[field] = clean_text(getattr(product, field, ""))
-    for field in ("pack_qty", "box_qty", "default_lead_time"):
-        next_row[field] = to_int(getattr(product, field, 0))
+    next_row["product_name"] = clean_text(row.get("product_name")) or clean_text(getattr(product, "product_name", ""))
+    for field in ("brand", "storage_location"):
+        if not clean_text(next_row.get(field)):
+            next_row[field] = clean_text(getattr(product, field, ""))
+    for field in ("min_stock", "sort_order"):
+        if field in next_row and to_int(next_row.get(field)) <= 0:
+            next_row[field] = to_int(getattr(product, field, 0))
+    next_row["is_active"] = clean_text(row.get("is_active")) or clean_text(getattr(product, "is_active", "")) or "사용"
     next_row["location_registered"] = bool(getattr(product, "location_registered", False))
     return next_row
 
 
 def prepare_product_master_shared_import_preview(db: Session, source_type: str, file_bytes: bytes) -> dict:
     started_at = time.perf_counter()
-    df = fill_down_threepl_master_categories(normalize_product_master_barcode_columns(read_excel(file_bytes)))
+    raw_df = read_threepl_master_excel(file_bytes) if source_type == "3PL" else read_excel(file_bytes)
+    df = fill_down_threepl_master_categories(normalize_product_master_barcode_columns(raw_df))
     total_rows = len(df)
     parsed_rows: list[dict] = []
     details: list[dict] = []
     barcode_row_numbers: dict[str, list[int]] = {}
     barcode_names: dict[str, set[str]] = {}
-    product_name_row_numbers: dict[str, list[int]] = {}
     warnings = 0
     failures = 0
 
@@ -1580,7 +1654,7 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
     if not headers_ok:
         return {
             "ok": False,
-            "message": f"필수 컬럼 누락: {', '.join(missing_columns)}",
+            "message": f"마스터 양식에서 다음 컬럼을 찾을 수 없습니다: {', '.join(missing_columns)}",
             "summary": {
                 "전체 엑셀 행 수": total_rows,
                 "신규 등록 수": 0,
@@ -1600,7 +1674,8 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
         }
     warnings += len(unexpected_columns)
 
-    for index, record in enumerate(df.fillna("").to_dict("records"), start=2):
+    header_row_number = int(df.attrs.get("header_row_number") or 1)
+    for index, record in enumerate(df.fillna("").to_dict("records"), start=header_row_number + 1):
         explicit_sku = explicit_sku_value(record)
         row = normalize_product_master_row(record)
         if not explicit_sku:
@@ -1608,10 +1683,10 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
         row_number = index
         if not row["sku"] and not row["barcode"] and not row["product_name"]:
             continue
-        missing_required = not row["product_name"] if source_type == "3PL" else (not row["barcode"] or not row["product_name"])
+        missing_required = not row["barcode"] or not row["product_name"]
         if missing_required:
             failures += 1
-            missing_message = "상품명 누락" if source_type == "3PL" else "바코드 또는 상품명 누락"
+            missing_message = "바코드 또는 상품명 누락"
             details.append(
                 {
                     "행 번호": row_number,
@@ -1628,20 +1703,11 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
         parsed_rows.append({"row_number": row_number, "data": row})
         barcode_row_numbers.setdefault(row["barcode"], []).append(row_number)
         barcode_names.setdefault(row["barcode"], set()).add(row["product_name"])
-        product_name_key = normalize_product_name_match_key(row["product_name"])
-        if product_name_key:
-            product_name_row_numbers.setdefault(product_name_key, []).append(row_number)
 
     duplicate_barcodes = {barcode: rows for barcode, rows in barcode_row_numbers.items() if len(rows) > 1}
-    duplicate_product_names = {name: rows for name, rows in product_name_row_numbers.items() if len(rows) > 1}
-    duplicate_row_count = (
-        sum(len(rows) - 1 for rows in duplicate_product_names.values())
-        if source_type == "3PL"
-        else sum(len(rows) - 1 for rows in duplicate_barcodes.values())
-    )
+    duplicate_row_count = sum(len(rows) - 1 for rows in duplicate_barcodes.values())
     conflict_barcodes = set() if source_type == "3PL" else {barcode for barcode, names in barcode_names.items() if len(names) > 1}
     last_row_by_barcode = {item["data"]["barcode"]: item for item in parsed_rows}
-    last_row_by_product_name = {normalize_product_name_match_key(item["data"]["product_name"]): item for item in parsed_rows}
     model = product_master_model(source_type)
     existing_products = list(db.execute(select(model).order_by(model.id)).scalars())
     existing_by_sku = {row.sku: row for row in existing_products}
@@ -1689,17 +1755,13 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
                 }
             )
             continue
-        duplicate_item_key = normalize_product_name_match_key(row["product_name"]) if source_type == "3PL" else barcode
-        duplicate_item_rows = duplicate_product_names.get(duplicate_item_key, []) if source_type == "3PL" else duplicate_barcodes.get(duplicate_item_key, [])
-        is_not_last_duplicate = (
-            last_row_by_product_name.get(duplicate_item_key) is not item
-            if source_type == "3PL"
-            else last_row_by_barcode.get(duplicate_item_key) is not item
-        )
+        duplicate_item_key = barcode
+        duplicate_item_rows = duplicate_barcodes.get(duplicate_item_key, [])
+        is_not_last_duplicate = last_row_by_barcode.get(duplicate_item_key) is not item
         if duplicate_item_rows and is_not_last_duplicate:
             warnings += 1
             duplicate_count += 1
-            duplicate_label = "상품명" if source_type == "3PL" else "바코드"
+            duplicate_label = "바코드"
             details.append(
                 {
                     "행 번호": row_number,
@@ -1717,7 +1779,7 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
         product = find_master_for_shared_import(source_type, existing_by_barcode, existing_by_product_name, row)
         if product is not None:
             if source_type == "3PL":
-                row = keep_existing_threepl_details_for_name_match(product, row)
+                row = merge_threepl_uploaded_row_with_existing(product, row)
             else:
                 row = keep_existing_threepl_category(product, row)
             row["sku"] = product.sku
@@ -1844,7 +1906,7 @@ def apply_product_master_shared_import_preview(db: Session, source_type: str, pr
         product = find_master_for_shared_import(source_type, existing_by_barcode, existing_by_product_name, data)
         if product is not None:
             data = (
-                keep_existing_threepl_details_for_name_match(product, data)
+                merge_threepl_uploaded_row_with_existing(product, data)
                 if source_type == "3PL"
                 else keep_existing_product_master_categories(product, data)
             )
