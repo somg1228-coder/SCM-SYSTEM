@@ -8,8 +8,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 from sqlalchemy import delete, select
 
-from components.lazy_tabs import lazy_tab_selector
-
 try:
     from backend.database import SessionLocal, init_db
     from backend.models import CategoryBomItem
@@ -56,7 +54,8 @@ def render_bom_page() -> None:
         return
 
     categories = fetch_categories()
-    category = render_category_controls(categories)
+    with st.container(key="bom_category_controls"):
+        category = render_category_controls(categories)
     draft_key = f"bom_editor_draft_{category}"
     saved_rows = fetch_bom_rows(category)
     saved_df = rows_to_editor(saved_rows)
@@ -65,14 +64,15 @@ def render_bom_page() -> None:
         st.session_state[draft_key] = saved_df
 
     current_df = prepare_editor_df(st.session_state[draft_key])
-    render_bom_download_controls(category, saved_df)
+    with st.container(key="bom_file_controls"):
+        render_bom_file_controls(category, saved_df)
     render_bom_editor(category, draft_key, current_df)
 
 
 def render_category_controls(categories: list[str]) -> str:
     options = merge_unique([DEFAULT_CATEGORY, *categories])
-    select_col, input_col, upload_col, template_col = st.columns(
-        [1.1, 1.35, 1.1, 0.95],
+    select_col, input_col, spacer_col = st.columns(
+        [1.0, 1.25, 2.5],
         gap="small",
     )
     with input_col:
@@ -94,10 +94,22 @@ def render_category_controls(categories: list[str]) -> str:
     with select_col:
         selected = st.selectbox("카테고리", options=filtered_options, key="bom_category_select")
     category = selected
+    with spacer_col:
+        st.empty()
+    return category
 
+
+def render_bom_file_controls(category: str, saved_df: pd.DataFrame) -> None:
+    st.markdown('<div class="bom-section-label">BOM 파일 관리</div>', unsafe_allow_html=True)
+    upload_col, import_col, download_col, spacer_col = st.columns(
+        [1.8, 0.72, 0.95, 2.2],
+        gap="small",
+    )
     with upload_col:
         uploaded = st.file_uploader("BOM 엑셀 업로드", type=["xlsx", "xls"], key="bom_upload")
-        if st.button("엑셀 반영", key="bom_import_btn", use_container_width=True):
+    with import_col:
+        st.write("")
+        if st.button("엑셀 반영", key="bom_import_btn"):
             if uploaded is None:
                 st.warning("먼저 BOM 엑셀 파일을 업로드하세요.")
             else:
@@ -115,40 +127,55 @@ def render_category_controls(categories: list[str]) -> str:
                         st.rerun()
                     else:
                         st.warning(result["message"])
-    with template_col:
+    with download_col:
         st.write("")
-        st.download_button(
-            "양식 다운로드",
-            data=bom_excel(sample_template_df(), f"{category} BOM"),
-            file_name=f"{safe_filename(category)}_BOM_양식.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key="bom_template_download",
-        )
-    return category
-
-
-def render_bom_download_controls(category: str, saved_df: pd.DataFrame) -> None:
-    download_key = f"bom_download_payload_{safe_key(category)}"
-    cols = st.columns([4.8, 1.1, 1.1], gap="small")
-    with cols[1]:
-        if st.button("다운로드 준비", key=f"bom_download_prepare_{safe_key(category)}", use_container_width=True):
-            download_df = saved_df.drop(columns=["삭제"], errors="ignore")
-            st.session_state[download_key] = bom_excel(
-                download_df if not download_df.empty else sample_template_df(),
-                f"{category} BOM",
-            )
-    with cols[2]:
-        download_bytes = st.session_state.get(download_key, b"")
+        download_df = saved_df.drop(columns=["삭제"], errors="ignore")
         st.download_button(
             "BOM 다운로드",
-            data=download_bytes,
+            data=bom_excel(download_df if not download_df.empty else sample_template_df(), f"{category} BOM"),
             file_name=f"{safe_filename(category)}_BOM.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key="bom_download",
-            disabled=not download_bytes,
+            key=f"bom_download_{safe_key(category)}",
         )
+    with spacer_col:
+        st.empty()
+
+
+def set_bom_tab_selection(state_key: str, label: str) -> None:
+    st.session_state[state_key] = label
+
+
+def render_bom_tab_selector(category: str) -> str:
+    labels = [f"{category} BOM", "BOM 등록/수정"]
+    state_key = f"bom_editor_section_{safe_key(category)}_selected"
+    current = st.session_state.get(state_key, labels[0])
+    if current not in labels:
+        current = labels[0]
+    st.session_state[state_key] = current
+
+    with st.container(key="bom_tab_bar"):
+        view_col, edit_col, spacer_col = st.columns([1.25, 1.0, 5.6], gap="small")
+        with view_col:
+            if current == labels[0]:
+                st.markdown('<span id="bom_active_view_tab"></span>', unsafe_allow_html=True)
+            st.button(
+                labels[0],
+                key="bom_tab_view_btn",
+                on_click=set_bom_tab_selection,
+                args=(state_key, labels[0]),
+            )
+        with edit_col:
+            if current == labels[1]:
+                st.markdown('<span id="bom_active_edit_tab"></span>', unsafe_allow_html=True)
+            st.button(
+                labels[1],
+                key="bom_tab_edit_btn",
+                on_click=set_bom_tab_selection,
+                args=(state_key, labels[1]),
+            )
+        with spacer_col:
+            st.empty()
+    return st.session_state[state_key]
 
 
 def render_bom_editor(category: str, draft_key: str, current_df: pd.DataFrame) -> None:
@@ -158,101 +185,96 @@ def render_bom_editor(category: str, draft_key: str, current_df: pd.DataFrame) -
         if edit_buffer_key not in st.session_state:
             st.session_state[edit_buffer_key] = prepare_editor_df(current_df)
         edit_buffer = prepare_editor_df(st.session_state[edit_buffer_key])
-        section = lazy_tab_selector([f"{category} BOM", "BOM 등록/수정"], f"bom_editor_section_{safe_key(category)}")
+        section = render_bom_tab_selector(category)
         if section == f"{category} BOM":
             render_bom_outline_view(current_df, category)
             return
-        view_tab, edit_tab = st.tabs([f"{category} BOM", "BOM 등록/수정"])
 
-        with view_tab:
-            render_bom_outline_view(current_df, category)
+        st.markdown('<div class="bom-subtitle">BOM 등록/수정 폼</div>', unsafe_allow_html=True)
+        render_bom_item_form(category, draft_key, current_df)
 
-        with edit_tab:
-            st.markdown('<div class="bom-subtitle">BOM 등록/수정 폼</div>', unsafe_allow_html=True)
-            render_bom_item_form(category, draft_key, current_df)
+        st.markdown('<div class="bom-subtitle">BOM 작성표</div>', unsafe_allow_html=True)
+        st.caption("완제품 행을 먼저 만들고 아래에 부품/부속품/포장재/인쇄물/박스를 이어서 입력하세요. 선택 삭제는 왼쪽 삭제 체크 후 누르면 됩니다.")
 
-            st.markdown('<div class="bom-subtitle">BOM 작성표</div>', unsafe_allow_html=True)
-            st.caption("완제품 행을 먼저 만들고 아래에 부품/부속품/포장재/인쇄물/박스를 이어서 입력하세요. 선택 삭제는 왼쪽 삭제 체크 후 누르면 됩니다.")
+        action_cols = st.columns([0.9, 0.9, 1.0, 4.2], gap="small")
+        with action_cols[0]:
+            if st.button("예시 불러오기", key="bom_sample_btn", use_container_width=True):
+                st.session_state[edit_buffer_key] = prepare_editor_df(sample_template_df())
+                st.rerun()
+        with action_cols[1]:
+            if st.button("빈 행 추가", key="bom_blank_row_btn", use_container_width=True):
+                st.session_state[edit_buffer_key] = append_blank_rows(edit_buffer, 5)
+                st.rerun()
+        with action_cols[2]:
+            if st.button("전체 삭제", key="bom_full_delete_btn", use_container_width=True):
+                delete_category_bom(category)
+                st.session_state[draft_key] = prepare_editor_df(pd.DataFrame(columns=BOM_COLUMNS))
+                clear_bom_editor_buffer(category)
+                clear_bom_download_payload(category)
+                st.success("현재 카테고리 BOM을 전체 삭제했습니다.")
+                st.rerun()
 
-            action_cols = st.columns([0.9, 0.9, 1.0, 4.2], gap="small")
-            with action_cols[0]:
-                if st.button("예시 불러오기", key="bom_sample_btn", use_container_width=True):
-                    st.session_state[edit_buffer_key] = prepare_editor_df(sample_template_df())
-                    st.rerun()
-            with action_cols[1]:
-                if st.button("빈 행 추가", key="bom_blank_row_btn", use_container_width=True):
-                    st.session_state[edit_buffer_key] = append_blank_rows(edit_buffer, 5)
-                    st.rerun()
-            with action_cols[2]:
-                if st.button("전체 삭제", key="bom_full_delete_btn", use_container_width=True):
-                    delete_category_bom(category)
-                    st.session_state[draft_key] = prepare_editor_df(pd.DataFrame(columns=BOM_COLUMNS))
-                    clear_bom_editor_buffer(category)
-                    clear_bom_download_payload(category)
-                    st.success("현재 카테고리 BOM을 전체 삭제했습니다.")
-                    st.rerun()
-
-            with st.form(key=f"bom_editor_form_{safe_key(category)}", clear_on_submit=False):
-                edited = st.data_editor(
-                    style_bom_editor_df(editor_display_df(edit_buffer)),
-                    hide_index=True,
-                    use_container_width=True,
-                    height=420,
-                    num_rows="dynamic",
-                    key=f"bom_editor_{safe_key(category)}",
-                    column_order=EDITOR_DISPLAY_COLUMNS,
-                    column_config={
-                        "표시": st.column_config.TextColumn("표시", width=86, disabled=True),
-                        "삭제": st.column_config.CheckboxColumn("삭제", width=52, default=False),
-                        "상품명": st.column_config.TextColumn("상품명", width="large", default=""),
-                        "유형": st.column_config.SelectboxColumn("유형", options=ITEM_TYPES, default="부품"),
-                        "담당자": st.column_config.TextColumn("담당자", default=DEFAULT_MANAGER),
-                        "거래처": st.column_config.TextColumn("거래처", default=DEFAULT_VENDOR),
-                        "필요 재고": st.column_config.NumberColumn("필요 재고", min_value=0, step=1, default=1),
-                        BARCODE_COLUMN: st.column_config.TextColumn(BARCODE_COLUMN, width="medium", default=""),
-                        SPEC_COLUMN: st.column_config.TextColumn(SPEC_COLUMN, width="medium", default=""),
-                        COST_COLUMN: st.column_config.TextColumn(COST_COLUMN, width="medium", default=""),
-                    },
-                )
-                save_col, delete_col, spacer = st.columns([1.0, 1.0, 5.4], gap="small")
-                with save_col:
-                    save_submitted = st.form_submit_button("BOM 저장", type="primary", use_container_width=True)
-                with delete_col:
-                    selected_delete_submitted = st.form_submit_button("선택 삭제", use_container_width=True)
-                with spacer:
-                    st.empty()
-                if save_submitted:
-                    next_df = prepare_editor_df(edited)
-                    result = save_category_bom(category, strip_delete_column(next_df))
-                    if result["ok"]:
-                        st.session_state[draft_key] = next_df
-                        st.session_state[edit_buffer_key] = next_df
-                        clear_bom_download_payload(category)
-                        st.success(f'{result["message"]} ({result["count"]}행)')
-                        st.rerun()
-                    else:
-                        st.session_state[edit_buffer_key] = next_df
-                        st.warning(result["message"])
-                elif selected_delete_submitted:
-                    deleted = count_checked_rows(edited)
-                    next_df = prepare_editor_df(drop_checked_rows(edited))
-                    if deleted:
-                        st.session_state[draft_key] = next_df
-                        st.session_state[edit_buffer_key] = next_df
-                        save_category_bom(category, strip_delete_column(next_df))
-                        clear_bom_download_payload(category)
-                        st.success(f"선택한 행을 삭제했습니다. ({deleted}행)")
-                        st.rerun()
-                    else:
-                        st.warning("삭제 체크된 행이 없습니다.")
-
-            clear_col, spacer = st.columns([1.0, 6.4], gap="small")
-            with clear_col:
-                if st.button("작성 초기화", key="bom_draft_clear_btn", use_container_width=True):
-                    st.session_state[edit_buffer_key] = rows_to_editor(fetch_bom_rows(category))
-                    st.rerun()
+        with st.form(key=f"bom_editor_form_{safe_key(category)}", clear_on_submit=False):
+            edited = st.data_editor(
+                style_bom_editor_df(editor_display_df(edit_buffer)),
+                hide_index=True,
+                use_container_width=True,
+                height=420,
+                num_rows="dynamic",
+                key=f"bom_editor_{safe_key(category)}",
+                column_order=EDITOR_DISPLAY_COLUMNS,
+                column_config={
+                    "표시": st.column_config.TextColumn("표시", width=86, disabled=True),
+                    "삭제": st.column_config.CheckboxColumn("삭제", width=52, default=False),
+                    "상품명": st.column_config.TextColumn("상품명", width="large", default=""),
+                    "유형": st.column_config.SelectboxColumn("유형", options=ITEM_TYPES, default="부품"),
+                    "담당자": st.column_config.TextColumn("담당자", default=DEFAULT_MANAGER),
+                    "거래처": st.column_config.TextColumn("거래처", default=DEFAULT_VENDOR),
+                    "필요 재고": st.column_config.NumberColumn("필요 재고", min_value=0, step=1, default=1),
+                    BARCODE_COLUMN: st.column_config.TextColumn(BARCODE_COLUMN, width="medium", default=""),
+                    SPEC_COLUMN: st.column_config.TextColumn(SPEC_COLUMN, width="medium", default=""),
+                    COST_COLUMN: st.column_config.TextColumn(COST_COLUMN, width="medium", default=""),
+                },
+            )
+            save_col, delete_col, spacer = st.columns([1.0, 1.0, 5.4], gap="small")
+            with save_col:
+                save_submitted = st.form_submit_button("BOM 저장", type="primary", use_container_width=True)
+            with delete_col:
+                selected_delete_submitted = st.form_submit_button("선택 삭제", use_container_width=True)
             with spacer:
                 st.empty()
+            if save_submitted:
+                next_df = prepare_editor_df(edited)
+                result = save_category_bom(category, strip_delete_column(next_df))
+                if result["ok"]:
+                    st.session_state[draft_key] = next_df
+                    st.session_state[edit_buffer_key] = next_df
+                    clear_bom_download_payload(category)
+                    st.success(f'{result["message"]} ({result["count"]}행)')
+                    st.rerun()
+                else:
+                    st.session_state[edit_buffer_key] = next_df
+                    st.warning(result["message"])
+            elif selected_delete_submitted:
+                deleted = count_checked_rows(edited)
+                next_df = prepare_editor_df(drop_checked_rows(edited))
+                if deleted:
+                    st.session_state[draft_key] = next_df
+                    st.session_state[edit_buffer_key] = next_df
+                    save_category_bom(category, strip_delete_column(next_df))
+                    clear_bom_download_payload(category)
+                    st.success(f"선택한 행을 삭제했습니다. ({deleted}행)")
+                    st.rerun()
+                else:
+                    st.warning("삭제 체크된 행이 없습니다.")
+
+        clear_col, spacer = st.columns([1.0, 6.4], gap="small")
+        with clear_col:
+            if st.button("작성 초기화", key="bom_draft_clear_btn", use_container_width=True):
+                st.session_state[edit_buffer_key] = rows_to_editor(fetch_bom_rows(category))
+                st.rerun()
+        with spacer:
+            st.empty()
 
 
 def render_bom_item_form(category: str, draft_key: str, current_df: pd.DataFrame) -> None:
@@ -1776,7 +1798,13 @@ def inject_bom_css() -> None:
             color: #24303c;
             font-size: 1.34rem;
             font-weight: 950;
-            margin: 0.1rem 0 0.75rem;
+            margin: 0.1rem 0 0.45rem;
+        }
+        .bom-section-label {
+            color: #24303c;
+            font-size: 0.88rem;
+            font-weight: 900;
+            margin: 0.25rem 0 0.12rem;
         }
         .bom-subtitle {
             color: #24303c;
@@ -1788,7 +1816,69 @@ def inject_bom_css() -> None:
             color: #3f596f;
             font-size: 0.86rem;
             font-weight: 900;
-            margin: 0.7rem 0 0.35rem;
+            margin: 0.35rem 0 0.35rem;
+        }
+        .st-key-bom_category_controls,
+        .st-key-bom_file_controls {
+            margin-bottom: 0.1rem;
+        }
+        .st-key-bom_category_controls div[data-testid="stVerticalBlock"],
+        .st-key-bom_file_controls div[data-testid="stVerticalBlock"] {
+            gap: 0.28rem;
+        }
+        .st-key-bom_file_controls div[data-testid="stFileUploader"] {
+            margin-bottom: 0;
+        }
+        .st-key-bom_file_controls div[data-testid="stFileUploader"] section {
+            background: #f6f5f2;
+            border-color: #cfd7dd;
+            border-radius: 6px;
+            padding: 0.45rem 0.65rem;
+        }
+        .st-key-bom_file_controls div[data-testid="stButton"],
+        .st-key-bom_file_controls div[data-testid="stDownloadButton"] {
+            width: fit-content !important;
+        }
+        .st-key-bom_file_controls div[data-testid="stButton"] button,
+        .st-key-bom_file_controls div[data-testid="stDownloadButton"] button {
+            background: #e7edf1 !important;
+            border: 1px solid #c8d0d7 !important;
+            border-radius: 6px !important;
+            color: #24303c !important;
+            font-size: 0.88rem !important;
+            font-weight: 850 !important;
+            height: 38px !important;
+            min-height: 38px !important;
+            padding: 0 16px !important;
+            width: auto !important;
+        }
+        .st-key-bom_tab_bar {
+            border-bottom: 1px solid #d7dde2;
+            margin: 0.05rem 0 0.42rem;
+            padding-top: 0;
+        }
+        .st-key-bom_tab_bar div[data-testid="stButton"] {
+            width: fit-content !important;
+        }
+        .st-key-bom_tab_bar div[data-testid="stButton"] button {
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            color: #66727f !important;
+            font-size: 0.95rem !important;
+            font-weight: 850 !important;
+            height: 34px !important;
+            min-height: 34px !important;
+            padding: 0 0.12rem !important;
+            width: auto !important;
+        }
+        .st-key-bom_tab_bar div[data-testid="column"]:has(#bom_active_view_tab) button,
+        .st-key-bom_tab_bar div[data-testid="column"]:has(#bom_active_edit_tab) button {
+            border-bottom-color: #536d84 !important;
+            color: #24303c !important;
+            font-weight: 950 !important;
         }
         div[data-testid="stExpander"]:has(.bom-outline-scroll) {
             background: #f6f5f2;
@@ -1831,7 +1921,7 @@ def inject_bom_css() -> None:
             background: #f6f5f2 !important;
             border: 1px solid #d7dde2;
             border-radius: 8px;
-            padding: 0.85rem;
+            padding: 0.62rem 0.75rem 0.75rem;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel),
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) * {
@@ -1849,7 +1939,9 @@ def inject_bom_css() -> None:
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) button {
             background: #e7edf1 !important;
             border-color: #c8d0d7 !important;
+            border-radius: 6px !important;
             color: #24303c !important;
+            min-height: 36px !important;
         }
         </style>
         """,
