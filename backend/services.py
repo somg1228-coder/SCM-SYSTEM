@@ -1165,6 +1165,22 @@ def product_category_text(product) -> str:
     )
 
 
+def product_master_preference_score(product) -> tuple[int, int, int, int, int]:
+    return (
+        1 if product_category_text(product) else 0,
+        1 if clean_text(getattr(product, "is_active", "")) == "사용" else 0,
+        1 if clean_text(getattr(product, "supplier", "")) else 0,
+        1 if clean_text(getattr(product, "product_name", "")) else 0,
+        int(getattr(product, "id", 0) or 0),
+    )
+
+
+def preferred_master_product(products: list[object]) -> object | None:
+    if not products:
+        return None
+    return max(products, key=product_master_preference_score)
+
+
 def product_master_template_df() -> pd.DataFrame:
     return pd.DataFrame(columns=PRODUCT_MASTER_COLUMNS)
 
@@ -1597,7 +1613,7 @@ def find_master_by_barcode(existing_by_barcode: dict[str, list[object]], row: di
     if not barcode:
         return None
     matches = existing_by_barcode.get(barcode, [])
-    return matches[0] if matches else None
+    return preferred_master_product(matches)
 
 
 def find_master_by_product_name(existing_by_product_name: dict[str, object], row: dict):
@@ -1972,7 +1988,7 @@ def apply_product_master_shared_import_preview(db: Session, source_type: str, pr
     summary["처리시간"] = round(time.perf_counter() - started_at, 2)
     message = f"{source_type} 마스터 기준정보 일괄 등록/업데이트 완료"
     if not sync_inventory:
-        message = f"{message} - 재고 동기화는 필요 시 버튼으로 실행하세요"
+        message = f"{message} - 재고현황은 최신 마스터 기준으로 바로 조회됩니다"
     return {
         "ok": True,
         "message": message,
@@ -2024,7 +2040,7 @@ def bulk_save_product_master(db: Session, source_type: str, rows: list[dict], sy
     synced_count = sync_inventory_from_product_master(db, source_type) if sync_inventory else 0
     message = f"{source_type} 상품 마스터 저장 완료"
     if not sync_inventory:
-        message = f"{message} - 재고 동기화는 필요 시 버튼으로 실행하세요"
+        message = f"{message} - 재고현황은 최신 마스터 기준으로 바로 조회됩니다"
     return {"ok": True, "message": message, "count": count, "synced_count": synced_count}
 
 
@@ -2062,7 +2078,7 @@ def import_product_master_excel(db: Session, source_type: str, file_bytes: bytes
     if not any(detail.get("_apply") for detail in preview.get("details", [])):
         preview.update({"ok": False, "message": f"반영 가능한 {source_type} 마스터 행이 없습니다.", "count": 0})
         return preview
-    return apply_product_master_shared_import_preview(db, source_type, preview, sync_inventory=True)
+    return apply_product_master_shared_import_preview(db, source_type, preview, sync_inventory=source_type != "3PL")
 
 
 def merge_inventory_daily_rows(target: InventoryDaily, duplicate: InventoryDaily) -> InventoryDaily:
@@ -2494,6 +2510,33 @@ def pending_inbound_qty_for_product(db: Session, source_type: str, work_date: da
     return int(value or 0)
 
 
+def inventory_master_rows_for_display(source_type: str, products: list[object]) -> list[object]:
+    if source_type != "3PL":
+        return products
+
+    result = []
+    groups: dict[str, list[object]] = {}
+    group_order: list[str] = []
+    for product in products:
+        barcode = normalize_barcode_identifier(getattr(product, "barcode", ""))
+        if not barcode:
+            result.append(product)
+            continue
+        if barcode not in groups:
+            group_order.append(barcode)
+        groups.setdefault(barcode, []).append(product)
+
+    preferred_by_barcode = {
+        barcode: preferred_master_product(matches)
+        for barcode, matches in groups.items()
+    }
+    for barcode in group_order:
+        product = preferred_by_barcode.get(barcode)
+        if product is not None:
+            result.append(product)
+    return result
+
+
 def daily_rows_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, InventoryDaily]:
     rows = list(
         db.execute(
@@ -2903,6 +2946,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     if active_only:
         query = query.where(model.is_active == "사용")
     products = list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
+    products = inventory_master_rows_for_display(source_type, products)
     latest_daily_by_sku = daily_rows_by_product(db, source_type, work_date, products)
 
     # Purchase/order history is intentionally not loaded during the normal page render.
@@ -2952,7 +2996,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         category_diagnostic = "" if category else "CATEGORY_EMPTY"
         supplier = product.supplier
         manager = product.memo
-        box_pallet_unit = format_box_pallet_unit(product.box_qty, product.pack_qty)
+        box_pallet_unit = format_box_pallet_unit(product.box_qty, product.pack_qty) or "0"
 
         rows.append(
             {

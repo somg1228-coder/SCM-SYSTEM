@@ -969,6 +969,8 @@ def init_db(force: bool = False, ensure_schema: bool | None = None) -> None:
     if ensure_schema is None:
         ensure_schema = is_sqlite_url(DATABASE_URL)
     if not ensure_schema:
+        if is_postgresql_url(DATABASE_URL):
+            ensure_postgresql_runtime_columns()
         _LAST_SCHEMA_INIT_OK = True
         _LAST_DB_ERROR = ""
         _INIT_DB_DONE = True
@@ -1016,6 +1018,7 @@ def init_db(force: bool = False, ensure_schema: bool | None = None) -> None:
         schema_started_at = time.perf_counter()
         _LAST_DB_STAGE = "postgres_schema_init"
         Base.metadata.create_all(bind=engine)
+        ensure_postgresql_runtime_columns()
         ensure_postgresql_columns()
         _LAST_SCHEMA_INIT_OK = True
         _LAST_DB_ERROR = ""
@@ -1249,6 +1252,44 @@ def ensure_sqlite_columns() -> None:
                         f"ALTER TABLE {quoted_table} ADD COLUMN {quote_sqlite_identifier(column_name)} {ddl}"
                     )
         ensure_product_master_barcode_constraints(conn)
+
+
+def ensure_postgresql_runtime_columns() -> None:
+    if not is_postgresql_url(DATABASE_URL):
+        return
+
+    column_specs = {
+        "inventory_daily": {
+            "product_code": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "available_stock": "INTEGER NOT NULL DEFAULT 0",
+            "supplier": "VARCHAR(160) NOT NULL DEFAULT ''",
+            "invoice_qty": "INTEGER NOT NULL DEFAULT 0",
+            "received_qty": "INTEGER NOT NULL DEFAULT 0",
+        },
+        "inventory_inbound": {
+            "product_code": "VARCHAR(120) NOT NULL DEFAULT ''",
+        },
+        "offline_product_master": {
+            "sort_order": "INTEGER NOT NULL DEFAULT 0",
+            "location_registered": "BOOLEAN NOT NULL DEFAULT false",
+        },
+        "thirdparty_product_master": {
+            "sort_order": "INTEGER NOT NULL DEFAULT 0",
+            "location_registered": "BOOLEAN NOT NULL DEFAULT false",
+        },
+        "warehouse_product_master": {
+            "sort_order": "INTEGER NOT NULL DEFAULT 0",
+            "location_registered": "BOOLEAN NOT NULL DEFAULT false",
+        },
+    }
+
+    with engine.begin() as conn:
+        for table_name, columns in column_specs.items():
+            for column_name, ddl in columns.items():
+                conn.exec_driver_sql(
+                    f'ALTER TABLE IF EXISTS "{table_name}" '
+                    f'ADD COLUMN IF NOT EXISTS "{column_name}" {ddl}'
+                )
 
 
 def ensure_postgresql_columns() -> None:
