@@ -1143,6 +1143,8 @@ def ensure_sqlite_columns() -> None:
             "product_code": "VARCHAR(120) NOT NULL DEFAULT ''",
             "available_stock": "INTEGER NOT NULL DEFAULT 0",
             "supplier": "VARCHAR(160) NOT NULL DEFAULT ''",
+            "invoice_qty": "INTEGER NOT NULL DEFAULT 0",
+            "received_qty": "INTEGER NOT NULL DEFAULT 0",
         },
         "inventory_inbound": {
             "product_code": "VARCHAR(120) NOT NULL DEFAULT ''",

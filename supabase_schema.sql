@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS "inventory_daily" (
     "safe_stock" INTEGER NOT NULL,
     "stock_status" VARCHAR(40) NOT NULL,
     "outbound_qty" INTEGER NOT NULL,
+    "invoice_qty" INTEGER DEFAULT 0 NOT NULL,
+    "received_qty" INTEGER DEFAULT 0 NOT NULL,
     "previous_inbound_date" DATE,
     "last_inbound_date" DATE,
     "inbound_qty" INTEGER NOT NULL,

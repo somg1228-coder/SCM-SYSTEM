@@ -97,7 +97,7 @@ DASHBOARD_FILTER_LABELS = {
 INVENTORY_MAIN_SECTIONS = ["현재재고", "안전재고", "재고이력", "MRP", "발주추천", "자재/반제품"]
 INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "창고"]
 INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "창고": "창고"}
-INVENTORY_SOURCE_TABS = ["재고조회", "입고내역", "출고내역", "대시보드", "마스터 관리"]
+INVENTORY_SOURCE_TABS = ["재고조회", "입고내역", "대시보드", "마스터 관리"]
 
 
 def render_inventory_page() -> None:
@@ -186,12 +186,12 @@ def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None
         render_daily_tab(source_type)
     elif selected_tab == "입고내역":
         render_inbound_tab(source_type)
-    elif selected_tab == "출고내역":
-        render_outbound_tab(source_type)
     elif selected_tab == "대시보드":
         render_inventory_dashboard_tab(source_type)
     elif selected_tab == "마스터 관리":
         product_master_page.render_master_tab(source_type, master_title(source_type))
+    else:
+        render_daily_tab(source_type)
 
 
 def with_db(action):
@@ -2765,11 +2765,13 @@ def upload_daily(label: str, upload_type: str, source_type: str, work_date: date
                 clear_inventory_editor_buffer(f"{source_type}_daily_editor_buffer_{work_date.isoformat()}")
             show_result(outcome)
         elif upload_type == "order":
-            outcome = with_db(lambda db: import_upload_result(f"{work_date:%Y-%m-%d} 주문조회 엑셀 반영 완료", services.import_order(db, source_type, work_date, file_bytes)))
-            if outcome and outcome.get("ok", True):
-                st.session_state[f"{source_type}_daily_date_sync"] = work_date
-                clear_inventory_editor_buffer(f"{source_type}_daily_editor_buffer_{work_date.isoformat()}")
-            show_result(outcome)
+            show_result(
+                {
+                    "ok": False,
+                    "message": "주문조회/출고 엑셀 별도 반영은 종료되었습니다. ERP 재고조회 파일의 송장+접수 값으로 출고예정을 반영하세요.",
+                    "count": 0,
+                }
+            )
 
 
 def render_empty_action_slot() -> None:
@@ -4539,7 +4541,7 @@ SOURCE_KEY_MAP = {"3PL": "threepl", "오프라인": "offline", "창고": "wareho
 DAILY_COLUMNS = ["선택", *INVENTORY_STATUS_DISPLAY_COLUMNS]
 INVENTORY_CURRENT_SOURCES = ["3PL", "오프라인", "창고"]
 INVENTORY_SOURCE_MAP = {"3PL": "3PL", "오프라인": "오프라인", "창고": "창고"}
-INVENTORY_SOURCE_TABS = ["재고", "입고", "출고", "대시보드", "마스터"]
+INVENTORY_SOURCE_TABS = ["재고", "입고", "대시보드", "마스터"]
 
 
 def master_title(source_type: str) -> str:
@@ -4553,12 +4555,12 @@ def render_inventory_page_lazy() -> None:
         render_daily_tab(source_type, selected_source)
     elif selected_tab == "입고":
         render_inbound_tab(source_type)
-    elif selected_tab == "출고":
-        render_outbound_tab(source_type)
     elif selected_tab == "대시보드":
         render_inventory_dashboard_tab(source_type)
     elif selected_tab == "마스터":
         product_master_page.render_master_tab(source_type, master_title(source_type))
+    else:
+        render_daily_tab(source_type, selected_source)
 
 
 def inventory_nav_token(value: str) -> str:
@@ -4634,7 +4636,7 @@ def render_inventory_navigation() -> tuple[str, str]:
                 INVENTORY_SOURCE_TABS,
                 f"inventory_{source_key(source_type)}_section",
                 default="재고",
-                item_weights=[0.34, 0.34, 0.34, 0.62, 0.48],
+                item_weights=[0.34, 0.34, 0.62, 0.48],
                 trailing_weight=8.0,
             )
     return selected_source, selected_tab
@@ -4646,12 +4648,12 @@ def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None
         render_daily_tab(source_type)
     elif selected_tab in {"입고", "입고내역"}:
         render_inbound_tab(source_type)
-    elif selected_tab in {"출고", "출고내역"}:
-        render_outbound_tab(source_type)
     elif selected_tab == "대시보드":
         render_inventory_dashboard_tab(source_type)
     elif selected_tab in {"마스터", "마스터관리"}:
         product_master_page.render_master_tab(source_type, master_title(source_type))
+    else:
+        render_daily_tab(source_type)
 
 
 def daily_to_editor(rows: list[dict]) -> pd.DataFrame:

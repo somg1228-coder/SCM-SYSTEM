@@ -32,6 +32,8 @@ class InventoryDaily(Base):
     safe_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     stock_status: Mapped[str] = mapped_column(String(40), default="", nullable=False)
     outbound_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    invoice_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    received_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     previous_inbound_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     last_inbound_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     inbound_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
