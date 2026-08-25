@@ -3699,10 +3699,14 @@ def apply_erp_stock_upload_file(
         if normalize_product_code_text(product.sku)
     }
     products_by_key: dict[tuple[str, str], object] = {}
+    products_by_name: dict[str, list[object]] = {}
     for product in products:
         key = erp_stock_match_key(product.barcode, product.product_name)
         if key[0] and key[1]:
             products_by_key.setdefault(key, product)
+        product_name_key = normalize_erp_stock_product_name(product.product_name)
+        if product_name_key:
+            products_by_name.setdefault(product_name_key, []).append(product)
     mark_inventory_update_stage(timings, "db_master_loading", stage_started_at)
 
     stage_started_at = time.perf_counter()
@@ -3728,6 +3732,8 @@ def apply_erp_stock_upload_file(
         product = products_by_sku.get(product_code) if product_code else None
         if product is None:
             product = products_by_key.get((barcode, product_name))
+        if product is None and source_type == "3PL" and product_name and len(products_by_name.get(product_name, [])) == 1:
+            product = products_by_name[product_name][0]
         if barcode == trace_barcode:
             trace_upload_rows.append(
                 {
@@ -3752,7 +3758,7 @@ def apply_erp_stock_upload_file(
         elif not received_ok:
             reason = "접수 수량 오류"
         elif product is None:
-            reason = "상품코드 또는 바코드+상품명 매칭 실패"
+            reason = "상품코드 또는 바코드+상품명/상품명 매칭 실패"
         if reason:
             unmatched_rows.append(
                 {
