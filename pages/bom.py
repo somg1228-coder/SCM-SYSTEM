@@ -102,13 +102,12 @@ def render_category_controls(categories: list[str]) -> str:
 def render_bom_file_controls(category: str, saved_df: pd.DataFrame) -> None:
     st.markdown('<div class="bom-section-label">BOM 파일 관리</div>', unsafe_allow_html=True)
     upload_col, import_col, download_col, spacer_col = st.columns(
-        [1.8, 0.72, 0.95, 2.2],
+        [2.6, 0.55, 0.72, 2.2],
         gap="small",
     )
     with upload_col:
         uploaded = st.file_uploader("BOM 엑셀 업로드", type=["xlsx", "xls"], key="bom_upload")
     with import_col:
-        st.write("")
         if st.button("엑셀 반영", key="bom_import_btn"):
             if uploaded is None:
                 st.warning("먼저 BOM 엑셀 파일을 업로드하세요.")
@@ -128,7 +127,6 @@ def render_bom_file_controls(category: str, saved_df: pd.DataFrame) -> None:
                     else:
                         st.warning(result["message"])
     with download_col:
-        st.write("")
         download_df = saved_df.drop(columns=["삭제"], errors="ignore")
         st.download_button(
             "BOM 다운로드",
@@ -1837,6 +1835,7 @@ def inject_bom_css() -> None:
         }
         .st-key-bom_file_controls div[data-testid="stButton"],
         .st-key-bom_file_controls div[data-testid="stDownloadButton"] {
+            margin-top: 1.58rem;
             width: fit-content !important;
         }
         .st-key-bom_file_controls div[data-testid="stButton"] button,
