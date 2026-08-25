@@ -3429,11 +3429,14 @@ def prepare_stock_upload_preview(
     stage_started_at = time.perf_counter()
     products = list(db.execute(select(product_master_model(source_type))).scalars())
     by_barcode_name: dict[tuple[str, str], object] = {}
+    by_product_name: dict[str, list[object]] = {}
     for product in products:
         barcode_key = normalize_barcode_text(product.barcode)
         product_name_key = clean_text(product.product_name)
         if barcode_key and product_name_key:
             by_barcode_name.setdefault((barcode_key, product_name_key), product)
+        if product_name_key:
+            by_product_name.setdefault(product_name_key, []).append(product)
     mark_inventory_update_stage(timings, "db_master_loading", stage_started_at)
 
     stage_started_at = time.perf_counter()
@@ -3486,9 +3489,15 @@ def prepare_stock_upload_preview(
             product = by_barcode_name.get((barcode, product_name))
             if product:
                 match_method = "바코드+상품명"
+            elif source_type == "3PL" and len(by_product_name.get(product_name, [])) == 1:
+                product = by_product_name[product_name][0]
+                match_method = "상품명"
             else:
                 unmatched_count += 1
                 errors.append("바코드+상품명 매칭 실패")
+        elif source_type == "3PL" and product_name and len(by_product_name.get(product_name, [])) == 1:
+            product = by_product_name[product_name][0]
+            match_method = "상품명"
         else:
             unmatched_count += 1
             errors.append("바코드/상품명 없음")
