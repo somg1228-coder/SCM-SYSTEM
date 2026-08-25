@@ -102,7 +102,7 @@ def render_category_controls(categories: list[str]) -> str:
 def render_bom_file_controls(category: str, saved_df: pd.DataFrame) -> None:
     st.markdown('<div class="bom-section-label">BOM 파일 관리</div>', unsafe_allow_html=True)
     upload_col, import_col, download_col, spacer_col = st.columns(
-        [2.6, 0.55, 0.72, 2.2],
+        [2.8, 0.55, 0.72, 2.0],
         gap="small",
     )
     with upload_col:
@@ -1821,6 +1821,16 @@ def inject_bom_css() -> None:
         .st-key-bom_file_controls div[data-testid="stVerticalBlock"] {
             gap: 0.28rem;
         }
+        .st-key-bom_file_controls div[data-testid="stHorizontalBlock"]:has(div[data-testid="stFileUploader"]):has(.st-key-bom_import_btn) {
+            align-items: start !important;
+            column-gap: clamp(12px, 1.2vw, 20px) !important;
+            display: grid !important;
+            grid-template-columns: minmax(360px, clamp(430px, 42vw, 680px)) max-content max-content minmax(0, 1fr) !important;
+        }
+        .st-key-bom_file_controls div[data-testid="stHorizontalBlock"]:has(div[data-testid="stFileUploader"]):has(.st-key-bom_import_btn) > div[data-testid="column"] {
+            min-width: 0 !important;
+            width: auto !important;
+        }
         .st-key-bom_file_controls div[data-testid="stFileUploader"] {
             margin-bottom: 0;
         }
@@ -1832,7 +1842,7 @@ def inject_bom_css() -> None:
         }
         .st-key-bom_file_controls div[data-testid="stButton"],
         .st-key-bom_file_controls div[data-testid="stDownloadButton"] {
-            margin-top: 1.58rem;
+            margin-top: 1.78rem;
             width: fit-content !important;
         }
         .st-key-bom_file_controls div[data-testid="stButton"] button,
@@ -1846,7 +1856,26 @@ def inject_bom_css() -> None:
             height: 38px !important;
             min-height: 38px !important;
             padding: 0 16px !important;
+            white-space: nowrap !important;
             width: auto !important;
+        }
+        @media (max-width: 900px) {
+            .st-key-bom_file_controls div[data-testid="stHorizontalBlock"]:has(div[data-testid="stFileUploader"]):has(.st-key-bom_import_btn) {
+                grid-template-columns: minmax(320px, 1fr) max-content max-content !important;
+            }
+            .st-key-bom_file_controls div[data-testid="stHorizontalBlock"]:has(div[data-testid="stFileUploader"]):has(.st-key-bom_import_btn) > div[data-testid="column"]:last-child {
+                display: none !important;
+            }
+        }
+        @media (max-width: 640px) {
+            .st-key-bom_file_controls div[data-testid="stHorizontalBlock"]:has(div[data-testid="stFileUploader"]):has(.st-key-bom_import_btn) {
+                grid-template-columns: 1fr !important;
+                row-gap: 0.45rem !important;
+            }
+            .st-key-bom_file_controls div[data-testid="stButton"],
+            .st-key-bom_file_controls div[data-testid="stDownloadButton"] {
+                margin-top: 0 !important;
+            }
         }
         .st-key-bom_tab_bar_view,
         .st-key-bom_tab_bar_edit {
