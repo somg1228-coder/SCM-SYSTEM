@@ -21,9 +21,11 @@ else:
 
 
 COST_COLUMN = "제품 원가 / 입고가"
-BARCODE_COLUMN = "88바코드"
+BARCODE_COLUMN = "바코드"
 SPEC_COLUMN = "규격"
-LEGACY_BARCODE_SPEC_COLUMN = "88바코드/규격"
+LEGACY_BARCODE_COLUMNS = ["88바코드"]
+LEGACY_BARCODE_SPEC_COLUMN = "바코드/규격"
+LEGACY_BARCODE_SPEC_COLUMNS = ["바코드/규격", "88바코드/규격"]
 BOM_COLUMNS = ["상품명", "유형", "담당자", "거래처", "필요 재고", BARCODE_COLUMN, SPEC_COLUMN, COST_COLUMN]
 EDITOR_COLUMNS = ["삭제", *BOM_COLUMNS]
 EDITOR_DISPLAY_COLUMNS = ["표시", *EDITOR_COLUMNS]
@@ -38,9 +40,9 @@ IMPORT_HEADER_ALIASES = {
     "담당자": ["담당자", "담당", "관리자"],
     "거래처": ["거래처", "공급처", "업체", "vendor"],
     "필요 재고": ["필요재고", "필요 재고", "필요수량", "수량", "소요량", "requiredstock"],
-    BARCODE_COLUMN: ["88바코드", "바코드", "옵션바코드", "barcode"],
+    BARCODE_COLUMN: ["바코드", "88바코드", "옵션바코드", "barcode"],
     SPEC_COLUMN: ["규격", "사양", "스펙", "spec"],
-    LEGACY_BARCODE_SPEC_COLUMN: ["88바코드/규격", "바코드/규격", "barcode/spec"],
+    LEGACY_BARCODE_SPEC_COLUMN: [*LEGACY_BARCODE_SPEC_COLUMNS, "barcode/spec"],
     COST_COLUMN: ["제품 원가 / 입고가", "제품원가", "입고가", "원가", "비고", "메모", "memo"],
 }
 
@@ -354,7 +356,7 @@ def render_bom_item_form(category: str, draft_key: str, current_df: pd.DataFrame
     }
     if register_submitted:
         if not str(item_name).strip() and not str(barcode).strip() and not str(spec).strip():
-            st.warning("상품명, 88바코드 또는 규격을 입력하세요.")
+            st.warning("상품명, 바코드 또는 규격을 입력하세요.")
             return
         if not is_group_item_type(item_type) and parent_target == "end" and has_group_items(clean_df):
             st.warning("구성품을 넣을 완제품을 선택하세요.")
@@ -635,7 +637,14 @@ def split_legacy_barcode_spec(value) -> tuple[str, str]:
 def looks_like_barcode(value) -> bool:
     text = str(value or "").strip()
     digits = "".join(ch for ch in text if ch.isdigit())
-    return len(digits) >= 8 and all(ch.isdigit() or ch in {" ", "-", "."} for ch in text)
+    if len(digits) >= 8 and all(ch.isdigit() or ch in {" ", "-", "."} for ch in text):
+        return True
+    compact = "".join(ch for ch in text if ch not in {" ", "-", ".", "_"})
+    if len(compact) < 4:
+        return False
+    if compact[0].upper() not in {"R", "S"}:
+        return False
+    return all(ch.isascii() and (ch.isalnum() or ch in {"-", ".", "_"}) for ch in text)
 
 
 def rows_to_editor(rows: list[CategoryBomItem]) -> pd.DataFrame:
@@ -662,8 +671,21 @@ def prepare_editor_df(df: pd.DataFrame) -> pd.DataFrame:
     prepared = df.copy()
     if COST_COLUMN not in prepared.columns and "비고" in prepared.columns:
         prepared[COST_COLUMN] = prepared["비고"]
-    if LEGACY_BARCODE_SPEC_COLUMN in prepared.columns:
-        legacy_values = prepared[LEGACY_BARCODE_SPEC_COLUMN].map(split_legacy_barcode_spec)
+    for legacy_column in LEGACY_BARCODE_COLUMNS:
+        if legacy_column not in prepared.columns:
+            continue
+        legacy_values = prepared[legacy_column].fillna("").astype(str).str.strip()
+        if BARCODE_COLUMN not in prepared.columns:
+            prepared[BARCODE_COLUMN] = legacy_values
+        else:
+            prepared[BARCODE_COLUMN] = prepared[BARCODE_COLUMN].where(
+                prepared[BARCODE_COLUMN].fillna("").astype(str).str.strip().ne(""),
+                legacy_values,
+            )
+    for legacy_column in LEGACY_BARCODE_SPEC_COLUMNS:
+        if legacy_column not in prepared.columns:
+            continue
+        legacy_values = prepared[legacy_column].map(split_legacy_barcode_spec)
         if BARCODE_COLUMN not in prepared.columns:
             prepared[BARCODE_COLUMN] = legacy_values.map(lambda value: value[0])
         else:
@@ -685,10 +707,23 @@ def prepare_editor_df(df: pd.DataFrame) -> pd.DataFrame:
     prepared["삭제"] = prepared["삭제"].map(is_checked).astype(bool)
     for column in ["상품명", "담당자", "거래처", BARCODE_COLUMN, SPEC_COLUMN, COST_COLUMN]:
         prepared[column] = prepared[column].fillna("").map(lambda value: str(value).strip())
+    prepared = move_spec_barcodes_to_barcode(prepared)
     prepared["유형"] = prepared["유형"].fillna("부품").map(lambda value: str(value).strip() or "부품")
     prepared["유형"] = prepared["유형"].map(lambda value: value if value in ITEM_TYPES else "기타")
     prepared["필요 재고"] = pd.to_numeric(prepared["필요 재고"], errors="coerce").fillna(1).astype(int)
     return prepared
+
+
+def move_spec_barcodes_to_barcode(df: pd.DataFrame) -> pd.DataFrame:
+    if BARCODE_COLUMN not in df.columns or SPEC_COLUMN not in df.columns:
+        return df
+    barcode_empty = df[BARCODE_COLUMN].fillna("").astype(str).str.strip().eq("")
+    spec_is_barcode = df[SPEC_COLUMN].map(looks_like_barcode)
+    move_mask = barcode_empty & spec_is_barcode
+    if move_mask.any():
+        df.loc[move_mask, BARCODE_COLUMN] = df.loc[move_mask, SPEC_COLUMN].fillna("").astype(str).str.strip()
+        df.loc[move_mask, SPEC_COLUMN] = ""
+    return df
 
 
 def style_bom_editor_df(df: pd.DataFrame):
@@ -1087,7 +1122,7 @@ def bom_outline_html(groups: list[dict], category: str) -> str:
                     </div>
                     <div class="outline-field">
                         <label for="barcodeSearch">바코드 검색</label>
-                        <input id="barcodeSearch" type="search" placeholder="88바코드 또는 규격 입력">
+                        <input id="barcodeSearch" type="search" placeholder="바코드 또는 규격 입력">
                     </div>
                 </div>
                 <div class="outline-actions">
@@ -1636,7 +1671,7 @@ def select_import_sheet(file_bytes: bytes) -> pd.DataFrame:
             best_df = candidate
             best_score = score
     if best_score <= 0:
-        raise ValueError("BOM 양식의 헤더를 찾지 못했습니다. 상품명/유형/필요 재고/88바코드 컬럼을 확인해주세요.")
+        raise ValueError("BOM 양식의 헤더를 찾지 못했습니다. 상품명/유형/필요 재고/바코드 컬럼을 확인해주세요.")
     return best_df
 
 
