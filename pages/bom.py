@@ -151,11 +151,10 @@ def render_bom_tab_selector(category: str) -> str:
         current = labels[0]
     st.session_state[state_key] = current
 
-    with st.container(key="bom_tab_bar"):
+    tab_bar_key = "bom_tab_bar_view" if current == labels[0] else "bom_tab_bar_edit"
+    with st.container(key=tab_bar_key):
         view_col, edit_col, spacer_col = st.columns([1.25, 1.0, 5.6], gap="small")
         with view_col:
-            if current == labels[0]:
-                st.markdown('<span id="bom_active_view_tab"></span>', unsafe_allow_html=True)
             st.button(
                 labels[0],
                 key="bom_tab_view_btn",
@@ -163,8 +162,6 @@ def render_bom_tab_selector(category: str) -> str:
                 args=(state_key, labels[0]),
             )
         with edit_col:
-            if current == labels[1]:
-                st.markdown('<span id="bom_active_edit_tab"></span>', unsafe_allow_html=True)
             st.button(
                 labels[1],
                 key="bom_tab_edit_btn",
@@ -1851,15 +1848,19 @@ def inject_bom_css() -> None:
             padding: 0 16px !important;
             width: auto !important;
         }
-        .st-key-bom_tab_bar {
+        .st-key-bom_tab_bar_view,
+        .st-key-bom_tab_bar_edit {
             border-bottom: 1px solid #d7dde2;
             margin: 0.05rem 0 0.42rem;
             padding-top: 0;
         }
-        .st-key-bom_tab_bar div[data-testid="stButton"] {
+        .st-key-bom_tab_bar_view div[data-testid="stButton"],
+        .st-key-bom_tab_bar_edit div[data-testid="stButton"] {
+            margin: 0 !important;
             width: fit-content !important;
         }
-        .st-key-bom_tab_bar div[data-testid="stButton"] button {
+        .st-key-bom_tab_bar_view div[data-testid="stButton"] button,
+        .st-key-bom_tab_bar_edit div[data-testid="stButton"] button {
             background: transparent !important;
             border: 0 !important;
             border-bottom: 2px solid transparent !important;
@@ -1873,8 +1874,8 @@ def inject_bom_css() -> None:
             padding: 0 0.12rem !important;
             width: auto !important;
         }
-        .st-key-bom_tab_bar div[data-testid="column"]:has(#bom_active_view_tab) button,
-        .st-key-bom_tab_bar div[data-testid="column"]:has(#bom_active_edit_tab) button {
+        .st-key-bom_tab_bar_view .st-key-bom_tab_view_btn button,
+        .st-key-bom_tab_bar_edit .st-key-bom_tab_edit_btn button {
             border-bottom-color: #536d84 !important;
             color: #24303c !important;
             font-weight: 950 !important;
