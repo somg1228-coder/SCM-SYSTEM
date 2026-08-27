@@ -180,6 +180,7 @@ def render_master_tab(source_type: str, title: str) -> None:
                 if uses_simple_master_form(source_type)
                 else master_to_editor(rows)
             ).drop(columns=["미사용 처리"], errors="ignore")
+            download_df = dedupe_master_download_df(download_df)
             if uses_threepl_master_form(source_type):
                 download_df = download_df[THREEPL_MASTER_COLUMNS]
             st.download_button(
@@ -293,6 +294,7 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                         st.session_state.pop(preview_key, None)
                         if result and result.get("ok", True):
                             clear_master_editor_buffer(key)
+                            reset_threepl_master_filters(key)
                             clear_inventory_view_state_for_source(key)
                         st.rerun()
         with template_col:
@@ -307,7 +309,8 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
             )
         with download_col:
             st.write("")
-            download_df = sorted_df[THREEPL_MASTER_COLUMNS] if not sorted_df.empty else threepl_master_template_df()
+            export_source_df = dedupe_master_download_df(sorted_df) if not sorted_df.empty else threepl_master_template_df()
+            download_df = export_source_df[THREEPL_MASTER_COLUMNS] if not export_source_df.empty else threepl_master_template_df()
             st.download_button(
                 "마스터 다운로드",
                 data=threepl_master_excel(download_df),
@@ -373,16 +376,22 @@ def render_threepl_import_preview(source_type: str, key: str, preview_key: str, 
     render_threepl_import_details(preview)
     apply_col, cancel_col, spacer = st.columns([1.0, 1.0, 4.0], gap="small")
     applyable_count = sum(1 for detail in preview.get("details", []) if detail.get("_apply"))
+    summary = preview.get("summary") or {}
+    blocking_error_count = int(summary.get("실패 수") or 0) + int(summary.get("오류 수") or 0)
     with apply_col:
-        if st.button("미리보기 내용 반영", type="primary", key=f"product_master_{key}_preview_apply", disabled=applyable_count == 0, use_container_width=True):
+        if st.button("미리보기 내용 반영", type="primary", key=f"product_master_{key}_preview_apply", disabled=applyable_count == 0 or blocking_error_count > 0, use_container_width=True):
             if show_sqlite_write_status(f"{source_type} 마스터 업로드 반영"):
                 result = with_db(lambda db: services.apply_product_master_shared_import_preview(db, source_type, preview, sync_inventory=source_type != "3PL"))
                 st.session_state[result_key] = result
                 st.session_state.pop(preview_key, None)
                 if result and result.get("ok", True):
                     clear_master_editor_buffer(key)
+                    if source_type == "3PL":
+                        reset_threepl_master_filters(key)
                     clear_inventory_view_state_for_source(key)
                 st.rerun()
+        if blocking_error_count > 0:
+            st.caption("검증 실패 항목을 수정해야 기존 마스터를 변경할 수 있습니다.")
     with cancel_col:
         if st.button("취소", key=f"product_master_{key}_preview_cancel", use_container_width=True):
             st.session_state.pop(preview_key, None)
@@ -410,7 +419,16 @@ def render_threepl_import_summary(payload: dict) -> None:
     summary = payload.get("summary") or {}
     if not summary:
         return
-    labels = [
+    preferred_labels = [
+        "기존 마스터",
+        "새 마스터 파일",
+        "유지/갱신",
+        "신규",
+        "삭제",
+        "중복 제거",
+        "최종 마스터",
+    ]
+    fallback_labels = [
         "전체 엑셀 행 수",
         "신규 등록 수",
         "기존 품목 업데이트 수",
@@ -419,6 +437,7 @@ def render_threepl_import_summary(payload: dict) -> None:
         "오류 수",
         "처리시간",
     ]
+    labels = preferred_labels if any(label in summary for label in preferred_labels) else fallback_labels
     cols = st.columns(len(labels), gap="small")
     for col, label in zip(cols, labels, strict=True):
         value = summary.get(label, 0) or 0
@@ -426,6 +445,11 @@ def render_threepl_import_summary(payload: dict) -> None:
             col.metric(label, f"{float(value):.2f}초")
         else:
             col.metric(label, f"{int(value):,}")
+    preview_labels = ["추가 예정", "변경 예정", "삭제 예정"]
+    if any(label in summary for label in preview_labels):
+        preview_cols = st.columns(len(preview_labels), gap="small")
+        for col, label in zip(preview_cols, preview_labels, strict=True):
+            col.metric(label, f"{int(summary.get(label, 0) or 0):,}")
 
 
 def render_threepl_import_details(payload: dict) -> None:
@@ -437,6 +461,7 @@ def render_threepl_import_details(payload: dict) -> None:
     display_rows = [
         {
             "행 번호": detail.get("행 번호", ""),
+            "SKU": detail.get("SKU", ""),
             "바코드": detail.get("바코드", detail.get("SKU", "")),
             "상품명": detail.get("상품명", ""),
             "처리 유형": detail.get("처리 유형", ""),
@@ -866,6 +891,24 @@ def clear_downstream_inventory_caches() -> None:
 
 def source_key(source_type: str) -> str:
     return SOURCE_KEY_MAP.get(source_type, source_type)
+
+
+def dedupe_master_download_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty or "SKU" not in df.columns or services is None:
+        return df
+    normalizer = getattr(services, "normalize_erp_product_code", None)
+    if normalizer is None:
+        return df
+    prepared = df.copy()
+    prepared["_normalized_sku"] = prepared["SKU"].map(normalizer)
+    prepared["_filled_score"] = prepared.apply(
+        lambda row: sum(1 for value in row.drop(labels=["_normalized_sku"], errors="ignore") if str(value or "").strip()),
+        axis=1,
+    )
+    prepared = prepared.sort_values(["_normalized_sku", "_filled_score"], ascending=[True, False], kind="stable")
+    prepared = prepared.drop_duplicates("_normalized_sku", keep="first")
+    prepared = prepared.sort_index(kind="stable")
+    return prepared.drop(columns=["_normalized_sku", "_filled_score"], errors="ignore")
 
 
 def uses_simple_master_form(source_type: str) -> bool:

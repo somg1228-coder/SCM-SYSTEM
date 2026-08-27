@@ -5723,6 +5723,7 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
                                 file_bytes,
                                 uploaded.name,
                                 current_user_name(),
+                                progress_callback=lambda message: st.write(message),
                             )
 
                         outcome = with_db(upload_action)
@@ -5749,7 +5750,6 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
 
 def render_inventory_lookup_panel(source_type: str, work_date: date, rows: list[dict]) -> None:
     base_df = daily_to_editor(rows)
-    render_lookup_erp_update_panel(source_type, work_date, f"{source_type}_daily_date")
     filters = render_inventory_filters(source_type, base_df)
     extra_cols = st.columns([0.8, 0.95, 4.4], gap="small")
     with extra_cols[0]:
@@ -6004,6 +6004,8 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
 
     with st.container(key=f"{source_key(source_type)}_daily_date_wrapper"):
         work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
+    if workflow == "재고 조회":
+        render_lookup_erp_update_panel(source_type, work_date, daily_date_key)
     rows = fetch_master_inventory(source_type, work_date)
     if rows and saved_work_dates and work_date not in set(saved_work_dates):
         st.caption(f"{work_date:%Y-%m-%d} 기준 저장된 현재고가 없어 마스터 품목을 0재고로 표시합니다. 최신 저장일자는 {saved_work_dates[0]:%Y-%m-%d}입니다.")
