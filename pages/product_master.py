@@ -901,14 +901,40 @@ def dedupe_master_download_df(df: pd.DataFrame) -> pd.DataFrame:
         return df
     prepared = df.copy()
     prepared["_normalized_sku"] = prepared["SKU"].map(normalizer)
-    prepared["_filled_score"] = prepared.apply(
-        lambda row: sum(1 for value in row.drop(labels=["_normalized_sku"], errors="ignore") if str(value or "").strip()),
+    name_column = "상품명" if "상품명" in prepared.columns else None
+    barcode_column = "바코드" if "바코드" in prepared.columns else None
+    name_normalizer = getattr(services, "normalize_product_name_match_key", lambda value: str(value or "").strip())
+    barcode_normalizer = getattr(services, "normalize_product_barcode_match_key", lambda value: str(value or "").strip())
+    prepared["_normalized_product_name"] = prepared[name_column].map(name_normalizer) if name_column else ""
+    prepared["_normalized_barcode"] = prepared[barcode_column].map(barcode_normalizer) if barcode_column else ""
+    prepared["_dedupe_key"] = prepared.apply(
+        lambda row: (
+            f"sku:{row['_normalized_sku']}|name:{row['_normalized_product_name']}"
+            if row["_normalized_sku"]
+            else f"barcode:{row['_normalized_barcode']}|name:{row['_normalized_product_name']}"
+            if row["_normalized_barcode"] and row["_normalized_product_name"]
+            else f"row:{row.name}"
+        ),
         axis=1,
     )
-    prepared = prepared.sort_values(["_normalized_sku", "_filled_score"], ascending=[True, False], kind="stable")
-    prepared = prepared.drop_duplicates("_normalized_sku", keep="first")
+    prepared["_filled_score"] = prepared.apply(
+        lambda row: sum(
+            1
+            for value in row.drop(
+                labels=["_normalized_sku", "_normalized_product_name", "_normalized_barcode", "_dedupe_key"],
+                errors="ignore",
+            )
+            if str(value or "").strip()
+        ),
+        axis=1,
+    )
+    prepared = prepared.sort_values(["_dedupe_key", "_filled_score"], ascending=[True, False], kind="stable")
+    prepared = prepared.drop_duplicates("_dedupe_key", keep="first")
     prepared = prepared.sort_index(kind="stable")
-    return prepared.drop(columns=["_normalized_sku", "_filled_score"], errors="ignore")
+    return prepared.drop(
+        columns=["_normalized_sku", "_normalized_product_name", "_normalized_barcode", "_dedupe_key", "_filled_score"],
+        errors="ignore",
+    )
 
 
 def uses_simple_master_form(source_type: str) -> bool:

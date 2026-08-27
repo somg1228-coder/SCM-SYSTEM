@@ -249,6 +249,72 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_threepl_full_name_variants_are_not_omitted_from_inventory_output(self) -> None:
+        work_date = date(2026, 8, 26)
+        db = self.Session()
+        try:
+            db.add_all(
+                [
+                    ThirdpartyProductMaster(
+                        sku="01467",
+                        barcode="8809722101727",
+                        product_name="vertical fullset",
+                        sort_order=1,
+                    ),
+                    ThirdpartyProductMaster(
+                        sku="1467",
+                        barcode="8809722101727",
+                        product_name="vertical fullset gift excluded",
+                        sort_order=2,
+                    ),
+                ]
+            )
+            db.add(
+                InventoryDaily(
+                    source_type="3PL",
+                    work_date=work_date,
+                    product_code="1467",
+                    product_name="vertical fullset gift excluded",
+                    barcode="8809722101727",
+                    current_stock=30,
+                    available_stock=30,
+                    outbound_qty=2,
+                )
+            )
+            db.commit()
+
+            rows = services.master_based_inventory_rows(db, "3PL", work_date)
+            by_name = {row["product_name"]: row for row in rows}
+
+            self.assertEqual(len(rows), 2)
+            self.assertIn("vertical fullset", by_name)
+            self.assertIn("vertical fullset gift excluded", by_name)
+            self.assertEqual(by_name["vertical fullset"]["available_stock"], 0)
+            self.assertEqual(by_name["vertical fullset gift excluded"]["available_stock"], 30)
+            self.assertEqual(by_name["vertical fullset gift excluded"]["pending_outbound_qty"], 2)
+        finally:
+            db.close()
+
+    def test_threepl_file_identity_uses_full_product_name_with_normalized_sku(self) -> None:
+        base = {
+            "sku": "01467",
+            "barcode": "8809722101727",
+            "product_name": "vertical fullset",
+        }
+        same_product = {
+            "sku": "1467",
+            "barcode": "8809722101727",
+            "product_name": "vertical fullset",
+        }
+        gift_excluded = {
+            "sku": "1467",
+            "barcode": "8809722101727",
+            "product_name": "vertical fullset gift excluded",
+        }
+
+        self.assertEqual(services.threepl_master_file_identity(base), services.threepl_master_file_identity(same_product))
+        self.assertNotEqual(services.threepl_master_file_identity(base), services.threepl_master_file_identity(gift_excluded))
+
     def test_threepl_master_replacement_keeps_existing_master_when_file_validation_fails(self) -> None:
         db = self.Session()
         try:

@@ -233,6 +233,10 @@ def find_product_master_from_lookup(
     barcode = normalize_product_barcode_match_key(barcode)
     product_name = normalize_product_name_match_key(product_name)
     source_type = clean_text(lookup.get("_source_type"))
+    if product_name_first_match(source_type) and product_name:
+        product = preferred_master_product(lookup.get("name_list", {}).get(product_name, []))
+        if product is not None:
+            return product
     product = lookup["sku"].get(sku)
     if product is None and product_name:
         product = preferred_master_product(lookup.get("name_list", {}).get(product_name, []))
@@ -1008,6 +1012,10 @@ def product_lookup_maps(products: list) -> tuple[dict[str, object], dict[tuple[s
     return by_sku, by_barcode_name, by_barcode, by_name
 
 
+def product_name_first_match(source_type: str) -> bool:
+    return clean_text(source_type) == "3PL"
+
+
 def match_product_detail_from_maps(
     product_code: str,
     barcode: str,
@@ -1021,6 +1029,11 @@ def match_product_detail_from_maps(
     sku = normalize_product_code_text(product_code)
     barcode = normalize_product_barcode_match_key(barcode)
     product_name = normalize_product_name_match_key(product_name)
+    product = None
+    if product_name_first_match(source_type) and product_name:
+        product = preferred_master_product(by_name.get(product_name, []))
+        if product is not None:
+            return product, "상품명"
     product = by_sku.get(sku)
     if product is not None:
         return product, "상품코드"
@@ -1595,15 +1608,24 @@ def threepl_master_identity(row: dict) -> str:
     return f"name:{product_name}" if product_name else ""
 
 
-def threepl_master_file_identity(row: dict) -> tuple[str, str]:
+def threepl_master_file_identity(row: dict) -> tuple[str, ...]:
     sku_key = normalize_erp_product_code(row.get("sku"))
+    product_name = normalize_product_name_match_key(row.get("product_name"))
     if sku_key:
-        return ("sku", sku_key)
+        return ("sku_name", sku_key, product_name) if product_name else ("sku", sku_key)
     barcode = normalize_product_barcode_match_key(row.get("barcode"))
     if barcode:
-        return ("barcode", barcode)
-    product_name = normalize_product_name_match_key(row.get("product_name"))
+        return ("barcode_name", barcode, product_name) if product_name else ("barcode", barcode)
     return ("name", product_name)
+
+
+def threepl_master_file_identity_label(identity: tuple[str, ...]) -> str:
+    identity_type = identity[0] if identity else ""
+    if identity_type in {"sku", "sku_name"}:
+        return "SKU+상품명" if identity_type == "sku_name" else "SKU"
+    if identity_type in {"barcode", "barcode_name"}:
+        return "바코드+상품명" if identity_type == "barcode_name" else "바코드"
+    return "상품명"
 
 
 def product_db_id(product) -> int:
@@ -1633,13 +1655,14 @@ def match_threepl_replacement_product(existing_products: list[object], row: dict
         if product is not None:
             return product
 
-    if sku_key:
-        sku_matches = [
+    if sku_key and product_name:
+        sku_name_matches = [
             product
             for product in existing_products
             if normalize_erp_product_code(getattr(product, "sku", "")) == sku_key
+            and normalize_product_name_match_key(getattr(product, "product_name", "")) == product_name
         ]
-        product = preferred_unclaimed_master_product(sku_matches, claimed_ids)
+        product = preferred_unclaimed_master_product(sku_name_matches, claimed_ids)
         if product is not None:
             return product
 
@@ -1653,6 +1676,16 @@ def match_threepl_replacement_product(existing_products: list[object], row: dict
         if product is not None:
             return product
 
+    if sku_key:
+        sku_matches = [
+            product
+            for product in existing_products
+            if normalize_erp_product_code(getattr(product, "sku", "")) == sku_key
+        ]
+        product = preferred_unclaimed_master_product(sku_matches, claimed_ids)
+        if product is not None:
+            return product
+
     if barcode:
         barcode_name_matches = [
             product
@@ -1663,6 +1696,9 @@ def match_threepl_replacement_product(existing_products: list[object], row: dict
         product = preferred_unclaimed_master_product(barcode_name_matches, claimed_ids)
         if product is not None:
             return product
+
+        if product_name:
+            return None
 
         barcode_matches = [
             product
@@ -1816,7 +1852,7 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
     details: list[dict] = []
     barcode_row_numbers: dict[str, list[int]] = {}
     barcode_names: dict[str, set[str]] = {}
-    upload_identity_row_numbers: dict[tuple[str, str], list[int]] = {}
+    upload_identity_row_numbers: dict[tuple[str, ...], list[int]] = {}
     warnings = 0
     failures = 0
 
@@ -1943,7 +1979,7 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
             duplicate_item_key = threepl_master_file_identity(row)
             duplicate_item_rows = duplicate_upload_identities.get(duplicate_item_key, [])
             is_not_last_duplicate = last_row_by_upload_identity.get(duplicate_item_key) is not item
-            duplicate_label = "SKU" if duplicate_item_key[0] == "sku" else "바코드" if duplicate_item_key[0] == "barcode" else "상품명"
+            duplicate_label = threepl_master_file_identity_label(duplicate_item_key)
         else:
             duplicate_item_key = barcode
             duplicate_item_rows = duplicate_barcodes.get(duplicate_item_key, [])
@@ -2115,7 +2151,8 @@ def apply_threepl_master_replacement_preview(db: Session, preview: dict) -> dict
     existing_products = list(db.execute(select(model).order_by(model.id)).scalars())
     claimed_ids: set[int] = set()
     used_skus: set[str] = set()
-    used_sku_keys: set[str] = set()
+    used_raw_skus: set[str] = set()
+    used_master_identities: set[tuple[str, ...]] = set()
     assignments: list[tuple[object | None, dict, dict, list[str]]] = []
     created_count = 0
     updated_count = 0
@@ -2141,7 +2178,6 @@ def apply_threepl_master_replacement_preview(db: Session, preview: dict) -> dict
             created_count += 1
 
         sku = clean_text(data.get("sku"))
-        sku_key = normalize_erp_product_code(sku)
         if not sku or not data.get("barcode") or not data.get("product_name"):
             return {
                 "ok": False,
@@ -2150,7 +2186,8 @@ def apply_threepl_master_replacement_preview(db: Session, preview: dict) -> dict
                 "summary": summary,
                 "details": details,
             }
-        if sku_key in used_sku_keys:
+        identity_key = threepl_master_file_identity(data)
+        if sku in used_raw_skus or identity_key in used_master_identities:
             return {
                 "ok": False,
                 "message": f"파일 내 중복 SKU가 남아 있어 기존 3PL 마스터를 변경하지 않았습니다. ({sku})",
@@ -2159,7 +2196,8 @@ def apply_threepl_master_replacement_preview(db: Session, preview: dict) -> dict
                 "details": details,
             }
         used_skus.add(sku)
-        used_sku_keys.add(sku_key)
+        used_raw_skus.add(sku)
+        used_master_identities.add(identity_key)
         assignments.append((product, data, detail, changes))
 
     stale_products = [product for product in existing_products if product_db_id(product) not in claimed_ids]
@@ -3110,26 +3148,34 @@ def inventory_master_rows_for_display(source_type: str, products: list[object]) 
         return products
 
     result = []
-    groups: dict[str, list[object]] = {}
-    group_order: list[str] = []
+    groups: dict[tuple[str, str], list[object]] = {}
+    group_order: list[tuple[str, str]] = []
     for product in products:
         barcode = normalize_barcode_identifier(getattr(product, "barcode", ""))
-        if not barcode:
+        product_name = normalize_product_name_match_key(getattr(product, "product_name", ""))
+        if not barcode or not product_name:
             result.append(product)
             continue
-        if barcode not in groups:
-            group_order.append(barcode)
-        groups.setdefault(barcode, []).append(product)
+        group_key = (barcode, product_name)
+        if group_key not in groups:
+            group_order.append(group_key)
+        groups.setdefault(group_key, []).append(product)
 
-    preferred_by_barcode = {
-        barcode: preferred_master_product(matches)
-        for barcode, matches in groups.items()
+    preferred_by_identity = {
+        identity: preferred_master_product(matches)
+        for identity, matches in groups.items()
     }
-    for barcode in group_order:
-        product = preferred_by_barcode.get(barcode)
+    for identity in group_order:
+        product = preferred_by_identity.get(identity)
         if product is not None:
             result.append(product)
     return result
+
+
+def product_daily_lookup_key(product) -> str:
+    sku = normalize_product_code_text(getattr(product, "sku", ""))
+    product_name = normalize_product_name_match_key(getattr(product, "product_name", ""))
+    return f"{sku}|{product_name}" if sku and product_name else sku
 
 
 def daily_rows_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, InventoryDaily]:
@@ -3141,7 +3187,7 @@ def daily_rows_by_product(db: Session, source_type: str, work_date: date, produc
             ).order_by(InventoryDaily.id)
         ).scalars()
     )
-    by_sku: dict[str, InventoryDaily] = {}
+    by_sku: dict[str, list[InventoryDaily]] = {}
     by_barcode_name: dict[tuple[str, str], InventoryDaily] = {}
     by_barcode: dict[str, list[InventoryDaily]] = {}
     by_name: dict[str, list[InventoryDaily]] = {}
@@ -3150,7 +3196,7 @@ def daily_rows_by_product(db: Session, source_type: str, work_date: date, produc
         barcode = normalize_product_barcode_match_key(row.barcode)
         name = normalize_product_name_match_key(row.product_name)
         if sku:
-            by_sku[sku] = row
+            by_sku.setdefault(sku, []).append(row)
         if barcode and name:
             by_barcode_name[(barcode, name)] = row
         if barcode:
@@ -3161,9 +3207,13 @@ def daily_rows_by_product(db: Session, source_type: str, work_date: date, produc
     matched: dict[str, InventoryDaily] = {}
     product_barcode_counts: dict[str, int] = {}
     product_name_counts: dict[str, int] = {}
+    product_sku_counts: dict[str, int] = {}
     for product in products:
+        sku_key = normalize_product_code_text(product.sku)
         barcode_key = normalize_product_barcode_match_key(product.barcode)
         name_key = normalize_product_name_match_key(product.product_name)
+        if sku_key:
+            product_sku_counts[sku_key] = product_sku_counts.get(sku_key, 0) + 1
         if barcode_key:
             product_barcode_counts[barcode_key] = product_barcode_counts.get(barcode_key, 0) + 1
         if name_key:
@@ -3172,15 +3222,20 @@ def daily_rows_by_product(db: Session, source_type: str, work_date: date, produc
         product_sku = normalize_product_code_text(product.sku)
         product_barcode = normalize_product_barcode_match_key(product.barcode)
         product_name = normalize_product_name_match_key(product.product_name)
-        row = by_sku.get(product_sku)
+        row = None
         if row is None and product_name and product_name_counts.get(product_name, 0) == 1 and len(by_name.get(product_name, [])) == 1:
             row = by_name[product_name][0]
-        if row is None and product_barcode and product_barcode_counts.get(product_barcode, 0) == 1 and len(by_barcode.get(product_barcode, [])) == 1:
-            row = by_barcode[product_barcode][0]
         if row is None and product_barcode and product_name:
             row = by_barcode_name.get((product_barcode, product_name))
+        sku_rows = by_sku.get(product_sku, [])
+        if row is None and product_sku and product_sku_counts.get(product_sku, 0) == 1 and len(sku_rows) == 1:
+            row = sku_rows[0]
+        if row is None and product_barcode and product_barcode_counts.get(product_barcode, 0) == 1 and len(by_barcode.get(product_barcode, [])) == 1:
+            row = by_barcode[product_barcode][0]
         if row is not None and product_sku:
-            matched[product_sku] = row
+            matched[product_daily_lookup_key(product)] = row
+            if product_sku_counts.get(product_sku, 0) == 1:
+                matched[product_sku] = row
     trace_barcode = normalize_barcode_text(INVENTORY_TRACE_BARCODE)
     trace_products = [product for product in products if normalize_barcode_text(getattr(product, "barcode", "")) == trace_barcode]
     trace_daily_rows = [row for row in rows if normalize_barcode_text(getattr(row, "barcode", "")) == trace_barcode]
@@ -3496,7 +3551,9 @@ def ensure_daily_snapshots_from_latest(db: Session, source_type: str, work_date:
     missing_products = [
         product
         for product in products
-        if normalize_product_code_text(product.sku) and normalize_product_code_text(product.sku) not in existing_by_sku
+        if normalize_product_code_text(product.sku)
+        and product_daily_lookup_key(product) not in existing_by_sku
+        and normalize_product_code_text(product.sku) not in existing_by_sku
     ]
     if not missing_products:
         db.commit()
@@ -3575,7 +3632,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         product_sku_key = normalize_product_code_text(product.sku)
         product_barcode = normalize_barcode_text(product.barcode)
         location_summary = location_summaries.get(product_sku) or location_summaries.get(product_sku_key) or location_summaries.get(product_barcode) or {}
-        daily = latest_daily_by_sku.get(product_sku_key)
+        daily = latest_daily_by_sku.get(product_daily_lookup_key(product)) or latest_daily_by_sku.get(product_sku_key)
         has_snapshot = daily is not None
         current_stock = int(daily.current_stock or 0) if has_snapshot else 0
         available_stock = int(daily.available_stock if daily and daily.available_stock is not None else current_stock) if has_snapshot else 0
