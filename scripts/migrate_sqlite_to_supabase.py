@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 import tomllib
 
-from sqlalchemy import create_engine, inspect, select
+from sqlalchemy import create_engine, delete, inspect, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
@@ -84,6 +84,9 @@ def reset_postgresql_sequence(conn, table_name: str, pk_name: str) -> None:
 
 def migrate_table(source_conn, target_conn, table, chunk_size: int = 500) -> dict:
     table_name = table.name
+    if table_name == "cases":
+        return migrate_return_cases_table(source_conn, target_conn, table, chunk_size)
+
     rows = [dict(row) for row in source_conn.execute(select(table)).mappings()]
     source_count = len(rows)
     first_column = next(iter(table.c))
@@ -103,6 +106,34 @@ def migrate_table(source_conn, target_conn, table, chunk_size: int = 500) -> dic
         "target_had_rows": bool(target_before),
         "inserted_rows": inserted,
         "skipped_rows": source_count - inserted,
+    }
+
+
+def migrate_return_cases_table(source_conn, target_conn, table, chunk_size: int = 200) -> dict:
+    rows = [dict(row) for row in source_conn.execute(select(table)).mappings()]
+    source_count = len(rows)
+    first_column = next(iter(table.c))
+    target_before = target_conn.execute(select(first_column).limit(1)).fetchone()
+    case_ids = [str(row.get("case_id") or "").strip() for row in rows if str(row.get("case_id") or "").strip()]
+    deleted = 0
+    inserted = 0
+    if case_ids:
+        result = target_conn.execute(delete(table).where(table.c.case_id.in_(case_ids)))
+        deleted = int(result.rowcount or 0)
+    if rows:
+        insert_rows = [{key: value for key, value in row.items() if key != "id"} for row in rows]
+        for offset in range(0, len(insert_rows), chunk_size):
+            batch = insert_rows[offset : offset + chunk_size]
+            result = target_conn.execute(table.insert(), batch)
+            inserted += int(result.rowcount or 0)
+    reset_postgresql_sequence(target_conn, table.name, "id")
+    return {
+        "table": table.name,
+        "source_rows": source_count,
+        "target_had_rows": bool(target_before),
+        "inserted_rows": inserted,
+        "skipped_rows": source_count - inserted,
+        "note": f"case_id 기준 기존 {deleted}건 교체",
     }
 
 
@@ -228,16 +259,15 @@ def migrate_purchase_budget_json(target_conn, budget_table, budget_path: Path) -
 
 def main() -> int:
     bootstrap_project_imports()
+    args = parse_args()
 
     from backend import models  # noqa: F401
     from backend.database import Base, DATABASE_URL, engine, init_db, is_postgresql_url
 
-    if not os.getenv("SCM_DATABASE_URL", "").strip():
+    if not args.dry_run and not os.getenv("SCM_DATABASE_URL", "").strip():
         raise RuntimeError("SCM_DATABASE_URL이 필요합니다. .streamlit/secrets.toml 또는 환경변수에 설정해주세요.")
-    if not is_postgresql_url(DATABASE_URL):
+    if not args.dry_run and not is_postgresql_url(DATABASE_URL):
         raise RuntimeError("SCM_DATABASE_URL이 PostgreSQL 연결 문자열이 아닙니다.")
-
-    args = parse_args()
     selected_tables = set(args.tables or [])
     model_tables = [
         table

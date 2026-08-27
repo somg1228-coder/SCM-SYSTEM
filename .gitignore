@@ -35,6 +35,7 @@ data/streamlit.*.log
 data/warehouse3d_layouts.previous.json
 data/warehouse3d_layout_backups/
 ReturnCaseSystem/streamlit.*.log
+ReturnCaseSystem/cases_seed.json.gz
 *.pem
 *.key
 credentials.json
