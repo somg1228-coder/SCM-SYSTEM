@@ -74,7 +74,7 @@ INVENTORY_STATUS_COLUMN_CONFIG = [
     {"key": "barcode", "label": "바코드"},
     {"key": "product_name", "label": "상품명"},
     {"key": "available_stock", "label": "가용재고"},
-    {"key": "avg_daily_outbound_1w", "label": "1주 평균출고수량"},
+    {"key": "avg_daily_outbound_1w", "label": "주평균출고"},
     {"key": "stock_status", "label": "재고상태"},
     {"key": "pending_outbound_qty", "label": "출고예정"},
     {"key": "current_stock", "label": "현재고"},
@@ -1818,8 +1818,8 @@ def inventory_status_output_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     output_df = df.copy()
-    if "1주 평균출고수량" not in output_df.columns and "최근2주 평균출고" in output_df.columns:
-        output_df["1주 평균출고수량"] = output_df["최근2주 평균출고"]
+    if "주평균출고" not in output_df.columns and "최근2주 평균출고" in output_df.columns:
+        output_df["주평균출고"] = output_df["최근2주 평균출고"]
 
     ordered = [column for column in INVENTORY_STATUS_DISPLAY_COLUMNS if column in output_df.columns]
     remaining = [
@@ -2174,14 +2174,14 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     ]
     story = [Paragraph("SCM 재고관리", styles["title"]), Spacer(1, 4 * mm), Paragraph(" / ".join(meta), styles["meta"]), Spacer(1, 4 * mm)]
     table_data = [[Paragraph(column, styles["center"]) for column in export_df.columns]]
-    numeric_columns = {"가용재고", "1주 평균출고수량", "출고예정", "현재고", "리드타임"}
+    numeric_columns = {"가용재고", "주평균출고", "출고예정", "현재고", "리드타임"}
     for _, row in export_df.iterrows():
         cells = []
         for column in export_df.columns:
             value = row.get(column, "")
             if column in numeric_columns and clean_cell(value) != "":
                 style = styles["right"]
-                text = f"{float(value):,.2f}" if column == "1주 평균출고수량" else f"{to_int(value):,}"
+                text = f"{float(value):,.2f}" if column == "주평균출고" else f"{to_int(value):,}"
             elif column in {"바코드", "재고상태"}:
                 style = styles["center"]
                 text = clean_cell(value)
@@ -2672,7 +2672,7 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
                 "가용재고": row.get("available_stock", 0),
-                "1주 평균출고수량": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
+            "주평균출고": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
                 "재고상태": clean_cell(row.get("stock_status")) or "미집계",
                 "출고예정": row.get("pending_outbound_qty", 0),
                 "현재고": row.get("current_stock", 0),
@@ -4681,7 +4681,7 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
             "바코드": row.get("barcode", ""),
             "상품명": row.get("product_name", ""),
             "가용재고": row.get("available_stock", 0),
-            "1주 평균출고수량": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
+                "주평균출고": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
             "재고상태": clean_cell(row.get("stock_status")) or "미집계",
             "출고예정": row.get("pending_outbound_qty", 0),
             "현재고": row.get("current_stock", 0),
@@ -4711,7 +4711,7 @@ def inventory_output_signature(df: pd.DataFrame, filters: dict) -> tuple:
     if df is None or df.empty:
         row_marker = ("empty", 0)
     else:
-        sample_columns = [column for column in ("바코드", "상품명", "현재고", "가용재고", "1주 평균출고수량") if column in df.columns]
+        sample_columns = [column for column in ("바코드", "상품명", "현재고", "가용재고", "주평균출고") if column in df.columns]
         sample = tuple(tuple(clean_cell(value) for value in row) for row in df[sample_columns].head(5).fillna("").to_numpy())
         row_marker = (len(df), sample)
     filter_marker = tuple(sorted((str(key), str(value)) for key, value in (filters or {}).items()))
@@ -6066,14 +6066,14 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     ]
     story = [Paragraph("SCM 재고관리", styles["title"]), Spacer(1, 4 * mm), Paragraph(" / ".join(meta), styles["meta"]), Spacer(1, 4 * mm)]
     table_data = [[Paragraph(column, styles["center"]) for column in export_df.columns]]
-    numeric_columns = {"가용재고", "1주 평균출고수량", "출고예정", "현재고", "리드타임"}
+    numeric_columns = {"가용재고", "주평균출고", "출고예정", "현재고", "리드타임"}
     for _, row in export_df.iterrows():
         cells = []
         for column in export_df.columns:
             value = row.get(column, "")
             if column in numeric_columns and clean_cell(value) != "":
                 style = styles["right"]
-                text = f"{float(value):,.2f}" if column == "1주 평균출고수량" else f"{to_int(value):,}"
+                text = f"{float(value):,.2f}" if column == "주평균출고" else f"{to_int(value):,}"
             elif column in {"바코드", "재고상태"}:
                 style = styles["center"]
                 text = clean_cell(value)
