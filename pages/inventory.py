@@ -17,6 +17,18 @@ from sqlalchemy import delete, func, select
 from components.lazy_tabs import lazy_tab_selector
 from pages import product_master as product_master_page
 
+
+def inventory_fragment(func):
+    fragment = getattr(st, "fragment", None)
+    return fragment(func) if callable(fragment) else func
+
+
+def inventory_fragment_rerun() -> None:
+    try:
+        st.rerun(scope="fragment")
+    except Exception:
+        st.rerun()
+
 try:
     import plotly.express as px
 except ModuleNotFoundError:
@@ -1565,12 +1577,12 @@ def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
             st.write("")
             if st.button("검색", key=f"{filter_key}_search_button", type="primary", use_container_width=True):
                 st.session_state[f"{filter_key}_page"] = 1
-                st.rerun()
+                inventory_fragment_rerun()
         with basic_cols[4]:
             st.write("")
             if st.button("초기화", key=f"{filter_key}_filter_reset", use_container_width=True):
                 reset_inventory_filters(filter_key)
-                st.rerun()
+                inventory_fragment_rerun()
 
         with st.expander("고급 필터 ▼", expanded=False):
             adv_cols = st.columns(4, gap="small")
@@ -4780,12 +4792,12 @@ def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
             st.write("")
             if st.button("검색", key=f"{filter_key}_search_button", type="primary", use_container_width=True):
                 st.session_state[f"{filter_key}_page"] = 1
-                st.rerun()
+                inventory_fragment_rerun()
         with cols[5]:
             st.write("")
             if st.button("초기화", key=f"{filter_key}_filter_reset", use_container_width=True):
                 reset_inventory_filters(filter_key)
-                st.rerun()
+                inventory_fragment_rerun()
 
         with st.expander("고급 필터", expanded=False):
             adv_cols = st.columns(4, gap="small")
@@ -4931,7 +4943,7 @@ def render_inventory_filter_badges(filter_key: str, badges: list[tuple[str, str,
         with cols[idx % len(cols)]:
             if st.button(f"{label} X", key=f"{filter_key}_clear_{suffix}_{idx}", use_container_width=True):
                 clear_inventory_filter(filter_key, suffix, value)
-                st.rerun()
+                inventory_fragment_rerun()
 
 
 def clear_inventory_filter(filter_key: str, suffix: str, value: str | None = None) -> None:
@@ -5748,6 +5760,7 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
         render_stock_upload_apply_result(st.session_state.get(result_key), st.session_state.get(excluded_df_key))
 
 
+@inventory_fragment
 def render_inventory_lookup_panel(source_type: str, work_date: date, rows: list[dict]) -> None:
     base_df = daily_to_editor(rows)
     filters = render_inventory_filters(source_type, base_df)
@@ -5852,7 +5865,7 @@ def render_inventory_lookup_panel(source_type: str, work_date: date, rows: list[
             st.info("현재 필터 조건에 해당하는 재고 데이터가 없습니다.")
             if st.button("필터 전체 초기화", key=f"{source_type}_daily_empty_reset_{work_date}", use_container_width=True):
                 reset_inventory_filters(source_key(source_type))
-                st.rerun()
+                inventory_fragment_rerun()
     else:
         with st.container(key=f"{source_key(source_type)}_inventory_table_panel"):
             render_inventory_visible_table(paged_df.drop(columns=["선택"], errors="ignore"), height=520)
@@ -5861,13 +5874,13 @@ def render_inventory_lookup_panel(source_type: str, work_date: date, rows: list[
             with nav_prev:
                 if st.button("이전", key=f"{source_type}_daily_page_prev_{work_date}", disabled=page <= 1, use_container_width=True):
                     st.session_state[f"{filter_key}_page"] = max(page - 1, 1)
-                    st.rerun()
+                    inventory_fragment_rerun()
             with nav_info:
                 st.caption(f"{page:,} / {total_pages:,} 페이지")
             with nav_next:
                 if st.button("다음", key=f"{source_type}_daily_page_next_{work_date}", disabled=page >= total_pages, use_container_width=True):
                     st.session_state[f"{filter_key}_page"] = min(page + 1, total_pages)
-                    st.rerun()
+                    inventory_fragment_rerun()
             with spacer:
                 st.empty()
 
