@@ -86,6 +86,8 @@ INVENTORY_STATUS_COLUMN_CONFIG = [
 ]
 INVENTORY_STATUS_DISPLAY_COLUMNS = [column["label"] for column in INVENTORY_STATUS_COLUMN_CONFIG]
 DAILY_COLUMNS = ["선택", *INVENTORY_STATUS_DISPLAY_COLUMNS]
+WEEKLY_OUTBOUND_LABEL = "주평균출고"
+LEGACY_WEEKLY_OUTBOUND_LABELS = ("1주 평균출고수량", "1주 평균 출고수량", "최근2주 평균출고")
 
 INBOUND_COLUMNS = [
     "삭제",
@@ -1815,11 +1817,9 @@ def inventory_status_output_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df
     if not {"카테고리", "바코드", "상품명"}.issubset(df.columns):
-        return df
+        return normalize_inventory_export_columns(df)
 
-    output_df = df.copy()
-    if "주평균출고" not in output_df.columns and "최근2주 평균출고" in output_df.columns:
-        output_df["주평균출고"] = output_df["최근2주 평균출고"]
+    output_df = normalize_inventory_export_columns(df)
 
     ordered = [column for column in INVENTORY_STATUS_DISPLAY_COLUMNS if column in output_df.columns]
     remaining = [
@@ -1828,8 +1828,22 @@ def inventory_status_output_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         if column not in INVENTORY_STATUS_DISPLAY_COLUMNS and column not in INVENTORY_STATUS_HIDDEN_COLUMNS
     ]
     if not ordered:
-        return df
+        return output_df
     return output_df[ordered + remaining]
+
+
+def normalize_inventory_export_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    export_df = df.copy()
+    for legacy_label in LEGACY_WEEKLY_OUTBOUND_LABELS:
+        if legacy_label not in export_df.columns:
+            continue
+        if WEEKLY_OUTBOUND_LABEL not in export_df.columns:
+            export_df = export_df.rename(columns={legacy_label: WEEKLY_OUTBOUND_LABEL})
+        elif legacy_label != WEEKLY_OUTBOUND_LABEL:
+            export_df = export_df.drop(columns=[legacy_label], errors="ignore")
+    return export_df
 
 
 def render_inventory_visible_table(df: pd.DataFrame, height: int = 520) -> None:
@@ -2865,7 +2879,7 @@ def format_order_required_date(row: dict) -> str:
 def dataframe_to_excel(df: pd.DataFrame) -> bytes:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        export_df = df.drop(columns=["삭제", "선택"], errors="ignore").copy()
+        export_df = normalize_inventory_export_columns(df).drop(columns=["삭제", "선택"], errors="ignore").copy()
         sheet_name = "재고관리"
         start_row = 2
         export_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=start_row)
@@ -6037,14 +6051,13 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
-    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     from reportlab.pdfbase import pdfmetrics
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    font_name = "HYGoThic-Medium"
-    bold_name = "HYGoThic-Medium"
-    if font_name not in pdfmetrics.getRegisteredFontNames():
-        pdfmetrics.registerFont(UnicodeCIDFont(font_name))
+    font_pair = register_inventory_pdf_fonts()
+    if font_pair is None:
+        raise RuntimeError("사용 가능한 한글 PDF 폰트를 찾지 못했습니다.")
+    font_name, bold_name = font_pair
 
     output = BytesIO()
     doc = SimpleDocTemplate(output, pagesize=landscape(A4), leftMargin=8 * mm, rightMargin=8 * mm, topMargin=10 * mm, bottomMargin=10 * mm)
@@ -6056,7 +6069,7 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
         "right": ParagraphStyle("inventory_right_v2", fontName=font_name, fontSize=6.7, leading=8.2, alignment=TA_RIGHT),
     }
     export_columns = INVENTORY_STATUS_DISPLAY_COLUMNS
-    export_df = df[[column for column in export_columns if column in df.columns]].copy()
+    export_df = inventory_status_output_dataframe(df)
     meta = [
         f"재고처: {source_type}",
         f"기준일자: {work_date:%Y-%m-%d}",
