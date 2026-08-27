@@ -379,6 +379,35 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
             "부족",
         )
 
+    def test_saved_daily_status_is_recalculated_from_available_and_pending_outbound(self) -> None:
+        work_date = date(2026, 8, 26)
+        db = self.Session()
+        try:
+            row = InventoryDaily(
+                source_type="3PL",
+                work_date=work_date,
+                product_code="SAFE",
+                product_name="safe stock row",
+                barcode="8800000000001",
+                current_stock=30,
+                available_stock=30,
+                safe_stock=50,
+                outbound_qty=5,
+                stock_status="\ubd80\uc871",
+            )
+            db.add(row)
+            db.commit()
+
+            daily = services.daily_to_dict(row)
+            summary = services.dashboard_summary(db, work_date, "3PL")
+
+            self.assertEqual(daily["stock_status"], "\uc8fc\uc758")
+            self.assertEqual(summary["short_count"], 0)
+            self.assertEqual(summary["soldout_count"], 0)
+            self.assertEqual(summary["need_inbound_count"], 1)
+        finally:
+            db.close()
+
     def test_order_needed_days_does_not_immediate_order_only_because_safe_stock_is_high(self) -> None:
         self.assertGreater(
             services.order_needed_days(

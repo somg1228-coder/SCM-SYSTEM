@@ -15,7 +15,7 @@ import unicodedata
 from decimal import Decimal, InvalidOperation
 
 import pandas as pd
-from sqlalchemy import case, delete, func, inspect as sqlalchemy_inspect, or_, select, tuple_, update
+from sqlalchemy import delete, func, inspect as sqlalchemy_inspect, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -3097,6 +3097,16 @@ def inventory_stock_status_for_snapshot(
     return "정상"
 
 
+def inventory_stock_status_for_daily_row(row: InventoryDaily) -> str:
+    return inventory_stock_status_for_snapshot(
+        True,
+        getattr(row, "available_stock", None),
+        getattr(row, "current_stock", 0),
+        int(getattr(row, "safe_stock", 0) or 0),
+        int(getattr(row, "outbound_qty", 0) or 0),
+    )
+
+
 def format_box_pallet_unit(box_qty: int | None, pallet_qty: int | None) -> str:
     parts = []
     if int(box_qty or 0):
@@ -3578,10 +3588,6 @@ def ensure_daily_snapshots_from_latest(db: Session, source_type: str, work_date:
             current_stock=int(previous.current_stock or 0) if previous else 0,
             available_stock=int(previous.available_stock if previous and previous.available_stock is not None else previous.current_stock if previous else 0),
             safe_stock=int(previous.safe_stock or product.min_stock or 0) if previous else int(product.min_stock or 0),
-            stock_status=stock_status_for_values(
-                int(previous.available_stock if previous and previous.available_stock is not None else previous.current_stock if previous else 0),
-                int(previous.safe_stock or product.min_stock or 0) if previous else int(product.min_stock or 0),
-            ),
             outbound_qty=0,
             inbound_qty=0,
             previous_inbound_date=previous.previous_inbound_date if previous else None,
@@ -3589,6 +3595,7 @@ def ensure_daily_snapshots_from_latest(db: Session, source_type: str, work_date:
             inbound_cycle=int(previous.inbound_cycle or product.default_lead_time or 0) or None if previous else int(product.default_lead_time or 0) or None,
             memo=previous.memo if previous else "",
         )
+        row.stock_status = inventory_stock_status_for_daily_row(row)
         db.add(row)
         created += 1
     if created:
@@ -4515,7 +4522,13 @@ def apply_erp_stock_upload_file(
                 "current_stock": new_stock,
                 "available_stock": new_stock,
                 "safe_stock": int(product.min_stock or 0),
-                "stock_status": stock_status_for_values(new_stock, int(product.min_stock or 0)),
+                "stock_status": inventory_stock_status_for_snapshot(
+                    True,
+                    new_stock,
+                    new_stock,
+                    int(product.min_stock or 0),
+                    outbound_qty,
+                ),
                 "outbound_qty": outbound_qty,
                 "inbound_cycle": product.default_lead_time or None,
                 "updated_at": now,
@@ -4796,6 +4809,7 @@ def apply_stock_upload_preview(
                 product_barcode = normalize_barcode_text(product.barcode)
                 product_name = clean_text(product.product_name)
                 identity = (product_name, product_barcode)
+                outbound_qty = max(new_stock - new_available_stock, 0)
                 existing_final = existing_by_identity.get(identity)
                 if existing_final is not None:
                     previous_stock = int(existing_final.current_stock or 0)
@@ -4817,8 +4831,14 @@ def apply_stock_upload_preview(
                     "current_stock": new_stock,
                     "available_stock": new_available_stock,
                     "safe_stock": int(product.min_stock or 0),
-                    "stock_status": stock_status_for_values(new_available_stock, product.min_stock or 0),
-                    "outbound_qty": max(new_stock - new_available_stock, 0),
+                    "stock_status": inventory_stock_status_for_snapshot(
+                        True,
+                        new_available_stock,
+                        new_stock,
+                        int(product.min_stock or 0),
+                        outbound_qty,
+                    ),
+                    "outbound_qty": outbound_qty,
                     "inbound_cycle": product.default_lead_time or None,
                     "updated_at": datetime.utcnow(),
                 }
@@ -4990,8 +5010,7 @@ def recalculate_uploaded_inventory_rows(
         safe_stock = ceil(avg_daily * max(lead_time_days, 1) * 1.2)
         item.safe_stock = safe_stock
         product.min_stock = safe_stock
-        stock_value = int(item.available_stock if item.available_stock is not None else item.current_stock or 0)
-        item.stock_status = stock_status_for_values(stock_value, safe_stock)
+        item.stock_status = inventory_stock_status_for_daily_row(item)
         count += 1
     return count
 
@@ -5475,10 +5494,7 @@ def apply_inbound_to_stock(db: Session, source_type: str, work_date: date) -> in
         if item.last_inbound_date and item.last_inbound_date != group["last_inbound_date"]:
             item.previous_inbound_date = item.last_inbound_date
         item.last_inbound_date = group["last_inbound_date"]
-        item.stock_status = stock_status_for_values(
-            int(item.available_stock if item.available_stock is not None else item.current_stock or 0),
-            int(item.safe_stock or group["safe_stock"] or 0),
-        )
+        item.stock_status = inventory_stock_status_for_daily_row(item)
         count += 1
 
     for inbound in inbound_rows:
@@ -5562,8 +5578,8 @@ def update_status(db: Session, source_type: str, work_date: date) -> int:
     for item in list_daily(db, source_type, work_date):
         product = find_product_master(db, source_type, item.product_code, item.barcode, item.product_name)
         safe_stock = int(product.min_stock or 0) if product else int(item.safe_stock or 0)
-        stock_value = int(item.available_stock if item.available_stock is not None else item.current_stock or 0)
-        item.stock_status = stock_status_for_values(stock_value, safe_stock)
+        item.safe_stock = safe_stock
+        item.stock_status = inventory_stock_status_for_daily_row(item)
         count += 1
     db.commit()
     return count
@@ -5631,7 +5647,7 @@ def daily_to_dict(row: InventoryDaily) -> dict:
         "current_stock": row.current_stock,
         "available_stock": row.available_stock,
         "safe_stock": row.safe_stock,
-        "stock_status": row.stock_status,
+        "stock_status": inventory_stock_status_for_daily_row(row),
         "outbound_qty": row.outbound_qty,
         "previous_inbound_date": row.previous_inbound_date,
         "last_inbound_date": row.last_inbound_date,
@@ -5674,13 +5690,23 @@ def dashboard_summary(db: Session, work_date: date, source_type: str | None = No
         rows = []
         for source in sources:
             rows.extend(supabase_store.daily_rows(source, work_date))
+        statuses = [
+            inventory_stock_status_for_snapshot(
+                True,
+                row.get("available_stock"),
+                row.get("current_stock"),
+                int(row.get("safe_stock") or 0),
+                int(row.get("outbound_qty") or 0),
+            )
+            for row in rows
+        ]
         return {
             "sku_count": len(rows),
             "current_stock": sum(int(row.get("current_stock") or 0) for row in rows),
             "available_stock": sum(int(row.get("available_stock") or 0) for row in rows),
-            "need_inbound_count": sum(1 for row in rows if row.get("stock_status") in {"부족", "주의", "입고필요"}),
-            "soldout_count": sum(1 for row in rows if row.get("stock_status") == "품절"),
-            "short_count": sum(1 for row in rows if row.get("stock_status") in {"부족", "품절", "미출"}),
+            "need_inbound_count": sum(1 for status in statuses if status in {"부족", "주의", "입고필요"}),
+            "soldout_count": sum(1 for status in statuses if status == "품절"),
+            "short_count": sum(1 for status in statuses if status in {"부족", "품절", "미출"}),
             "outbound_qty": 0,
             "inbound_qty": 0,
         }
@@ -5688,27 +5714,17 @@ def dashboard_summary(db: Session, work_date: date, source_type: str | None = No
     filters = [InventoryDaily.work_date == work_date]
     if source_type and source_type != "전체":
         filters.append(InventoryDaily.source_type == source_type)
-    row = db.execute(
-        select(
-            func.count(InventoryDaily.id),
-            func.coalesce(func.sum(InventoryDaily.current_stock), 0),
-            func.coalesce(func.sum(InventoryDaily.available_stock), 0),
-            func.coalesce(func.sum(InventoryDaily.outbound_qty), 0),
-            func.coalesce(func.sum(InventoryDaily.inbound_qty), 0),
-            func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
-            func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
-            func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
-        ).where(*filters)
-    ).one()
+    rows = list(db.execute(select(InventoryDaily).where(*filters)).scalars())
+    statuses = [inventory_stock_status_for_daily_row(row) for row in rows]
     return {
-        "sku_count": int(row[0] or 0),
-        "current_stock": int(row[1] or 0),
-        "available_stock": int(row[2] or 0),
-        "outbound_qty": int(row[3] or 0),
-        "inbound_qty": int(row[4] or 0),
-        "need_inbound_count": int(row[5] or 0),
-        "soldout_count": int(row[6] or 0),
-        "short_count": int(row[7] or 0),
+        "sku_count": len(rows),
+        "current_stock": sum(int(row.current_stock or 0) for row in rows),
+        "available_stock": sum(int(row.available_stock if row.available_stock is not None else row.current_stock or 0) for row in rows),
+        "outbound_qty": sum(int(row.outbound_qty or 0) for row in rows),
+        "inbound_qty": sum(int(row.inbound_qty or 0) for row in rows),
+        "need_inbound_count": sum(1 for status in statuses if status in {"부족", "주의", "입고필요"}),
+        "soldout_count": sum(1 for status in statuses if status == "품절"),
+        "short_count": sum(1 for status in statuses if status in {"부족", "품절", "미출"}),
     }
 
 
@@ -5723,8 +5739,19 @@ def dashboard_chart(db: Session, work_date: date, source_type: str | None = None
             label = row.get("category") or "미분류"
             category_totals[label] = category_totals.get(label, 0) + int(row.get("current_stock") or 0)
         need_rows = sorted(
-            [row for row in rows if row.get("stock_status") in {"부족", "주의", "입고필요"}],
-            key=lambda row: int(row.get("safe_stock") or 0) - int(row.get("current_stock") or 0),
+            [
+                row
+                for row in rows
+                if inventory_stock_status_for_snapshot(
+                    True,
+                    row.get("available_stock"),
+                    row.get("current_stock"),
+                    int(row.get("safe_stock") or 0),
+                    int(row.get("outbound_qty") or 0),
+                )
+                in {"부족", "주의", "입고필요"}
+            ],
+            key=lambda row: int(row.get("safe_stock") or 0) - int(row.get("available_stock") or row.get("current_stock") or 0),
             reverse=True,
         )[:10]
         return {
@@ -5776,12 +5803,16 @@ def dashboard_chart(db: Session, work_date: date, source_type: str | None = None
         ).all()
         return [{"date": str(day), "value": int(value or 0)} for day, value in rows]
 
-    top_rows = db.execute(
-        select(InventoryDaily.product_name, InventoryDaily.current_stock, InventoryDaily.safe_stock)
-        .where(*base_filters, InventoryDaily.stock_status.in_(["부족", "주의", "입고필요"]))
-        .order_by((InventoryDaily.safe_stock - InventoryDaily.current_stock).desc())
-        .limit(10)
-    ).all()
+    daily_rows = list(db.execute(select(InventoryDaily).where(*base_filters)).scalars())
+    top_rows = sorted(
+        [
+            row
+            for row in daily_rows
+            if inventory_stock_status_for_daily_row(row) in {"부족", "주의", "입고필요"}
+        ],
+        key=lambda row: int(row.safe_stock or 0) - int(row.available_stock if row.available_stock is not None else row.current_stock or 0),
+        reverse=True,
+    )[:10]
 
     return {
         "stock_by_source": grouped(InventoryDaily.source_type, InventoryDaily.current_stock, [InventoryDaily.work_date == work_date]),
@@ -5790,8 +5821,8 @@ def dashboard_chart(db: Session, work_date: date, source_type: str | None = None
         "stock_trend": trend(InventoryDaily.current_stock),
         "outbound_trend": trend(InventoryDaily.outbound_qty),
         "need_inbound_top10": [
-            {"product_name": name, "current_stock": int(current or 0), "safe_stock": int(safe or 0)}
-            for name, current, safe in top_rows
+            {"product_name": row.product_name, "current_stock": int(row.current_stock or 0), "safe_stock": int(row.safe_stock or 0)}
+            for row in top_rows
         ],
     }
 

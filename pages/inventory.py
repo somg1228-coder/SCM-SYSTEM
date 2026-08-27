@@ -2540,7 +2540,7 @@ def stock_history_rows(db, source_type: str, item_name: str) -> list[dict]:
             "안전재고": row.safe_stock,
             "출고수량": row.outbound_qty,
             "입고수량": row.inbound_qty,
-            "재고상태": row.stock_status,
+            "재고상태": services.inventory_stock_status_for_daily_row(row),
         }
         for row in rows
     ]
@@ -2580,7 +2580,7 @@ def purchase_recommendation_rows(db, source_type: str, work_date: date, include_
                 "발주추천수량": recommended_qty,
                 "발주권장": "권장" if shortage_qty > 0 or below_safe else "보류",
                 "공급처": row.supplier,
-                "재고상태": row.stock_status,
+                "재고상태": services.inventory_stock_status_for_daily_row(row),
             }
         )
     return sorted(result_rows, key=lambda item: item["발주추천수량"], reverse=True)
