@@ -2842,7 +2842,8 @@ def format_order_required_date(row: dict) -> str:
         return "-"
 
     available_stock = to_int(row.get("available_stock"))
-    if available_stock <= 0:
+    pending_outbound_qty = max(to_int(row.get("pending_outbound_qty")), 0)
+    if available_stock <= pending_outbound_qty:
         return "즉시 발주"
 
     lead_time_text = clean_cell(row.get("inbound_cycle"))

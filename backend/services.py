@@ -3039,6 +3039,26 @@ def stock_status_for_snapshot(has_snapshot: bool, available_stock, current_stock
     return stock_status_for_values(stock_value, safe_stock)
 
 
+def inventory_stock_status_for_snapshot(
+    has_snapshot: bool,
+    available_stock,
+    current_stock,
+    safe_stock: int,
+    pending_outbound_qty: int = 0,
+) -> str:
+    if not has_snapshot:
+        return "미집계"
+    stock_value = int(available_stock if available_stock is not None else current_stock or 0)
+    pending_outbound = max(int(pending_outbound_qty or 0), 0)
+    if stock_value <= 0:
+        return "품절"
+    if pending_outbound > 0 and stock_value < pending_outbound:
+        return "부족"
+    if safe_stock > 0 and stock_value <= stock_warning_limit(safe_stock):
+        return "주의"
+    return "정상"
+
+
 def format_box_pallet_unit(box_qty: int | None, pallet_qty: int | None) -> str:
     parts = []
     if int(box_qty or 0):
@@ -3324,13 +3344,20 @@ def recent_outbound_average_by_product(
     return {sku: round(total / divisor, 2) for sku, total in totals.items()}
 
 
-def order_needed_days(current_stock: int, safe_stock: int, avg_daily_outbound: float, lead_time_days: int = 0) -> int | None:
+def order_needed_days(
+    current_stock: int,
+    safe_stock: int,
+    avg_daily_outbound: float,
+    lead_time_days: int = 0,
+    pending_outbound_qty: int = 0,
+) -> int | None:
     if avg_daily_outbound <= 0:
         return None
-    if current_stock <= safe_stock:
+    stock_after_pending = int(current_stock or 0) - max(int(pending_outbound_qty or 0), 0)
+    if stock_after_pending <= 0:
         return 0
-    days_until_safe_stock = (current_stock - safe_stock) / avg_daily_outbound
-    return max(ceil(days_until_safe_stock - max(int(lead_time_days or 0), 0)), 0)
+    days_until_stockout = stock_after_pending / avg_daily_outbound
+    return max(ceil(days_until_stockout - max(int(lead_time_days or 0), 0)), 0)
 
 
 def pending_inbound_qty_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, int]:
@@ -3559,12 +3586,14 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         unplaced_quantity = max(current_stock - placed_quantity, 0)
 
         safe_stock = int(product.min_stock or 0)
+        pending_outbound_qty = int(daily.outbound_qty or 0) if has_snapshot else 0
 
-        status = stock_status_for_snapshot(
+        status = inventory_stock_status_for_snapshot(
             has_snapshot,
             daily.available_stock if daily is not None else None,
             daily.current_stock if daily is not None else None,
             safe_stock,
+            pending_outbound_qty,
         )
 
         purchase_metric = purchase_metrics.get((source_type, product.sku), {})
@@ -3573,12 +3602,11 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         lead_time = measured_lead_time or product.default_lead_time or 0
         box_qty = int(product.box_qty or product.pack_qty or 0)
         pending_inbound_qty = int(pending_by_sku.get(product_sku, pending_by_sku.get(product_sku_key, 0)) or 0)
-        pending_outbound_qty = int(daily.outbound_qty or 0) if has_snapshot else 0
 
-        shortage_qty = max(safe_stock - current_stock, 0)
+        shortage_qty = max(safe_stock - available_stock, 0)
         avg_outbound = float(avg_outbound_by_sku.get(product_sku, avg_outbound_by_sku.get(product_sku_key, 0)) or 0)
 
-        needed_days = order_needed_days(available_stock, safe_stock, avg_outbound, lead_time)
+        needed_days = order_needed_days(available_stock, safe_stock, avg_outbound, lead_time, pending_outbound_qty)
 
         category = product_category_text(product)
         category_diagnostic = "" if category else "CATEGORY_EMPTY"

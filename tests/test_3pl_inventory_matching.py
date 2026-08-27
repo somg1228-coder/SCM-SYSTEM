@@ -291,6 +291,50 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_inventory_status_uses_available_stock_against_pending_outbound(self) -> None:
+        self.assertEqual(
+            services.inventory_stock_status_for_snapshot(
+                True,
+                available_stock=30,
+                current_stock=30,
+                safe_stock=50,
+                pending_outbound_qty=5,
+            ),
+            "주의",
+        )
+        self.assertEqual(
+            services.inventory_stock_status_for_snapshot(
+                True,
+                available_stock=4,
+                current_stock=4,
+                safe_stock=50,
+                pending_outbound_qty=5,
+            ),
+            "부족",
+        )
+
+    def test_order_needed_days_does_not_immediate_order_only_because_safe_stock_is_high(self) -> None:
+        self.assertGreater(
+            services.order_needed_days(
+                current_stock=30,
+                safe_stock=50,
+                avg_daily_outbound=5,
+                lead_time_days=2,
+                pending_outbound_qty=5,
+            ),
+            0,
+        )
+        self.assertEqual(
+            services.order_needed_days(
+                current_stock=4,
+                safe_stock=50,
+                avg_daily_outbound=5,
+                lead_time_days=2,
+                pending_outbound_qty=5,
+            ),
+            0,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
