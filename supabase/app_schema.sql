@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS inventory_daily (
 	memo VARCHAR(500) NOT NULL, 
 	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
 	PRIMARY KEY (id), 
-	CONSTRAINT uq_inventory_daily_source_date_item UNIQUE (source_type, work_date, product_name, barcode), 
+	CONSTRAINT uq_inventory_daily_source_date_item UNIQUE (source_type, work_date, product_name), 
 	CONSTRAINT ck_inventory_daily_source_type CHECK (source_type IN ('3PL', '오프라인', '창고'))
 );
 
@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS offline_product_master (
 	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
 	PRIMARY KEY (id), 
 	CONSTRAINT uq_offline_product_master_sku UNIQUE (sku), 
-	CONSTRAINT uq_offline_product_master_barcode_product_name UNIQUE (barcode, product_name), 
+	CONSTRAINT uq_offline_product_master_product_name UNIQUE (product_name), 
 	CONSTRAINT ck_offline_product_master_is_active CHECK (is_active IN ('사용', '미사용'))
 );
 
@@ -591,6 +591,7 @@ CREATE TABLE IF NOT EXISTS thirdparty_product_master (
 	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
 	PRIMARY KEY (id), 
 	CONSTRAINT uq_thirdparty_product_master_sku UNIQUE (sku), 
+	CONSTRAINT uq_thirdparty_product_master_product_name UNIQUE (product_name), 
 	CONSTRAINT ck_thirdparty_product_master_is_active CHECK (is_active IN ('사용', '미사용'))
 );
 
@@ -638,7 +639,7 @@ CREATE TABLE IF NOT EXISTS warehouse_product_master (
 	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
 	PRIMARY KEY (id), 
 	CONSTRAINT uq_warehouse_product_master_sku UNIQUE (sku), 
-	CONSTRAINT uq_warehouse_product_master_barcode_product_name UNIQUE (barcode, product_name), 
+	CONSTRAINT uq_warehouse_product_master_product_name UNIQUE (product_name), 
 	CONSTRAINT ck_warehouse_product_master_is_active CHECK (is_active IN ('사용', '미사용'))
 );
 

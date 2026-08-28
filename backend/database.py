@@ -1249,7 +1249,9 @@ def ensure_sqlite_columns() -> None:
                     conn.exec_driver_sql(
                         f"ALTER TABLE {quoted_table} ADD COLUMN {quote_sqlite_identifier(column_name)} {ddl}"
                     )
+        ensure_inventory_daily_product_name_identity(conn)
         ensure_product_master_barcode_constraints(conn)
+        ensure_product_master_product_name_indexes(conn)
 
 
 def ensure_postgresql_runtime_columns() -> None:
@@ -1286,6 +1288,8 @@ def ensure_postgresql_runtime_columns() -> None:
                     f'ALTER TABLE IF EXISTS "{table_name}" '
                     f'ADD COLUMN IF NOT EXISTS "{column_name}" {ddl}'
                 )
+        ensure_postgresql_inventory_daily_product_name_identity(conn)
+        ensure_postgresql_product_master_product_name_indexes(conn)
 
 
 def ensure_postgresql_columns() -> None:
@@ -1307,11 +1311,197 @@ def ensure_postgresql_columns() -> None:
                 conn.exec_driver_sql(f'ALTER TABLE "{table.name}" ADD COLUMN {column_sql}')
 
 
+def first_nonempty_sqlite_value(rows: list[dict], column: str) -> str:
+    for row in rows:
+        value = row.get(column)
+        if value not in (None, ""):
+            return value
+    return ""
+
+
+def max_sqlite_value(rows: list[dict], column: str):
+    values = [row.get(column) for row in rows if row.get(column) not in (None, "")]
+    return max(values) if values else None
+
+
+def merge_sqlite_inventory_daily_product_name_duplicates(conn) -> None:
+    if not sqlite_table_exists(conn, "inventory_daily"):
+        return
+    table = quote_sqlite_identifier("inventory_daily")
+    duplicates = conn.exec_driver_sql(
+        f"""
+        SELECT source_type, work_date, product_name
+        FROM {table}
+        GROUP BY source_type, work_date, product_name
+        HAVING COUNT(*) > 1
+        """
+    ).fetchall()
+    for source_type, work_date, product_name in duplicates:
+        rows = [
+            dict(row)
+            for row in conn.exec_driver_sql(
+                f"""
+                SELECT *
+                FROM {table}
+                WHERE source_type = ? AND work_date = ? AND product_name = ?
+                ORDER BY id
+                """,
+                (source_type, work_date, product_name),
+            ).mappings()
+        ]
+        if len(rows) <= 1:
+            continue
+        keeper = rows[0]
+        duplicate_ids = [int(row["id"]) for row in rows[1:]]
+        params = {
+            "id": int(keeper["id"]),
+            "category": first_nonempty_sqlite_value(rows, "category"),
+            "product_code": first_nonempty_sqlite_value(rows, "product_code"),
+            "barcode": first_nonempty_sqlite_value(rows, "barcode"),
+            "supplier": first_nonempty_sqlite_value(rows, "supplier"),
+            "current_stock": sum(int(row.get("current_stock") or 0) for row in rows),
+            "available_stock": sum(int(row.get("available_stock") or 0) for row in rows),
+            "safe_stock": max(int(row.get("safe_stock") or 0) for row in rows),
+            "stock_status": first_nonempty_sqlite_value(rows, "stock_status"),
+            "outbound_qty": sum(int(row.get("outbound_qty") or 0) for row in rows),
+            "previous_inbound_date": max_sqlite_value(rows, "previous_inbound_date"),
+            "last_inbound_date": max_sqlite_value(rows, "last_inbound_date"),
+            "inbound_qty": sum(int(row.get("inbound_qty") or 0) for row in rows),
+            "inbound_cycle": max(int(row.get("inbound_cycle") or 0) for row in rows) or None,
+            "memo": "\n".join(str(row.get("memo") or "") for row in rows if row.get("memo")),
+        }
+        conn.exec_driver_sql(
+            f"""
+            UPDATE {table}
+            SET category = :category,
+                product_code = :product_code,
+                barcode = :barcode,
+                supplier = :supplier,
+                current_stock = :current_stock,
+                available_stock = :available_stock,
+                safe_stock = :safe_stock,
+                stock_status = :stock_status,
+                outbound_qty = :outbound_qty,
+                previous_inbound_date = :previous_inbound_date,
+                last_inbound_date = :last_inbound_date,
+                inbound_qty = :inbound_qty,
+                inbound_cycle = :inbound_cycle,
+                memo = :memo
+            WHERE id = :id
+            """,
+            params,
+        )
+        placeholders = ", ".join("?" for _ in duplicate_ids)
+        conn.exec_driver_sql(f"DELETE FROM {table} WHERE id IN ({placeholders})", tuple(duplicate_ids))
+
+
+def ensure_inventory_daily_product_name_identity(conn) -> None:
+    if not sqlite_table_exists(conn, "inventory_daily"):
+        return
+    merge_sqlite_inventory_daily_product_name_duplicates(conn)
+    conn.exec_driver_sql(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_daily_source_date_product_name
+        ON inventory_daily (source_type, work_date, product_name)
+        """
+    )
+
+
+def ensure_product_master_product_name_indexes(conn) -> None:
+    table_prefixes = {
+        "offline_product_master": "offline",
+        "thirdparty_product_master": "thirdparty",
+        "warehouse_product_master": "warehouse",
+    }
+    for table_name, prefix in table_prefixes.items():
+        if not sqlite_table_exists(conn, table_name):
+            continue
+        try:
+            conn.exec_driver_sql(
+                f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS {quote_sqlite_identifier(f"uq_{prefix}_product_master_product_name")}
+                ON {quote_sqlite_identifier(table_name)} (product_name)
+                """
+            )
+        except Exception as exc:
+            LOGGER.warning("상품명 중복이 있어 상품 마스터 상품명 고유 인덱스 생성을 건너뜁니다: %s (%s)", table_name, exc)
+
+
+def ensure_postgresql_inventory_daily_product_name_identity(conn) -> None:
+    conn.exec_driver_sql(
+        """
+        WITH grouped AS (
+            SELECT source_type, work_date, product_name, MIN(id) AS keep_id,
+                   SUM(current_stock) AS current_stock,
+                   SUM(available_stock) AS available_stock,
+                   MAX(safe_stock) AS safe_stock,
+                   SUM(outbound_qty) AS outbound_qty,
+                   SUM(inbound_qty) AS inbound_qty,
+                   MAX(previous_inbound_date) AS previous_inbound_date,
+                   MAX(last_inbound_date) AS last_inbound_date,
+                   MAX(inbound_cycle) AS inbound_cycle
+            FROM inventory_daily
+            GROUP BY source_type, work_date, product_name
+            HAVING COUNT(*) > 1
+        )
+        UPDATE inventory_daily AS daily
+        SET current_stock = grouped.current_stock,
+            available_stock = grouped.available_stock,
+            safe_stock = grouped.safe_stock,
+            outbound_qty = grouped.outbound_qty,
+            inbound_qty = grouped.inbound_qty,
+            previous_inbound_date = grouped.previous_inbound_date,
+            last_inbound_date = grouped.last_inbound_date,
+            inbound_cycle = grouped.inbound_cycle
+        FROM grouped
+        WHERE daily.id = grouped.keep_id
+        """
+    )
+    conn.exec_driver_sql(
+        """
+        WITH grouped AS (
+            SELECT source_type, work_date, product_name, MIN(id) AS keep_id
+            FROM inventory_daily
+            GROUP BY source_type, work_date, product_name
+            HAVING COUNT(*) > 1
+        )
+        DELETE FROM inventory_daily AS daily
+        USING grouped
+        WHERE daily.source_type = grouped.source_type
+          AND daily.work_date = grouped.work_date
+          AND daily.product_name = grouped.product_name
+          AND daily.id <> grouped.keep_id
+        """
+    )
+    conn.exec_driver_sql(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_daily_source_date_product_name
+        ON inventory_daily (source_type, work_date, product_name)
+        """
+    )
+
+
+def ensure_postgresql_product_master_product_name_indexes(conn) -> None:
+    table_prefixes = {
+        "offline_product_master": "offline",
+        "thirdparty_product_master": "thirdparty",
+        "warehouse_product_master": "warehouse",
+    }
+    for table_name, prefix in table_prefixes.items():
+        try:
+            conn.exec_driver_sql(
+                f'CREATE UNIQUE INDEX IF NOT EXISTS "uq_{prefix}_product_master_product_name" '
+                f'ON "{table_name}" (product_name)'
+            )
+        except Exception as exc:
+            LOGGER.warning("상품명 중복이 있어 상품 마스터 상품명 고유 인덱스 생성을 건너뜁니다: %s (%s)", table_name, exc)
+
+
 def ensure_product_master_barcode_constraints(conn) -> None:
     table_prefixes = {
-        "offline_product_master": ("offline", True),
+        "offline_product_master": ("offline", False),
         "thirdparty_product_master": ("thirdparty", False),
-        "warehouse_product_master": ("warehouse", True),
+        "warehouse_product_master": ("warehouse", False),
     }
     for table_name, (prefix, keep_barcode_product_unique) in table_prefixes.items():
         row = conn.exec_driver_sql(
@@ -1321,9 +1511,8 @@ def ensure_product_master_barcode_constraints(conn) -> None:
         if not row or not row[0]:
             continue
         table_sql = row[0]
-        if keep_barcode_product_unique and "UNIQUE (barcode)" not in table_sql:
-            continue
-        if not keep_barcode_product_unique and "UNIQUE (barcode, product_name)" not in table_sql:
+        has_barcode_unique = "UNIQUE (barcode" in table_sql or 'UNIQUE ("barcode"' in table_sql
+        if not has_barcode_unique:
             continue
         if not product_master_table_can_be_rebuilt(conn, table_name, keep_barcode_product_unique):
             continue
@@ -1334,6 +1523,7 @@ def ensure_product_master_barcode_constraints(conn) -> None:
 
 
 def product_master_table_can_be_rebuilt(conn, table_name: str, keep_barcode_product_unique: bool) -> bool:
+    _ = keep_barcode_product_unique
     duplicate_sku = conn.exec_driver_sql(
         f"""
         SELECT sku, COUNT(*)
@@ -1346,28 +1536,11 @@ def product_master_table_can_be_rebuilt(conn, table_name: str, keep_barcode_prod
     if duplicate_sku:
         LOGGER.warning("SKU 중복이 있어 상품 마스터 제약 보정을 건너뜁니다: %s / %s", table_name, duplicate_sku[0])
         return False
-    if keep_barcode_product_unique:
-        duplicate_barcode_product = conn.exec_driver_sql(
-            f"""
-            SELECT barcode, product_name, COUNT(*)
-            FROM {quote_sqlite_identifier(table_name)}
-            GROUP BY barcode, product_name
-            HAVING COUNT(*) > 1
-            LIMIT 1
-            """
-        ).fetchone()
-        if duplicate_barcode_product:
-            LOGGER.warning(
-                "바코드/상품명 중복이 있어 상품 마스터 제약 보정을 건너뜁니다: %s / %s / %s",
-                table_name,
-                duplicate_barcode_product[0],
-                duplicate_barcode_product[1],
-            )
-            return False
     return True
 
 
-def rebuild_product_master_table(conn, table_name: str, prefix: str, keep_barcode_product_unique: bool = True) -> None:
+def rebuild_product_master_table(conn, table_name: str, prefix: str, keep_barcode_product_unique: bool = False) -> None:
+    _ = keep_barcode_product_unique
     old_table = f"{table_name}_old_barcode_unique"
     new_table = f"{table_name}_constraint_rebuild"
     columns = [
@@ -1385,6 +1558,7 @@ def rebuild_product_master_table(conn, table_name: str, prefix: str, keep_barcod
         "default_lead_time",
         "min_stock",
         "sort_order",
+        "location_registered",
         "is_active",
         "memo",
         "created_at",
@@ -1396,11 +1570,6 @@ def rebuild_product_master_table(conn, table_name: str, prefix: str, keep_barcod
     quoted_new_table = quote_sqlite_identifier(new_table)
 
     conn.exec_driver_sql(f"DROP TABLE IF EXISTS {quoted_new_table}")
-    barcode_constraint = (
-        f"CONSTRAINT uq_{prefix}_product_master_barcode_product_name UNIQUE (barcode, product_name),"
-        if keep_barcode_product_unique
-        else ""
-    )
     conn.exec_driver_sql(
         f"""
         CREATE TABLE {quoted_new_table} (
@@ -1418,13 +1587,13 @@ def rebuild_product_master_table(conn, table_name: str, prefix: str, keep_barcod
             default_lead_time INTEGER NOT NULL,
             min_stock INTEGER NOT NULL,
             sort_order INTEGER NOT NULL DEFAULT 0,
+            location_registered BOOLEAN NOT NULL DEFAULT 0,
             is_active VARCHAR(20) NOT NULL,
             memo VARCHAR(500) NOT NULL,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             PRIMARY KEY (id),
             CONSTRAINT uq_{prefix}_product_master_sku UNIQUE (sku),
-            {barcode_constraint}
             CONSTRAINT ck_{prefix}_product_master_is_active CHECK (is_active IN ('사용', '미사용'))
         )
         """

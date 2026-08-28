@@ -1409,29 +1409,20 @@ def inventory_normalize_barcode(value) -> str:
 
 def build_master_category_lookup(db, source_type: str) -> dict[str, dict[str, str]]:
     by_sku: dict[str, str] = {}
-    by_barcode: dict[str, str] = {}
-    by_barcode_name: dict[str, str] = {}
     by_name: dict[str, str] = {}
     products = services.list_product_master(db, source_type, "", "전체") if services is not None else []
     for product in products or []:
         sku = clean_cell(getattr(product, "sku", ""))
-        barcode = inventory_normalize_barcode(getattr(product, "barcode", ""))
         product_name = clean_cell(getattr(product, "product_name", ""))
         category = clean_cell(getattr(product, "large_category", "") or getattr(product, "category", ""))
         if not category:
             continue
         if sku:
             by_sku.setdefault(sku, category)
-        if barcode:
-            by_barcode.setdefault(barcode, category)
-        if barcode and product_name:
-            by_barcode_name.setdefault(f"{barcode}|{product_name}", category)
         if product_name:
             by_name.setdefault(product_name, category)
     return {
         "sku": by_sku,
-        "barcode": by_barcode,
-        "barcode_name": by_barcode_name,
         "name": by_name,
     }
 
@@ -1441,14 +1432,11 @@ def apply_master_categories(rows: list[dict], lookup: dict[str, dict[str, str]])
     for row in rows:
         next_row = dict(row)
         sku = clean_cell(next_row.get("product_code") or next_row.get("sku"))
-        barcode = inventory_normalize_barcode(next_row.get("barcode"))
         product_name = clean_cell(next_row.get("product_name"))
         existing_category = clean_cell(next_row.get("category"))
         master_category = (
-            lookup["sku"].get(sku)
-            or lookup["barcode"].get(barcode)
-            or lookup["barcode_name"].get(f"{barcode}|{product_name}")
-            or lookup["name"].get(product_name)
+            lookup["name"].get(product_name)
+            or lookup["sku"].get(sku)
         )
         next_row["category"] = master_category or existing_category or "미분류"
         normalized.append(next_row)
@@ -1927,8 +1915,7 @@ def render_stock_upload_preview(
     metric_cols[3].metric("중복", f"{preview.get('duplicate_count', 0):,}")
     metric_cols[4].metric("0 처리", f"{preview.get('zeroed_count', 0):,}")
     st.caption(
-        f"빈 바코드 {preview.get('empty_barcode_count', 0):,}건 / "
-        f"숫자 오류 {preview.get('invalid_stock_count', 0):,}건 / "
+        f"상품명 완전일치 기준 / 숫자 오류 {preview.get('invalid_stock_count', 0):,}건 / "
         f"음수 재고 {preview.get('negative_stock_count', 0):,}건"
     )
     render_stock_upload_debug(preview)
@@ -2503,8 +2490,6 @@ def latest_stock_lookup(db, source_type: str, work_date: date) -> dict[tuple[str
     lookup: dict[tuple[str, str], int] = {}
     for row in rows:
         stock = int(row.available_stock if row.available_stock is not None else row.current_stock or 0)
-        barcode = services.normalize_barcode_text(row.barcode)
-        lookup[(row.product_name, barcode)] = lookup.get((row.product_name, barcode), 0) + stock
         lookup[(row.product_name, "")] = lookup.get((row.product_name, ""), 0) + stock
     return lookup
 
@@ -2596,8 +2581,6 @@ def avg_daily_outbound(db, source_type: str, product_name: str, barcode: str, wo
         InventoryDaily.work_date >= start_date,
         InventoryDaily.work_date <= work_date,
     )
-    if barcode:
-        query = query.where(InventoryDaily.barcode == barcode)
     total, count = db.execute(query).one()
     return int(total or 0) / max(int(count or 0), 1)
 
@@ -4997,8 +4980,7 @@ def render_stock_upload_preview(
     metric_cols[3].metric("중복", f"{preview.get('duplicate_count', 0):,}")
     metric_cols[4].metric("전체파일 0처리", f"{preview.get('zeroed_count', 0):,}")
     st.caption(
-        f"빈 바코드 {preview.get('empty_barcode_count', 0):,}건 / "
-        f"숫자 오류 {preview.get('invalid_stock_count', 0):,}건 / "
+        f"상품명 완전일치 기준 / 숫자 오류 {preview.get('invalid_stock_count', 0):,}건 / "
         f"음수 재고 {preview.get('negative_stock_count', 0):,}건"
     )
     render_stock_upload_debug(preview)
@@ -5373,7 +5355,6 @@ def stock_registration_preview_from_changes(
         "failed_count": 0,
         "duplicate_count": 0,
         "unmatched_count": 0,
-        "empty_barcode_count": 0,
         "invalid_stock_count": 0,
         "negative_stock_count": 0,
         "zeroed_count": 0,
@@ -5487,39 +5468,27 @@ def save_stock_registration_form(
     memo = clean_cell(form_data.get("memo"))
     current_stock = max(to_int(form_data.get("current_stock")), 0)
 
-    if not sku or not barcode or not product_name:
-        return {"ok": False, "message": "SKU, 바코드, 상품명은 필수입니다.", "count": 0}
+    if not sku or not product_name:
+        return {"ok": False, "message": "SKU, 상품명은 필수입니다.", "count": 0}
 
     model = services.product_master_model(source_type)
     product = services.find_product_master(db, source_type, original_sku, original_barcode, original_name)
-    if product is None and original_sku:
-        product = db.execute(select(model).where(model.sku == original_sku)).scalar_one_or_none()
 
     conflict_by_sku = db.execute(select(model).where(model.sku == sku)).scalar_one_or_none()
     if conflict_by_sku is not None and (product is None or conflict_by_sku.id != product.id):
         return {"ok": False, "message": f"이미 등록된 SKU입니다. ({sku})", "count": 0}
-    if source_type != "3PL":
-        conflict_by_barcode_name = db.execute(
-            select(model).where(model.barcode == barcode, model.product_name == product_name)
-        ).scalar_one_or_none()
-        if conflict_by_barcode_name is not None and (product is None or conflict_by_barcode_name.id != product.id):
-            return {"ok": False, "message": f"이미 등록된 바코드/상품명입니다. ({barcode} / {product_name})", "count": 0}
+    conflict_by_product_name = db.execute(
+        select(model).where(model.product_name == product_name)
+    ).scalar_one_or_none()
+    if conflict_by_product_name is not None and (product is None or conflict_by_product_name.id != product.id):
+        return {"ok": False, "message": f"이미 등록된 상품명입니다. ({product_name})", "count": 0}
 
     daily = None
-    if original_sku:
+    if original_name:
         daily = db.execute(
             select(InventoryDaily).where(
                 InventoryDaily.source_type == source_type,
                 InventoryDaily.work_date == work_date,
-                InventoryDaily.product_code == original_sku,
-            )
-        ).scalar_one_or_none()
-    if daily is None and original_barcode and original_name:
-        daily = db.execute(
-            select(InventoryDaily).where(
-                InventoryDaily.source_type == source_type,
-                InventoryDaily.work_date == work_date,
-                InventoryDaily.barcode == original_barcode,
                 InventoryDaily.product_name == original_name,
             )
         ).scalar_one_or_none()
@@ -5716,7 +5685,7 @@ def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date
                     <h2>ERP 재고 업데이트</h2>
                     <p>업로드 파일의 바코드와 상품명이 모두 일치하는 상품의 현재고를 선택 기준일자에 바로 반영합니다.</p>
                 </div>
-            </div>
+                    <p>업로드 파일의 상품명이 마스터 상품명과 완전히 동일한 상품의 현재고를 선택 기준일자에 바로 반영합니다.</p>
             """
         )
         upload_cols = st.columns([2.4, 0.9, 3.35], gap="large")

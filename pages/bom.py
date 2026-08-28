@@ -106,6 +106,7 @@ def render_bom_file_controls(category: str, saved_df: pd.DataFrame) -> None:
     upload_col, import_col, download_col, spacer_col = st.columns(
         [2.8, 0.55, 0.72, 2.0],
         gap="small",
+        vertical_alignment="bottom",
     )
     with upload_col:
         uploaded = st.file_uploader("BOM 엑셀 업로드", type=["xlsx", "xls"], key="bom_upload")
@@ -1856,15 +1857,25 @@ def inject_bom_css() -> None:
         .st-key-bom_file_controls div[data-testid="stVerticalBlock"] {
             gap: 0.28rem;
         }
-        .st-key-bom_file_controls div[data-testid="stHorizontalBlock"]:has(div[data-testid="stFileUploader"]):has(.st-key-bom_import_btn) {
-            align-items: start !important;
-            column-gap: clamp(12px, 1.2vw, 20px) !important;
-            display: grid !important;
-            grid-template-columns: minmax(360px, clamp(430px, 42vw, 680px)) max-content max-content minmax(0, 1fr) !important;
+        .st-key-bom_upload_actions_row {
+            max-width: min(100%, 540px) !important;
+            width: min(100%, 540px) !important;
         }
-        .st-key-bom_file_controls div[data-testid="stHorizontalBlock"]:has(div[data-testid="stFileUploader"]):has(.st-key-bom_import_btn) > div[data-testid="column"] {
-            min-width: 0 !important;
-            width: auto !important;
+        .st-key-bom_upload_actions_row div[data-testid="stHorizontalBlock"] {
+            align-items: flex-end !important;
+            column-gap: 8px !important;
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            justify-content: flex-start !important;
+            max-width: 540px !important;
+            width: 540px !important;
+        }
+        .st-key-bom_upload_actions_row [data-testid="stFileUploader"] {
+            width: 298px !important;
+        }
+        .st-key-bom_upload_actions_row [data-testid="stButton"],
+        .st-key-bom_upload_actions_row [data-testid="stDownloadButton"] {
+            flex: 0 0 auto !important;
         }
         .st-key-bom_file_controls div[data-testid="stFileUploader"] {
             margin-bottom: 0;
@@ -1877,7 +1888,7 @@ def inject_bom_css() -> None:
         }
         .st-key-bom_file_controls div[data-testid="stButton"],
         .st-key-bom_file_controls div[data-testid="stDownloadButton"] {
-            margin-top: 1.78rem;
+            margin-top: 0;
             width: fit-content !important;
         }
         .st-key-bom_file_controls div[data-testid="stButton"] button,
@@ -1895,16 +1906,16 @@ def inject_bom_css() -> None:
             width: auto !important;
         }
         @media (max-width: 900px) {
-            .st-key-bom_file_controls div[data-testid="stHorizontalBlock"]:has(div[data-testid="stFileUploader"]):has(.st-key-bom_import_btn) {
-                grid-template-columns: minmax(320px, 1fr) max-content max-content !important;
-            }
-            .st-key-bom_file_controls div[data-testid="stHorizontalBlock"]:has(div[data-testid="stFileUploader"]):has(.st-key-bom_import_btn) > div[data-testid="column"]:last-child {
-                display: none !important;
+            .st-key-bom_upload_actions_row div[data-testid="stHorizontalBlock"] {
+                flex-wrap: wrap !important;
+                max-width: 100% !important;
+                width: 100% !important;
             }
         }
-        @media (max-width: 640px) {
-            .st-key-bom_file_controls div[data-testid="stHorizontalBlock"]:has(div[data-testid="stFileUploader"]):has(.st-key-bom_import_btn) {
-                grid-template-columns: 1fr !important;
+        @media (max-width: 760px) {
+            .st-key-bom_upload_actions_row div[data-testid="stHorizontalBlock"] {
+                flex-direction: column !important;
+                align-items: flex-start !important;
                 row-gap: 0.45rem !important;
             }
             .st-key-bom_file_controls div[data-testid="stButton"],
@@ -1914,9 +1925,22 @@ def inject_bom_css() -> None:
         }
         .st-key-bom_tab_bar_view,
         .st-key-bom_tab_bar_edit {
+            background: transparent !important;
             border-bottom: 1px solid #d7dde2;
+            border-radius: 0 !important;
+            box-shadow: none !important;
             margin: 0.05rem 0 0.42rem;
-            padding-top: 0;
+            padding: 0 !important;
+        }
+        .st-key-bom_tab_bar_view div[data-testid="stVerticalBlockBorderWrapper"],
+        .st-key-bom_tab_bar_edit div[data-testid="stVerticalBlockBorderWrapper"],
+        .st-key-bom_tab_bar_view[data-testid="stVerticalBlockBorderWrapper"],
+        .st-key-bom_tab_bar_edit[data-testid="stVerticalBlockBorderWrapper"] {
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
         }
         .st-key-bom_tab_bar_view div[data-testid="stButton"],
         .st-key-bom_tab_bar_edit div[data-testid="stButton"] {
@@ -1982,14 +2006,32 @@ def inject_bom_css() -> None:
             text-align: center;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) {
-            background: #f6f5f2 !important;
-            border: 1px solid #d7dde2;
-            border-radius: 8px;
-            padding: 0.62rem 0.75rem 0.75rem;
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel),
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) * {
             color: #24303c;
+        }
+        div[class*="st-key-bom_form_target_"] {
+            max-width: min(100%, 400px) !important;
+            width: 400px !important;
+        }
+        div[class*="st-key-bom_form_target_"] [data-testid="stSelectbox"],
+        div[class*="st-key-bom_form_target_"] [data-baseweb="select"] {
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+        div[class*="st-key-bom_item_form_"] [data-testid="stForm"],
+        div[class*="st-key-bom_item_form_"][data-testid="stForm"] {
+            background: #f6f5f2 !important;
+            border: 1px solid #d7dde2 !important;
+            border-radius: 6px !important;
+            box-shadow: none !important;
+            padding: 0.62rem 0.7rem 0.7rem !important;
         }
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) input,
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"]:has(#bom_editor_panel) textarea,
@@ -2006,6 +2048,29 @@ def inject_bom_css() -> None:
             border-radius: 6px !important;
             color: #24303c !important;
             min-height: 36px !important;
+        }
+        .st-key-bom_tab_bar_view div[data-testid="stButton"] button,
+        .st-key-bom_tab_bar_edit div[data-testid="stButton"] button {
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            color: #66727f !important;
+            min-height: 34px !important;
+            padding: 0 0.12rem !important;
+        }
+        .st-key-bom_tab_bar_view .st-key-bom_tab_view_btn button,
+        .st-key-bom_tab_bar_edit .st-key-bom_tab_edit_btn button {
+            border-bottom-color: #536d84 !important;
+            color: #24303c !important;
+            font-weight: 950 !important;
+        }
+        @media (max-width: 640px) {
+            div[class*="st-key-bom_form_target_"] {
+                max-width: 100% !important;
+                width: 100% !important;
+            }
         }
         </style>
         """,

@@ -15,7 +15,7 @@ SOURCE_TYPES = ("3PL", "오프라인", "창고")
 class InventoryDaily(Base):
     __tablename__ = "inventory_daily"
     __table_args__ = (
-        UniqueConstraint("source_type", "work_date", "product_name", "barcode", name="uq_inventory_daily_source_date_item"),
+        UniqueConstraint("source_type", "work_date", "product_name", name="uq_inventory_daily_source_date_item"),
         CheckConstraint("source_type IN ('3PL', '오프라인', '창고')", name="ck_inventory_daily_source_type"),
     )
 
@@ -49,7 +49,7 @@ class OfflineProductMaster(Base):
     __tablename__ = "offline_product_master"
     __table_args__ = (
         UniqueConstraint("sku", name="uq_offline_product_master_sku"),
-        UniqueConstraint("barcode", "product_name", name="uq_offline_product_master_barcode_product_name"),
+        UniqueConstraint("product_name", name="uq_offline_product_master_product_name"),
         CheckConstraint("is_active IN ('사용', '미사용')", name="ck_offline_product_master_is_active"),
     )
 
@@ -83,6 +83,7 @@ class ThirdpartyProductMaster(Base):
     __tablename__ = "thirdparty_product_master"
     __table_args__ = (
         UniqueConstraint("sku", name="uq_thirdparty_product_master_sku"),
+        UniqueConstraint("product_name", name="uq_thirdparty_product_master_product_name"),
         CheckConstraint("is_active IN ('사용', '미사용')", name="ck_thirdparty_product_master_is_active"),
     )
 
@@ -116,7 +117,7 @@ class WarehouseProductMaster(Base):
     __tablename__ = "warehouse_product_master"
     __table_args__ = (
         UniqueConstraint("sku", name="uq_warehouse_product_master_sku"),
-        UniqueConstraint("barcode", "product_name", name="uq_warehouse_product_master_barcode_product_name"),
+        UniqueConstraint("product_name", name="uq_warehouse_product_master_product_name"),
         CheckConstraint("is_active IN ('사용', '미사용')", name="ck_warehouse_product_master_is_active"),
     )
 

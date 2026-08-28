@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import csv
 from datetime import date, timedelta
@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from backend.database import Base
-from backend.models import InventoryDaily, ThirdpartyProductMaster
+from backend.models import InventoryDaily, OfflineProductMaster, ThirdpartyProductMaster, WarehouseProductMaster
 from backend import services
 
 
@@ -25,17 +25,17 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
         db = self.Session()
         try:
             masters = [
-                ("SKU-E", "8809722100942", "식기건조대 액세서리 E자형 다용도걸이(15mm)"),
-                ("SKU-S", "8809722100001", "식기건조대 액세서리 S자고리"),
-                ("SKU-U", "8809722100002", "식기건조대 액세서리 U자형 다용도걸이(7mm)"),
-                ("SKU-BOARD", "8809722100003", "식기건조대 액세서리 도마행주걸이"),
-                ("SKU-BASIC-BASKET", "8809722100004", "식기건조대 액세서리 바스켓(기본,7mm)"),
-                ("SKU-ATTACH-BASKET", "8809722100005", "식기건조대 액세서리 바스켓(부착식용,15mm)"),
-                ("SKU-CAP-BASIC", "8809722100006", "식기건조대 액세서리 실리콘캡(기본)"),
-                ("SKU-CAP-MINI", "8809722100007", "식기건조대 액세서리 실리콘캡(미니)"),
-                ("SKU-PLATE", "8809722100008", "식기건조대 액세서리 접시꽂이"),
-                ("SKU-PAN", "8809722100164", "로트 / [로긴] 후라이팬 정리대"),
-                ("SKU-SHORT", "1747", "짧은 코드 상품"),
+                ("SKU-E", "8809722100942", "?앷린嫄댁“? ?≪꽭?쒕━ E?먰삎 ?ㅼ슜?꾧구??15mm)"),
+                ("SKU-S", "8809722100001", "?앷린嫄댁“? ?≪꽭?쒕━ S?먭퀬由?),
+                ("SKU-U", "8809722100002", "?앷린嫄댁“? ?≪꽭?쒕━ U?먰삎 ?ㅼ슜?꾧구??7mm)"),
+                ("SKU-BOARD", "8809722100003", "?앷린嫄댁“? ?≪꽭?쒕━ ?꾨쭏?됱＜嫄몄씠"),
+                ("SKU-BASIC-BASKET", "8809722100004", "?앷린嫄댁“? ?≪꽭?쒕━ 諛붿뒪耳?湲곕낯,7mm)"),
+                ("SKU-ATTACH-BASKET", "8809722100005", "?앷린嫄댁“? ?≪꽭?쒕━ 諛붿뒪耳?遺李⑹떇??15mm)"),
+                ("SKU-CAP-BASIC", "8809722100006", "?앷린嫄댁“? ?≪꽭?쒕━ ?ㅻ━肄섏벙(湲곕낯)"),
+                ("SKU-CAP-MINI", "8809722100007", "?앷린嫄댁“? ?≪꽭?쒕━ ?ㅻ━肄섏벙(誘몃땲)"),
+                ("SKU-PLATE", "8809722100008", "?앷린嫄댁“? ?≪꽭?쒕━ ?묒떆苑귥씠"),
+                ("SKU-PAN", "8809722100164", "濡쒗듃 / [濡쒓릿] ?꾨씪?댄뙩 ?뺣━?"),
+                ("SKU-SHORT", "1747", "吏㏃? 肄붾뱶 ?곹뭹"),
             ]
             for sort_order, (sku, barcode, name) in enumerate(masters, start=1):
                 db.add(
@@ -44,29 +44,29 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
                         barcode=barcode,
                         product_name=name,
                         large_category="3PL",
-                        supplier="테스트",
+                        supplier="?뚯뒪??,
                         sort_order=sort_order,
-                        is_active="사용",
+                        is_active="?ъ슜",
                     )
                 )
             db.commit()
 
             rows = [
-                ("", "8809722102922", "식기건조대 액세서리 E자형 다용도걸이(15mm)", 118, 0, 0),
-                ("", "8809722102923", "식기건조대   액세서리 S자고리", 71, 2, 1),
-                ("", "8809722102924", "식기건조대 액세서리 U자형 다용도걸이(7mm)", 60, 1, 0),
-                ("", "8809722102925", "식기건조대 액세서리 도마행주걸이", 74, 2, 1),
-                ("", "8809722102926", "식기건조대 액세서리 바스켓(기본,7mm)", 305, 1, 1),
-                ("", "8809722102927", "식기건조대 액세서리 바스켓(부착식용,15mm)", 312, 1, 0),
-                ("", "8809722102928", "식기건조대 액세서리 실리콘캡(기본)", 135, 6, 1),
-                ("", "8809722102929", "식기건조대 액세서리 실리콘캡(미니)", 438, 0, 0),
-                ("", "8809722102930", "식기건조대 액세서리 접시꽂이", 78, 3, 1),
-                ("", "8809722100164", "로트 / [로긴] 후라이팬 정리대 세로형", 60, 1, 0),
-                ("", "01747", "짧은 코드 상품", 11, 0, 1),
+                ("", "8809722102922", "?앷린嫄댁“? ?≪꽭?쒕━ E?먰삎 ?ㅼ슜?꾧구??15mm)", 118, 0, 0),
+                ("", "8809722102923", "?앷린嫄댁“?   ?≪꽭?쒕━ S?먭퀬由?, 71, 2, 1),
+                ("", "8809722102924", "?앷린嫄댁“? ?≪꽭?쒕━ U?먰삎 ?ㅼ슜?꾧구??7mm)", 60, 1, 0),
+                ("", "8809722102925", "?앷린嫄댁“? ?≪꽭?쒕━ ?꾨쭏?됱＜嫄몄씠", 74, 2, 1),
+                ("", "8809722102926", "?앷린嫄댁“? ?≪꽭?쒕━ 諛붿뒪耳?湲곕낯,7mm)", 305, 1, 1),
+                ("", "8809722102927", "?앷린嫄댁“? ?≪꽭?쒕━ 諛붿뒪耳?遺李⑹떇??15mm)", 312, 1, 0),
+                ("", "8809722102928", "?앷린嫄댁“? ?≪꽭?쒕━ ?ㅻ━肄섏벙(湲곕낯)", 135, 6, 1),
+                ("", "8809722102929", "?앷린嫄댁“? ?≪꽭?쒕━ ?ㅻ━肄섏벙(誘몃땲)", 438, 0, 0),
+                ("", "8809722102930", "?앷린嫄댁“? ?≪꽭?쒕━ ?묒떆苑귥씠", 78, 3, 1),
+                ("", "8809722100164", "濡쒗듃 / [濡쒓릿] ?꾨씪?댄뙩 ?뺣━? ?몃줈??, 60, 1, 0),
+                ("", "01747", "吏㏃? 肄붾뱶 ?곹뭹", 11, 0, 1),
             ]
             csv_buffer = StringIO()
             writer = csv.writer(csv_buffer)
-            writer.writerow(["상품코드", "바코드", "상품명", "가용재고", "송장", "접수"])
+            writer.writerow(["?곹뭹肄붾뱶", "諛붿퐫??, "?곹뭹紐?, "媛?⑹옱怨?, "?≪옣", "?묒닔"])
             writer.writerows(rows)
             result = services.apply_erp_stock_upload_file(
                 db,
@@ -77,12 +77,11 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
             )
 
             self.assertTrue(result["ok"])
-            self.assertEqual(result["matched_count"], 11)
-            self.assertEqual(result["unmatched_count"], 0)
+            self.assertEqual(result["matched_count"], 9)
+            self.assertEqual(result["unmatched_count"], 2)
 
             expected = {
                 "SKU-E": (118, 0),
-                "SKU-S": (71, 3),
                 "SKU-U": (60, 1),
                 "SKU-BOARD": (74, 3),
                 "SKU-BASIC-BASKET": (305, 2),
@@ -90,7 +89,6 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
                 "SKU-CAP-BASIC": (135, 7),
                 "SKU-CAP-MINI": (438, 0),
                 "SKU-PLATE": (78, 4),
-                "SKU-PAN": (60, 1),
                 "SKU-SHORT": (11, 1),
             }
             saved_rows = {
@@ -108,19 +106,43 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
                 self.assertEqual(saved_rows[sku].current_stock, available_stock)
                 self.assertEqual(saved_rows[sku].outbound_qty, outbound_qty)
 
-            corrected = db.execute(select(ThirdpartyProductMaster).where(ThirdpartyProductMaster.sku == "SKU-E")).scalar_one()
-            self.assertEqual(corrected.barcode, "8809722102922")
-            short_code = db.execute(select(ThirdpartyProductMaster).where(ThirdpartyProductMaster.sku == "SKU-SHORT")).scalar_one()
-            self.assertEqual(short_code.barcode, "01747")
-
             inventory_rows = services.master_based_inventory_rows(db, "3PL", work_date)
             by_sku = {row["product_code"]: row for row in inventory_rows}
             self.assertEqual(by_sku["SKU-CAP-BASIC"]["available_stock"], 135)
             self.assertEqual(by_sku["SKU-CAP-BASIC"]["pending_outbound_qty"], 7)
-            self.assertEqual(by_sku["SKU-PAN"]["available_stock"], 60)
-            self.assertEqual(by_sku["SKU-PAN"]["pending_outbound_qty"], 1)
         finally:
             db.close()
+
+    def test_inventory_matching_uses_exact_product_name_for_all_inventory_sources(self) -> None:
+        cases = [
+            ("3PL", ThirdpartyProductMaster),
+            ("?ㅽ봽?쇱씤", OfflineProductMaster),
+            ("李쎄퀬", WarehouseProductMaster),
+        ]
+        for source_type, model in cases:
+            with self.subTest(source_type=source_type):
+                product = model(sku=f"{source_type}-SKU", barcode="SAME-BARCODE", product_name="Exact Product")
+                maps = services.product_lookup_maps([product])
+
+                self.assertIsNone(
+                    services.match_product_from_maps(
+                        "",
+                        "SAME-BARCODE",
+                        "Different Product",
+                        *maps,
+                        source_type=source_type,
+                    )
+                )
+                self.assertIs(
+                    services.match_product_from_maps(
+                        "",
+                        "DIFFERENT-BARCODE",
+                        "Exact Product",
+                        *maps,
+                        source_type=source_type,
+                    ),
+                    product,
+                )
 
     def test_duplicate_master_name_matches_preferred_master_by_name_only(self) -> None:
         work_date = date(2026, 8, 26)
@@ -128,13 +150,13 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
         try:
             db.add_all(
                 [
-                    ThirdpartyProductMaster(sku="DUP-1", barcode="1001", product_name="중복 상품", is_active="사용"),
-                    ThirdpartyProductMaster(sku="DUP-2", barcode="1002", product_name="중복   상품", is_active="사용"),
+                    ThirdpartyProductMaster(sku="DUP-1", barcode="1001", product_name="以묐났 ?곹뭹", is_active="?ъ슜"),
+                    ThirdpartyProductMaster(sku="DUP-2", barcode="1002", product_name="以묐났   ?곹뭹", is_active="?ъ슜"),
                 ]
             )
             db.commit()
 
-            csv_text = "상품명,가용재고,송장,접수\n중복 상품,5,1,1"
+            csv_text = "?곹뭹紐?媛?⑹옱怨??≪옣,?묒닔\n以묐났 ?곹뭹,5,1,1"
             result = services.apply_erp_stock_upload_file(db, "3PL", work_date, csv_text.encode("utf-8-sig"), "dup.csv")
 
             self.assertTrue(result["ok"])
@@ -142,7 +164,7 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
             self.assertEqual(result["unmatched_count"], 0)
             daily_rows = db.execute(select(InventoryDaily).where(InventoryDaily.source_type == "3PL")).scalars().all()
             self.assertEqual(len(daily_rows), 1)
-            self.assertEqual(daily_rows[0].product_code, "DUP-2")
+            self.assertEqual(daily_rows[0].product_code, "DUP-1")
         finally:
             db.close()
 
@@ -153,8 +175,8 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
             product = ThirdpartyProductMaster(
                 sku="SKU-HISTORY",
                 barcode="8809722102922",
-                product_name="최신 상품명",
-                is_active="사용",
+                product_name="理쒖떊 ?곹뭹紐?,
+                is_active="?ъ슜",
             )
             db.add(product)
             for offset, outbound in ((1, 7), (2, 3), (5, 5)):
@@ -163,7 +185,7 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
                         source_type="3PL",
                         work_date=work_date - timedelta(days=offset),
                         product_code="SKU-HISTORY",
-                        product_name="예전 상품명",
+                        product_name="?덉쟾 ?곹뭹紐?,
                         barcode="8809722100942",
                         current_stock=100,
                         available_stock=100,
@@ -174,7 +196,7 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
 
             averages = services.recent_outbound_average_by_product(db, "3PL", work_date, [product], business_day_count=5)
 
-            self.assertEqual(averages["SKU-HISTORY"], 3.0)
+            self.assertNotIn("SKU-HISTORY", averages)
         finally:
             db.close()
 
@@ -184,9 +206,9 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
         try:
             db.add_all(
                 [
-                    ThirdpartyProductMaster(sku="01467", barcode="8809722101727", product_name="로켓몰린/배수구 커버 거치대(사은품)+물린 배수구망 신형", is_active="사용"),
-                    ThirdpartyProductMaster(sku="1467", barcode="8809722101727", product_name="로켓몰린/배수구 커버 거치대(사은품)+물린 배수구망 신형", is_active="사용"),
-                    ThirdpartyProductMaster(sku="OLD", barcode="999", product_name="이전 파일에만 있던 상품", is_active="사용"),
+                    ThirdpartyProductMaster(sku="01467", barcode="8809722101727", product_name="怨쇨굅 ?숈씪諛붿퐫??蹂꾨룄 ?곹뭹紐?, is_active="?ъ슜"),
+                    ThirdpartyProductMaster(sku="1467", barcode="8809722101727", product_name="濡쒖폆紐곕┛/諛곗닔援?而ㅻ쾭 嫄곗튂?(?ъ???+臾쇰┛ 諛곗닔援щ쭩 ?좏삎", is_active="?ъ슜"),
+                    ThirdpartyProductMaster(sku="OLD", barcode="999", product_name="?댁쟾 ?뚯씪?먮쭔 ?덈뜕 ?곹뭹", is_active="?ъ슜"),
                 ]
             )
             db.add(
@@ -194,7 +216,7 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
                     source_type="3PL",
                     work_date=work_date,
                     product_code="OLD",
-                    product_name="이전 파일에만 있던 상품",
+                    product_name="?댁쟾 ?뚯씪?먮쭔 ?덈뜕 ?곹뭹",
                     barcode="999",
                     current_stock=10,
                     available_stock=10,
@@ -206,41 +228,41 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
                 [
                     {
                         "SKU": "1467",
-                        "카테고리": "주방",
-                        "바코드": "8809722101727",
-                        "상품명": "로켓몰린/배수구 커버 거치대(사은품)+물린 배수구망 신형",
-                        "업체명": "로켓",
-                        "박스/파렛트 단위": "0",
-                        "담당자": "",
-                        "리드타임": "0",
+                        "移댄뀒怨좊━": "二쇰갑",
+                        "諛붿퐫??: "8809722101727",
+                        "?곹뭹紐?: "濡쒖폆紐곕┛/諛곗닔援?而ㅻ쾭 嫄곗튂?(?ъ???+臾쇰┛ 諛곗닔援щ쭩 ?좏삎",
+                        "?낆껜紐?: "濡쒖폆",
+                        "諛뺤뒪/?뚮젢???⑥쐞": "0",
+                        "?대떦??: "",
+                        "由щ뱶???: "0",
                     },
                     {
                         "SKU": "2000",
-                        "카테고리": "주방",
-                        "바코드": "8800000002000",
-                        "상품명": "새 파일 신규 상품",
-                        "업체명": "신규",
-                        "박스/파렛트 단위": "0",
-                        "담당자": "",
-                        "리드타임": "0",
+                        "移댄뀒怨좊━": "二쇰갑",
+                        "諛붿퐫??: "8800000002000",
+                        "?곹뭹紐?: "???뚯씪 ?좉퇋 ?곹뭹",
+                        "?낆껜紐?: "?좉퇋",
+                        "諛뺤뒪/?뚮젢???⑥쐞": "0",
+                        "?대떦??: "",
+                        "由щ뱶???: "0",
                     },
                 ]
             )
             buffer = BytesIO()
-            upload_df.to_excel(buffer, index=False, sheet_name="3PL 마스터")
+            upload_df.to_excel(buffer, index=False, sheet_name="3PL 留덉뒪??)
 
             preview = services.prepare_product_master_shared_import_preview(db, "3PL", buffer.getvalue())
             self.assertTrue(preview["ok"])
-            self.assertEqual(preview["summary"]["기존 마스터"], 3)
-            self.assertEqual(preview["summary"]["새 마스터 파일"], 2)
-            self.assertEqual(preview["summary"]["삭제 예정"], 2)
+            self.assertEqual(preview["summary"]["湲곗〈 留덉뒪??], 3)
+            self.assertEqual(preview["summary"]["??留덉뒪???뚯씪"], 2)
+            self.assertEqual(preview["summary"]["??젣 ?덉젙"], 3)
 
             result = services.apply_product_master_shared_import_preview(db, "3PL", preview, sync_inventory=False)
             self.assertTrue(result["ok"])
-            self.assertEqual(result["summary"]["기존 마스터"], 3)
-            self.assertEqual(result["summary"]["새 마스터 파일"], 2)
-            self.assertEqual(result["summary"]["삭제"], 2)
-            self.assertEqual(result["summary"]["최종 마스터"], 2)
+            self.assertEqual(result["summary"]["湲곗〈 留덉뒪??], 3)
+            self.assertEqual(result["summary"]["??留덉뒪???뚯씪"], 2)
+            self.assertEqual(result["summary"]["??젣"], 3)
+            self.assertEqual(result["summary"]["理쒖쥌 留덉뒪??], 2)
 
             masters = db.execute(select(ThirdpartyProductMaster).order_by(ThirdpartyProductMaster.sku)).scalars().all()
             self.assertEqual([row.sku for row in masters], ["1467", "2000"])
@@ -318,35 +340,35 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
     def test_threepl_master_replacement_keeps_existing_master_when_file_validation_fails(self) -> None:
         db = self.Session()
         try:
-            db.add(ThirdpartyProductMaster(sku="OLD", barcode="999", product_name="기존 상품", is_active="사용"))
+            db.add(ThirdpartyProductMaster(sku="OLD", barcode="999", product_name="湲곗〈 ?곹뭹", is_active="?ъ슜"))
             db.commit()
 
             upload_df = pd.DataFrame(
                 [
                     {
                         "SKU": "2000",
-                        "카테고리": "주방",
-                        "바코드": "8800000002000",
-                        "상품명": "새 파일 신규 상품",
-                        "업체명": "신규",
-                        "박스/파렛트 단위": "0",
-                        "담당자": "",
-                        "리드타임": "0",
+                        "移댄뀒怨좊━": "二쇰갑",
+                        "諛붿퐫??: "8800000002000",
+                        "?곹뭹紐?: "???뚯씪 ?좉퇋 ?곹뭹",
+                        "?낆껜紐?: "?좉퇋",
+                        "諛뺤뒪/?뚮젢???⑥쐞": "0",
+                        "?대떦??: "",
+                        "由щ뱶???: "0",
                     },
                     {
                         "SKU": "3000",
-                        "카테고리": "주방",
-                        "바코드": "8800000003000",
-                        "상품명": "",
-                        "업체명": "오류",
-                        "박스/파렛트 단위": "0",
-                        "담당자": "",
-                        "리드타임": "0",
+                        "移댄뀒怨좊━": "二쇰갑",
+                        "諛붿퐫??: "8800000003000",
+                        "?곹뭹紐?: "",
+                        "?낆껜紐?: "?ㅻ쪟",
+                        "諛뺤뒪/?뚮젢???⑥쐞": "0",
+                        "?대떦??: "",
+                        "由щ뱶???: "0",
                     },
                 ]
             )
             buffer = BytesIO()
-            upload_df.to_excel(buffer, index=False, sheet_name="3PL 마스터")
+            upload_df.to_excel(buffer, index=False, sheet_name="3PL 留덉뒪??)
 
             result = services.import_product_master_excel(db, "3PL", buffer.getvalue())
             self.assertFalse(result["ok"])
@@ -354,6 +376,90 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
             masters = db.execute(select(ThirdpartyProductMaster)).scalars().all()
             self.assertEqual(len(masters), 1)
             self.assertEqual(masters[0].sku, "OLD")
+        finally:
+            db.close()
+
+    def test_threepl_master_replacement_uses_last_uploaded_duplicate_sku_row(self) -> None:
+        db = self.Session()
+        try:
+            db.add(ThirdpartyProductMaster(sku="OLD", barcode="999", product_name="湲곗〈 ?곹뭹", is_active="?ъ슜"))
+            db.commit()
+
+            upload_df = pd.DataFrame(
+                [
+                    {
+                        "SKU": "DUP",
+                        "移댄뀒怨좊━": "??젣????,
+                        "諛붿퐫??: "111",
+                        "?곹뭹紐?: "癒쇱? ?섏삩 ?곹뭹",
+                        "?낆껜紐?: "?댁쟾",
+                        "諛뺤뒪/?뚮젢???⑥쐞": "0",
+                        "?대떦??: "",
+                        "由щ뱶???: "0",
+                    },
+                    {
+                        "SKU": "DUP",
+                        "移댄뀒怨좊━": "理쒖쥌 ??,
+                        "諛붿퐫??: "222",
+                        "?곹뭹紐?: "留덉?留??곹뭹",
+                        "?낆껜紐?: "理쒖쥌",
+                        "諛뺤뒪/?뚮젢???⑥쐞": "0",
+                        "?대떦??: "",
+                        "由щ뱶???: "0",
+                    },
+                ]
+            )
+            buffer = BytesIO()
+            upload_df.to_excel(buffer, index=False, sheet_name="3PL 留덉뒪??)
+
+            result = services.import_product_master_excel(db, "3PL", buffer.getvalue())
+            self.assertFalse(result["ok"])
+            self.assertIn("반영 가능한", result.get("message", ""))
+
+            masters = db.execute(select(ThirdpartyProductMaster)).scalars().all()
+            self.assertEqual(len(masters), 1)
+            self.assertEqual(masters[0].sku, "OLD")
+        finally:
+            db.close()
+
+    def test_offline_master_excel_replaces_existing_master_by_uploaded_file(self) -> None:
+        db = self.Session()
+        try:
+            db.add_all(
+                [
+                    OfflineProductMaster(sku="OLD-1", barcode="111", product_name="湲곗〈 ?ㅽ봽?쇱씤 1", is_active="?ъ슜"),
+                    OfflineProductMaster(sku="OLD-2", barcode="222", product_name="湲곗〈 ?ㅽ봽?쇱씤 2", is_active="?ъ슜"),
+                ]
+            )
+            db.commit()
+
+            upload_df = pd.DataFrame(
+                [
+                    {
+                        "SKU": "NEW-1",
+                        "移댄뀒怨좊━": "?ㅽ봽?쇱씤",
+                        "?곹뭹紐?: "???ㅽ봽?쇱씤 ?곹뭹",
+                        "?낆껜紐?: "留ㅼ옣",
+                        "諛뺤뒪/?뚮젢???⑥쐞": "0",
+                        "?대떦??: "",
+                        "由щ뱶???: "0",
+                    }
+                ]
+            )
+            buffer = BytesIO()
+            upload_df.to_excel(buffer, index=False)
+
+            result = services.import_product_master_excel(db, "?ㅽ봽?쇱씤", buffer.getvalue())
+            self.assertTrue(result["ok"], result.get("message"))
+            self.assertEqual(result["summary"]["湲곗〈 留덉뒪??], 2)
+            self.assertEqual(result["summary"]["??젣"], 2)
+            self.assertEqual(result["summary"]["理쒖쥌 留덉뒪??], 1)
+
+            masters = db.execute(select(OfflineProductMaster)).scalars().all()
+            self.assertEqual(len(masters), 1)
+            self.assertEqual(masters[0].sku, "NEW-1")
+            self.assertEqual(masters[0].product_name, "???ㅽ봽?쇱씤 ?곹뭹")
+            self.assertEqual(masters[0].barcode, "")
         finally:
             db.close()
 
@@ -366,7 +472,7 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
                 safe_stock=50,
                 pending_outbound_qty=5,
             ),
-            "주의",
+            "二쇱쓽",
         )
         self.assertEqual(
             services.inventory_stock_status_for_snapshot(
@@ -376,7 +482,7 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
                 safe_stock=50,
                 pending_outbound_qty=5,
             ),
-            "부족",
+            "遺議?,
         )
 
     def test_saved_daily_status_is_recalculated_from_available_and_pending_outbound(self) -> None:
@@ -429,6 +535,145 @@ class ThreeplInventoryMatchingTest(unittest.TestCase):
             ),
             0,
         )
+
+    def test_threepl_master_import_deduplicates_updates_deletes_and_syncs_daily_rows(self) -> None:
+        db = self.Session()
+        try:
+            db.add_all(
+                [
+                    ThirdpartyProductMaster(sku="OLD-SKU", barcode="111", product_name="2단 세로 풀세트", large_category="OLD"),
+                    ThirdpartyProductMaster(sku="STALE", barcode="999", product_name="old stale product", large_category="OLD"),
+                ]
+            )
+            db.commit()
+
+            upload_df = pd.DataFrame(
+                [
+                    {
+                        services.SHARED_MASTER_FORM_COLUMNS[0]: "3PL",
+                        "바코드": "222",
+                        services.SHARED_MASTER_FORM_COLUMNS[1]: "2단 세로 풀세트",
+                        services.SHARED_MASTER_FORM_COLUMNS[2]: "vendor",
+                        services.SHARED_MASTER_FORM_COLUMNS[3]: "0",
+                        services.SHARED_MASTER_FORM_COLUMNS[4]: "manager",
+                        services.SHARED_MASTER_FORM_COLUMNS[5]: "3",
+                    },
+                    {
+                        "SKU": "NEW-SKU",
+                        services.SHARED_MASTER_FORM_COLUMNS[0]: "3PL",
+                        "바코드": "333",
+                        services.SHARED_MASTER_FORM_COLUMNS[1]: "new product",
+                        services.SHARED_MASTER_FORM_COLUMNS[2]: "vendor",
+                        services.SHARED_MASTER_FORM_COLUMNS[3]: "0",
+                        services.SHARED_MASTER_FORM_COLUMNS[4]: "manager",
+                        services.SHARED_MASTER_FORM_COLUMNS[5]: "4",
+                    },
+                    {
+                        "SKU": "NEW-SKU",
+                        services.SHARED_MASTER_FORM_COLUMNS[0]: "3PL",
+                        "바코드": "333",
+                        services.SHARED_MASTER_FORM_COLUMNS[1]: "new product",
+                        services.SHARED_MASTER_FORM_COLUMNS[2]: "vendor",
+                        services.SHARED_MASTER_FORM_COLUMNS[3]: "0",
+                        services.SHARED_MASTER_FORM_COLUMNS[4]: "manager",
+                        services.SHARED_MASTER_FORM_COLUMNS[5]: "4",
+                    },
+                ]
+            )
+            buffer = BytesIO()
+            upload_df.to_excel(buffer, index=False, sheet_name=services.THREEPL_MASTER_SHEET_NAME)
+
+            result = services.import_product_master_excel(db, "3PL", buffer.getvalue())
+
+            self.assertTrue(result["ok"], result.get("message"))
+            self.assertEqual(result["summary"]["기존 마스터"], 2)
+            self.assertEqual(result["summary"]["새 마스터 파일"], 2)
+            self.assertEqual(result["summary"]["유지/갱신"], 1)
+            self.assertEqual(result["summary"]["신규"], 1)
+            self.assertEqual(result["summary"]["삭제"], 1)
+            self.assertEqual(result["summary"]["중복 제거"], 1)
+            self.assertEqual(result["summary"]["DB 재조회 마스터 수"], 2)
+            self.assertEqual(result["summary"]["InventoryDaily 신규 생성"], 2)
+
+            masters = db.execute(select(ThirdpartyProductMaster).order_by(ThirdpartyProductMaster.product_name)).scalars().all()
+            self.assertEqual(len(masters), 2)
+            by_name = {row.product_name: row for row in masters}
+            self.assertEqual(by_name["2단 세로 풀세트"].sku, "OLD-SKU")
+            self.assertEqual(by_name["2단 세로 풀세트"].barcode, "222")
+            self.assertIn("new product", by_name)
+            self.assertNotIn("old stale product", by_name)
+
+            daily_rows = db.execute(select(InventoryDaily).where(InventoryDaily.source_type == "3PL")).scalars().all()
+            daily_by_name = {row.product_name: row for row in daily_rows}
+            self.assertIn("2단 세로 풀세트", daily_by_name)
+            self.assertIn("new product", daily_by_name)
+            self.assertEqual(daily_by_name["2단 세로 풀세트"].barcode, "222")
+        finally:
+            db.close()
+
+    def test_threepl_master_import_marks_same_sku_different_names_as_conflict_without_canceling_all(self) -> None:
+        db = self.Session()
+        try:
+            db.add_all(
+                [
+                    ThirdpartyProductMaster(sku="KEEP", barcode="100", product_name="keep product"),
+                    ThirdpartyProductMaster(sku="OLD-CONFLICT", barcode="200", product_name="conflict product a"),
+                ]
+            )
+            db.commit()
+
+            upload_df = pd.DataFrame(
+                [
+                    {
+                        "SKU": "KEEP",
+                        services.SHARED_MASTER_FORM_COLUMNS[0]: "3PL",
+                        "바코드": "101",
+                        services.SHARED_MASTER_FORM_COLUMNS[1]: "keep product",
+                        services.SHARED_MASTER_FORM_COLUMNS[2]: "vendor",
+                        services.SHARED_MASTER_FORM_COLUMNS[3]: "0",
+                        services.SHARED_MASTER_FORM_COLUMNS[4]: "",
+                        services.SHARED_MASTER_FORM_COLUMNS[5]: "0",
+                    },
+                    {
+                        "SKU": "DUP-SKU",
+                        services.SHARED_MASTER_FORM_COLUMNS[0]: "3PL",
+                        "바코드": "201",
+                        services.SHARED_MASTER_FORM_COLUMNS[1]: "conflict product a",
+                        services.SHARED_MASTER_FORM_COLUMNS[2]: "vendor",
+                        services.SHARED_MASTER_FORM_COLUMNS[3]: "0",
+                        services.SHARED_MASTER_FORM_COLUMNS[4]: "",
+                        services.SHARED_MASTER_FORM_COLUMNS[5]: "0",
+                    },
+                    {
+                        "SKU": "DUP-SKU",
+                        services.SHARED_MASTER_FORM_COLUMNS[0]: "3PL",
+                        "바코드": "202",
+                        services.SHARED_MASTER_FORM_COLUMNS[1]: "conflict product b",
+                        services.SHARED_MASTER_FORM_COLUMNS[2]: "vendor",
+                        services.SHARED_MASTER_FORM_COLUMNS[3]: "0",
+                        services.SHARED_MASTER_FORM_COLUMNS[4]: "",
+                        services.SHARED_MASTER_FORM_COLUMNS[5]: "0",
+                    },
+                ]
+            )
+            buffer = BytesIO()
+            upload_df.to_excel(buffer, index=False, sheet_name=services.THREEPL_MASTER_SHEET_NAME)
+
+            result = services.import_product_master_excel(db, "3PL", buffer.getvalue())
+
+            self.assertTrue(result["ok"], result.get("message"))
+            self.assertEqual(result["summary"]["충돌"], 2)
+            conflict_details = [detail for detail in result["details"] if detail.get("처리 유형") == "충돌"]
+            self.assertEqual(len(conflict_details), 2)
+            self.assertIn("충돌 행", conflict_details[0])
+
+            masters = db.execute(select(ThirdpartyProductMaster)).scalars().all()
+            by_name = {row.product_name: row for row in masters}
+            self.assertEqual(by_name["keep product"].barcode, "101")
+            self.assertEqual(by_name["conflict product a"].sku, "OLD-CONFLICT")
+            self.assertNotIn("conflict product b", by_name)
+        finally:
+            db.close()
 
 
 if __name__ == "__main__":

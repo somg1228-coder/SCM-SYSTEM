@@ -359,7 +359,7 @@ def keep_existing_product_payload(existing_row: dict | None, normalized: dict) -
     return next_payload
 
 
-def bulk_save_product_master(source_type: str, rows: list[dict], chunk_size: int = 300) -> dict:
+def bulk_save_product_master(source_type: str, rows: list[dict], chunk_size: int = 300, replace_existing: bool = False) -> dict:
     sb = client()
     existing = (
         sb.table(SOURCE_TABLE)
@@ -369,12 +369,16 @@ def bulk_save_product_master(source_type: str, rows: list[dict], chunk_size: int
         .data
         or []
     )
-    used_skus = {clean(row.get("sku")) for row in existing if clean(row.get("sku"))}
-    existing_by_sku = {clean(row.get("sku")): row for row in existing if clean(row.get("sku"))}
-    existing_by_barcode_name = {
-        (clean(row.get("barcode")), clean(row.get("product_name"))): row
-        for row in existing
-    }
+    used_skus = set() if replace_existing else {clean(row.get("sku")) for row in existing if clean(row.get("sku"))}
+    existing_by_sku = {} if replace_existing else {clean(row.get("sku")): row for row in existing if clean(row.get("sku"))}
+    existing_by_barcode_name = (
+        {}
+        if replace_existing
+        else {
+            (clean(row.get("barcode")), clean(row.get("product_name"))): row
+            for row in existing
+        }
+    )
     payloads = []
     errors = []
     for index, row in enumerate(rows, start=1):
@@ -384,8 +388,8 @@ def bulk_save_product_master(source_type: str, rows: list[dict], chunk_size: int
             normalized["sku"] = clean(existing_row.get("sku")) or normalized["sku"]
         existing_row = existing_row or existing_by_sku.get(normalized["sku"])
         normalized = keep_existing_product_payload(existing_row, normalized)
-        if not normalized["product_name"] or not normalized["barcode"] or not normalized["sku"]:
-            errors.append(f"{index}행: SKU/바코드/상품명 생성 실패")
+        if not normalized["product_name"] or not normalized["sku"]:
+            errors.append(f"{index}행: SKU/상품명 생성 실패")
             continue
         payloads.append(normalized)
     if errors:
@@ -397,11 +401,15 @@ def bulk_save_product_master(source_type: str, rows: list[dict], chunk_size: int
         payloads = list(deduped_payloads.values())
     if payloads:
         safe_chunk_size = max(1, int(chunk_size or 300))
+        if replace_existing:
+            sb.table(SOURCE_TABLE).delete().eq("source_type", source_type).execute()
         for start in range(0, len(payloads), safe_chunk_size):
             chunk = payloads[start : start + safe_chunk_size]
             sb.table(SOURCE_TABLE).upsert(chunk, on_conflict="source_type,sku").execute()
-    log_audit("product_master_upsert", source_type, {"count": len(payloads)})
-    return {"ok": True, "message": f"{source_type} 상품 마스터 Supabase 저장 완료", "count": len(payloads)}
+    action = "product_master_replace" if replace_existing else "product_master_upsert"
+    log_audit(action, source_type, {"count": len(payloads)})
+    message = f"{source_type} 상품 마스터 Supabase 전체 교체 완료" if replace_existing else f"{source_type} 상품 마스터 Supabase 저장 완료"
+    return {"ok": True, "message": message, "count": len(payloads)}
 
 
 def find_product(source_type: str, sku: str = "", barcode: str = "", product_name: str = "") -> dict | None:

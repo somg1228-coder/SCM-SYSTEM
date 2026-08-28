@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS "inventory_daily" (
 CREATE INDEX IF NOT EXISTS "ix_inventory_daily_source_type" ON "inventory_daily" ("source_type");
 CREATE INDEX IF NOT EXISTS "ix_inventory_daily_product_name" ON "inventory_daily" ("product_name");
 CREATE INDEX IF NOT EXISTS "ix_inventory_daily_work_date" ON "inventory_daily" ("work_date");
-CREATE UNIQUE INDEX IF NOT EXISTS "uq_inventory_daily_source_type_work_date_product_name_barcode" ON "inventory_daily" ("source_type", "work_date", "product_name", "barcode");
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_inventory_daily_source_date_product_name" ON "inventory_daily" ("source_type", "work_date", "product_name");
 SELECT setval(pg_get_serial_sequence('inventory_daily', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM "inventory_daily"), 1), 1), (SELECT COUNT(*) FROM "inventory_daily") > 0);
 
 CREATE TABLE IF NOT EXISTS "inventory_inbound" (
@@ -259,7 +259,7 @@ CREATE TABLE IF NOT EXISTS "offline_product_master" (
 CREATE INDEX IF NOT EXISTS "ix_offline_product_master_product_name" ON "offline_product_master" ("product_name");
 CREATE INDEX IF NOT EXISTS "ix_offline_product_master_barcode" ON "offline_product_master" ("barcode");
 CREATE INDEX IF NOT EXISTS "ix_offline_product_master_sku" ON "offline_product_master" ("sku");
-CREATE UNIQUE INDEX IF NOT EXISTS "uq_offline_product_master_barcode_product_name" ON "offline_product_master" ("barcode", "product_name");
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_offline_product_master_product_name" ON "offline_product_master" ("product_name");
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_offline_product_master_sku" ON "offline_product_master" ("sku");
 SELECT setval(pg_get_serial_sequence('offline_product_master', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM "offline_product_master"), 1), 1), (SELECT COUNT(*) FROM "offline_product_master") > 0);
 
@@ -698,6 +698,7 @@ CREATE TABLE IF NOT EXISTS "thirdparty_product_master" (
 CREATE INDEX IF NOT EXISTS "ix_thirdparty_product_master_product_name" ON "thirdparty_product_master" ("product_name");
 CREATE INDEX IF NOT EXISTS "ix_thirdparty_product_master_barcode" ON "thirdparty_product_master" ("barcode");
 CREATE INDEX IF NOT EXISTS "ix_thirdparty_product_master_sku" ON "thirdparty_product_master" ("sku");
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_thirdparty_product_master_product_name" ON "thirdparty_product_master" ("product_name");
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_thirdparty_product_master_sku" ON "thirdparty_product_master" ("sku");
 SELECT setval(pg_get_serial_sequence('thirdparty_product_master', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM "thirdparty_product_master"), 1), 1), (SELECT COUNT(*) FROM "thirdparty_product_master") > 0);
 
@@ -782,7 +783,7 @@ CREATE TABLE IF NOT EXISTS "warehouse_product_master" (
 CREATE INDEX IF NOT EXISTS "ix_warehouse_product_master_product_name" ON "warehouse_product_master" ("product_name");
 CREATE INDEX IF NOT EXISTS "ix_warehouse_product_master_barcode" ON "warehouse_product_master" ("barcode");
 CREATE INDEX IF NOT EXISTS "ix_warehouse_product_master_sku" ON "warehouse_product_master" ("sku");
-CREATE UNIQUE INDEX IF NOT EXISTS "uq_warehouse_product_master_barcode_product_name" ON "warehouse_product_master" ("barcode", "product_name");
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_warehouse_product_master_product_name" ON "warehouse_product_master" ("product_name");
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_warehouse_product_master_sku" ON "warehouse_product_master" ("sku");
 SELECT setval(pg_get_serial_sequence('warehouse_product_master', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM "warehouse_product_master"), 1), 1), (SELECT COUNT(*) FROM "warehouse_product_master") > 0);
 

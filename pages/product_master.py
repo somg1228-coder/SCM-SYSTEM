@@ -226,9 +226,8 @@ def render_master_tab(source_type: str, title: str) -> None:
                 show_result(
                     with_db(
                         lambda db: {
-                            "ok": True,
+                            **services.sync_inventory_from_product_master(db, source_type, return_summary=True),
                             "message": f"{title} 기준 재고 데이터 동기화 완료",
-                            "count": services.sync_inventory_from_product_master(db, source_type),
                             "_clear_inventory_cache": True,
                         }
                     )
@@ -356,9 +355,8 @@ def render_threepl_master_tab(source_type: str, title: str, key: str) -> None:
                 show_result(
                     with_db(
                         lambda db: {
-                            "ok": True,
+                            **services.sync_inventory_from_product_master(db, source_type, return_summary=True),
                             "message": f"{title} 기준 재고 데이터 동기화 완료",
-                            "count": services.sync_inventory_from_product_master(db, source_type),
                             "_clear_inventory_cache": True,
                         }
                     )
