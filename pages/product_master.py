@@ -379,7 +379,7 @@ def render_threepl_import_preview(source_type: str, key: str, preview_key: str, 
     with apply_col:
         if st.button("미리보기 내용 반영", type="primary", key=f"product_master_{key}_preview_apply", disabled=applyable_count == 0 or blocking_error_count > 0, use_container_width=True):
             if show_sqlite_write_status(f"{source_type} 마스터 업로드 반영"):
-                result = with_db(lambda db: services.apply_product_master_shared_import_preview(db, source_type, preview, sync_inventory=source_type != "3PL"))
+                result = with_db(lambda db: services.apply_product_master_shared_import_preview(db, source_type, preview, sync_inventory=False))
                 st.session_state[result_key] = result
                 st.session_state.pop(preview_key, None)
                 if result and result.get("ok", True):

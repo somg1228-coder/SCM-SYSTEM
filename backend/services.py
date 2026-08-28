@@ -1535,6 +1535,9 @@ def threepl_master_basis_data(row: dict) -> dict:
         "pack_qty": to_int(row.get("pack_qty")),
         "box_qty": to_int(row.get("box_qty")),
         "default_lead_time": to_int(row.get("default_lead_time")),
+        "min_stock": to_int(row.get("min_stock")),
+        "sort_order": to_int(row.get("sort_order")),
+        "is_active": clean_text(row.get("is_active")) or "사용",
         "memo": clean_text(row.get("memo")),
     }
     return data
@@ -1754,7 +1757,12 @@ def product_master_existing_maps(products: list[object]) -> tuple[dict[str, obje
     return by_name, by_sku
 
 
-def prepare_product_master_shared_import_preview(db: Session, source_type: str, file_bytes: bytes) -> dict:
+def prepare_product_master_shared_import_preview(
+    db: Session,
+    source_type: str,
+    file_bytes: bytes,
+    include_existing_products: bool = False,
+) -> dict:
     started_at = time.perf_counter()
     raw_df = read_threepl_master_excel(file_bytes) if source_type == "3PL" else read_excel(file_bytes)
     df = fill_down_threepl_master_categories(normalize_product_master_barcode_columns(raw_df))
@@ -1994,7 +2002,7 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
         "삭제 예정": delete_count,
     }
 
-    return {
+    result = {
         "ok": True,
         "message": f"{source_type} 마스터 업로드 검증 완료",
         "summary": {
@@ -2015,13 +2023,16 @@ def prepare_product_master_shared_import_preview(db: Session, source_type: str, 
         "source_type": source_type,
         "used_html": df.attrs.get("read_method") == "html",
     }
+    if include_existing_products:
+        result["_existing_products"] = existing_products
+    return result
 
 
 def prepare_threepl_master_import_preview(db: Session, file_bytes: bytes) -> dict:
     return prepare_product_master_shared_import_preview(db, "3PL", file_bytes)
 
 
-def apply_product_master_replacement_preview(db: Session, source_type: str, preview: dict, sync_inventory: bool = True) -> dict:
+def apply_product_master_replacement_preview(db: Session, source_type: str, preview: dict, sync_inventory: bool = False) -> dict:
     started_at = time.perf_counter()
     if not preview.get("ok", True):
         preview.setdefault("count", 0)
@@ -2040,7 +2051,9 @@ def apply_product_master_replacement_preview(db: Session, source_type: str, prev
         }
 
     model = product_master_model(source_type)
-    existing_products = list(db.execute(select(model).order_by(model.id)).scalars())
+    existing_products = preview.get("_existing_products")
+    if existing_products is None:
+        existing_products = list(db.execute(select(model).order_by(model.id)).scalars())
     existing_by_product_name, _existing_by_sku = product_master_existing_maps(existing_products)
     used_sku_keys: set[str] = set()
     used_product_names: set[str] = set()
@@ -2095,25 +2108,33 @@ def apply_product_master_replacement_preview(db: Session, source_type: str, prev
         if product_db_id(product) not in matched_existing_ids
         and normalize_product_name_match_key(getattr(product, "product_name", "")) not in conflict_name_keys
     ]
-    for product in delete_products:
-        db.delete(product)
-    db.flush()
+    delete_ids = [product_db_id(product) for product in delete_products if product_db_id(product)]
+    if delete_ids:
+        db.execute(delete(model).where(model.id.in_(delete_ids)))
 
     inserted_count = 0
     updated_count = 0
     unchanged_count = 0
+    insert_mappings = []
+    update_mappings = []
+    temporary_sku_mappings = []
+    now = datetime.utcnow()
     for data, detail, product in assignments:
         if product is None:
-            product = model(**data)
-            db.add(product)
+            insert_data = dict(data)
+            insert_data.setdefault("created_at", now)
+            insert_data.setdefault("updated_at", now)
+            insert_mappings.append(insert_data)
             inserted_count += 1
             action = "INSERT"
             change_text = "새 마스터 파일 기준 신규 생성"
             result_text = "등록 완료"
         else:
             changes = describe_threepl_master_changes(product, data)
-            for key, value in data.items():
-                setattr(product, key, value)
+            update_data = {"id": product_db_id(product), **data, "updated_at": now}
+            if clean_text(getattr(product, "sku", "")) != clean_text(data.get("sku")):
+                temporary_sku_mappings.append({"id": product_db_id(product), "sku": f"__import_tmp_{product_db_id(product)}"})
+            update_mappings.append(update_data)
             if changes:
                 updated_count += 1
                 action = "UPDATE"
@@ -2133,6 +2154,14 @@ def apply_product_master_replacement_preview(db: Session, source_type: str, prev
         result_detail["처리 결과"] = result_text
         result_detail.pop("_data", None)
         result_details.append(result_detail)
+
+    if temporary_sku_mappings:
+        db.bulk_update_mappings(model, temporary_sku_mappings)
+        db.flush()
+    if update_mappings:
+        db.bulk_update_mappings(model, update_mappings)
+    if insert_mappings:
+        db.bulk_insert_mappings(model, insert_mappings)
 
     for detail in details:
         if detail.get("_apply"):
@@ -2157,9 +2186,8 @@ def apply_product_master_replacement_preview(db: Session, source_type: str, prev
             }
         )
 
-    db.flush()
-    final_count = db.execute(select(func.count()).select_from(model)).scalar_one()
     db.commit()
+    final_count = db.execute(select(func.count()).select_from(model)).scalar_one()
     sync_summary = sync_inventory_from_product_master(db, source_type, return_summary=True) if sync_inventory else {}
     synced_count = int(sync_summary.get("count") or 0) if sync_summary else 0
 
@@ -2202,14 +2230,15 @@ def apply_product_master_replacement_preview(db: Session, source_type: str, prev
         "sync_summary": sync_summary,
         "summary": summary,
         "details": result_details,
+        "_clear_inventory_cache": True,
     }
 
 
 def apply_threepl_master_replacement_preview(db: Session, preview: dict) -> dict:
-    return apply_product_master_replacement_preview(db, "3PL", preview, sync_inventory=True)
+    return apply_product_master_replacement_preview(db, "3PL", preview, sync_inventory=False)
 
 
-def apply_product_master_shared_import_preview(db: Session, source_type: str, preview: dict, sync_inventory: bool = True) -> dict:
+def apply_product_master_shared_import_preview(db: Session, source_type: str, preview: dict, sync_inventory: bool = False) -> dict:
     if use_legacy_supabase_rest_store():
         rows = [detail.get("_data") or {} for detail in preview.get("details", []) if detail.get("_apply")]
         result = supabase_store.bulk_save_product_master(source_type, rows, replace_existing=True)
@@ -2221,7 +2250,7 @@ def apply_product_master_shared_import_preview(db: Session, source_type: str, pr
     return apply_product_master_replacement_preview(db, source_type, preview, sync_inventory=sync_inventory)
 
 
-def apply_threepl_master_import_preview(db: Session, preview: dict, sync_inventory: bool = True) -> dict:
+def apply_threepl_master_import_preview(db: Session, preview: dict, sync_inventory: bool = False) -> dict:
     return apply_product_master_shared_import_preview(db, "3PL", preview, sync_inventory)
 
 
@@ -2452,14 +2481,14 @@ def merge_duplicate_erp_product_masters(db: Session, source_type: str | None = N
 
 
 def import_product_master_excel(db: Session, source_type: str, file_bytes: bytes) -> dict:
-    preview = prepare_product_master_shared_import_preview(db, source_type, file_bytes)
+    preview = prepare_product_master_shared_import_preview(db, source_type, file_bytes, include_existing_products=True)
     if not preview.get("ok", True):
         preview.setdefault("count", 0)
         return preview
     if not any(detail.get("_apply") for detail in preview.get("details", [])):
         preview.update({"ok": False, "message": f"반영 가능한 {source_type} 마스터 행이 없습니다.", "count": 0})
         return preview
-    return apply_product_master_shared_import_preview(db, source_type, preview, sync_inventory=True)
+    return apply_product_master_shared_import_preview(db, source_type, preview, sync_inventory=False)
 
 
 def merge_inventory_daily_rows(target: InventoryDaily, duplicate: InventoryDaily) -> InventoryDaily:

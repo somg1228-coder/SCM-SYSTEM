@@ -1474,8 +1474,8 @@ def inventory_output_signature(df: pd.DataFrame, filters: dict) -> tuple:
     if df is None or df.empty:
         row_marker = ("empty", 0)
     else:
-        sample_columns = [column for column in ("바코드", "상품명", "현재고", "가용재고") if column in df.columns]
-        sample = tuple(tuple(clean_cell(value) for value in row) for row in df[sample_columns].head(5).fillna("").to_numpy())
+        sample_columns = [column for column in ("바코드", "상품명", "현재고", "가용재고", "리드타임") if column in df.columns]
+        sample = tuple(tuple(clean_cell(value) for value in row) for row in df[sample_columns].fillna("").to_numpy())
         row_marker = (len(df), sample)
     filter_marker = tuple(sorted((str(key), str(value)) for key, value in (filters or {}).items()))
     return row_marker, filter_marker
@@ -4708,8 +4708,8 @@ def inventory_output_signature(df: pd.DataFrame, filters: dict) -> tuple:
     if df is None or df.empty:
         row_marker = ("empty", 0)
     else:
-        sample_columns = [column for column in ("바코드", "상품명", "현재고", "가용재고", "주평균출고") if column in df.columns]
-        sample = tuple(tuple(clean_cell(value) for value in row) for row in df[sample_columns].head(5).fillna("").to_numpy())
+        sample_columns = [column for column in ("바코드", "상품명", "현재고", "가용재고", "주평균출고", "리드타임") if column in df.columns]
+        sample = tuple(tuple(clean_cell(value) for value in row) for row in df[sample_columns].fillna("").to_numpy())
         row_marker = (len(df), sample)
     filter_marker = tuple(sorted((str(key), str(value)) for key, value in (filters or {}).items()))
     return row_marker, filter_marker

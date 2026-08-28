@@ -480,7 +480,7 @@ def database_connect_args(database_url: str) -> dict:
         return {
             "sslmode": "require",
             "connect_timeout": 5,
-            "options": "-c statement_timeout=10000 -c idle_in_transaction_session_timeout=10000",
+            "options": "-c lock_timeout=5000 -c statement_timeout=30000 -c idle_in_transaction_session_timeout=10000",
         }
     return {}
 
@@ -969,8 +969,6 @@ def init_db(force: bool = False, ensure_schema: bool | None = None) -> None:
     if ensure_schema is None:
         ensure_schema = is_sqlite_url(DATABASE_URL)
     if not ensure_schema:
-        if is_postgresql_url(DATABASE_URL):
-            ensure_postgresql_runtime_columns()
         _LAST_SCHEMA_INIT_OK = True
         _LAST_DB_ERROR = ""
         _INIT_DB_DONE = True
@@ -1249,7 +1247,6 @@ def ensure_sqlite_columns() -> None:
                     conn.exec_driver_sql(
                         f"ALTER TABLE {quoted_table} ADD COLUMN {quote_sqlite_identifier(column_name)} {ddl}"
                     )
-        ensure_inventory_daily_product_name_identity(conn)
         ensure_product_master_barcode_constraints(conn)
         ensure_product_master_product_name_indexes(conn)
 
@@ -1288,8 +1285,20 @@ def ensure_postgresql_runtime_columns() -> None:
                     f'ALTER TABLE IF EXISTS "{table_name}" '
                     f'ADD COLUMN IF NOT EXISTS "{column_name}" {ddl}'
                 )
-        ensure_postgresql_inventory_daily_product_name_identity(conn)
-        ensure_postgresql_product_master_product_name_indexes(conn)
+        # Runtime schema checks must stay lightweight. Full-table cleanup,
+        # duplicate merges, and unique index rebuilds are one-time migrations.
+        return
+
+
+def run_inventory_identity_one_time_migration() -> None:
+    """Run the heavy inventory/master identity cleanup outside app runtime."""
+    with engine.begin() as conn:
+        if is_postgresql_url(DATABASE_URL):
+            ensure_postgresql_inventory_daily_product_name_identity(conn)
+            ensure_postgresql_product_master_product_name_indexes(conn)
+        elif is_sqlite_url(DATABASE_URL):
+            ensure_inventory_daily_product_name_identity(conn)
+            ensure_product_master_product_name_indexes(conn)
 
 
 def ensure_postgresql_columns() -> None:

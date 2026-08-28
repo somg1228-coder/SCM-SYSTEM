@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from io import BytesIO
+import time
 import unittest
 
 import pandas as pd
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import sessionmaker
 
 from backend import services
@@ -68,7 +69,7 @@ class ThreeplMasterImportSyncTest(unittest.TestCase):
             self.assertEqual(result["summary"]["삭제"], 1)
             self.assertEqual(result["summary"]["중복 제거"], 1)
             self.assertEqual(result["summary"]["DB 재조회 마스터 수"], 2)
-            self.assertEqual(result["summary"]["InventoryDaily 신규 생성"], 2)
+            self.assertNotIn("InventoryDaily 신규 생성", result["summary"])
 
             masters = db.execute(select(ThirdpartyProductMaster)).scalars().all()
             by_name = {row.product_name: row for row in masters}
@@ -79,10 +80,7 @@ class ThreeplMasterImportSyncTest(unittest.TestCase):
             self.assertNotIn("old stale product", by_name)
 
             daily_rows = db.execute(select(InventoryDaily).where(InventoryDaily.source_type == "3PL")).scalars().all()
-            daily_by_name = {row.product_name: row for row in daily_rows}
-            self.assertIn("2단 세로 풀세트", daily_by_name)
-            self.assertIn("new product", daily_by_name)
-            self.assertEqual(daily_by_name["2단 세로 풀세트"].barcode, "222")
+            self.assertEqual(daily_rows, [])
         finally:
             db.close()
 
@@ -120,6 +118,63 @@ class ThreeplMasterImportSyncTest(unittest.TestCase):
             self.assertEqual(by_name["keep product"].barcode, "101")
             self.assertEqual(by_name["conflict product a"].sku, "OLD-CONFLICT")
             self.assertNotIn("conflict product b", by_name)
+        finally:
+            db.close()
+
+    def test_import_289_rows_replaces_285_without_inventory_sync_under_30_seconds(self) -> None:
+        db = self.Session()
+        try:
+            db.add_all(
+                [
+                    ThirdpartyProductMaster(
+                        sku=f"OLD-{index:03d}",
+                        barcode=f"8800000{index:05d}",
+                        product_name=f"product {index:03d}",
+                        default_lead_time=1,
+                    )
+                    for index in range(285)
+                ]
+            )
+            db.add(
+                InventoryDaily(
+                    source_type="3PL",
+                    work_date=pd.Timestamp("2026-08-28").date(),
+                    product_code="OLD-001",
+                    product_name="product 001",
+                    barcode="880000000001",
+                    inbound_cycle=1,
+                )
+            )
+            db.commit()
+
+            rows = [
+                self.row(
+                    product_name=f"product {index:03d}",
+                    barcode=f"9900000{index:05d}",
+                    sku=f"NEW-{index:03d}",
+                )
+                for index in range(289)
+            ]
+            inventory_daily_sql = []
+
+            def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+                if "inventory_daily" in statement.lower():
+                    inventory_daily_sql.append(statement)
+
+            event.listen(db.get_bind(), "before_cursor_execute", capture_sql)
+            started_at = time.perf_counter()
+            result = services.import_product_master_excel(db, "3PL", self.upload_bytes(rows))
+            elapsed = time.perf_counter() - started_at
+            event.remove(db.get_bind(), "before_cursor_execute", capture_sql)
+
+            self.assertTrue(result["ok"], result.get("message"))
+            self.assertLess(elapsed, 30)
+            self.assertEqual(inventory_daily_sql, [])
+            self.assertEqual(db.scalar(select(func.count()).select_from(ThirdpartyProductMaster)), 289)
+            self.assertEqual(result["summary"]["DB 재조회 마스터 수"], 289)
+            daily_row = db.execute(select(InventoryDaily)).scalar_one()
+            self.assertEqual(daily_row.product_code, "OLD-001")
+            self.assertEqual(daily_row.inbound_cycle, 1)
         finally:
             db.close()
 
