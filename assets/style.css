@@ -14541,7 +14541,6 @@ body,
 .stApp,
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],
-main,
 section.main,
 .main {
     min-height: 100vh !important;
@@ -14557,7 +14556,6 @@ header[data-testid="stHeader"],
 
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],
-main,
 section.main,
 .main {
     margin-top: 0 !important;
