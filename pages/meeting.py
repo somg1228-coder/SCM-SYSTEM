@@ -528,20 +528,22 @@ def render_visible_spreadsheet_editor(
         edited_rows = []
         for row_index, row in enumerate(rows):
             row_cols = st.columns(header_weights, gap="small")
+            delete_key = f"{key_prefix}_delete_{row_index}"
             edited_row = {
                 ROW_ID_COLUMN: normalize_row_id(row.get(ROW_ID_COLUMN, "")),
                 EDIT_DELETE_COLUMN: row_cols[0].checkbox(
                     "삭제",
                     value=is_delete_checked(row.get(EDIT_DELETE_COLUMN)),
-                    key=f"{key_prefix}_delete_{row_index}",
+                    key=delete_key,
                     label_visibility="collapsed",
                 ),
             }
+            edited_row[EDIT_DELETE_COLUMN] = bool(st.session_state.get(delete_key, edited_row[EDIT_DELETE_COLUMN]))
             for column_index, column in enumerate(columns, start=1):
                 value = row.get(column, "")
                 cell_key = f"{key_prefix}_{row_index}_{column_index}_{safe_widget_key(column)}"
                 if column in number_columns:
-                    edited_row[column] = row_cols[column_index].number_input(
+                    widget_value = row_cols[column_index].number_input(
                         column,
                         min_value=0,
                         step=1,
@@ -549,23 +551,25 @@ def render_visible_spreadsheet_editor(
                         key=cell_key,
                         label_visibility="collapsed",
                     )
+                    edited_row[column] = parse_int(st.session_state.get(cell_key, widget_value))
                 elif column in select_options:
                     options = list(select_options[column])
                     current = normalize_cell_value(value)
                     if current and current not in options:
                         options.append(current)
-                    edited_row[column] = row_cols[column_index].selectbox(
+                    widget_value = row_cols[column_index].selectbox(
                         column,
                         options=options,
                         index=options.index(current) if current in options else 0,
                         key=cell_key,
                         label_visibility="collapsed",
                     )
+                    edited_row[column] = normalize_cell_value(st.session_state.get(cell_key, widget_value))
                 else:
                     placeholder = "YYYY-MM-DD" if column in date_columns else ""
                     text_value = normalize_date_value(value) if column in date_columns else normalize_cell_value(value)
                     if column in multiline_columns:
-                        edited_row[column] = row_cols[column_index].text_area(
+                        widget_value = row_cols[column_index].text_area(
                             column,
                             value=text_value,
                             placeholder=placeholder,
@@ -574,13 +578,14 @@ def render_visible_spreadsheet_editor(
                             label_visibility="collapsed",
                         )
                     else:
-                        edited_row[column] = row_cols[column_index].text_input(
+                        widget_value = row_cols[column_index].text_input(
                             column,
                             value=text_value,
                             placeholder=placeholder,
                             key=cell_key,
                             label_visibility="collapsed",
                         )
+                    edited_row[column] = normalize_cell_value(st.session_state.get(cell_key, widget_value))
             edited_rows.append(edited_row)
         st.markdown("</div>", unsafe_allow_html=True)
     edited_df = pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
