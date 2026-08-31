@@ -309,6 +309,7 @@ class MeetingActionItem(Base):
 
 class ReturnCase(Base):
     __tablename__ = "cases"
+    __table_args__ = (UniqueConstraint("case_id", name="uq_cases_case_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     case_id: Mapped[str | None] = mapped_column(Text, index=True, nullable=True)

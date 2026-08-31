@@ -25,6 +25,7 @@ CREATE INDEX IF NOT EXISTS "ix_cases_product" ON "cases" ("product");
 CREATE INDEX IF NOT EXISTS "ix_cases_category" ON "cases" ("category");
 CREATE INDEX IF NOT EXISTS "ix_cases_case_id" ON "cases" ("case_id");
 CREATE INDEX IF NOT EXISTS "ix_cases_barcode" ON "cases" ("barcode");
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_cases_case_id" ON "cases" ("case_id") WHERE COALESCE("case_id", '') <> '';
 SELECT setval(pg_get_serial_sequence('cases', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM "cases"), 1), 1), (SELECT COUNT(*) FROM "cases") > 0);
 
 CREATE TABLE IF NOT EXISTS "category_bom_items" (

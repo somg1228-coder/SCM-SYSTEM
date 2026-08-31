@@ -1287,7 +1287,34 @@ def ensure_postgresql_runtime_columns() -> None:
                 )
         # Runtime schema checks must stay lightweight. Full-table cleanup,
         # duplicate merges, and unique index rebuilds are one-time migrations.
+        ensure_postgresql_return_case_identity(conn)
         return
+
+
+def ensure_postgresql_return_case_identity(conn) -> None:
+    duplicate = conn.exec_driver_sql(
+        """
+        SELECT case_id
+        FROM "cases"
+        WHERE COALESCE(case_id, '') <> ''
+        GROUP BY case_id
+        HAVING COUNT(*) > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    if duplicate:
+        LOGGER.warning(
+            "Return case case_id unique index skipped because duplicate case_id exists: %s",
+            sanitize_database_text(str(duplicate[0])),
+        )
+        return
+    conn.exec_driver_sql(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_cases_case_id
+        ON "cases" ("case_id")
+        WHERE COALESCE("case_id", '') <> ''
+        """
+    )
 
 
 def run_inventory_identity_one_time_migration() -> None:

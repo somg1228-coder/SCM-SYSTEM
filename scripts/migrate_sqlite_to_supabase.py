@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 import tomllib
 
-from sqlalchemy import create_engine, delete, inspect, select
+from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
@@ -115,13 +115,23 @@ def migrate_return_cases_table(source_conn, target_conn, table, chunk_size: int 
     first_column = next(iter(table.c))
     target_before = target_conn.execute(select(first_column).limit(1)).fetchone()
     case_ids = [str(row.get("case_id") or "").strip() for row in rows if str(row.get("case_id") or "").strip()]
-    deleted = 0
-    inserted = 0
+    existing_case_ids = set()
     if case_ids:
-        result = target_conn.execute(delete(table).where(table.c.case_id.in_(case_ids)))
-        deleted = int(result.rowcount or 0)
+        existing_case_ids = {
+            str(row[0]).strip()
+            for row in target_conn.execute(select(table.c.case_id).where(table.c.case_id.in_(case_ids))).fetchall()
+            if row[0]
+        }
+    inserted = 0
+    seen_case_ids = set()
     if rows:
-        insert_rows = [{key: value for key, value in row.items() if key != "id"} for row in rows]
+        insert_rows = []
+        for row in rows:
+            case_id = str(row.get("case_id") or "").strip()
+            if not case_id or case_id in existing_case_ids or case_id in seen_case_ids:
+                continue
+            seen_case_ids.add(case_id)
+            insert_rows.append({key: value for key, value in row.items() if key != "id"})
         for offset in range(0, len(insert_rows), chunk_size):
             batch = insert_rows[offset : offset + chunk_size]
             result = target_conn.execute(table.insert(), batch)
@@ -133,7 +143,7 @@ def migrate_return_cases_table(source_conn, target_conn, table, chunk_size: int 
         "target_had_rows": bool(target_before),
         "inserted_rows": inserted,
         "skipped_rows": source_count - inserted,
-        "note": f"case_id 기준 기존 {deleted}건 교체",
+        "note": f"case_id 기준 기존 {len(existing_case_ids)}건 skip",
     }
 
 

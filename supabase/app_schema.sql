@@ -790,6 +790,7 @@ CREATE INDEX IF NOT EXISTS ix_cases_case_id ON cases (case_id);
 CREATE INDEX IF NOT EXISTS ix_cases_category ON cases (category);
 CREATE INDEX IF NOT EXISTS ix_cases_id ON cases (id);
 CREATE INDEX IF NOT EXISTS ix_cases_product ON cases (product);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cases_case_id ON cases (case_id) WHERE COALESCE(case_id, '') <> '';
 
 CREATE TABLE IF NOT EXISTS purchase_budget_stores (
 	id SERIAL NOT NULL,

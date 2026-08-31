@@ -11,7 +11,7 @@ import sys
 import tomllib
 from typing import Any
 
-from sqlalchemy import create_engine, delete, func, select
+from sqlalchemy import create_engine, func, select
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -163,17 +163,35 @@ def sync_to_postgresql(rows: list[dict[str, Any]]) -> dict[str, int]:
     with engine.begin() as conn:
         Base.metadata.create_all(bind=conn)
         before = int(conn.execute(select(func.count()).select_from(table)).scalar() or 0)
-        deleted = 0
+        existing_case_ids = set()
         if case_ids:
-            result = conn.execute(delete(table).where(table.c.case_id.in_(case_ids)))
-            deleted = int(result.rowcount or 0)
+            existing_case_ids = {
+                str(row[0]).strip()
+                for row in conn.execute(select(table.c.case_id).where(table.c.case_id.in_(case_ids))).fetchall()
+                if row[0]
+            }
+        insert_rows = []
+        seen_case_ids = set()
+        for row in db_rows:
+            case_id = str(row.get("case_id") or "").strip()
+            if not case_id or case_id in existing_case_ids or case_id in seen_case_ids:
+                continue
+            seen_case_ids.add(case_id)
+            insert_rows.append(row)
         inserted = 0
-        if db_rows:
-            result = conn.execute(table.insert(), db_rows)
+        if insert_rows:
+            result = conn.execute(table.insert(), insert_rows)
             inserted = int(result.rowcount or 0)
         reset_postgresql_sequence(conn, "cases", "id")
         after = int(conn.execute(select(func.count()).select_from(table)).scalar() or 0)
-    return {"source_rows": len(rows), "target_before": before, "deleted": deleted, "inserted": inserted, "target_after": after}
+    return {
+        "source_rows": len(rows),
+        "target_before": before,
+        "existing": len(existing_case_ids),
+        "inserted": inserted,
+        "skipped": len(rows) - inserted,
+        "target_after": after,
+    }
 
 
 def main() -> int:
@@ -198,8 +216,8 @@ def main() -> int:
         "Return cases synced: "
         f"source={result['source_rows']}, "
         f"target_before={result['target_before']}, "
-        f"deleted_same_case_id={result['deleted']}, "
         f"inserted={result['inserted']}, "
+        f"existing_or_skipped={result['skipped']}, "
         f"target_after={result['target_after']}"
     )
     return 0

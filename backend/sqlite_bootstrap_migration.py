@@ -1,18 +1,30 @@
 from __future__ import annotations
 
+import base64
+import gzip
 import json
+import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 MIGRATION_KEY = "sqlite-bootstrap-2026-08-10"
 REFERENCE_BACKFILL_KEY = "sqlite-product-master-reference-backfill-2026-08-10"
+RETURN_CASE_MIGRATION_KEY = "return-cases-bootstrap-2026-08-31"
+RETURN_CASE_SEED_PATH = BASE_DIR / "ReturnCaseSystem" / "cases_seed.json.gz"
+RETURN_CASE_BLOB_COLUMNS = {
+    "product_image",
+    "case_image",
+    "case_image_original",
+    "repair_image",
+    "repair_image_original",
+}
 SQLITE_SOURCES = [
     BASE_DIR / "data" / "scm.db",
     BASE_DIR / "data" / "schedule.db",
@@ -35,21 +47,31 @@ PRODUCT_MASTER_NUMBER_REFERENCE_FIELDS = (
     "pack_qty",
     "box_qty",
 )
+LOGGER = logging.getLogger("scm.database")
 
 
 def run_once() -> dict[str, Any]:
     from backend import models  # noqa: F401
-    from backend.database import Base, engine, init_db, is_postgresql_url, DATABASE_URL
+    from backend.database import Base, engine, ensure_postgresql_return_case_identity, init_db, is_postgresql_url, DATABASE_URL
 
     if not is_postgresql_url(DATABASE_URL):
         return {"ok": False, "skipped": True, "reason": "not-postgresql"}
 
     init_db()
     with engine.begin() as target_conn:
+        Base.metadata.create_all(bind=target_conn)
+        ensure_postgresql_return_case_identity(target_conn)
         ensure_migration_table(target_conn)
+        return_case_migration = migrate_return_cases_once(target_conn, Base.metadata.tables)
         if migration_already_done(target_conn):
             reference_backfill = backfill_product_master_references_once(target_conn, Base.metadata.tables)
-            return {"ok": True, "skipped": True, "reason": "already-done", "reference_backfill": reference_backfill}
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "already-done",
+                "return_cases": return_case_migration,
+                "reference_backfill": reference_backfill,
+            }
 
         target_tables = Base.metadata.tables
         summaries = []
@@ -58,10 +80,23 @@ def run_once() -> dict[str, Any]:
         source_total = sum(int(row.get("source_rows") or 0) for row in summaries)
         if source_total <= 0:
             reference_backfill = backfill_product_master_references_once(target_conn, target_tables)
-            return {"ok": True, "skipped": True, "reason": "no-source-sqlite-rows", "summaries": summaries, "reference_backfill": reference_backfill}
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "no-source-sqlite-rows",
+                "summaries": summaries,
+                "return_cases": return_case_migration,
+                "reference_backfill": reference_backfill,
+            }
         record_migration_done(target_conn, summaries)
         reference_backfill = backfill_product_master_references_once(target_conn, target_tables)
-        return {"ok": True, "skipped": False, "summaries": summaries, "reference_backfill": reference_backfill}
+        return {
+            "ok": True,
+            "skipped": False,
+            "summaries": summaries,
+            "return_cases": return_case_migration,
+            "reference_backfill": reference_backfill,
+        }
 
 
 def ensure_migration_table(conn) -> None:
@@ -86,6 +121,14 @@ def migration_already_done(conn) -> bool:
     return row is not None
 
 
+def return_case_migration_already_done(conn) -> bool:
+    row = conn.execute(
+        text("SELECT 1 FROM sqlite_migration_runs WHERE migration_key = :key"),
+        {"key": RETURN_CASE_MIGRATION_KEY},
+    ).fetchone()
+    return row is not None
+
+
 def record_migration_done(conn, summaries: list[dict[str, Any]]) -> None:
     conn.execute(
         text(
@@ -102,6 +145,181 @@ def record_migration_done(conn, summaries: list[dict[str, Any]]) -> None:
             "summary": json.dumps(summaries, ensure_ascii=False, default=str),
         },
     )
+
+
+def record_return_case_migration_done(conn, summary: dict[str, Any]) -> None:
+    conn.execute(
+        text(
+            """
+            INSERT INTO sqlite_migration_runs (migration_key, ran_at, summary)
+            VALUES (:key, :ran_at, CAST(:summary AS jsonb))
+            ON CONFLICT (migration_key)
+            DO UPDATE SET ran_at = EXCLUDED.ran_at, summary = EXCLUDED.summary
+            """
+        ),
+        {
+            "key": RETURN_CASE_MIGRATION_KEY,
+            "ran_at": datetime.now().isoformat(timespec="seconds"),
+            "summary": json.dumps(summary, ensure_ascii=False, default=str),
+        },
+    )
+
+
+def migrate_return_cases_once(target_conn, target_tables) -> dict[str, Any]:
+    table = target_tables.get("cases")
+    if table is None:
+        summary = {
+            "ok": False,
+            "skipped": True,
+            "reason": "target-table-missing",
+            "source_rows": 0,
+            "inserted_rows": 0,
+            "skipped_rows": 0,
+            "failed_rows": 0,
+        }
+        LOGGER.warning("Return case migration skipped: cases table is missing")
+        return summary
+
+    if return_case_migration_already_done(target_conn):
+        summary = {
+            "ok": True,
+            "skipped": True,
+            "reason": "already-done",
+            "source": "ReturnCaseSystem/cases.db",
+        }
+        LOGGER.info("Return case migration skipped: already done")
+        return summary
+
+    source_rows = load_return_case_source_rows(table)
+    source_count = len(source_rows)
+    deduped_rows, duplicate_source_rows = dedupe_return_case_rows(source_rows)
+    case_ids = [
+        str(row.get("case_id") or "").strip()
+        for row in deduped_rows
+        if str(row.get("case_id") or "").strip()
+    ]
+    existing_case_ids = existing_return_case_ids(target_conn, table, case_ids)
+
+    insert_rows = [
+        {key: value for key, value in row.items() if key != "id" and key in table.columns}
+        for row in deduped_rows
+        if str(row.get("case_id") or "").strip()
+        and str(row.get("case_id") or "").strip() not in existing_case_ids
+    ]
+    skipped_rows = source_count - len(insert_rows)
+    inserted_rows = 0
+    failed_rows = 0
+    for row in insert_rows:
+        try:
+            with target_conn.begin_nested():
+                result = target_conn.execute(table.insert(), row)
+                inserted_rows += int(result.rowcount or 0)
+        except Exception as exc:
+            failed_rows += 1
+            LOGGER.exception(
+                "Return case migration failed case_id=%s: %s",
+                row.get("case_id"),
+                exc,
+            )
+
+    if inserted_rows:
+        reset_sequence(target_conn, table.name)
+
+    summary = {
+        "ok": failed_rows == 0,
+        "skipped": source_count == 0,
+        "source": "ReturnCaseSystem/cases.db",
+        "fallback_seed": str(RETURN_CASE_SEED_PATH.relative_to(BASE_DIR)),
+        "source_rows": source_count,
+        "inserted_rows": inserted_rows,
+        "skipped_rows": skipped_rows,
+        "existing_rows": len(existing_case_ids),
+        "duplicate_source_rows": duplicate_source_rows,
+        "failed_rows": failed_rows,
+        "dedupe_key": "case_id",
+    }
+    LOGGER.info(
+        "Return case migration result: source=%s inserted=%s skipped=%s existing=%s failed=%s key=case_id",
+        source_count,
+        inserted_rows,
+        skipped_rows,
+        len(existing_case_ids),
+        failed_rows,
+    )
+    if failed_rows == 0:
+        record_return_case_migration_done(target_conn, summary)
+    return summary
+
+
+def load_return_case_source_rows(table) -> list[dict[str, Any]]:
+    sqlite_path = BASE_DIR / "ReturnCaseSystem" / "cases.db"
+    rows = rows_from_return_case_sqlite(sqlite_path, table)
+    if rows:
+        return rows
+    return rows_from_return_case_seed(RETURN_CASE_SEED_PATH, table)
+
+
+def rows_from_return_case_sqlite(sqlite_path: Path, table) -> list[dict[str, Any]]:
+    if not sqlite_path.exists() or sqlite_path.stat().st_size == 0:
+        return []
+    sqlite_conn = sqlite3.connect(sqlite_path)
+    sqlite_conn.row_factory = sqlite3.Row
+    try:
+        if "cases" not in sqlite_table_names(sqlite_conn):
+            return []
+        return sqlite_rows(sqlite_conn, "cases", table)
+    finally:
+        sqlite_conn.close()
+
+
+def rows_from_return_case_seed(seed_path: Path, table) -> list[dict[str, Any]]:
+    if not seed_path.exists() or seed_path.stat().st_size == 0:
+        return []
+    with gzip.open(seed_path, "rt", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    rows = payload.get("rows") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return []
+    target_columns = {column.name for column in table.columns}
+    output = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        item = {key: row.get(key) for key in target_columns if key in row}
+        for column in RETURN_CASE_BLOB_COLUMNS.intersection(item):
+            value = item.get(column)
+            if isinstance(value, str) and value:
+                item[column] = base64.b64decode(value.encode("ascii"))
+            elif not value:
+                item[column] = None
+        output.append(item)
+    return output
+
+
+def dedupe_return_case_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    seen: set[str] = set()
+    output = []
+    duplicate_count = 0
+    for row in rows:
+        case_id = str(row.get("case_id") or "").strip()
+        if not case_id:
+            duplicate_count += 1
+            continue
+        if case_id in seen:
+            duplicate_count += 1
+            continue
+        seen.add(case_id)
+        output.append(row)
+    return output, duplicate_count
+
+
+def existing_return_case_ids(target_conn, table, case_ids: list[str]) -> set[str]:
+    if not case_ids:
+        return set()
+    rows = target_conn.execute(
+        select(table.c.case_id).where(table.c.case_id.in_(case_ids))
+    ).fetchall()
+    return {str(row[0]).strip() for row in rows if row[0]}
 
 
 def reference_backfill_already_done(conn) -> bool:
@@ -261,6 +479,9 @@ def migrate_sqlite_file(sqlite_path: Path, target_conn, target_tables) -> list[d
         source_tables = sqlite_table_names(sqlite_conn)
         summaries = []
         for table_name in source_tables:
+            if table_name == "cases":
+                summaries.append({"source": str(sqlite_path.relative_to(BASE_DIR)), "table": table_name, "source_rows": sqlite_count(sqlite_conn, table_name), "upserted_rows": 0, "skipped": "handled-by-return-case-migration"})
+                continue
             table = target_tables.get(table_name)
             if table is None:
                 summaries.append({"source": str(sqlite_path.relative_to(BASE_DIR)), "table": table_name, "source_rows": sqlite_count(sqlite_conn, table_name), "upserted_rows": 0, "skipped": "target-missing"})
