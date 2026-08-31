@@ -180,16 +180,7 @@ def migrate_return_cases_once(target_conn, target_tables) -> dict[str, Any]:
         LOGGER.warning("Return case migration skipped: cases table is missing")
         return summary
 
-    if return_case_migration_already_done(target_conn):
-        summary = {
-            "ok": True,
-            "skipped": True,
-            "reason": "already-done",
-            "source": "ReturnCaseSystem/cases.db",
-        }
-        LOGGER.info("Return case migration skipped: already done")
-        return summary
-
+    already_done = return_case_migration_already_done(target_conn)
     source_rows = load_return_case_source_rows(table)
     source_count = len(source_rows)
     deduped_rows, duplicate_source_rows = dedupe_return_case_rows(source_rows)
@@ -207,6 +198,51 @@ def migrate_return_cases_once(target_conn, target_tables) -> dict[str, Any]:
         and str(row.get("case_id") or "").strip() not in existing_case_ids
     ]
     skipped_rows = source_count - len(insert_rows)
+
+    if source_count == 0:
+        summary = {
+            "ok": True,
+            "skipped": True,
+            "reason": "no-source-return-case-rows",
+            "source": "ReturnCaseSystem/cases.db",
+            "fallback_seed": str(RETURN_CASE_SEED_PATH.relative_to(BASE_DIR)),
+            "source_rows": 0,
+            "inserted_rows": 0,
+            "skipped_rows": 0,
+            "existing_rows": 0,
+            "duplicate_source_rows": 0,
+            "failed_rows": 0,
+            "dedupe_key": "case_id",
+        }
+        LOGGER.warning(
+            "Return case migration skipped: no source rows found in %s or %s",
+            BASE_DIR / "ReturnCaseSystem" / "cases.db",
+            RETURN_CASE_SEED_PATH,
+        )
+        return summary
+
+    if already_done and not insert_rows:
+        summary = {
+            "ok": True,
+            "skipped": True,
+            "reason": "already-done-no-missing-rows",
+            "source": "ReturnCaseSystem/cases.db",
+            "fallback_seed": str(RETURN_CASE_SEED_PATH.relative_to(BASE_DIR)),
+            "source_rows": source_count,
+            "inserted_rows": 0,
+            "skipped_rows": skipped_rows,
+            "existing_rows": len(existing_case_ids),
+            "duplicate_source_rows": duplicate_source_rows,
+            "failed_rows": 0,
+            "dedupe_key": "case_id",
+        }
+        LOGGER.info(
+            "Return case migration skipped: already done and no missing rows. source=%s existing=%s key=case_id",
+            source_count,
+            len(existing_case_ids),
+        )
+        return summary
+
     inserted_rows = 0
     failed_rows = 0
     for row in insert_rows:
@@ -227,7 +263,8 @@ def migrate_return_cases_once(target_conn, target_tables) -> dict[str, Any]:
 
     summary = {
         "ok": failed_rows == 0,
-        "skipped": source_count == 0,
+        "skipped": len(insert_rows) == 0,
+        "reason": "reconciled-missing-rows" if already_done and insert_rows else "",
         "source": "ReturnCaseSystem/cases.db",
         "fallback_seed": str(RETURN_CASE_SEED_PATH.relative_to(BASE_DIR)),
         "source_rows": source_count,
@@ -239,12 +276,13 @@ def migrate_return_cases_once(target_conn, target_tables) -> dict[str, Any]:
         "dedupe_key": "case_id",
     }
     LOGGER.info(
-        "Return case migration result: source=%s inserted=%s skipped=%s existing=%s failed=%s key=case_id",
+        "Return case migration result: source=%s inserted=%s skipped=%s existing=%s failed=%s already_done=%s key=case_id",
         source_count,
         inserted_rows,
         skipped_rows,
         len(existing_case_ids),
         failed_rows,
+        already_done,
     )
     if failed_rows == 0:
         record_return_case_migration_done(target_conn, summary)
