@@ -513,8 +513,6 @@ def render_visible_spreadsheet_editor(
             row_action = "row_plus"
         if control_cols[2].form_submit_button("행 추가", use_container_width=True):
             row_action = "add_row"
-        with control_cols[3]:
-            st.empty()
 
         for _ in range(max(0, current_row_count - len(rows))):
             rows.append({EDIT_DELETE_COLUMN: False, ROW_ID_COLUMN: "", **{column: 0 if column in number_columns else "" for column in columns}})
@@ -731,6 +729,89 @@ def render_spreadsheet_css_once() -> None:
             min-height: 36px;
             padding: 0 0.58rem;
             white-space: nowrap;
+        }
+        div[class*="st-key-meeting_production_editor_form_"] [data-testid="stHorizontalBlock"],
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stHorizontalBlock"],
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stHorizontalBlock"] {
+            align-items: flex-start !important;
+            column-gap: 8px !important;
+            margin-bottom: 6px !important;
+            min-width: 1040px;
+        }
+        div[class*="st-key-meeting_production_editor_form_"] .sheet-header,
+        div[class*="st-key-meeting_events_editor_form_"] .sheet-header,
+        div[class*="st-key-meeting_action_editor_form_"] .sheet-header {
+            align-items: center !important;
+            background: #EDE8E1 !important;
+            border: 1px solid #D8D2C8 !important;
+            border-radius: 6px !important;
+            color: #102033 !important;
+            display: flex !important;
+            font-size: 0.82rem !important;
+            font-weight: 900 !important;
+            justify-content: center !important;
+            min-height: 32px !important;
+            padding: 0.46rem 0.5rem !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+        }
+        div[class*="st-key-meeting_production_editor_form_"] [data-testid="stWidgetLabel"],
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stWidgetLabel"],
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stWidgetLabel"] {
+            display: none !important;
+            height: 0 !important;
+            margin: 0 !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }
+        div[class*="st-key-meeting_production_editor_form_"] [data-testid="stTextInput"],
+        div[class*="st-key-meeting_production_editor_form_"] [data-testid="stTextArea"],
+        div[class*="st-key-meeting_production_editor_form_"] [data-testid="stNumberInput"],
+        div[class*="st-key-meeting_production_editor_form_"] [data-testid="stSelectbox"],
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stTextInput"],
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stTextArea"],
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stNumberInput"],
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stSelectbox"],
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stTextInput"],
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stTextArea"],
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stNumberInput"],
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stSelectbox"] {
+            margin: 0 !important;
+            min-height: 38px !important;
+        }
+        div[class*="st-key-meeting_production_editor_form_"] [data-testid="stTextInput"] input,
+        div[class*="st-key-meeting_production_editor_form_"] [data-testid="stTextArea"] textarea,
+        div[class*="st-key-meeting_production_editor_form_"] [data-testid="stNumberInput"] input,
+        div[class*="st-key-meeting_production_editor_form_"] [data-baseweb="select"] > div,
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stTextInput"] input,
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stTextArea"] textarea,
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stNumberInput"] input,
+        div[class*="st-key-meeting_events_editor_form_"] [data-baseweb="select"] > div,
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stTextInput"] input,
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stTextArea"] textarea,
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stNumberInput"] input,
+        div[class*="st-key-meeting_action_editor_form_"] [data-baseweb="select"] > div {
+            background: #FFFFFF !important;
+            border-color: #C9BFB1 !important;
+            color: #172033 !important;
+            font-size: 0.92rem !important;
+            font-weight: 760 !important;
+            height: 38px !important;
+            min-height: 38px !important;
+        }
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stTextArea"] textarea,
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stTextArea"] textarea {
+            height: auto !important;
+            line-height: 1.32 !important;
+            min-height: 72px !important;
+        }
+        div[class*="st-key-meeting_production_editor_form_"] [data-testid="stCheckbox"],
+        div[class*="st-key-meeting_events_editor_form_"] [data-testid="stCheckbox"],
+        div[class*="st-key-meeting_action_editor_form_"] [data-testid="stCheckbox"] {
+            align-items: center !important;
+            display: flex !important;
+            justify-content: center !important;
+            min-height: 38px !important;
         }
         </style>
         """,
