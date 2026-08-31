@@ -12600,18 +12600,6 @@ div[class*="selected_delete_btn"] button {
     box-shadow: inset 4px 0 0 var(--beige-accent), 0 6px 14px rgba(45, 38, 30, 0.04) !important;
 }
 
-.return-system-top-offset {
-    height: 42px !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-div[data-testid="stMarkdownContainer"]:has(.return-system-top-offset),
-div[data-testid="stElementContainer"]:has(.return-system-top-offset) {
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
 /* Sidebar group toggles: muted pastel headers for clearer category separation. */
 [data-testid="stSidebar"] div[class*="sidebar_group_work"] button,
 [data-testid="stSidebar"] div[class*="st-key-sidebar_group_work"] button {
@@ -14528,95 +14516,12 @@ div[class*="st-key-meeting_action_editor_"] [data-testid="stDataEditor"] canvas 
     display: block !important;
 }
 
-/* Common viewport compaction: keep Streamlit pages closer to the top edge. */
-:root {
-    --scm-viewport-pad-y: clamp(4px, 0.55vh, 8px);
-    --scm-viewport-pad-x: clamp(12px, 1.15vw, 22px);
-    --scm-viewport-pad-bottom: clamp(8px, 0.9vh, 14px);
-    --scm-block-gap: clamp(4px, 0.55vh, 8px);
-}
-
-html,
-body,
-.stApp,
-[data-testid="stAppViewContainer"],
-[data-testid="stMain"],
-section.main,
-.main {
-    min-height: 100vh !important;
-}
-
-header,
-header[data-testid="stHeader"],
-[data-testid="stHeader"] {
-    background: transparent !important;
-    height: 0 !important;
-    min-height: 0 !important;
-}
-
-[data-testid="stAppViewContainer"],
-[data-testid="stMain"],
-section.main,
-.main {
-    margin-top: 0 !important;
-    padding-top: 0 !important;
-}
-
-.block-container,
-.main .block-container,
+/* Common viewport compaction: trim only Streamlit's top-level content padding. */
+[data-testid="stMainBlockContainer"],
 [data-testid="stAppViewBlockContainer"],
-[data-testid="stMainBlockContainer"] {
-    margin-top: 0 !important;
-    min-height: calc(100vh - var(--scm-viewport-pad-y) - var(--scm-viewport-pad-bottom)) !important;
-    padding: var(--scm-viewport-pad-y) var(--scm-viewport-pad-x) var(--scm-viewport-pad-bottom) !important;
-}
-
-[data-testid="stVerticalBlock"],
-[data-testid="stHorizontalBlock"] {
-    gap: var(--scm-block-gap) !important;
-}
-
-.topbar {
-    margin-bottom: var(--scm-block-gap) !important;
-    min-height: clamp(28px, 3.6vh, 38px) !important;
-}
-
-.return-system-top-offset {
-    height: 0 !important;
-    margin: 0 !important;
-}
-
-div[data-testid="stMarkdownContainer"]:has(.return-system-top-offset),
-div[data-testid="stElementContainer"]:has(.return-system-top-offset),
-div[data-testid="element-container"]:has(.return-system-top-offset) {
-    height: 0 !important;
-    margin: 0 !important;
-    min-height: 0 !important;
-}
-
-.st-key-dashboard_card_category,
-.st-key-dashboard_card_month,
-.st-key-dashboard_card_recent,
-.st-key-dashboard_card_top5,
-.st-key-search_results_scroll {
-    max-height: clamp(210px, 31vh, 310px) !important;
-    min-height: 0 !important;
-}
-
-.st-key-dashboard_card_category [data-testid="stPlotlyChart"],
-.st-key-dashboard_card_month [data-testid="stPlotlyChart"] {
-    max-height: clamp(184px, 26vh, 268px) !important;
-    overflow: hidden !important;
-}
-
-@media (min-width: 1500px) {
-    .block-container,
-    .main .block-container,
-    [data-testid="stAppViewBlockContainer"],
-    [data-testid="stMainBlockContainer"] {
-        padding-left: var(--scm-viewport-pad-x) !important;
-        padding-right: var(--scm-viewport-pad-x) !important;
-    }
+[data-testid="stMain"] > .block-container {
+    padding-top: clamp(0.5rem, 0.85vh, 0.85rem) !important;
+    padding-bottom: clamp(0.75rem, 1vh, 1rem) !important;
 }
 
 /* BOM/sidebar final priority: this must remain at the end of the stylesheet. */
@@ -15080,7 +14985,7 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 .dashboard-shell {
     align-content: start !important;
     display: grid !important;
-    gap: var(--scm-block-gap) !important;
+    gap: clamp(10px, 1.1vw, 16px) !important;
     grid-auto-flow: row !important;
     grid-auto-rows: auto !important;
     grid-template-columns: minmax(0, 1fr) !important;
@@ -15088,7 +14993,7 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
     height: auto !important;
     min-height: 0 !important;
     overflow: visible !important;
-    padding-bottom: var(--scm-viewport-pad-bottom) !important;
+    padding-bottom: 18px !important;
     width: 100% !important;
 }
 
