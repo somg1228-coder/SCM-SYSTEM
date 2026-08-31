@@ -502,7 +502,6 @@ def render_visible_spreadsheet_editor(
 
     with perf_span("meeting.spreadsheet_render", editor=key_prefix):
         render_spreadsheet_css_once()
-        st.markdown('<div class="meeting-visible-editor">', unsafe_allow_html=True)
         row_action = "none"
         control_cols = st.columns([0.34, 0.34, 0.72, 5.0], gap="small")
         if control_cols[0].form_submit_button("-", use_container_width=True):
@@ -519,9 +518,9 @@ def render_visible_spreadsheet_editor(
 
         header_weights = spreadsheet_column_weights(columns)
         header_cols = st.columns(header_weights, gap="small")
-        header_cols[0].markdown('<div class="sheet-header">삭제</div>', unsafe_allow_html=True)
+        header_cols[0].markdown(sheet_header_html("삭제"), unsafe_allow_html=True)
         for index, column in enumerate(columns, start=1):
-            header_cols[index].markdown(f'<div class="sheet-header">{escape_html(column)}</div>', unsafe_allow_html=True)
+            header_cols[index].markdown(sheet_header_html(column), unsafe_allow_html=True)
 
         edited_rows = []
         for row_index, row in enumerate(rows):
@@ -585,7 +584,6 @@ def render_visible_spreadsheet_editor(
                         )
                     edited_row[column] = normalize_cell_value(st.session_state.get(cell_key, widget_value))
             edited_rows.append(edited_row)
-        st.markdown("</div>", unsafe_allow_html=True)
     edited_df = pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
     edited_df.attrs["editor_row_action"] = row_action
     return edited_df
@@ -669,6 +667,17 @@ def safe_widget_key(value: str) -> str:
     return re.sub(r"[^0-9A-Za-z_]+", "_", str(value))
 
 
+def sheet_header_html(label: str) -> str:
+    return (
+        '<div class="sheet-header" '
+        'style="align-items:center;background:#EDE8E1;border:1px solid #D8D2C8;'
+        'border-radius:6px;box-sizing:border-box;color:#102033;display:flex;'
+        'font-size:0.82rem;font-weight:900;justify-content:center;min-height:32px;'
+        'padding:0.46rem 0.5rem;text-align:center;white-space:nowrap;width:100%;">'
+        f"{escape_html(label)}</div>"
+    )
+
+
 def render_spreadsheet_css_once() -> None:
     st.markdown(
         """
@@ -736,7 +745,8 @@ def render_spreadsheet_css_once() -> None:
             align-items: flex-start !important;
             column-gap: 8px !important;
             margin-bottom: 6px !important;
-            min-width: 1040px;
+            min-width: 0 !important;
+            width: 100% !important;
         }
         div[class*="st-key-meeting_production_editor_form_"] .sheet-header,
         div[class*="st-key-meeting_events_editor_form_"] .sheet-header,
@@ -813,6 +823,33 @@ def render_spreadsheet_css_once() -> None:
             justify-content: center !important;
             min-height: 38px !important;
         }
+        div[class*="st-key-meeting_production_editor_v"],
+        div[class*="st-key-meeting_events_editor_v"],
+        div[class*="st-key-meeting_action_editor_v"] {
+            margin: 0 !important;
+            min-width: 0 !important;
+        }
+        div[class*="st-key-meeting_production_editor_v"] [data-testid="stWidgetLabel"],
+        div[class*="st-key-meeting_events_editor_v"] [data-testid="stWidgetLabel"],
+        div[class*="st-key-meeting_action_editor_v"] [data-testid="stWidgetLabel"] {
+            display: none !important;
+            height: 0 !important;
+            margin: 0 !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }
+        div[class*="st-key-meeting_production_editor_v"] input,
+        div[class*="st-key-meeting_production_editor_v"] textarea,
+        div[class*="st-key-meeting_events_editor_v"] input,
+        div[class*="st-key-meeting_events_editor_v"] textarea,
+        div[class*="st-key-meeting_action_editor_v"] input,
+        div[class*="st-key-meeting_action_editor_v"] textarea {
+            background: #FFFFFF !important;
+            border-color: #C9BFB1 !important;
+            color: #172033 !important;
+            font-size: 0.92rem !important;
+            font-weight: 760 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -829,7 +866,6 @@ def render_editor_actions(
     delete_flag: str,
     secondary_save_label: str | None = None,
 ) -> str:
-    st.markdown('<div class="meeting-editor-actions">', unsafe_allow_html=True)
     action = "none"
     if add_label:
         action_columns = st.columns([0.9, 0.72, 0.9, 0.9, 2.4], gap="small")
@@ -837,15 +873,12 @@ def render_editor_actions(
         add_col = action_columns[1]
         selected_delete_col = action_columns[2]
         delete_col = action_columns[3]
-        spacer = action_columns[4]
     else:
         action_columns = st.columns([0.9, 0.9, 0.9, 3.12], gap="small")
         save_col = action_columns[0]
         add_col = None
         selected_delete_col = action_columns[1]
         delete_col = action_columns[2]
-        spacer = action_columns[3]
-    secondary_save_col = None
     full_delete_confirm = st.checkbox("전체 삭제 확인", key=f"{key_prefix}_full_delete_confirm")
     with save_col:
         if st.form_submit_button(save_label, type="primary", use_container_width=True):
@@ -855,11 +888,6 @@ def render_editor_actions(
         with add_col:
             if st.form_submit_button(add_label, use_container_width=True):
                 action = "add_row"
-    if secondary_save_label:
-        with secondary_save_col:
-            if st.form_submit_button(secondary_save_label, use_container_width=True):
-                st.session_state.meeting_save_requested = True
-                action = "save"
     if selected_delete_col is not None and selected_delete_label:
         with selected_delete_col:
             if st.form_submit_button(selected_delete_label, use_container_width=True):
@@ -874,9 +902,6 @@ def render_editor_actions(
                 action = "full_delete"
             else:
                 st.warning("전체 삭제는 '전체 삭제 확인'을 체크한 뒤 실행하세요.")
-    with spacer:
-        st.empty()
-    st.markdown("</div>", unsafe_allow_html=True)
     return action
 
 

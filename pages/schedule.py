@@ -171,7 +171,6 @@ def render_highlights(week_id: int) -> pd.DataFrame:
         buffer_key = f"schedule_highlights_buffer_{week_id}"
         if buffer_key not in st.session_state:
             st.session_state[buffer_key] = df
-    st.markdown('<div class="schedule-highlight-editor">', unsafe_allow_html=True)
     with st.form(key=f"schedule_highlights_form_{week_id}", clear_on_submit=False):
         with perf_span("schedule.highlights_data_editor"):
             editor_key = f"schedule_highlights_editor_{week_id}"
@@ -189,7 +188,6 @@ def render_highlights(week_id: int) -> pd.DataFrame:
             st.session_state[buffer_key] = normalize_highlights_df(edited_source)
             if action != "save":
                 st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
     return normalize_highlights_df(st.session_state[buffer_key])
 
 
@@ -238,7 +236,7 @@ def render_comment(week: dict) -> str:
 
 
 def render_save_actions(week_id: int, week_start: date, highlights_df: pd.DataFrame, slots_df: pd.DataFrame, comment: str) -> None:
-    save_col, copy_col, spacer = st.columns([0.86, 1.05, 5.4], gap="small")
+    save_col, copy_col, _ = st.columns([0.86, 1.05, 5.4], gap="small")
     with save_col:
         if st.button("저장", key=f"schedule_save_{week_id}", type="primary", use_container_width=True):
             save_week(week_id, week_start, highlights_df, slots_df, comment)
@@ -251,9 +249,6 @@ def render_save_actions(week_id: int, week_start: date, highlights_df: pd.DataFr
             st.session_state.pop("schedule_history_download_payload", None)
             st.success(f"전주 일정 복사 완료 ({copied}건)")
             st.rerun()
-    with spacer:
-        st.empty()
-
 
 def render_schedule_visible_editor(
     df: pd.DataFrame,
@@ -276,7 +271,6 @@ def render_schedule_visible_editor(
     current_row_count = max(blank_rows, len(rows), int(st.session_state.get(row_count_key, 0) or 0))
     st.session_state[row_count_key] = current_row_count
 
-    st.markdown('<div class="schedule-visible-editor">', unsafe_allow_html=True)
     row_action = "none"
     control_cols = st.columns([0.34, 0.34, 0.72, 5.0], gap="small")
     if control_cols[0].form_submit_button("-", use_container_width=True):
@@ -286,17 +280,15 @@ def render_schedule_visible_editor(
         row_action = "row_plus"
     if control_cols[2].form_submit_button("행 추가", use_container_width=True):
         row_action = "add_row"
-    with control_cols[3]:
-        st.empty()
 
     for _ in range(max(0, current_row_count - len(rows))):
         rows.append({EDIT_DELETE_COLUMN: False, **{column: False if column in checkbox_columns else "" for column in columns}})
 
     header_weights = schedule_editor_column_weights(columns)
     header_cols = st.columns(header_weights, gap="small")
-    header_cols[0].markdown('<div class="sheet-header">삭제</div>', unsafe_allow_html=True)
+    header_cols[0].markdown(schedule_sheet_header_html("삭제"), unsafe_allow_html=True)
     for index, column in enumerate(columns, start=1):
-        header_cols[index].markdown(f'<div class="sheet-header">{html_escape(column)}</div>', unsafe_allow_html=True)
+        header_cols[index].markdown(schedule_sheet_header_html(column), unsafe_allow_html=True)
 
     edited_rows = []
     for row_index, row in enumerate(rows):
@@ -329,8 +321,6 @@ def render_schedule_visible_editor(
                     label_visibility="collapsed",
                 )
         edited_rows.append(edited_row)
-    st.markdown("</div>", unsafe_allow_html=True)
-
     edited_df = pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, *columns])
     edited_df.attrs["editor_row_action"] = row_action
     return edited_df
@@ -344,23 +334,19 @@ def render_schedule_slot_editor(df: pd.DataFrame, columns: list[str], key_prefix
     for _ in range(max(0, current_row_count - len(rows))):
         rows.append({EDIT_DELETE_COLUMN: False, **{column: "" for column in columns}})
 
-    st.markdown('<div class="schedule-slot-editor">', unsafe_allow_html=True)
     toolbar_cols = st.columns([1.15, 5.8], gap="small")
     row_action = "none"
     delete_row_index: int | None = None
     if toolbar_cols[0].form_submit_button("+ 시간대 추가", use_container_width=True):
         row_action = "add_row"
-    with toolbar_cols[1]:
-        st.empty()
 
     header_cols = st.columns([1.05, 1.28, 1.28, 1.28, 1.28, 1.28, 0.34], gap="small")
     for index, column in enumerate(columns):
-        header_cols[index].markdown(f'<div class="slot-sheet-header">{html_escape(column)}</div>', unsafe_allow_html=True)
-    header_cols[-1].markdown('<div class="slot-sheet-header slot-action-header"></div>', unsafe_allow_html=True)
+        header_cols[index].markdown(schedule_slot_header_html(column), unsafe_allow_html=True)
+    header_cols[-1].markdown(schedule_slot_header_html("", transparent=True), unsafe_allow_html=True)
 
     edited_rows = []
     for row_index, row in enumerate(rows):
-        st.markdown('<div class="schedule-slot-row-anchor"></div>', unsafe_allow_html=True)
         row_cols = st.columns([1.05, 1.28, 1.28, 1.28, 1.28, 1.28, 0.34], gap="small")
         edited_row = {EDIT_DELETE_COLUMN: False}
         for column_index, column in enumerate(columns):
@@ -384,16 +370,12 @@ def render_schedule_slot_editor(df: pd.DataFrame, columns: list[str], key_prefix
                     label_visibility="collapsed",
                     placeholder="+ 일정 입력",
                 )
-        with row_cols[-1]:
-            st.markdown('<div class="slot-trash-spacer"></div>', unsafe_allow_html=True)
-            if st.form_submit_button(f"🗑 {row_index + 1}", help="이 시간대 삭제", use_container_width=True):
-                row_action = "selected_delete"
-                delete_row_index = row_index
+        if row_cols[-1].form_submit_button(f"🗑 {row_index + 1}", help="이 시간대 삭제", use_container_width=True):
+            row_action = "selected_delete"
+            delete_row_index = row_index
         if delete_row_index == row_index:
             edited_row[EDIT_DELETE_COLUMN] = True
         edited_rows.append(edited_row)
-    st.markdown("</div>", unsafe_allow_html=True)
-
     edited_df = pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, *columns])
     edited_df.attrs["editor_row_action"] = row_action
     return edited_df
@@ -405,16 +387,12 @@ def render_schedule_editor_actions(key_prefix: str, save_label: str, delete_labe
         action_cols = st.columns([1.0, 5.0], gap="small")
         if action_cols[0].form_submit_button(save_label, type="primary", use_container_width=True):
             action = "save"
-        with action_cols[1]:
-            st.empty()
         return action
     action_cols = st.columns([0.9, 0.9, 4.0], gap="small")
     if action_cols[0].form_submit_button(save_label, type="primary", use_container_width=True):
         action = "save"
     if action_cols[1].form_submit_button(delete_label, use_container_width=True):
         action = "selected_delete"
-    with action_cols[2]:
-        st.empty()
     return action
 
 
@@ -937,6 +915,34 @@ def html_escape(value) -> str:
     )
 
 
+def schedule_sheet_header_html(label: str) -> str:
+    return (
+        '<div class="sheet-header" '
+        'style="align-items:center;background:#EDE8E1;border:1px solid #D8D2C8;'
+        'border-radius:6px;box-sizing:border-box;color:#102033;display:flex;'
+        'font-size:0.86rem;font-weight:900;justify-content:center;min-height:32px;'
+        'padding:0.46rem 0.5rem;text-align:center;white-space:nowrap;width:100%;">'
+        f"{html_escape(label)}</div>"
+    )
+
+
+def schedule_slot_header_html(label: str, transparent: bool = False) -> str:
+    if transparent:
+        background = "transparent"
+        border = "transparent"
+    else:
+        background = "#EDE8E1"
+        border = "#D8D2C8"
+    return (
+        '<div class="slot-sheet-header" '
+        f'style="align-items:center;background:{background};border:1px solid {border};'
+        'border-radius:8px;box-sizing:border-box;color:#102033;display:flex;'
+        'font-size:0.84rem;font-weight:900;justify-content:center;min-height:34px;'
+        'padding:0.4rem 0.5rem;white-space:nowrap;width:100%;">'
+        f"{html_escape(label)}</div>"
+    )
+
+
 def inject_schedule_css() -> None:
     st.markdown(
         """
@@ -1022,6 +1028,42 @@ def inject_schedule_css() -> None:
         }
         .schedule-visible-editor div[data-testid="stButton"] button {
             min-height: 36px;
+        }
+        div[class*="st-key-schedule_highlights_form_"] [data-testid="stHorizontalBlock"],
+        div[class*="st-key-schedule_slots_form_"] [data-testid="stHorizontalBlock"] {
+            align-items: flex-start !important;
+            column-gap: 8px !important;
+            margin-bottom: 6px !important;
+            min-width: 0 !important;
+            width: 100% !important;
+        }
+        div[class*="st-key-schedule_highlights_editor_"],
+        div[class*="st-key-schedule_slots_editor_"] {
+            margin: 0 !important;
+            min-width: 0 !important;
+        }
+        div[class*="st-key-schedule_highlights_editor_"] [data-testid="stWidgetLabel"],
+        div[class*="st-key-schedule_slots_editor_"] [data-testid="stWidgetLabel"] {
+            display: none !important;
+            height: 0 !important;
+            margin: 0 !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }
+        div[class*="st-key-schedule_highlights_editor_"] textarea,
+        div[class*="st-key-schedule_slots_editor_"] textarea {
+            background: #FFFFFF !important;
+            border-color: #C9BFB1 !important;
+            color: #172033 !important;
+            font-size: 0.9rem !important;
+            font-weight: 760 !important;
+            line-height: 1.34 !important;
+        }
+        div[class*="st-key-schedule_highlights_editor_"] [data-testid="stCheckbox"] {
+            align-items: center !important;
+            display: flex !important;
+            justify-content: center !important;
+            min-height: 40px !important;
         }
         div[class*="st-key-schedule_highlights_editor_"] {
             max-width: 640px;
