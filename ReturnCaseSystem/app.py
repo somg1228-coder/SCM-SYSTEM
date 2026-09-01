@@ -3857,6 +3857,36 @@ def render_return_case_system():
         accent-color: var(--return-primary) !important;
     }
 
+    div[class*="st-key-search_type"] div[data-testid="stRadio"] div[role="radiogroup"] {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        gap: 4px !important;
+        overflow: visible !important;
+        max-width: 100% !important;
+    }
+
+    div[class*="st-key-search_type"] div[data-testid="stRadio"] div[role="radiogroup"] label {
+        flex: 0 1 auto !important;
+        min-width: 0 !important;
+        min-height: 24px !important;
+        padding: 2px 3px !important;
+        white-space: nowrap !important;
+    }
+
+    div[class*="st-key-search_type"] div[data-testid="stRadio"] div[role="radiogroup"] label *,
+    div[class*="st-key-search_type"] div[data-testid="stRadio"] div[role="radiogroup"] * {
+        font-size: 12px !important;
+        white-space: nowrap !important;
+    }
+
+    div[class*="st-key-search_type"] div[data-testid="stRadio"] input {
+        width: 12px !important;
+        height: 12px !important;
+        margin-right: 2px !important;
+    }
+
     div[data-baseweb="popover"],
     div[data-baseweb="popover"] > div,
     div[data-baseweb="menu"],
@@ -4840,9 +4870,15 @@ def render_return_case_system():
 
                     import plotly.express as px
 
+                    total_cases = pie_df["건수"].sum()
+                    pie_df["범례"] = pie_df.apply(
+                        lambda row: f'{row["유형"]} {row["건수"] / total_cases * 100:.1f}%' if total_cases else str(row["유형"]),
+                        axis=1,
+                    )
+
                     fig = px.pie(
                         pie_df,
-                        names="유형",
+                        names="범례",
                         values="건수",
                         hole=0.60,
                         color_discrete_sequence=[
