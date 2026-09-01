@@ -2870,7 +2870,9 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
         workbook = writer.book
         worksheet = writer.sheets[sheet_name]
         row_count, col_count = export_df.shape
+        styled_row_count = excel_styled_row_count(export_df)
         last_row = start_row + row_count
+        styled_last_row = start_row + styled_row_count
         last_col = max(col_count - 1, 0)
 
         title_format = workbook.add_format(
@@ -2897,7 +2899,7 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
                 "font_color": "#FFFFFF",
                 "bg_color": "#0B6B60",
                 "border": 1,
-                "border_color": "#D7E8E4",
+                "border_color": "#000000",
                 "align": "center",
                 "valign": "vcenter",
             }
@@ -2905,14 +2907,14 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
         text_format = workbook.add_format(
             {
                 "border": 1,
-                "border_color": "#E5EFEA",
+                "border_color": "#000000",
                 "valign": "vcenter",
             }
         )
         center_format = workbook.add_format(
             {
                 "border": 1,
-                "border_color": "#E5EFEA",
+                "border_color": "#000000",
                 "align": "center",
                 "valign": "vcenter",
             }
@@ -2920,7 +2922,7 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
         number_format = workbook.add_format(
             {
                 "border": 1,
-                "border_color": "#E5EFEA",
+                "border_color": "#000000",
                 "align": "right",
                 "num_format": "#,##0",
                 "valign": "vcenter",
@@ -2929,7 +2931,7 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
         date_format = workbook.add_format(
             {
                 "border": 1,
-                "border_color": "#E5EFEA",
+                "border_color": "#000000",
                 "align": "center",
                 "num_format": "yyyy-mm-dd",
                 "valign": "vcenter",
@@ -2945,8 +2947,7 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
                 worksheet.write(1, 0, f"다운로드: {pd.Timestamp.now():%Y-%m-%d %H:%M}", subtitle_format)
             worksheet.set_row(0, 26)
             worksheet.set_row(start_row, 24)
-            worksheet.freeze_panes(start_row + 1, 0)
-            worksheet.autofilter(start_row, 0, last_row, last_col)
+            worksheet.autofilter(start_row, 0, max(styled_last_row, start_row), last_col)
 
         numeric_columns = {"현재고", "보유재고", "가용재고", "안전재고", "입고예정", "출고예정", "리드타임", "정렬순서", "출고수량", "입고수량"}
         date_columns = {"입고일자", "기준일자"}
@@ -2961,12 +2962,14 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
                 column_format = date_format
             elif column in center_columns:
                 column_format = center_format
-            worksheet.set_column(col_idx, col_idx, width, column_format)
+            worksheet.set_column(col_idx, col_idx, width)
             worksheet.write(start_row, col_idx, column, header_format)
+            for row_offset, value in enumerate(export_df[column].iloc[:styled_row_count], start=1):
+                write_excel_cell(worksheet, start_row + row_offset, col_idx, value, column_format)
 
-        if row_count > 0 and "재고상태" in export_df.columns:
+        if styled_row_count > 0 and "재고상태" in export_df.columns:
             status_col = export_df.columns.get_loc("재고상태")
-            status_range = xl_range(start_row + 1, status_col, last_row, status_col)
+            status_range = xl_range(start_row + 1, status_col, styled_last_row, status_col)
             status_formats = {
                 "정상": workbook.add_format({"bg_color": "#DDEDE3", "font_color": "#21563B"}),
                 "주의": workbook.add_format({"bg_color": "#F7E7BD", "font_color": "#765216"}),
@@ -2997,6 +3000,23 @@ def excel_column_width(series: pd.Series, column: str) -> int:
     if not series.empty:
         values.extend(len(clean_cell(value)) for value in series.head(200))
     return min(max(max(values, default=10) + 4, 10), 42)
+
+
+def excel_styled_row_count(df: pd.DataFrame) -> int:
+    if df.empty or "SKU" not in df.columns:
+        return len(df)
+    sku_values = df["SKU"].apply(clean_cell)
+    filled_positions = [idx for idx, value in enumerate(sku_values) if value]
+    return filled_positions[-1] + 1 if filled_positions else 0
+
+
+def write_excel_cell(worksheet, row_idx: int, col_idx: int, value, cell_format) -> None:
+    if pd.isna(value):
+        worksheet.write_blank(row_idx, col_idx, None, cell_format)
+        return
+    if isinstance(value, pd.Timestamp):
+        value = value.to_pydatetime()
+    worksheet.write(row_idx, col_idx, value, cell_format)
 
 
 def xl_col(col_idx: int) -> str:
@@ -5251,15 +5271,26 @@ def stock_registration_template_excel(df: pd.DataFrame) -> bytes:
         workbook = writer.book
         worksheet = writer.sheets[sheet_name]
         row_count, col_count = export_df.shape
+        styled_row_count = excel_styled_row_count(export_df)
         if col_count:
-            header_format = workbook.add_format({"bold": True, "bg_color": "#E6E0D7", "border": 1, "align": "center"})
-            number_format = workbook.add_format({"num_format": "#,##0"})
-            worksheet.freeze_panes(1, 0)
-            worksheet.autofilter(0, 0, max(row_count, 1), col_count - 1)
+            header_format = workbook.add_format(
+                {"bold": True, "bg_color": "#E6E0D7", "border": 1, "border_color": "#000000", "align": "center", "valign": "vcenter"}
+            )
+            text_format = workbook.add_format({"border": 1, "border_color": "#000000", "valign": "vcenter"})
+            center_format = workbook.add_format({"border": 1, "border_color": "#000000", "align": "center", "valign": "vcenter"})
+            number_format = workbook.add_format(
+                {"border": 1, "border_color": "#000000", "align": "right", "num_format": "#,##0", "valign": "vcenter"}
+            )
+            worksheet.autofilter(0, 0, max(styled_row_count, 1), col_count - 1)
             for col_idx, column in enumerate(export_df.columns):
                 width = excel_column_width(export_df[column], column)
-                worksheet.set_column(col_idx, col_idx, width, number_format if column == "현재고" else None)
+                worksheet.set_column(col_idx, col_idx, width)
                 worksheet.write(0, col_idx, column, header_format)
+                column_format = number_format if column in {"현재고", "수정재고"} else text_format
+                if column in {"SKU", "바코드"}:
+                    column_format = center_format
+                for row_offset, value in enumerate(export_df[column].iloc[:styled_row_count], start=1):
+                    write_excel_cell(worksheet, row_offset, col_idx, value, column_format)
     return output.getvalue()
 
 
