@@ -2863,6 +2863,7 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         export_df = normalize_inventory_export_columns(df).drop(columns=["삭제", "선택"], errors="ignore").copy()
+        export_df = export_df.rename(columns={WEEKLY_OUTBOUND_LABEL: "평균출고"})
         sheet_name = "재고관리"
         start_row = 2
         export_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=start_row)
@@ -2949,7 +2950,7 @@ def dataframe_to_excel(df: pd.DataFrame) -> bytes:
             worksheet.set_row(start_row, 24)
             worksheet.autofilter(start_row, 0, max(styled_last_row, start_row), last_col)
 
-        numeric_columns = {"현재고", "보유재고", "가용재고", "안전재고", "입고예정", "출고예정", "리드타임", "정렬순서", "출고수량", "입고수량"}
+        numeric_columns = {"현재고", "보유재고", "가용재고", "안전재고", "입고예정", "출고예정", "평균출고", "리드타임", "정렬순서", "출고수량", "입고수량"}
         date_columns = {"입고일자", "기준일자"}
         center_columns = {"구분", "SKU", "바코드", "재고상태", "입고구분"}
 
