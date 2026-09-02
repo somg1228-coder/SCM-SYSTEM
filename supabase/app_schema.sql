@@ -90,12 +90,25 @@ CREATE TABLE IF NOT EXISTS inventory_output_histories (
 	created_by VARCHAR(120) NOT NULL, 
 	filter_json TEXT NOT NULL, 
 	item_count INTEGER NOT NULL, 
+	file_name VARCHAR(255) NOT NULL DEFAULT '',
+	external_key VARCHAR(255) NOT NULL DEFAULT '',
+	order_no VARCHAR(120) NOT NULL DEFAULT '',
+	shipment_no VARCHAR(120) NOT NULL DEFAULT '',
+	invoice_no VARCHAR(120) NOT NULL DEFAULT '',
+	product_code VARCHAR(120) NOT NULL DEFAULT '',
+	product_name VARCHAR(255) NOT NULL DEFAULT '',
+	barcode VARCHAR(120) NOT NULL DEFAULT '',
+	outbound_qty INTEGER NOT NULL DEFAULT 0,
+	is_applied BOOLEAN NOT NULL DEFAULT false,
+	memo VARCHAR(500) NOT NULL DEFAULT '',
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
 	PRIMARY KEY (id)
 );
 
 CREATE INDEX IF NOT EXISTS ix_inventory_output_histories_id ON inventory_output_histories (id);
 CREATE INDEX IF NOT EXISTS ix_inventory_output_histories_source_type ON inventory_output_histories (source_type);
+CREATE INDEX IF NOT EXISTS ix_inventory_output_histories_external_key ON inventory_output_histories (external_key);
+CREATE INDEX IF NOT EXISTS ix_inventory_output_histories_product_name ON inventory_output_histories (product_name);
 
 CREATE TABLE IF NOT EXISTS inventory_upload_histories (
 	id SERIAL NOT NULL, 

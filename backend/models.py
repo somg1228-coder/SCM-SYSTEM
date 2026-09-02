@@ -395,6 +395,17 @@ class InventoryOutputHistory(Base):
     created_by: Mapped[str] = mapped_column(String(120), default="", nullable=False)
     filter_json: Mapped[str] = mapped_column(Text, default="", nullable=False)
     item_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    external_key: Mapped[str] = mapped_column(String(255), default="", index=True, nullable=False)
+    order_no: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    shipment_no: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    invoice_no: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    product_code: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), default="", index=True, nullable=False)
+    barcode: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    outbound_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_applied: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    memo: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 

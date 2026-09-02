@@ -1148,6 +1148,19 @@ def ensure_sqlite_columns() -> None:
         "inventory_inbound": {
             "product_code": "VARCHAR(120) NOT NULL DEFAULT ''",
         },
+        "inventory_output_histories": {
+            "file_name": "VARCHAR(255) NOT NULL DEFAULT ''",
+            "external_key": "VARCHAR(255) NOT NULL DEFAULT ''",
+            "order_no": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "shipment_no": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "invoice_no": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "product_code": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "product_name": "VARCHAR(255) NOT NULL DEFAULT ''",
+            "barcode": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "outbound_qty": "INTEGER NOT NULL DEFAULT 0",
+            "is_applied": "BOOLEAN NOT NULL DEFAULT 0",
+            "memo": "VARCHAR(500) NOT NULL DEFAULT ''",
+        },
         "offline_product_master": {
             "sort_order": "INTEGER NOT NULL DEFAULT 0",
             "location_registered": "BOOLEAN NOT NULL DEFAULT 0",
@@ -1263,6 +1276,19 @@ def ensure_postgresql_runtime_columns() -> None:
         },
         "inventory_inbound": {
             "product_code": "VARCHAR(120) NOT NULL DEFAULT ''",
+        },
+        "inventory_output_histories": {
+            "file_name": "VARCHAR(255) NOT NULL DEFAULT ''",
+            "external_key": "VARCHAR(255) NOT NULL DEFAULT ''",
+            "order_no": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "shipment_no": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "invoice_no": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "product_code": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "product_name": "VARCHAR(255) NOT NULL DEFAULT ''",
+            "barcode": "VARCHAR(120) NOT NULL DEFAULT ''",
+            "outbound_qty": "INTEGER NOT NULL DEFAULT 0",
+            "is_applied": "BOOLEAN NOT NULL DEFAULT false",
+            "memo": "VARCHAR(500) NOT NULL DEFAULT ''",
         },
         "offline_product_master": {
             "sort_order": "INTEGER NOT NULL DEFAULT 0",

@@ -1025,6 +1025,9 @@ def render_inbound_tab(source_type: str) -> None:
         with spacer:
             st.empty()
 
+    if source_type == "오프라인":
+        render_offline_outbound_upload_panel()
+
     df = inbound_to_editor(fetch_inbound(source_type))
     inbound_buffer_key = f"{source_type}_inbound_editor_buffer"
     st.session_state[inbound_buffer_key] = df
@@ -2697,10 +2700,14 @@ def inbound_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "공급처": row.get("vendor", ""),
                 "입고수량": row.get("inbound_qty", 0),
                 "입고구분": row.get("inbound_type", ""),
+                "반영상태": "반영완료" if row.get("is_applied") else "미반영",
                 "비고": row.get("memo", ""),
             }
         )
-    return pd.DataFrame(mapped, columns=INBOUND_COLUMNS)
+    columns = list(INBOUND_COLUMNS)
+    if "반영상태" not in columns:
+        columns.insert(-1, "반영상태")
+    return pd.DataFrame(mapped, columns=columns)
 
 
 def daily_payload(df: pd.DataFrame, source_type: str, work_date: date) -> list[dict]:
@@ -2754,6 +2761,110 @@ def inbound_payload(df: pd.DataFrame, source_type: str) -> list[dict]:
             }
         )
     return rows
+
+
+def offline_outbound_preview_dataframe(preview: dict | None) -> pd.DataFrame:
+    rows = []
+    for row in (preview or {}).get("preview_rows", []):
+        rows.append(
+            {
+                "엑셀 행": row.get("row_no", ""),
+                "출고일자": row.get("work_date", ""),
+                "주문번호": clean_cell(row.get("order_no")),
+                "출고번호": clean_cell(row.get("shipment_no")),
+                "송장번호": clean_cell(row.get("invoice_no")),
+                "SKU": clean_cell(row.get("product_code")),
+                "바코드": clean_cell(row.get("barcode")),
+                "상품명": clean_cell(row.get("product_name")),
+                "출고수량": to_int(row.get("outbound_qty")),
+                "매칭": clean_cell(row.get("match_method")),
+                "상태": clean_cell(row.get("status")),
+                "반영대상": "Y" if row.get("matched") else "N",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def offline_outbound_excluded_dataframe(preview: dict | None) -> pd.DataFrame:
+    df = offline_outbound_preview_dataframe(preview)
+    if df.empty or "반영대상" not in df.columns:
+        return pd.DataFrame()
+    return df[df["반영대상"] != "Y"].copy()
+
+
+def render_offline_outbound_upload_panel() -> None:
+    panel_key = "offline_outbound_upload"
+    preview_key = f"{panel_key}_preview"
+    result_key = f"{panel_key}_result"
+    with st.container(key=panel_key):
+        render_inventory_html(
+            """
+            <div class="inventory-update-heading">
+                <div>
+                    <h2>출고파일 반영</h2>
+                    <p>오프라인 판매사이트 출고파일을 미리보기로 확인한 뒤 매칭된 상품만 현재고에서 차감합니다.</p>
+                </div>
+            </div>
+            """
+        )
+        upload_col, date_col, preview_col, apply_col, spacer = st.columns([2.2, 0.95, 0.85, 0.85, 2.4], gap="small")
+        with upload_col:
+            uploaded = st.file_uploader(
+                "출고파일 엑셀 업로드",
+                type=["xlsx", "xls", "csv"],
+                key=f"{panel_key}_file",
+                label_visibility="collapsed",
+            )
+        with date_col:
+            work_date = st.date_input("출고 기준일자", value=date.today(), key=f"{panel_key}_date")
+        with preview_col:
+            st.write("")
+            if st.button("미리보기", key=f"{panel_key}_preview_btn", use_container_width=True):
+                if uploaded is None:
+                    st.warning("먼저 출고파일을 업로드하세요.")
+                else:
+                    outcome = with_db(
+                        lambda db: services.prepare_offline_outbound_upload_preview(
+                            db,
+                            "오프라인",
+                            work_date,
+                            uploaded.getvalue(),
+                            uploaded.name,
+                        )
+                    )
+                    st.session_state[preview_key] = outcome
+                    st.session_state.pop(result_key, None)
+                    show_result(outcome)
+        with apply_col:
+            st.write("")
+            preview = st.session_state.get(preview_key)
+            disabled = not isinstance(preview, dict) or int(preview.get("matched_count") or 0) <= 0
+            if st.button("재고 반영", key=f"{panel_key}_apply_btn", type="primary", use_container_width=True, disabled=disabled):
+                outcome = with_db(lambda db: services.apply_offline_outbound_preview(db, st.session_state.get(preview_key) or {}, current_user_name()))
+                st.session_state[result_key] = outcome
+                if outcome and outcome.get("ok", True):
+                    clear_inventory_data_caches()
+                show_result(outcome)
+        with spacer:
+            st.empty()
+
+        preview = st.session_state.get(preview_key)
+        if isinstance(preview, dict):
+            metric_cols = st.columns(5, gap="small")
+            metric_cols[0].metric("총 데이터", f"{int(preview.get('total_rows') or 0):,}건")
+            metric_cols[1].metric("반영대상", f"{int(preview.get('matched_count') or 0):,}건")
+            metric_cols[2].metric("미매칭", f"{int(preview.get('unmatched_count') or 0):,}건")
+            metric_cols[3].metric("중복/기반영", f"{int(preview.get('duplicate_count') or 0):,}건")
+            metric_cols[4].metric("오류", f"{int(preview.get('error_count') or 0):,}건")
+            preview_df = offline_outbound_preview_dataframe(preview)
+            if not preview_df.empty:
+                with st.expander(f"출고파일 미리보기 {len(preview_df):,}건", expanded=True):
+                    render_plain_inventory_table(preview_df, height=320, empty_message="출고파일 미리보기 데이터가 없습니다.")
+            excluded_df = offline_outbound_excluded_dataframe(preview)
+            if not excluded_df.empty:
+                with st.expander(f"미매칭/중복/기반영 {len(excluded_df):,}건", expanded=False):
+                    render_plain_inventory_table(excluded_df, height=240, empty_message="제외된 출고 행이 없습니다.")
+        render_stock_upload_apply_result(st.session_state.get(result_key), offline_outbound_excluded_dataframe(st.session_state.get(preview_key)))
 
 
 def upload_daily(label: str, upload_type: str, source_type: str, work_date: date, key: str) -> None:
@@ -5537,14 +5648,27 @@ def save_stock_registration_form(
     product.memo = memo
     db.flush()
 
-    daily, merged_into_existing_daily = services.resolve_inventory_daily_edit_target(
-        db,
-        daily,
-        source_type,
-        work_date,
-        product_name,
-        barcode,
-    )
+    if source_type == "오프라인" and daily is None:
+        daily = services.ensure_offline_daily_row(
+            db,
+            work_date,
+            product,
+            product_code=sku,
+            product_name=product_name,
+            barcode=barcode,
+            category=category,
+            supplier=supplier,
+        )
+        merged_into_existing_daily = False
+    else:
+        daily, merged_into_existing_daily = services.resolve_inventory_daily_edit_target(
+            db,
+            daily,
+            source_type,
+            work_date,
+            product_name,
+            barcode,
+        )
     daily.product_code = sku
     daily.barcode = barcode
     daily.product_name = product_name
@@ -5705,6 +5829,8 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
 
 
 def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date_key: str) -> None:
+    if source_type == "오프라인":
+        return
     panel_key = f"{source_key(source_type)}_lookup_erp_update_{work_date.isoformat()}"
     result_key = f"{source_key(source_type)}_lookup_erp_update_result"
     excluded_df_key = f"{source_key(source_type)}_lookup_erp_update_excluded"

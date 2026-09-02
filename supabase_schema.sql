@@ -104,9 +104,22 @@ CREATE TABLE IF NOT EXISTS "inventory_output_histories" (
     "created_by" VARCHAR(120) NOT NULL,
     "filter_json" TEXT NOT NULL,
     "item_count" INTEGER NOT NULL,
+    "file_name" VARCHAR(255) DEFAULT '' NOT NULL,
+    "external_key" VARCHAR(255) DEFAULT '' NOT NULL,
+    "order_no" VARCHAR(120) DEFAULT '' NOT NULL,
+    "shipment_no" VARCHAR(120) DEFAULT '' NOT NULL,
+    "invoice_no" VARCHAR(120) DEFAULT '' NOT NULL,
+    "product_code" VARCHAR(120) DEFAULT '' NOT NULL,
+    "product_name" VARCHAR(255) DEFAULT '' NOT NULL,
+    "barcode" VARCHAR(120) DEFAULT '' NOT NULL,
+    "outbound_qty" INTEGER DEFAULT 0 NOT NULL,
+    "is_applied" BOOLEAN DEFAULT false NOT NULL,
+    "memo" VARCHAR(500) DEFAULT '' NOT NULL,
     "created_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL
 );
 CREATE INDEX IF NOT EXISTS "ix_inventory_output_histories_source_type" ON "inventory_output_histories" ("source_type");
+CREATE INDEX IF NOT EXISTS "ix_inventory_output_histories_external_key" ON "inventory_output_histories" ("external_key");
+CREATE INDEX IF NOT EXISTS "ix_inventory_output_histories_product_name" ON "inventory_output_histories" ("product_name");
 SELECT setval(pg_get_serial_sequence('inventory_output_histories', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM "inventory_output_histories"), 1), 1), (SELECT COUNT(*) FROM "inventory_output_histories") > 0);
 
 CREATE TABLE IF NOT EXISTS "inventory_upload_histories" (

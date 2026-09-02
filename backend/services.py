@@ -147,6 +147,15 @@ ERP_INVOICE_COLUMN_CANDIDATES = ["송장", "송장수량", "송장 수량", "inv
 ERP_RECEIVED_COLUMN_CANDIDATES = ["접수", "접수수량", "접수 수량", "accepted_qty", "receipt"]
 STOCK_CATEGORY_COLUMN_CANDIDATES = ["카테고리", "카테고리명", "상품카테고리", "상품 카테고리", "대분류", "대분류명", "분류", "상품분류", "category", "large_category"]
 STOCK_LOCATION_COLUMN_CANDIDATES = ["재고위치", "재고 위치", "보관위치", "보관 위치", "창고위치", "창고 위치", "로케이션", "랙위치", "랙 위치", "location", "storage_location"]
+OFFLINE_OUTBOUND_OUTPUT_TYPE = "OFFLINE_OUTBOUND"
+OFFLINE_OUTBOUND_DATE_COLUMN_CANDIDATES = ["출고일자", "출고일", "발송일", "배송일", "판매일", "주문일", "일자", "date"]
+OFFLINE_OUTBOUND_QTY_COLUMN_CANDIDATES = ["출고수량", "출고 수량", "판매수량", "판매 수량", "주문수량", "주문 수량", "수량", "qty", "quantity"]
+OFFLINE_OUTBOUND_ORDER_COLUMN_CANDIDATES = ["주문번호", "주문 번호", "주문ID", "주문 ID", "order_no", "order_id"]
+OFFLINE_OUTBOUND_SHIPMENT_COLUMN_CANDIDATES = ["출고번호", "출고 번호", "배송번호", "배송 번호", "shipment_no", "shipment_id"]
+OFFLINE_OUTBOUND_INVOICE_COLUMN_CANDIDATES = ["송장번호", "송장 번호", "운송장번호", "운송장 번호", "invoice_no", "tracking_no"]
+OFFLINE_OUTBOUND_SKU_COLUMN_CANDIDATES = ["SKU", "상품코드", "품목코드", "상품번호", "옵션코드", "sku"]
+OFFLINE_OUTBOUND_BARCODE_COLUMN_CANDIDATES = ["바코드", "옵션바코드", "88바코드", "barcode"]
+OFFLINE_OUTBOUND_NAME_COLUMN_CANDIDATES = ["상품명", "품목", "품목명", "제품명", "product_name"]
 
 
 def product_master_model(source_type: str):
@@ -3606,6 +3615,338 @@ def read_inventory_upload_file(file_bytes: bytes, file_name: str = "") -> pd.Dat
     return df
 
 
+def optional_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    try:
+        return find_column(df, candidates)
+    except ValueError:
+        return None
+
+
+def parse_offline_outbound_file(file_bytes: bytes, file_name: str = "") -> pd.DataFrame:
+    df = read_inventory_upload_file(file_bytes, file_name)
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    qty_col = find_column(df, OFFLINE_OUTBOUND_QTY_COLUMN_CANDIDATES)
+    date_col = optional_column(df, OFFLINE_OUTBOUND_DATE_COLUMN_CANDIDATES)
+    order_col = optional_column(df, OFFLINE_OUTBOUND_ORDER_COLUMN_CANDIDATES)
+    shipment_col = optional_column(df, OFFLINE_OUTBOUND_SHIPMENT_COLUMN_CANDIDATES)
+    invoice_col = optional_column(df, OFFLINE_OUTBOUND_INVOICE_COLUMN_CANDIDATES)
+    sku_col = optional_column(df, OFFLINE_OUTBOUND_SKU_COLUMN_CANDIDATES)
+    barcode_col = optional_column(df, OFFLINE_OUTBOUND_BARCODE_COLUMN_CANDIDATES)
+    name_col = optional_column(df, OFFLINE_OUTBOUND_NAME_COLUMN_CANDIDATES)
+    if not any([sku_col, barcode_col, name_col]):
+        raise ValueError("출고파일에서 SKU, 바코드, 상품명 중 하나 이상의 상품 식별 컬럼이 필요합니다.")
+
+    rows = []
+    for index, row in df.iterrows():
+        outbound_qty = to_int(row.get(qty_col))
+        product_code = normalize_product_code_text(row.get(sku_col)) if sku_col else ""
+        barcode = normalize_barcode_text(row.get(barcode_col)) if barcode_col else ""
+        product_name = clean_text(row.get(name_col)) if name_col else ""
+        order_no = clean_text(row.get(order_col)) if order_col else ""
+        shipment_no = clean_text(row.get(shipment_col)) if shipment_col else ""
+        invoice_no = clean_text(row.get(invoice_col)) if invoice_col else ""
+        outbound_date = parse_date(row.get(date_col)) if date_col else None
+        if not any([product_code, barcode, product_name, order_no, shipment_no, invoice_no, outbound_qty]):
+            continue
+        rows.append(
+            {
+                "row_no": int(index) + 2,
+                "work_date": outbound_date,
+                "product_code": product_code,
+                "barcode": barcode,
+                "product_name": product_name,
+                "outbound_qty": outbound_qty,
+                "order_no": order_no,
+                "shipment_no": shipment_no,
+                "invoice_no": invoice_no,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def offline_outbound_base_key(row: dict, file_name: str = "") -> str:
+    order_no = clean_text(row.get("order_no"))
+    shipment_no = clean_text(row.get("shipment_no"))
+    invoice_no = clean_text(row.get("invoice_no"))
+    if order_no:
+        return f"ORDER:{order_no}"
+    if shipment_no:
+        return f"SHIPMENT:{shipment_no}"
+    if invoice_no:
+        return f"INVOICE:{invoice_no}"
+    fallback = "|".join(
+        [
+            clean_text(file_name),
+            clean_text(row.get("row_no")),
+            clean_text(row.get("work_date")),
+            normalize_product_code_text(row.get("product_code")),
+            normalize_barcode_text(row.get("barcode")),
+            clean_text(row.get("product_name")),
+            clean_text(row.get("outbound_qty")),
+        ]
+    )
+    return "FILE:" + hashlib.sha256(fallback.encode("utf-8")).hexdigest()
+
+
+def match_offline_product_for_outbound(lookup: dict[str, dict[str, object]], product_code: str = "", barcode: str = "", product_name: str = ""):
+    barcode_key = normalize_product_barcode_match_key(barcode)
+    if barcode_key:
+        product = preferred_master_product(lookup.get("barcode_list", {}).get(barcode_key, []))
+        if product is not None:
+            return product, "바코드"
+
+    name_key = normalize_product_name_match_key(product_name)
+    if name_key:
+        product = preferred_master_product(lookup.get("name_list", {}).get(name_key, []))
+        if product is not None:
+            return product, "상품명"
+
+    sku_key = normalize_product_code_text(product_code)
+    if sku_key:
+        product = lookup.get("sku", {}).get(sku_key)
+        if product is not None:
+            return product, "SKU"
+    return None, ""
+
+
+def applied_offline_outbound_keys(db: Session, keys: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    if not keys:
+        return set()
+    external_keys = {external_key for external_key, _ in keys if external_key}
+    product_codes = {product_code for _, product_code in keys if product_code}
+    if not external_keys or not product_codes:
+        return set()
+    rows = db.execute(
+        select(InventoryOutputHistory.external_key, InventoryOutputHistory.product_code).where(
+            InventoryOutputHistory.source_type == "오프라인",
+            InventoryOutputHistory.output_type == OFFLINE_OUTBOUND_OUTPUT_TYPE,
+            InventoryOutputHistory.is_applied == True,  # noqa: E712
+            InventoryOutputHistory.external_key.in_(list(external_keys)),
+            InventoryOutputHistory.product_code.in_(list(product_codes)),
+        )
+    ).all()
+    return {(clean_text(external_key), normalize_product_code_text(product_code)) for external_key, product_code in rows}
+
+
+def prepare_offline_outbound_upload_preview(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    file_bytes: bytes,
+    file_name: str = "",
+) -> dict:
+    if source_type != "오프라인":
+        return {"ok": False, "message": "오프라인 출고파일은 오프라인 재고에서만 반영할 수 있습니다.", "count": 0}
+
+    started_at = time.perf_counter()
+    df = parse_offline_outbound_file(file_bytes, file_name)
+    lookup = product_master_lookup(db, source_type)
+    preview_rows = []
+    pending_keys: set[tuple[str, str]] = set()
+    seen_keys: set[tuple[str, str]] = set()
+    duplicate_count = 0
+    unmatched_count = 0
+    error_count = 0
+    matched_count = 0
+
+    for raw_row in df.fillna("").to_dict("records"):
+        outbound_date = parse_date(raw_row.get("work_date")) or work_date
+        qty = to_int(raw_row.get("outbound_qty"))
+        product, match_method = match_offline_product_for_outbound(
+            lookup,
+            raw_row.get("product_code", ""),
+            raw_row.get("barcode", ""),
+            raw_row.get("product_name", ""),
+        )
+        product_code = normalize_product_code_text(getattr(product, "sku", "")) if product else normalize_product_code_text(raw_row.get("product_code"))
+        external_key = offline_outbound_base_key({**raw_row, "work_date": outbound_date}, file_name)
+        dedupe_key = (external_key, product_code)
+        status = "반영대상"
+        matched = product is not None and qty > 0
+        duplicate = False
+
+        if qty <= 0:
+            matched = False
+            status = "출고수량 오류"
+            error_count += 1
+        elif product is None:
+            matched = False
+            status = "미매칭 상품"
+            unmatched_count += 1
+        elif dedupe_key in seen_keys:
+            matched = False
+            duplicate = True
+            status = "파일 내 중복"
+            duplicate_count += 1
+        else:
+            seen_keys.add(dedupe_key)
+            pending_keys.add(dedupe_key)
+            matched_count += 1
+
+        preview_rows.append(
+            {
+                "row_no": raw_row.get("row_no"),
+                "work_date": outbound_date,
+                "product_code": clean_text(getattr(product, "sku", "")) if product else clean_text(raw_row.get("product_code")),
+                "barcode": normalize_barcode_text(getattr(product, "barcode", "")) if product else normalize_barcode_text(raw_row.get("barcode")),
+                "product_name": clean_text(getattr(product, "product_name", "")) if product else clean_text(raw_row.get("product_name")),
+                "uploaded_product_code": clean_text(raw_row.get("product_code")),
+                "uploaded_barcode": normalize_barcode_text(raw_row.get("barcode")),
+                "uploaded_product_name": clean_text(raw_row.get("product_name")),
+                "outbound_qty": qty,
+                "order_no": clean_text(raw_row.get("order_no")),
+                "shipment_no": clean_text(raw_row.get("shipment_no")),
+                "invoice_no": clean_text(raw_row.get("invoice_no")),
+                "external_key": external_key,
+                "match_method": match_method,
+                "matched": matched,
+                "duplicate": duplicate,
+                "already_applied": False,
+                "status": status,
+            }
+        )
+
+    already_applied = applied_offline_outbound_keys(db, pending_keys)
+    if already_applied:
+        for row in preview_rows:
+            dedupe_key = (clean_text(row.get("external_key")), normalize_product_code_text(row.get("product_code")))
+            if dedupe_key in already_applied and row.get("matched"):
+                row["matched"] = False
+                row["already_applied"] = True
+                row["status"] = "기반영"
+                duplicate_count += 1
+                matched_count -= 1
+
+    return {
+        "ok": True,
+        "message": "오프라인 출고파일 미리보기 완료",
+        "file_name": file_name,
+        "total_rows": len(preview_rows),
+        "matched_count": max(matched_count, 0),
+        "unmatched_count": unmatched_count,
+        "duplicate_count": duplicate_count,
+        "error_count": error_count,
+        "count": max(matched_count, 0),
+        "processing_seconds": round(time.perf_counter() - started_at, 2),
+        "preview_rows": preview_rows,
+    }
+
+
+def apply_offline_outbound_preview(db: Session, preview: dict, uploaded_by: str = "") -> dict:
+    if use_legacy_supabase_rest_store():
+        return {"ok": False, "message": "Supabase REST 저장소에서는 오프라인 출고 반영을 지원하지 않습니다.", "count": 0}
+
+    started_at = time.perf_counter()
+    source_type = "오프라인"
+    candidate_rows = [
+        row
+        for row in list((preview or {}).get("preview_rows") or [])
+        if row.get("matched") and to_int(row.get("outbound_qty")) > 0
+    ]
+    candidate_keys = {
+        (clean_text(row.get("external_key")), normalize_product_code_text(row.get("product_code")))
+        for row in candidate_rows
+        if clean_text(row.get("external_key")) and normalize_product_code_text(row.get("product_code"))
+    }
+    already_applied = applied_offline_outbound_keys(db, candidate_keys)
+
+    count = 0
+    duplicate_count = int((preview or {}).get("duplicate_count") or 0)
+    failure_rows = []
+    lookup = product_master_lookup(db, source_type)
+    for row in candidate_rows:
+        external_key = clean_text(row.get("external_key"))
+        product_code = normalize_product_code_text(row.get("product_code"))
+        dedupe_key = (external_key, product_code)
+        if dedupe_key in already_applied:
+            duplicate_count += 1
+            continue
+
+        product, _ = match_offline_product_for_outbound(
+            lookup,
+            row.get("product_code", ""),
+            row.get("barcode", ""),
+            row.get("product_name", ""),
+        )
+        if product is None:
+            failure_rows.append(
+                {
+                    "row_no": row.get("row_no", ""),
+                    "product_code": row.get("product_code", ""),
+                    "barcode": row.get("barcode", ""),
+                    "product_name": row.get("product_name", ""),
+                    "new_stock": "",
+                    "failure_reason": "상품마스터 재조회 실패",
+                }
+            )
+            continue
+
+        outbound_qty = to_int(row.get("outbound_qty"))
+        target_date = parse_date(row.get("work_date")) or date.today()
+        daily = ensure_offline_daily_row(
+            db,
+            target_date,
+            product,
+            product_code=getattr(product, "sku", ""),
+            product_name=getattr(product, "product_name", ""),
+            barcode=getattr(product, "barcode", ""),
+        )
+        previous_stock = int(daily.current_stock or 0)
+        previous_available = int(daily.available_stock if daily.available_stock is not None else previous_stock)
+        daily.outbound_qty = int(daily.outbound_qty or 0) + outbound_qty
+        daily.current_stock = previous_stock - outbound_qty
+        daily.available_stock = previous_available - outbound_qty
+        daily.stock_status = inventory_stock_status_for_daily_row(daily)
+        propagate_offline_daily_delta(
+            db,
+            target_date,
+            daily.product_code,
+            daily.product_name,
+            daily.barcode,
+            -outbound_qty,
+        )
+        db.add(
+            InventoryOutputHistory(
+                source_type=source_type,
+                work_date=target_date,
+                output_type=OFFLINE_OUTBOUND_OUTPUT_TYPE,
+                created_by=clean_text(uploaded_by) or "SYSTEM",
+                filter_json=json.dumps(row, ensure_ascii=False, default=str),
+                item_count=1,
+                file_name=clean_text((preview or {}).get("file_name")),
+                external_key=external_key,
+                order_no=clean_text(row.get("order_no")),
+                shipment_no=clean_text(row.get("shipment_no")),
+                invoice_no=clean_text(row.get("invoice_no")),
+                product_code=clean_text(getattr(product, "sku", "")),
+                product_name=clean_text(getattr(product, "product_name", "")),
+                barcode=normalize_barcode_text(getattr(product, "barcode", "")),
+                outbound_qty=outbound_qty,
+                is_applied=True,
+                memo="오프라인 출고파일 반영",
+            )
+        )
+        already_applied.add(dedupe_key)
+        count += 1
+
+    db.commit()
+    return {
+        "ok": len(failure_rows) == 0,
+        "message": "오프라인 출고 재고 반영 완료" if not failure_rows else "오프라인 출고 일부 반영 실패",
+        "count": count,
+        "total_rows": int((preview or {}).get("total_rows") or 0),
+        "matched_count": count,
+        "unmatched_count": int((preview or {}).get("unmatched_count") or 0),
+        "duplicate_count": duplicate_count,
+        "error_count": int((preview or {}).get("error_count") or 0) + len(failure_rows),
+        "apply_failed_count": len(failure_rows),
+        "failure_rows": failure_rows,
+        "processing_seconds": round(time.perf_counter() - started_at, 2),
+    }
+
+
 def to_int_strict(value) -> tuple[int, bool]:
     text = clean_text(value).replace(",", "")
     if not text:
@@ -4509,6 +4850,7 @@ def apply_stock_upload_preview(
         stale_daily_ids: set[int] = set()
         upsert_values_by_identity: dict[str, dict] = {}
         expected_by_sku: dict[str, dict] = {}
+        offline_future_deltas: list[tuple[str, str, str, int]] = []
         for row in rows:
             row_barcode = normalize_barcode_text(row.get("barcode"))
             row_product_name = clean_text(row.get("product_name"))
@@ -4540,7 +4882,8 @@ def apply_stock_upload_preview(
                     previous_stock = int(existing_final.current_stock or 0)
                 else:
                     previous_candidates = existing_by_sku.get(product_sku, [])
-                    previous_stock = int(previous_candidates[0].current_stock or 0) if previous_candidates else 0
+                    previous = latest_daily_row_before(db, source_type, work_date, product.sku, product_name, product_barcode) if source_type == "오프라인" else None
+                    previous_stock = int(previous.current_stock or 0) if previous is not None else int(previous_candidates[0].current_stock or 0) if previous_candidates else 0
                 for stale in existing_by_sku.get(product_sku, []):
                     stale_identity = clean_text(stale.product_name)
                     if stale.id is not None and stale_identity != identity:
@@ -4589,6 +4932,10 @@ def apply_stock_upload_preview(
                         "new_stock": new_stock,
                     }
                 )
+                if source_type == "오프라인":
+                    delta = int(new_stock or 0) - int(previous_stock or 0)
+                    if delta:
+                        offline_future_deltas.append((product.sku, product_name, product_barcode, delta))
                 touched_skus.add(product_sku)
                 count += 1
             except Exception as row_exc:
@@ -4609,6 +4956,8 @@ def apply_stock_upload_preview(
             upsert_groups.setdefault(tuple(values.keys()), []).append(values)
         for values in upsert_groups.values():
             execute_inventory_daily_bulk_upsert(db, values)
+        for product_code, product_name, barcode, delta in offline_future_deltas:
+            propagate_offline_daily_delta(db, work_date, product_code, product_name, barcode, delta)
         db.flush()
         refreshed_daily_rows = list(
             db.execute(
@@ -5034,6 +5383,130 @@ def get_or_create_daily(db: Session, source_type: str, work_date: date, product_
     return item
 
 
+def latest_daily_row_before(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    product_code: str = "",
+    product_name: str = "",
+    barcode: str = "",
+) -> InventoryDaily | None:
+    sku = normalize_product_code_text(product_code)
+    name = clean_text(product_name)
+    barcode_text = normalize_barcode_text(barcode)
+    filters = [
+        InventoryDaily.source_type == source_type,
+        InventoryDaily.work_date < work_date,
+    ]
+    identity_filters = []
+    if name:
+        identity_filters.append(InventoryDaily.product_name == name)
+    if sku:
+        identity_filters.append(InventoryDaily.product_code == sku)
+    if barcode_text:
+        identity_filters.append(InventoryDaily.barcode == barcode_text)
+    if identity_filters:
+        filters.append(or_(*identity_filters))
+    return db.execute(
+        select(InventoryDaily)
+        .where(*filters)
+        .order_by(InventoryDaily.work_date.desc(), InventoryDaily.id.desc())
+    ).scalars().first()
+
+
+def ensure_offline_daily_row(
+    db: Session,
+    work_date: date,
+    product=None,
+    product_code: str = "",
+    product_name: str = "",
+    barcode: str = "",
+    category: str = "",
+    supplier: str = "",
+) -> InventoryDaily:
+    if product is not None:
+        product_code = clean_text(getattr(product, "sku", "")) or product_code
+        product_name = clean_text(getattr(product, "product_name", "")) or product_name
+        barcode = normalize_barcode_text(getattr(product, "barcode", "")) or barcode
+        category = product_category_text(product) or category
+        supplier = clean_text(getattr(product, "supplier", "")) or supplier
+
+    product_name = clean_text(product_name)
+    barcode = normalize_barcode_text(barcode)
+    item = db.execute(
+        select(InventoryDaily).where(
+            InventoryDaily.source_type == "오프라인",
+            InventoryDaily.work_date == work_date,
+            InventoryDaily.product_name == product_name,
+        )
+    ).scalar_one_or_none()
+    if item is not None:
+        return item
+
+    previous = latest_daily_row_before(db, "오프라인", work_date, product_code, product_name, barcode)
+    item = InventoryDaily(
+        source_type="오프라인",
+        work_date=work_date,
+        product_code=clean_text(product_code),
+        product_name=product_name,
+        barcode=barcode,
+        category=clean_text(category),
+        supplier=clean_text(supplier),
+        current_stock=int(previous.current_stock or 0) if previous else 0,
+        available_stock=int(previous.available_stock if previous and previous.available_stock is not None else previous.current_stock if previous else 0),
+        safe_stock=int(previous.safe_stock or getattr(product, "min_stock", 0) or 0) if previous else int(getattr(product, "min_stock", 0) or 0),
+        outbound_qty=0,
+        inbound_qty=0,
+        previous_inbound_date=previous.previous_inbound_date if previous else None,
+        last_inbound_date=previous.last_inbound_date if previous else None,
+        inbound_cycle=int(previous.inbound_cycle or getattr(product, "default_lead_time", 0) or 0) or None if previous else int(getattr(product, "default_lead_time", 0) or 0) or None,
+        memo=previous.memo if previous else "",
+    )
+    apply_product_master_to_daily(item, product)
+    item.stock_status = inventory_stock_status_for_daily_row(item)
+    db.add(item)
+    db.flush()
+    return item
+
+
+def propagate_offline_daily_delta(
+    db: Session,
+    work_date: date,
+    product_code: str,
+    product_name: str,
+    barcode: str,
+    delta: int,
+) -> int:
+    if not delta:
+        return 0
+    sku = normalize_product_code_text(product_code)
+    name = clean_text(product_name)
+    barcode_text = normalize_barcode_text(barcode)
+    identity_filters = []
+    if name:
+        identity_filters.append(InventoryDaily.product_name == name)
+    if sku:
+        identity_filters.append(InventoryDaily.product_code == sku)
+    if barcode_text:
+        identity_filters.append(InventoryDaily.barcode == barcode_text)
+    if not identity_filters:
+        return 0
+    rows = list(
+        db.execute(
+            select(InventoryDaily).where(
+                InventoryDaily.source_type == "오프라인",
+                InventoryDaily.work_date > work_date,
+                or_(*identity_filters),
+            )
+        ).scalars()
+    )
+    for row in rows:
+        row.current_stock = int(row.current_stock or 0) + int(delta)
+        row.available_stock = int(row.available_stock if row.available_stock is not None else row.current_stock or 0) + int(delta)
+        row.stock_status = inventory_stock_status_for_daily_row(row)
+    return len(rows)
+
+
 def import_stock(db: Session, source_type: str, work_date: date, file_bytes: bytes) -> dict:
     preview = prepare_stock_upload_preview(db, source_type, work_date, file_bytes)
     return apply_stock_upload_preview(db, source_type, work_date, preview)
@@ -5186,15 +5659,27 @@ def apply_inbound_to_stock(db: Session, source_type: str, work_date: date) -> in
 
     count = 0
     for key, group in inbound_groups.items():
-        item = existing_daily.get(key)
-        if item is None:
-            item = InventoryDaily(
-                source_type=source_type,
-                work_date=work_date,
+        if source_type == "오프라인":
+            item = ensure_offline_daily_row(
+                db,
+                work_date,
+                group["product"],
+                product_code=group["product_code"],
                 product_name=group["product_name"],
                 barcode=group["barcode"],
+                category=group["category"],
+                supplier=group["supplier"],
             )
-            db.add(item)
+        else:
+            item = existing_daily.get(key)
+            if item is None:
+                item = InventoryDaily(
+                    source_type=source_type,
+                    work_date=work_date,
+                    product_name=group["product_name"],
+                    barcode=group["barcode"],
+                )
+                db.add(item)
         if not item.category:
             item.category = group["category"]
         if not item.product_code:
@@ -5212,6 +5697,15 @@ def apply_inbound_to_stock(db: Session, source_type: str, work_date: date) -> in
             item.previous_inbound_date = item.last_inbound_date
         item.last_inbound_date = group["last_inbound_date"]
         item.stock_status = inventory_stock_status_for_daily_row(item)
+        if source_type == "오프라인":
+            propagate_offline_daily_delta(
+                db,
+                work_date,
+                item.product_code,
+                item.product_name,
+                item.barcode,
+                qty,
+            )
         count += 1
 
     for inbound in inbound_rows:
