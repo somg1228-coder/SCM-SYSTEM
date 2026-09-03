@@ -5888,6 +5888,7 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
 
 def render_lookup_erp_update_panel(source_type: str, work_date: date, daily_date_key: str) -> None:
     if source_type == "오프라인":
+        render_offline_outbound_upload_panel(work_date)
         return
     panel_key = f"{source_key(source_type)}_lookup_erp_update_{work_date.isoformat()}"
     result_key = f"{source_key(source_type)}_lookup_erp_update_result"
@@ -6203,12 +6204,8 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
             """
         )
 
-    workflow_options = ["재고 조회", "재고 수정", "변경이력"]
-    if source_type == "오프라인":
-        workflow_options.insert(1, "출고파일 반영")
-
     workflow = inventory_text_tab_selector(
-        workflow_options,
+        ["재고 조회", "재고 수정", "변경이력"],
         f"{source_key(source_type)}_inventory_workflow",
         default="재고 조회",
         item_weight=0.72,
@@ -6221,9 +6218,6 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
 
     with st.container(key=f"{source_key(source_type)}_daily_date_wrapper"):
         work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
-    if workflow == "출고파일 반영":
-        render_offline_outbound_upload_panel(work_date)
-        return
     if workflow == "재고 조회":
         render_lookup_erp_update_panel(source_type, work_date, daily_date_key)
     rows = fetch_master_inventory(source_type, work_date)
