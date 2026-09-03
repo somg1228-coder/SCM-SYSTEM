@@ -3426,6 +3426,25 @@ def ensure_daily_snapshots_from_latest(db: Session, source_type: str, work_date:
     return created
 
 
+def offline_return_qty_by_product(db: Session, work_date: date) -> dict[str, int]:
+    rows = db.execute(
+        select(InventoryOutputHistory.product_code, func.sum(InventoryOutputHistory.outbound_qty))
+        .where(
+            InventoryOutputHistory.source_type == "오프라인",
+            InventoryOutputHistory.work_date == work_date,
+            InventoryOutputHistory.output_type == OFFLINE_OUTBOUND_OUTPUT_TYPE,
+            InventoryOutputHistory.is_applied == True,  # noqa: E712
+            InventoryOutputHistory.outbound_qty < 0,
+        )
+        .group_by(InventoryOutputHistory.product_code)
+    ).all()
+    return {
+        normalize_product_code_text(product_code): abs(int(total or 0))
+        for product_code, total in rows
+        if normalize_product_code_text(product_code)
+    }
+
+
 def master_based_inventory_rows(db: Session, source_type: str, work_date: date, active_only: bool = False) -> list[dict]:
     if use_legacy_supabase_rest_store():
         rows = supabase_store.master_based_inventory_rows(source_type, work_date)
@@ -3449,6 +3468,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     avg_outbound_by_sku = recent_outbound_average_by_product(db, source_type, work_date, products, business_day_count=5)
     pending_by_sku = pending_inbound_qty_by_product(db, source_type, work_date, products)
     location_summaries = warehouse_inventory_position_summaries(db) if source_type == "창고" else {}
+    offline_return_qty_by_sku = offline_return_qty_by_product(db, work_date) if source_type == "오프라인" else {}
 
     rows = []
     for product in products:
@@ -3513,6 +3533,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "safe_stock": safe_stock,
                 "pending_inbound_qty": pending_inbound_qty,
                 "pending_outbound_qty": pending_outbound_qty,
+                "return_qty": int(offline_return_qty_by_sku.get(product_sku_key, 0) or 0),
                 "stock_status": status,
                 "barcode": product_barcode,
                 "storage_location": (

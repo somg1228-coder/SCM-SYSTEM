@@ -1639,7 +1639,7 @@ def apply_inventory_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     search = clean_cell(filters.get("search")).lower()
     if categories:
         filtered = filtered[filtered["카테고리"].isin(categories)]
-    if suppliers:
+    if suppliers and "업체명" in filtered.columns:
         filtered = filtered[filtered["업체명"].isin(suppliers)]
     if managers:
         filtered = filtered[filtered["담당자"].isin(managers)]
@@ -1809,11 +1809,14 @@ def inventory_status_output_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     output_df = normalize_inventory_export_columns(df)
 
-    ordered = [column for column in INVENTORY_STATUS_DISPLAY_COLUMNS if column in output_df.columns]
+    display_columns = list(INVENTORY_STATUS_DISPLAY_COLUMNS)
+    if "반품수량" in output_df.columns and "업체명" not in output_df.columns and "업체명" in display_columns:
+        display_columns[display_columns.index("업체명")] = "반품수량"
+    ordered = [column for column in display_columns if column in output_df.columns]
     remaining = [
         column
         for column in output_df.columns
-        if column not in INVENTORY_STATUS_DISPLAY_COLUMNS and column not in INVENTORY_STATUS_HIDDEN_COLUMNS
+        if column not in display_columns and column not in INVENTORY_STATUS_HIDDEN_COLUMNS
     ]
     if not ordered:
         return output_df
@@ -2175,7 +2178,7 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     ]
     story = [Paragraph("SCM 재고관리", styles["title"]), Spacer(1, 4 * mm), Paragraph(" / ".join(meta), styles["meta"]), Spacer(1, 4 * mm)]
     table_data = [[Paragraph(column, styles["center"]) for column in export_df.columns]]
-    numeric_columns = {"가용재고", "주평균출고", "출고예정", "현재고", "리드타임"}
+    numeric_columns = {"가용재고", "주평균출고", "출고예정", "현재고", "반품수량", "리드타임"}
     for _, row in export_df.iterrows():
         cells = []
         for column in export_df.columns:
@@ -5018,8 +5021,14 @@ def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None
 def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
     mapped = []
     show_warehouse_locations = any(clean_cell(row.get("source_type")) == "창고" for row in rows)
+    show_offline_return_qty = any(clean_cell(row.get("source_type")) == "오프라인" for row in rows)
     for row in rows:
         category = clean_cell(row.get("category") or row.get("large_category") or row.get("medium_category") or row.get("small_category"))
+        row_source_type = clean_cell(row.get("source_type"))
+        pending_outbound_qty = row.get("pending_outbound_qty", 0)
+        return_qty = to_int(row.get("return_qty"))
+        if row_source_type == "오프라인" and return_qty <= 0 and to_int(pending_outbound_qty) < 0:
+            return_qty = abs(to_int(pending_outbound_qty))
         mapped_row = {
             "선택": False,
             "SKU": row.get("product_code", ""),
@@ -5027,13 +5036,14 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
             "바코드": row.get("barcode", ""),
             "상품명": row.get("product_name", ""),
             "가용재고": row.get("available_stock", 0),
-                "주평균출고": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
+            "주평균출고": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
             "재고상태": clean_cell(row.get("stock_status")) or "미집계",
-            "출고예정": row.get("pending_outbound_qty", 0),
+            "출고예정": pending_outbound_qty,
             "현재고": row.get("current_stock", 0),
             "발주필요일": format_order_required_date(row),
             "박스/파렛트 단위": row.get("box_pallet_unit", ""),
             "업체명": row.get("supplier", ""),
+            "반품수량": return_qty if row_source_type == "오프라인" else 0,
             "담당자": row.get("manager", ""),
             "리드타임": row.get("inbound_cycle", 0) or 0,
         }
@@ -5048,6 +5058,8 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
     columns = list(DAILY_COLUMNS)
     if "SKU" not in columns:
         columns.insert(1, "SKU")
+    if show_offline_return_qty and "업체명" in columns:
+        columns[columns.index("업체명")] = "반품수량"
     if show_warehouse_locations:
         columns.extend(["적재위치", "비고"])
     return pd.DataFrame(mapped, columns=columns)
@@ -5104,10 +5116,12 @@ def inventory_category_toggle(options: list[str], filter_key: str) -> list[str]:
 
 def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
     category_options = fetch_master_category_options(source_type, df)
-    supplier_options = sorted([value for value in df.get("업체명", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
+    show_supplier_filter = source_type != "오프라인" and "업체명" in df.columns
+    supplier_options = sorted([value for value in df.get("업체명", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)]) if show_supplier_filter else []
     manager_options = sorted([value for value in df.get("담당자", pd.Series(dtype=str)).dropna().unique() if clean_cell(value)])
     status_options = ["정상", "주의", "부족", "품절", "미집계"]
     filter_key = source_key(source_type)
+    sort_options = [column for column in df.columns if column != "선택"] or [column for column in DAILY_COLUMNS if column != "선택"]
     defaults = {
         "search": "",
         "category_filter": [],
@@ -5127,13 +5141,21 @@ def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
     }
     for suffix, value in defaults.items():
         st.session_state.setdefault(f"{filter_key}_{suffix}", value)
+    if st.session_state.get(f"{filter_key}_sort_column") not in sort_options:
+        st.session_state[f"{filter_key}_sort_column"] = sort_options[0]
 
     with st.container(key=f"inventory_filter_{filter_key}_panel"):
         cols = st.columns([2.35, 0.82, 1.05, 0.95, 0.58, 0.58], gap="small")
-        search = cols[0].text_input("통합검색", placeholder="바코드 / 상품명 / 업체명 / 담당자", key=f"{filter_key}_search")
+        search_placeholder = "바코드 / 상품명 / 반품수량 / 담당자" if source_type == "오프라인" else "바코드 / 상품명 / 업체명 / 담당자"
+        search = cols[0].text_input("통합검색", placeholder=search_placeholder, key=f"{filter_key}_search")
         with cols[1]:
             categories = inventory_category_toggle(category_options, filter_key)
-        suppliers = inventory_filter_multiselect(cols[2], "업체명", supplier_options, key=f"{filter_key}_supplier_filter")
+        if show_supplier_filter:
+            suppliers = inventory_filter_multiselect(cols[2], "업체명", supplier_options, key=f"{filter_key}_supplier_filter")
+        else:
+            suppliers = []
+            with cols[2]:
+                st.empty()
         statuses = inventory_filter_multiselect(cols[3], "재고상태", status_options, key=f"{filter_key}_status_filter")
         with cols[4]:
             st.write("")
@@ -5156,7 +5178,7 @@ def render_inventory_filters(source_type: str, df: pd.DataFrame) -> dict:
             below_safe = adv_cols2[0].checkbox("안전재고 이하", key=f"{filter_key}_below_safe")
             lead_min = adv_cols2[1].number_input("리드타임 최소", min_value=0, step=1, key=f"{filter_key}_lead_min")
             lead_max = adv_cols2[2].number_input("리드타임 최대", min_value=0, step=1, key=f"{filter_key}_lead_max")
-            sort_column = adv_cols2[3].selectbox("정렬 컬럼", [column for column in DAILY_COLUMNS if column != "선택"], key=f"{filter_key}_sort_column")
+            sort_column = adv_cols2[3].selectbox("정렬 컬럼", sort_options, key=f"{filter_key}_sort_column")
             adv_cols3 = st.columns([1, 1, 2, 2], gap="small")
             sort_order = adv_cols3[0].selectbox("정렬", ["오름차순", "내림차순"], key=f"{filter_key}_sort_order")
             page_size = adv_cols3[1].selectbox("페이지당 표시", [15, 30, 50, 100], key=f"{filter_key}_page_size")
@@ -5206,7 +5228,7 @@ def apply_inventory_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     if statuses:
         filtered = filtered[filtered["재고상태"].isin(statuses)]
     if search:
-        search_columns = [column for column in ["SKU", "바코드", "상품명", "업체명", "보관위치", "적재위치", "비고", "담당자"] if column in filtered.columns]
+        search_columns = [column for column in ["SKU", "바코드", "상품명", "업체명", "반품수량", "보관위치", "적재위치", "비고", "담당자"] if column in filtered.columns]
         search_text = filtered[search_columns].astype(str).agg(" ".join, axis=1).str.lower()
         filtered = filtered[search_text.str.contains(re.escape(search), na=False)]
     if filters.get("stock_presence") == "보유":
@@ -6424,7 +6446,7 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     ]
     story = [Paragraph("SCM 재고관리", styles["title"]), Spacer(1, 4 * mm), Paragraph(" / ".join(meta), styles["meta"]), Spacer(1, 4 * mm)]
     table_data = [[Paragraph(column, styles["center"]) for column in export_df.columns]]
-    numeric_columns = {"가용재고", "주평균출고", "출고예정", "현재고", "리드타임"}
+    numeric_columns = {"가용재고", "주평균출고", "출고예정", "현재고", "반품수량", "리드타임"}
     for _, row in export_df.iterrows():
         cells = []
         for column in export_df.columns:

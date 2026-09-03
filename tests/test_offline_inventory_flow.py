@@ -215,6 +215,10 @@ class OfflineInventoryFlowTest(unittest.TestCase):
             self.assertEqual(day3.current_stock, 11)
             self.assertEqual(day3.available_stock, 11)
             self.assertEqual(day3.outbound_qty, -1)
+
+            rows = services.master_based_inventory_rows(db, "오프라인", date(2026, 8, 23))
+            target = next(row for row in rows if row["product_code"] == "RET-1")
+            self.assertEqual(target["return_qty"], 1)
         finally:
             db.close()
 
