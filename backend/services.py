@@ -3862,7 +3862,7 @@ def prepare_offline_outbound_upload_preview(
 
     return {
         "ok": True,
-        "message": "오프라인 출고파일 미리보기 완료",
+        "message": "오프라인 출고파일 확인 완료",
         "file_name": file_name,
         "total_rows": len(preview_rows),
         "matched_count": max(matched_count, 0),

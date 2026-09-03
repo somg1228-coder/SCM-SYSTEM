@@ -1907,7 +1907,7 @@ def render_stock_upload_preview(
     applied_df_key: str,
     excluded_df_key: str,
 ) -> None:
-    st.markdown("#### 재고 업로드 미리보기")
+    st.markdown("#### 재고 업로드 확인")
     metric_cols = st.columns(5, gap="small")
     metric_cols[0].metric("전체 행", f"{preview.get('total_rows', 0):,}")
     metric_cols[1].metric("정상 매칭", f"{preview.get('matched_count', 0):,}")
@@ -1959,7 +1959,7 @@ def render_stock_upload_preview(
                         render_inventory_visible_table(excluded_df, height=260)
             show_result(outcome)
     with cancel_col:
-        if st.button("미리보기 취소", key=f"{preview_key}_cancel", use_container_width=True):
+        if st.button("취소", key=f"{preview_key}_cancel", use_container_width=True):
             st.session_state.pop(preview_key, None)
             st.session_state.pop(preview_df_key, None)
             st.session_state["uploaded_inventory_df"] = None
@@ -5168,7 +5168,7 @@ def render_stock_upload_preview(
     applied_df_key: str,
     excluded_df_key: str,
 ) -> None:
-    st.markdown('<div class="inventory-subsection-title">미리보기 결과</div>', unsafe_allow_html=True)
+    st.markdown('<div class="inventory-subsection-title">파일 확인 결과</div>', unsafe_allow_html=True)
     metric_cols = st.columns(5, gap="small")
     metric_cols[0].metric("파일 행", f"{preview.get('total_rows', 0):,}")
     metric_cols[1].metric("마스터 매칭", f"{preview.get('matched_count', 0):,}")
@@ -5198,7 +5198,7 @@ def render_stock_upload_preview(
                 st.session_state.pop(preview_key, None)
             show_result(outcome)
     with cancel_col:
-        if st.button("미리보기 취소", key=f"{preview_key}_cancel", use_container_width=True):
+        if st.button("취소", key=f"{preview_key}_cancel", use_container_width=True):
             st.session_state.pop(preview_key, None)
             st.session_state.pop(preview_df_key, None)
             st.rerun()
