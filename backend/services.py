@@ -3689,6 +3689,8 @@ def parse_offline_outbound_file(file_bytes: bytes, file_name: str = "") -> pd.Da
         shipment_no = clean_text(row.get(shipment_col)) if shipment_col else ""
         invoice_no = clean_text(row.get(invoice_col)) if invoice_col else ""
         outbound_date = parse_date(row.get(date_col)) if date_col else None
+        if product_code and not any([barcode, product_name, order_no, shipment_no, invoice_no, outbound_date, outbound_qty]):
+            continue
         if not any([product_code, barcode, product_name, order_no, shipment_no, invoice_no, outbound_qty]):
             continue
         rows.append(
