@@ -21,7 +21,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.database import record_save_failure, record_save_success
+from backend.database import ensure_postgresql_runtime_columns, record_save_failure, record_save_success
 from backend.models import (
     InventoryDaily,
     InventoryInbound,
@@ -3781,6 +3781,7 @@ def prepare_offline_outbound_upload_preview(
     if source_type != "오프라인":
         return {"ok": False, "message": "오프라인 출고파일은 오프라인 재고에서만 반영할 수 있습니다.", "count": 0}
 
+    ensure_postgresql_runtime_columns()
     started_at = time.perf_counter()
     df = parse_offline_outbound_file(file_bytes, file_name)
     lookup = product_master_lookup(db, source_type)

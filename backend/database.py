@@ -969,6 +969,8 @@ def init_db(force: bool = False, ensure_schema: bool | None = None) -> None:
     if ensure_schema is None:
         ensure_schema = is_sqlite_url(DATABASE_URL)
     if not ensure_schema:
+        if is_postgresql_url(DATABASE_URL):
+            ensure_postgresql_runtime_columns()
         _LAST_SCHEMA_INIT_OK = True
         _LAST_DB_ERROR = ""
         _INIT_DB_DONE = True
