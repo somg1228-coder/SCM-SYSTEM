@@ -149,7 +149,7 @@ STOCK_CATEGORY_COLUMN_CANDIDATES = ["카테고리", "카테고리명", "상품�
 STOCK_LOCATION_COLUMN_CANDIDATES = ["재고위치", "재고 위치", "보관위치", "보관 위치", "창고위치", "창고 위치", "로케이션", "랙위치", "랙 위치", "location", "storage_location"]
 OFFLINE_OUTBOUND_OUTPUT_TYPE = "OFFLINE_OUTBOUND"
 OFFLINE_OUTBOUND_DATE_COLUMN_CANDIDATES = ["출고일자", "출고일", "발송일", "배송일", "판매일", "주문일", "일자", "date"]
-OFFLINE_OUTBOUND_QTY_COLUMN_CANDIDATES = ["출고수량", "출고 수량", "판매수량", "판매 수량", "주문수량", "주문 수량", "수량", "qty", "quantity"]
+OFFLINE_OUTBOUND_QTY_COLUMN_CANDIDATES = ["출고수량", "출고 수량", "판매수량", "판매 수량", "매출수량", "매출 수량", "주문수량", "주문 수량", "수량", "qty", "quantity"]
 OFFLINE_OUTBOUND_ORDER_COLUMN_CANDIDATES = ["주문번호", "주문 번호", "주문ID", "주문 ID", "order_no", "order_id"]
 OFFLINE_OUTBOUND_SHIPMENT_COLUMN_CANDIDATES = ["출고번호", "출고 번호", "배송번호", "배송 번호", "shipment_no", "shipment_id"]
 OFFLINE_OUTBOUND_INVOICE_COLUMN_CANDIDATES = ["송장번호", "송장 번호", "운송장번호", "운송장 번호", "invoice_no", "tracking_no"]
@@ -632,6 +632,47 @@ def read_excel(file_bytes: bytes) -> pd.DataFrame:
         return df
     except Exception as excel_error:
         uploaded_file.seek(0)
+        try:
+            workbook = pd.ExcelFile(uploaded_file, engine="xlrd")
+            sheet_names = list(workbook.sheet_names)
+            if not sheet_names:
+                raise ValueError("엑셀 시트를 찾지 못했습니다.")
+            selected_sheet = ""
+            selected_raw = pd.DataFrame()
+            selected_df = pd.DataFrame()
+            non_empty_sheets = []
+            fallback_name = ""
+            for sheet_name in sheet_names:
+                probe = workbook.parse(sheet_name=sheet_name, nrows=12, dtype=str)
+                if probe is None or probe.dropna(how="all").empty:
+                    continue
+                non_empty_sheets.append(sheet_name)
+                if not fallback_name:
+                    fallback_name = sheet_name
+                candidate = normalize_import_headers(probe)
+                if has_known_import_headers(candidate):
+                    selected_sheet = sheet_name
+                    break
+            if not selected_sheet:
+                selected_sheet = fallback_name or sheet_names[0]
+            selected_raw = workbook.parse(sheet_name=selected_sheet, dtype=str)
+            selected_df = normalize_import_headers(selected_raw)
+            if selected_df.empty:
+                selected_df = normalize_import_headers(selected_raw)
+            df = selected_df
+            df.attrs["read_method"] = "excel_xls"
+            df.attrs["sheet_names"] = sheet_names
+            df.attrs["non_empty_sheet_names"] = non_empty_sheets
+            df.attrs["selected_sheet"] = selected_sheet
+            df.attrs["raw_shape"] = tuple(selected_raw.shape)
+            df.attrs["raw_columns"] = [str(column) for column in selected_raw.columns]
+            df.attrs["raw_head"] = selected_raw.head(5).fillna("").astype(str).to_dict("records")
+            df.attrs["normalized_shape"] = tuple(df.shape)
+            df.attrs["normalized_columns"] = [str(column) for column in df.columns]
+            df.attrs["normalized_head"] = df.head(5).fillna("").astype(str).to_dict("records")
+            return df
+        except Exception:
+            uploaded_file.seek(0)
         try:
             tables = pd.read_html(uploaded_file)
         except Exception as html_error:

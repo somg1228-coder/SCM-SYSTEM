@@ -131,6 +131,27 @@ class OfflineInventoryFlowTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_offline_outbound_sales_list_columns_are_supported(self) -> None:
+        outbound_df = pd.DataFrame(
+            [
+                {
+                    "상품코드": "220005232843",
+                    "상품명": "로긴 모니카 미니 건조대 2단",
+                    "일자": "20260820",
+                    "매출수량": "2",
+                }
+            ]
+        )
+        buffer = StringIO()
+        outbound_df.to_csv(buffer, index=False)
+
+        parsed = services.parse_offline_outbound_file(buffer.getvalue().encode("utf-8-sig"), "salesList.csv")
+
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed.iloc[0]["product_code"], "220005232843")
+        self.assertEqual(parsed.iloc[0]["work_date"], date(2026, 8, 20))
+        self.assertEqual(parsed.iloc[0]["outbound_qty"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

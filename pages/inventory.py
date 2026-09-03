@@ -2799,16 +2799,16 @@ def render_offline_outbound_upload_panel(work_date: date | None = None) -> None:
             <div class="inventory-update-heading">
                 <div>
                     <h2>출고파일 반영</h2>
-                    <p>오프라인 판매사이트 출고파일을 미리보기로 확인한 뒤 매칭된 상품만 현재고에서 차감합니다.</p>
+                    <p>오프라인 판매사이트 출고파일을 업로드하면 매칭된 상품을 현재고에서 바로 차감합니다.</p>
                 </div>
             </div>
             """
         )
-        upload_col, date_col, preview_col, apply_col, spacer = st.columns([2.2, 0.95, 0.85, 0.85, 2.4], gap="small")
+        upload_col, date_col, apply_col, spacer = st.columns([2.4, 0.95, 0.95, 3.0], gap="small")
         with upload_col:
             uploaded = st.file_uploader(
                 "출고파일 엑셀 업로드",
-                type=["xlsx", "xls", "csv"],
+                type=["xlsx", "xls", "csv", "html"],
                 key=f"{panel_key}_file",
                 label_visibility="collapsed",
             )
@@ -2818,34 +2818,36 @@ def render_offline_outbound_upload_panel(work_date: date | None = None) -> None:
             else:
                 st.caption("출고 기준일자")
                 st.markdown(f"**{work_date:%Y-%m-%d}**")
-        with preview_col:
+        with apply_col:
             st.write("")
-            if st.button("미리보기", key=f"{panel_key}_preview_btn", use_container_width=True):
+            disabled = uploaded is None
+            if st.button("재고 반영", key=f"{panel_key}_apply_btn", type="primary", use_container_width=True, disabled=disabled):
                 if uploaded is None:
                     st.warning("먼저 출고파일을 업로드하세요.")
                 else:
-                    outcome = with_db(
-                        lambda db: services.prepare_offline_outbound_upload_preview(
+                    def apply_action(db):
+                        preview = services.prepare_offline_outbound_upload_preview(
                             db,
                             "오프라인",
                             work_date,
                             uploaded.getvalue(),
                             uploaded.name,
                         )
-                    )
-                    st.session_state[preview_key] = outcome
-                    st.session_state.pop(result_key, None)
+                        if not preview or not preview.get("ok", True):
+                            return preview, preview
+                        outcome = services.apply_offline_outbound_preview(db, preview, current_user_name())
+                        return outcome, preview
+
+                    result_payload = with_db(apply_action)
+                    if isinstance(result_payload, tuple):
+                        outcome, preview = result_payload
+                    else:
+                        outcome, preview = result_payload, None
+                    st.session_state[preview_key] = preview
+                    st.session_state[result_key] = outcome
+                    if outcome and outcome.get("ok", True):
+                        clear_inventory_data_caches()
                     show_result(outcome)
-        with apply_col:
-            st.write("")
-            preview = st.session_state.get(preview_key)
-            disabled = not isinstance(preview, dict) or int(preview.get("matched_count") or 0) <= 0
-            if st.button("재고 반영", key=f"{panel_key}_apply_btn", type="primary", use_container_width=True, disabled=disabled):
-                outcome = with_db(lambda db: services.apply_offline_outbound_preview(db, st.session_state.get(preview_key) or {}, current_user_name()))
-                st.session_state[result_key] = outcome
-                if outcome and outcome.get("ok", True):
-                    clear_inventory_data_caches()
-                show_result(outcome)
         with spacer:
             st.empty()
 
@@ -2857,13 +2859,9 @@ def render_offline_outbound_upload_panel(work_date: date | None = None) -> None:
             metric_cols[2].metric("미매칭", f"{int(preview.get('unmatched_count') or 0):,}건")
             metric_cols[3].metric("중복/기반영", f"{int(preview.get('duplicate_count') or 0):,}건")
             metric_cols[4].metric("오류", f"{int(preview.get('error_count') or 0):,}건")
-            preview_df = offline_outbound_preview_dataframe(preview)
-            if not preview_df.empty:
-                with st.expander(f"출고파일 미리보기 {len(preview_df):,}건", expanded=True):
-                    render_plain_inventory_table(preview_df, height=320, empty_message="출고파일 미리보기 데이터가 없습니다.")
             excluded_df = offline_outbound_excluded_dataframe(preview)
             if not excluded_df.empty:
-                with st.expander(f"미매칭/중복/기반영 {len(excluded_df):,}건", expanded=False):
+                with st.expander(f"미매칭/중복/기반영 {len(excluded_df):,}건", expanded=True):
                     render_plain_inventory_table(excluded_df, height=240, empty_message="제외된 출고 행이 없습니다.")
         render_stock_upload_apply_result(st.session_state.get(result_key), offline_outbound_excluded_dataframe(st.session_state.get(preview_key)))
 
@@ -4381,6 +4379,13 @@ def inject_inventory_css() -> None:
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[class*="_text_tab_"] [data-testid="stButton"] button {
             min-width: 38px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-offline_outbound_upload [data-testid="stButton"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-offline_outbound_upload [data-testid="stFileUploaderDropzone"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-offline_outbound_upload [data-testid="stFileUploaderDropzone"] button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-offline_outbound_upload [data-baseweb="input"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-offline_outbound_upload [data-baseweb="input"] > div {
+            border-radius: 3px !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source .inventory-text-tab {
             font-size: 0.96rem !important;
