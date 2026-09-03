@@ -4333,6 +4333,54 @@ def inject_inventory_css() -> None:
             color: #0F2B54 !important;
             font-weight: 950 !important;
         }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tab_"] [data-testid="stButton"] button {
+            align-items: center !important;
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+            color: #52697F !important;
+            display: inline-flex !important;
+            font-size: 0.9rem !important;
+            font-weight: 820 !important;
+            justify-content: center !important;
+            line-height: 1.2 !important;
+            min-height: 34px !important;
+            min-width: 72px !important;
+            padding: 0.22rem 0.04rem 0.28rem !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tab_"] [data-testid="stButton"] button:hover {
+            background: transparent !important;
+            border-bottom-color: #9FB3CA !important;
+            color: #2F4051 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tab_"][class*="_active"] [data-testid="stButton"] button {
+            background: transparent !important;
+            border-bottom-color: #0F2B54 !important;
+            color: #0F2B54 !important;
+            font-weight: 950 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tab_"] [data-testid="stButton"] button * {
+            color: inherit !important;
+            font-size: inherit !important;
+            font-weight: inherit !important;
+            line-height: 1.2 !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            white-space: nowrap !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[class*="_text_tab_"] [data-testid="stButton"] button {
+            font-size: 0.96rem !important;
+            min-height: 38px !important;
+            min-width: 88px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[class*="_text_tab_"] [data-testid="stButton"] button {
+            min-width: 74px !important;
+        }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source .inventory-text-tab {
             font-size: 0.96rem !important;
             min-height: 38px !important;
@@ -4747,40 +4795,24 @@ def inventory_text_tab_selector(
         current = labels[0]
     st.session_state[state_key] = current
 
-    if hasattr(st, "pills"):
-        selected = st.pills(
-            "section",
-            labels,
-            selection_mode="single",
-            default=current,
-            key=widget_key,
-            label_visibility="collapsed",
-            width="content",
-        )
-    else:
-        try:
-            selected = st.segmented_control(
-                "section",
-                labels,
-                default=current,
-                key=widget_key,
-                label_visibility="collapsed",
-            )
-        except Exception:
-            selected = st.radio(
-                "section",
-                labels,
-                index=labels.index(current),
-                horizontal=True,
-                key=widget_key,
-                label_visibility="collapsed",
-            )
+    weights = list(item_weights) if item_weights and len(item_weights) == len(labels) else [item_weight] * len(labels)
+    if trailing_weight > 0:
+        weights.append(trailing_weight)
+    columns = st.columns(weights, gap="small")
 
-    if isinstance(selected, list):
-        selected = selected[0] if selected else None
-    if selected in labels:
-        st.session_state[state_key] = selected
-        return selected
+    for label, column in zip(labels, columns):
+        state = "active" if label == current else "idle"
+        tab_key = f"{inventory_nav_token(key)}_text_tab_{inventory_nav_token(label)}_{state}"
+        button_key = f"{widget_key}_{inventory_nav_token(label)}"
+        with column:
+            with st.container(key=tab_key):
+                if st.button(label, key=button_key, use_container_width=True):
+                    st.session_state[state_key] = label
+                    return label
+
+    if trailing_weight > 0:
+        with columns[-1]:
+            st.empty()
     return current
 
 
