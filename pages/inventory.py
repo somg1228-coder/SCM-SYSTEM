@@ -1025,9 +1025,6 @@ def render_inbound_tab(source_type: str) -> None:
         with spacer:
             st.empty()
 
-    if source_type == "오프라인":
-        render_offline_outbound_upload_panel()
-
     df = inbound_to_editor(fetch_inbound(source_type))
     inbound_buffer_key = f"{source_type}_inbound_editor_buffer"
     st.session_state[inbound_buffer_key] = df
@@ -2792,7 +2789,7 @@ def offline_outbound_excluded_dataframe(preview: dict | None) -> pd.DataFrame:
     return df[df["반영대상"] != "Y"].copy()
 
 
-def render_offline_outbound_upload_panel() -> None:
+def render_offline_outbound_upload_panel(work_date: date | None = None) -> None:
     panel_key = "offline_outbound_upload"
     preview_key = f"{panel_key}_preview"
     result_key = f"{panel_key}_result"
@@ -2816,7 +2813,11 @@ def render_offline_outbound_upload_panel() -> None:
                 label_visibility="collapsed",
             )
         with date_col:
-            work_date = st.date_input("출고 기준일자", value=date.today(), key=f"{panel_key}_date")
+            if work_date is None:
+                work_date = st.date_input("출고 기준일자", value=date.today(), key=f"{panel_key}_date")
+            else:
+                st.caption("출고 기준일자")
+                st.markdown(f"**{work_date:%Y-%m-%d}**")
         with preview_col:
             st.write("")
             if st.button("미리보기", key=f"{panel_key}_preview_btn", use_container_width=True):
@@ -4735,26 +4736,51 @@ def inventory_text_tab_selector(
 ) -> str:
     _ = (item_weight, trailing_weight, item_weights)
     labels = [str(option) for option in options]
-    state_key = f"{key}_selected"
-    query_selected = query_value(inventory_tab_query_key(key))
-    current = query_selected if query_selected in labels else st.session_state.get(state_key) or default or (labels[0] if labels else "")
-    if current not in labels and labels:
-        current = labels[0]
-    st.session_state[state_key] = current
     if not labels:
         return ""
 
-    items = []
-    for index, label in enumerate(labels):
-        active = "active" if label == current else "idle"
-        href = inventory_tab_href(key, label)
-        items.append(
-            f'<a class="inventory-text-tab {active}" href="{escape(href, quote=True)}" target="_self" data-index="{index}">{escape(label)}</a>'
+    state_key = f"{key}_selected"
+    widget_key = f"{key}_widget"
+    query_selected = query_value(inventory_tab_query_key(key))
+    current = st.session_state.get(state_key) or (query_selected if query_selected in labels else "") or default or labels[0]
+    if current not in labels:
+        current = labels[0]
+    st.session_state[state_key] = current
+
+    if hasattr(st, "pills"):
+        selected = st.pills(
+            "section",
+            labels,
+            selection_mode="single",
+            default=current,
+            key=widget_key,
+            label_visibility="collapsed",
+            width="content",
         )
-    st.markdown(
-        f'<nav class="inventory-text-tabs inventory-text-tabs-{inventory_nav_token(key)}" aria-label="{escape(key)}">{"".join(items)}</nav>',
-        unsafe_allow_html=True,
-    )
+    else:
+        try:
+            selected = st.segmented_control(
+                "section",
+                labels,
+                default=current,
+                key=widget_key,
+                label_visibility="collapsed",
+            )
+        except Exception:
+            selected = st.radio(
+                "section",
+                labels,
+                index=labels.index(current),
+                horizontal=True,
+                key=widget_key,
+                label_visibility="collapsed",
+            )
+
+    if isinstance(selected, list):
+        selected = selected[0] if selected else None
+    if selected in labels:
+        st.session_state[state_key] = selected
+        return selected
     return current
 
 
@@ -6145,8 +6171,12 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
             """
         )
 
+    workflow_options = ["재고 조회", "재고 수정", "변경이력"]
+    if source_type == "오프라인":
+        workflow_options.insert(1, "출고파일 반영")
+
     workflow = inventory_text_tab_selector(
-        ["재고 조회", "재고 수정", "변경이력"],
+        workflow_options,
         f"{source_key(source_type)}_inventory_workflow",
         default="재고 조회",
         item_weight=0.72,
@@ -6159,6 +6189,9 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
 
     with st.container(key=f"{source_key(source_type)}_daily_date_wrapper"):
         work_date = st.date_input("기준일자", value=st.session_state[daily_date_key], key=daily_date_key)
+    if workflow == "출고파일 반영":
+        render_offline_outbound_upload_panel(work_date)
+        return
     if workflow == "재고 조회":
         render_lookup_erp_update_panel(source_type, work_date, daily_date_key)
     rows = fetch_master_inventory(source_type, work_date)
