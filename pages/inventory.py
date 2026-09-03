@@ -4800,10 +4800,10 @@ def inventory_text_tab_selector(
         weights.append(trailing_weight)
     columns = st.columns(weights, gap="small")
 
-    for label, column in zip(labels, columns):
+    for index, (label, column) in enumerate(zip(labels, columns)):
         state = "active" if label == current else "idle"
-        tab_key = f"{inventory_nav_token(key)}_text_tab_{inventory_nav_token(label)}_{state}"
-        button_key = f"{widget_key}_{inventory_nav_token(label)}"
+        tab_key = f"{inventory_nav_token(key)}_text_tab_{index}_{inventory_nav_token(label)}_{state}"
+        button_key = f"{widget_key}_{index}_{inventory_nav_token(label)}"
         with column:
             with st.container(key=tab_key):
                 if st.button(label, key=button_key, use_container_width=True):
