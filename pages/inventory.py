@@ -4726,6 +4726,140 @@ def inject_inventory_css() -> None:
                 font-size: 0.78rem !important;
             }
         }
+
+        /* Final tab spacing override: widget behavior without capsule styling. */
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] {
+            box-sizing: border-box !important;
+            display: block !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow: visible !important;
+            width: 100% !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stPills"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stSegmentedControl"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stRadio"] {
+            display: block !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow: visible !important;
+            width: fit-content !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stPills"] div[role="radiogroup"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stPills"] div[role="group"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stSegmentedControl"] div[role="group"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stRadio"] div[role="radiogroup"] {
+            align-items: flex-end !important;
+            display: flex !important;
+            flex-flow: row wrap !important;
+            gap: clamp(0.32rem, 0.8vw, 0.5rem) clamp(1.1rem, 2vw, 1.75rem) !important;
+            justify-content: flex-start !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow: visible !important;
+            width: auto !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] label,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] button,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [role="radio"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [role="tab"] {
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+            flex: 0 0 auto !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 0 !important;
+            width: auto !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] label > div,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] button,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [role="radio"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [role="tab"] {
+            align-items: center !important;
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            color: #52697F !important;
+            display: inline-flex !important;
+            font-size: 0.9rem !important;
+            font-weight: 820 !important;
+            justify-content: center !important;
+            line-height: 1.2 !important;
+            min-height: 34px !important;
+            min-width: 0 !important;
+            padding: 0.2rem 0.04rem 0.28rem !important;
+            text-align: center !important;
+            text-decoration: none !important;
+            white-space: nowrap !important;
+            width: auto !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] label > div *,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] button *,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [role="radio"] *,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [role="tab"] * {
+            color: inherit !important;
+            font-size: inherit !important;
+            font-weight: inherit !important;
+            line-height: 1.2 !important;
+            max-width: 100% !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            white-space: nowrap !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] label:hover > div,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] button:hover,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [role="radio"]:hover,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [role="tab"]:hover {
+            background: transparent !important;
+            border-bottom-color: #9FB3CA !important;
+            color: #2F4051 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] label:has(input:checked) > div,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] label:has([aria-checked="true"]) > div,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] label[aria-checked="true"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] label[data-checked="true"] > div,
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] button[aria-pressed="true"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [aria-selected="true"],
+        .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [aria-checked="true"] {
+            background: transparent !important;
+            border-bottom-color: #0F2B54 !important;
+            color: #0F2B54 !important;
+            font-weight: 950 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_current_source_text_tabs label > div,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_current_source_text_tabs button,
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_current_source_text_tabs [role="radio"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_current_source_text_tabs [role="tab"] {
+            font-size: 0.96rem !important;
+            min-height: 38px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_current_source_text_tabs div[role="radiogroup"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_current_source_text_tabs div[role="group"] {
+            gap: clamp(0.32rem, 0.8vw, 0.5rem) clamp(1.35rem, 2.2vw, 2rem) !important;
+        }
+        @media (max-width: 480px) {
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stPills"] div[role="radiogroup"],
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stPills"] div[role="group"],
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stSegmentedControl"] div[role="group"],
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stRadio"] div[role="radiogroup"] {
+                gap: 0.28rem 0.95rem !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] label,
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] button,
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [role="radio"],
+            .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] [role="tab"] {
+                min-width: 0 !important;
+                width: auto !important;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -4803,24 +4937,41 @@ def inventory_text_tab_selector(
         current = labels[0]
     st.session_state[state_key] = current
 
-    weights = list(item_weights) if item_weights and len(item_weights) == len(labels) else [item_weight] * len(labels)
-    if trailing_weight > 0:
-        weights.append(trailing_weight)
-    columns = st.columns(weights, gap="small")
+    with st.container(key=f"{inventory_nav_token(key)}_text_tabs"):
+        if hasattr(st, "pills"):
+            selected = st.pills(
+                "section",
+                labels,
+                selection_mode="single",
+                default=current,
+                key=widget_key,
+                label_visibility="collapsed",
+                width="content",
+            )
+        else:
+            try:
+                selected = st.segmented_control(
+                    "section",
+                    labels,
+                    default=current,
+                    key=widget_key,
+                    label_visibility="collapsed",
+                )
+            except Exception:
+                selected = st.radio(
+                    "section",
+                    labels,
+                    index=labels.index(current),
+                    horizontal=True,
+                    key=widget_key,
+                    label_visibility="collapsed",
+                )
 
-    for index, (label, column) in enumerate(zip(labels, columns)):
-        state = "active" if label == current else "idle"
-        tab_key = f"{inventory_nav_token(key)}_text_tab_{index}_{inventory_nav_token(label)}_{state}"
-        button_key = f"{widget_key}_{index}_{inventory_nav_token(label)}"
-        with column:
-            with st.container(key=tab_key):
-                if st.button(label, key=button_key, use_container_width=False):
-                    st.session_state[state_key] = label
-                    return label
-
-    if trailing_weight > 0:
-        with columns[-1]:
-            st.empty()
+    if isinstance(selected, list):
+        selected = selected[0] if selected else None
+    if selected in labels:
+        st.session_state[state_key] = selected
+        return selected
     return current
 
 
