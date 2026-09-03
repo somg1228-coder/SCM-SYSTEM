@@ -152,6 +152,66 @@ class OfflineInventoryFlowTest(unittest.TestCase):
         self.assertEqual(parsed.iloc[0]["work_date"], date(2026, 8, 20))
         self.assertEqual(parsed.iloc[0]["outbound_qty"], 2)
 
+    def test_offline_outbound_negative_sales_qty_is_return(self) -> None:
+        db = self.Session()
+        try:
+            product = OfflineProductMaster(
+                sku="RET-1",
+                barcode="",
+                product_name="Return product",
+                large_category="Offline",
+                supplier="Vendor",
+                min_stock=0,
+                is_active="사용",
+            )
+            db.add(product)
+            db.add(
+                InventoryDaily(
+                    source_type="오프라인",
+                    work_date=date(2026, 8, 22),
+                    product_code="RET-1",
+                    product_name="Return product",
+                    current_stock=10,
+                    available_stock=10,
+                    stock_status="정상",
+                )
+            )
+            db.commit()
+
+            outbound_df = pd.DataFrame(
+                [
+                    {
+                        "상품코드": "RET-1",
+                        "상품명": "Return product",
+                        "일자": "20260823",
+                        "매출수량": "-1",
+                    }
+                ]
+            )
+            buffer = StringIO()
+            outbound_df.to_csv(buffer, index=False)
+
+            preview = services.prepare_offline_outbound_upload_preview(db, "오프라인", date(2026, 8, 23), buffer.getvalue().encode("utf-8-sig"), "salesList.csv")
+            self.assertEqual(preview["matched_count"], 1)
+            self.assertEqual(preview["preview_rows"][0]["status"], "반품대상")
+
+            applied = services.apply_offline_outbound_preview(db, preview, "tester")
+            self.assertTrue(applied["ok"])
+            self.assertEqual(applied["count"], 1)
+
+            day3 = db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == "오프라인",
+                    InventoryDaily.work_date == date(2026, 8, 23),
+                    InventoryDaily.product_name == "Return product",
+                )
+            ).scalar_one()
+            self.assertEqual(day3.current_stock, 11)
+            self.assertEqual(day3.available_stock, 11)
+            self.assertEqual(day3.outbound_qty, -1)
+        finally:
+            db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

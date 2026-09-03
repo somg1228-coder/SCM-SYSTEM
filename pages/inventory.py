@@ -2763,6 +2763,7 @@ def inbound_payload(df: pd.DataFrame, source_type: str) -> list[dict]:
 def offline_outbound_preview_dataframe(preview: dict | None) -> pd.DataFrame:
     rows = []
     for row in (preview or {}).get("preview_rows", []):
+        qty = to_int(row.get("outbound_qty"))
         rows.append(
             {
                 "엑셀 행": row.get("row_no", ""),
@@ -2773,7 +2774,8 @@ def offline_outbound_preview_dataframe(preview: dict | None) -> pd.DataFrame:
                 "SKU": clean_cell(row.get("product_code")),
                 "바코드": clean_cell(row.get("barcode")),
                 "상품명": clean_cell(row.get("product_name")),
-                "출고수량": to_int(row.get("outbound_qty")),
+                "출고수량": max(qty, 0),
+                "반품수량": abs(qty) if qty < 0 else 0,
                 "매칭": clean_cell(row.get("match_method")),
                 "상태": clean_cell(row.get("status")),
                 "반영대상": "Y" if row.get("matched") else "N",

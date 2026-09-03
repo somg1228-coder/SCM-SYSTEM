@@ -3806,10 +3806,10 @@ def prepare_offline_outbound_upload_preview(
         external_key = offline_outbound_base_key({**raw_row, "work_date": outbound_date}, file_name)
         dedupe_key = (external_key, product_code)
         status = "반영대상"
-        matched = product is not None and qty > 0
+        matched = product is not None and qty != 0
         duplicate = False
 
-        if qty <= 0:
+        if qty == 0:
             matched = False
             status = "출고수량 오류"
             error_count += 1
@@ -3823,6 +3823,8 @@ def prepare_offline_outbound_upload_preview(
             status = "파일 내 중복"
             duplicate_count += 1
         else:
+            if qty < 0:
+                status = "반품대상"
             seen_keys.add(dedupe_key)
             pending_keys.add(dedupe_key)
             matched_count += 1
@@ -3885,7 +3887,7 @@ def apply_offline_outbound_preview(db: Session, preview: dict, uploaded_by: str 
     candidate_rows = [
         row
         for row in list((preview or {}).get("preview_rows") or [])
-        if row.get("matched") and to_int(row.get("outbound_qty")) > 0
+        if row.get("matched") and to_int(row.get("outbound_qty")) != 0
     ]
     candidate_keys = {
         (clean_text(row.get("external_key")), normalize_product_code_text(row.get("product_code")))
