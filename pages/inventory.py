@@ -4348,10 +4348,11 @@ def inject_inventory_css() -> None:
             justify-content: center !important;
             line-height: 1.2 !important;
             min-height: 34px !important;
-            min-width: 72px !important;
-            padding: 0.22rem 0.04rem 0.28rem !important;
+            min-width: 0 !important;
+            padding: 0.22rem 0.08rem 0.28rem !important;
             text-align: center !important;
             white-space: nowrap !important;
+            width: auto !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tab_"] [data-testid="stButton"] button:hover {
             background: transparent !important;
@@ -4376,10 +4377,10 @@ def inject_inventory_css() -> None:
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source div[class*="_text_tab_"] [data-testid="stButton"] button {
             font-size: 0.96rem !important;
             min-height: 38px !important;
-            min-width: 88px !important;
+            min-width: 46px !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[class*="_text_tab_"] [data-testid="stButton"] button {
-            min-width: 74px !important;
+            min-width: 38px !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_source .inventory-text-tab {
             font-size: 0.96rem !important;
@@ -4806,7 +4807,7 @@ def inventory_text_tab_selector(
         button_key = f"{widget_key}_{index}_{inventory_nav_token(label)}"
         with column:
             with st.container(key=tab_key):
-                if st.button(label, key=button_key, use_container_width=True):
+                if st.button(label, key=button_key, use_container_width=False):
                     st.session_state[state_key] = label
                     return label
 
