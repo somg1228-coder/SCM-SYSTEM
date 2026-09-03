@@ -4756,7 +4756,7 @@ def inject_inventory_css() -> None:
             align-items: flex-end !important;
             display: flex !important;
             flex-flow: row wrap !important;
-            gap: clamp(0.32rem, 0.8vw, 0.5rem) clamp(1.1rem, 2vw, 1.75rem) !important;
+            gap: clamp(0.32rem, 0.8vw, 0.5rem) clamp(1.45rem, 2.35vw, 2.35rem) !important;
             justify-content: flex-start !important;
             max-width: 100% !important;
             min-width: 0 !important;
@@ -4845,7 +4845,7 @@ def inject_inventory_css() -> None:
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_current_source_text_tabs div[role="radiogroup"],
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_current_source_text_tabs div[role="group"] {
-            gap: clamp(0.32rem, 0.8vw, 0.5rem) clamp(1.35rem, 2.2vw, 2rem) !important;
+            gap: clamp(0.32rem, 0.8vw, 0.5rem) clamp(1.7rem, 2.55vw, 2.55rem) !important;
         }
         @media (max-width: 480px) {
             .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stPills"] div[role="radiogroup"],
@@ -4853,7 +4853,7 @@ def inject_inventory_css() -> None:
             .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stSegmentedControl"] div[role="radiogroup"],
             .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stSegmentedControl"] div[role="group"],
             .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] div[data-testid="stRadio"] div[role="radiogroup"] {
-                gap: 0.28rem 0.95rem !important;
+                gap: 0.28rem 1.18rem !important;
             }
             .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] label,
             .stApp:has(.st-key-inventory_nav_shell) div[class*="_text_tabs"] button,
