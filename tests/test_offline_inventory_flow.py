@@ -113,6 +113,14 @@ class OfflineInventoryFlowTest(unittest.TestCase):
             self.assertEqual(day3.available_stock, 105)
             self.assertEqual(day3.outbound_qty, 15)
 
+            carried_rows = services.master_based_inventory_rows(db, "오프라인", date(2026, 9, 4))
+            carried = next(row for row in carried_rows if row["product_code"] == "OFF-A")
+            self.assertEqual(carried["current_stock"], 105)
+            self.assertEqual(carried["available_stock"], 105)
+            self.assertEqual(carried["pending_outbound_qty"], 0)
+            self.assertEqual(carried["last_inventory_update_date"], date(2026, 9, 3))
+            self.assertTrue(carried["is_carried_inventory_snapshot"])
+
             histories = list(
                 db.execute(
                     select(InventoryOutputHistory).where(
@@ -219,6 +227,12 @@ class OfflineInventoryFlowTest(unittest.TestCase):
             rows = services.master_based_inventory_rows(db, "오프라인", date(2026, 8, 23))
             target = next(row for row in rows if row["product_code"] == "RET-1")
             self.assertEqual(target["return_qty"], 1)
+
+            next_rows = services.master_based_inventory_rows(db, "오프라인", date(2026, 8, 24))
+            next_target = next(row for row in next_rows if row["product_code"] == "RET-1")
+            self.assertEqual(next_target["current_stock"], 11)
+            self.assertEqual(next_target["available_stock"], 11)
+            self.assertEqual(next_target["return_qty"], 0)
         finally:
             db.close()
 

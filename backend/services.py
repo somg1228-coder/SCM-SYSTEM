@@ -3458,7 +3458,8 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         query = query.where(model.is_active == "사용")
     products = list(db.execute(query.order_by(model.sort_order, model.large_category, model.product_name, model.sku)).scalars())
     products = inventory_master_rows_for_display(source_type, products)
-    latest_daily_by_sku = daily_rows_by_product(db, source_type, work_date, products)
+    daily_by_product = daily_rows_by_product(db, source_type, work_date, products)
+    carried_daily_by_sku = latest_daily_rows_by_product(db, source_type, work_date, products) if source_type == "오프라인" else {}
 
     # Purchase/order history is intentionally not loaded during the normal page render.
     # The dedicated sync button still updates those metrics when the user asks for it.
@@ -3476,8 +3477,11 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         product_sku_key = normalize_product_code_text(product.sku)
         product_barcode = normalize_barcode_text(product.barcode)
         location_summary = location_summaries.get(product_sku) or location_summaries.get(product_sku_key) or location_summaries.get(product_barcode) or {}
-        daily = latest_daily_by_sku.get(product_daily_lookup_key(product)) or latest_daily_by_sku.get(product_sku_key)
+        daily = daily_by_product.get(product_daily_lookup_key(product)) or daily_by_product.get(product_sku_key)
+        if daily is None and source_type == "오프라인":
+            daily = carried_daily_by_sku.get(product_sku_key)
         has_snapshot = daily is not None
+        has_exact_snapshot = has_snapshot and getattr(daily, "work_date", None) == work_date
         current_stock = int(daily.current_stock or 0) if has_snapshot else 0
         available_stock = int(daily.available_stock if daily and daily.available_stock is not None else current_stock) if has_snapshot else 0
         placed_quantity = int(location_summary.get("placed_quantity") or 0)
@@ -3487,7 +3491,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         unplaced_quantity = max(current_stock - placed_quantity, 0)
 
         safe_stock = int(product.min_stock or 0)
-        pending_outbound_qty = int(daily.outbound_qty or 0) if has_snapshot else 0
+        pending_outbound_qty = int(daily.outbound_qty or 0) if has_exact_snapshot else 0
 
         status = inventory_stock_status_for_snapshot(
             has_snapshot,
@@ -3555,6 +3559,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "order_needed_days": needed_days,
                 "last_inventory_update_date": daily.work_date if has_snapshot else None,
                 "has_inventory_snapshot": has_snapshot,
+                "is_carried_inventory_snapshot": has_snapshot and not has_exact_snapshot,
                 "measured_lead_time": measured_lead_time,
                 "last_purchase_order_date": purchase_metric.get("last_order_date"),
                 "last_purchase_inbound_date": purchase_metric.get("last_inbound_date") or inbound_metric.get("last_inbound_date"),
