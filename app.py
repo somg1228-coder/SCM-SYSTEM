@@ -83,6 +83,41 @@ def load_css() -> None:
         st.markdown(f"<style>{read_css_text(str(css_path), css_path.stat().st_mtime)}</style>", unsafe_allow_html=True)
 
 
+def inject_global_button_shape_override() -> None:
+    st.markdown(
+        """
+        <style>
+        .stApp button,
+        .stApp button[kind],
+        .stApp [data-testid^="stBaseButton"],
+        .stApp [data-testid="stButton"] button,
+        .stApp [data-testid="stDownloadButton"] button,
+        .stApp [data-testid="stFormSubmitButton"] button,
+        .stApp [data-testid="stPopover"] button,
+        .stApp div[data-testid="stPills"] label > div,
+        .stApp div[data-testid="stPills"] button,
+        .stApp div[data-testid="stSegmentedControl"] label > div,
+        .stApp div[data-testid="stSegmentedControl"] button,
+        .stApp a.ghost-link,
+        .stApp a.inventory-link-tab,
+        .stApp .inventory-text-tab,
+        .stApp .inventory-text-tab-active,
+        .stApp .schedule-filter-link,
+        .stApp .chart-filter-links a,
+        .stApp .panel-title-row button {
+            border-radius: 4px !important;
+        }
+        .stApp [role="button"],
+        .stApp [role="tab"],
+        .stApp [role="radio"] {
+            border-radius: 4px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 @st.cache_resource(show_spinner=False)
 def ensure_database_schema_once() -> bool:
     from backend.database import init_db
@@ -426,6 +461,8 @@ def main() -> None:
             render_header(page)
     with perf_span("app.page_render", page=page):
         render_page(page)
+    with perf_span("app.button_shape_override", page=page):
+        inject_global_button_shape_override()
     summarize_current_run(time.perf_counter() - total_started_at, page=page)
 
 
