@@ -4594,7 +4594,18 @@ def inject_inventory_css() -> None:
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] label,
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] button,
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] label {
-            min-width: 84px !important;
+            min-width: 96px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] div[role="radiogroup"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] div[role="group"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] div[role="group"] {
+            gap: 8px 42px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] label:not(:last-child),
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] button:not(:last-child),
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] label:not(:last-child) {
+            margin-right: 18px !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label > div,
         .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button,
@@ -4675,6 +4686,17 @@ def inject_inventory_css() -> None:
             .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stSegmentedControl"] div[role="group"] {
                 gap: 8px 14px !important;
             }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] div[role="radiogroup"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] div[role="group"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] div[role="group"] {
+                gap: 8px 24px !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] label:not(:last-child),
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] button:not(:last-child),
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] label:not(:last-child) {
+                margin-right: 8px !important;
+            }
         }
         @media (max-width: 768px) {
             .stApp:has(.st-key-inventory_nav_shell) [data-testid="stAppViewBlockContainer"] {
@@ -4689,6 +4711,11 @@ def inject_inventory_css() -> None:
             .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] div[role="radiogroup"],
             .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] div[role="group"] {
                 gap: 7px 12px !important;
+            }
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] label:not(:last-child),
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stPills"] button:not(:last-child),
+            .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail div[data-testid="stSegmentedControl"] label:not(:last-child) {
+                margin-right: 0 !important;
             }
             .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] label,
             .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_shell div[data-testid="stPills"] button,
