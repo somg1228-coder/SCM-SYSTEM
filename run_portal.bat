@@ -28,7 +28,7 @@ echo.
   --server.address 0.0.0.0 ^
   --server.port 8502 ^
   --server.headless true ^
-  --server.fileWatcherType none ^
+  --server.fileWatcherType poll ^
   --client.showErrorDetails full ^
   --logger.level debug ^
   1>data\streamlit.out.log ^

@@ -3,6 +3,7 @@ from contextlib import nullcontext
 import importlib
 import logging
 import re
+import sys
 import time
 import traceback
 
@@ -15,6 +16,7 @@ from components import sidebar as sidebar_component
 BASE_DIR = Path(__file__).parent
 APP_ERROR_LOG_PATH = BASE_DIR / "data" / "app_error.log"
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+PAGE_MODULE_MTIMES: dict[str, float] = {}
 
 
 def perf_tools():
@@ -28,7 +30,18 @@ def perf_tools():
 
 def import_page_module(module_name: str, label: str):
     try:
-        return importlib.import_module(module_name)
+        module = importlib.import_module(module_name)
+        if module_name.startswith(("pages.", "components.")) and module_name in sys.modules:
+            module_file = getattr(module, "__file__", "")
+            if module_file:
+                module_path = Path(module_file)
+                mtime = module_path.stat().st_mtime
+                cache_key = str(module_path.resolve())
+                previous_mtime = PAGE_MODULE_MTIMES.get(cache_key)
+                if previous_mtime is not None and previous_mtime != mtime:
+                    module = importlib.reload(module)
+                PAGE_MODULE_MTIMES[cache_key] = mtime
+        return module
     except Exception as exc:
         log_app_exception(exc)
         st.error(f"{label} 화면을 불러오지 못했습니다. 배포 로그와 아래 오류를 확인해주세요.")

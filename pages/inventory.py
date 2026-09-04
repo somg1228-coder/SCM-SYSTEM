@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from datetime import date, timedelta
+import hashlib
 from html import escape
 from io import BytesIO
 from math import ceil
@@ -4890,6 +4891,66 @@ def inject_inventory_css() -> None:
                 width: auto !important;
             }
         }
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-link-tabs {
+            align-items: flex-end !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            flex-flow: row wrap !important;
+            gap: var(--inventory-tabs-row-gap, 8px) var(--inventory-tabs-column-gap, 36px) !important;
+            justify-content: flex-start !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow: visible !important;
+            width: 100% !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-link-tab {
+            align-items: center !important;
+            background: transparent !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+            color: #52697F !important;
+            display: inline-flex !important;
+            flex: 0 0 auto !important;
+            font-size: 0.9rem !important;
+            font-weight: 820 !important;
+            justify-content: center !important;
+            line-height: 1.2 !important;
+            min-height: 34px !important;
+            min-width: 0 !important;
+            padding: 0.2rem 0.04rem 0.28rem !important;
+            text-align: center !important;
+            text-decoration: none !important;
+            white-space: nowrap !important;
+            width: auto !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-link-tab:hover {
+            border-bottom-color: #9FB3CA !important;
+            color: #2F4051 !important;
+            text-decoration: none !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .inventory-link-tab.active {
+            border-bottom-color: #0F2B54 !important;
+            color: #0F2B54 !important;
+            font-weight: 950 !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_current_source_text_tabs .inventory-link-tabs {
+            --inventory-tabs-column-gap: 38px;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_current_source_text_tabs .inventory-link-tab {
+            font-size: 0.96rem !important;
+            min-height: 38px !important;
+        }
+        .stApp:has(.st-key-inventory_nav_shell) .st-key-inventory_nav_detail .inventory-link-tabs {
+            --inventory-tabs-column-gap: 34px;
+        }
+        @media (max-width: 480px) {
+            .stApp:has(.st-key-inventory_nav_shell) .inventory-link-tabs {
+                --inventory-tabs-column-gap: 18px;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -4914,21 +4975,25 @@ def master_title(source_type: str) -> str:
 def render_inventory_page_lazy() -> None:
     selected_source, selected_tab = render_inventory_navigation()
     source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
-    if selected_tab == "재고":
+    if selected_tab in {"재고조회", "재고"}:
         render_daily_tab(source_type, selected_source)
-    elif selected_tab == "입고":
+    elif selected_tab in {"입고내역", "입고"}:
         render_inbound_tab(source_type)
     elif selected_tab == "대시보드":
         render_inventory_dashboard_tab(source_type)
-    elif selected_tab == "마스터":
+    elif selected_tab in {"마스터 관리", "마스터관리", "마스터"}:
         product_master_page.render_master_tab(source_type, master_title(source_type))
     else:
         render_daily_tab(source_type, selected_source)
 
 
 def inventory_nav_token(value: str) -> str:
-    token = re.sub(r"[^0-9A-Za-z]+", "_", str(value)).strip("_").lower()
-    return token or "item"
+    text = str(value)
+    token = re.sub(r"[^0-9A-Za-z]+", "_", text).strip("_").lower()
+    if token:
+        return token
+    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
+    return f"item_{digest}"
 
 
 def inventory_tab_query_key(key: str) -> str:
@@ -4960,48 +5025,53 @@ def inventory_text_tab_selector(
         return ""
 
     state_key = f"{key}_selected"
-    widget_key = f"{key}_widget"
     query_selected = query_value(inventory_tab_query_key(key))
-    current = st.session_state.get(state_key) or (query_selected if query_selected in labels else "") or default or labels[0]
+    current = (query_selected if query_selected in labels else "") or st.session_state.get(state_key) or default or labels[0]
     if current not in labels:
         current = labels[0]
     st.session_state[state_key] = current
 
     with st.container(key=f"{inventory_nav_token(key)}_text_tabs"):
-        if hasattr(st, "pills"):
-            selected = st.pills(
-                "section",
-                labels,
-                selection_mode="single",
-                default=current,
-                key=widget_key,
-                label_visibility="collapsed",
-                width="content",
-            )
-        else:
-            try:
-                selected = st.segmented_control(
-                    "section",
-                    labels,
-                    default=current,
-                    key=widget_key,
-                    label_visibility="collapsed",
-                )
-            except Exception:
-                selected = st.radio(
-                    "section",
-                    labels,
-                    index=labels.index(current),
-                    horizontal=True,
-                    key=widget_key,
-                    label_visibility="collapsed",
-                )
+        weights = item_weights or [item_weight] * len(labels)
+        weights = list(weights[: len(labels)])
+        if len(weights) < len(labels):
+            weights.extend([item_weight] * (len(labels) - len(weights)))
 
-    if isinstance(selected, list):
-        selected = selected[0] if selected else None
-    if selected in labels:
-        st.session_state[state_key] = selected
-        return selected
+        spacer_weight = 0.68
+        effective_trailing_weight = trailing_weight
+        if key == "inventory_current_source":
+            weights = [0.7, 1.15, 0.7]
+            spacer_weight = 0.9
+            effective_trailing_weight = 4.8
+        elif key.startswith("inventory_") and key.endswith("_section"):
+            weights = [0.72, 0.72, 1.35, 0.95]
+            spacer_weight = 0.92
+            effective_trailing_weight = 4.0
+        elif key.endswith("_inventory_workflow"):
+            weights = [1.05, 1.05, 1.05]
+            spacer_weight = 0.74
+            effective_trailing_weight = 4.8
+
+        interleaved_weights = []
+        tab_column_indexes = []
+        for index, weight in enumerate(weights):
+            tab_column_indexes.append(len(interleaved_weights))
+            interleaved_weights.append(weight)
+            if index < len(weights) - 1:
+                interleaved_weights.append(spacer_weight)
+        if effective_trailing_weight > 0:
+            interleaved_weights.append(effective_trailing_weight)
+
+        columns = st.columns(interleaved_weights, gap="small")
+        selected = current
+        for index, label in enumerate(labels):
+            tab_class = "inventory-text-tab-active" if label == current else "inventory-text-tab"
+            with columns[tab_column_indexes[index]]:
+                with st.container(key=f"{inventory_nav_token(key)}_{inventory_nav_token(label)}_text_tab_{tab_class}"):
+                    if st.button(label, key=f"{key}_{inventory_nav_token(label)}_button", use_container_width=True):
+                        st.session_state[state_key] = label
+                        selected = label
+        current = selected
     return current
 
 
@@ -5025,7 +5095,7 @@ def render_inventory_navigation() -> tuple[str, str]:
                 INVENTORY_SOURCE_TABS,
                 f"inventory_{source_key(source_type)}_section",
                 default="재고",
-                item_weights=[0.34, 0.34, 0.62, 0.48],
+                item_weights=[0.62, 0.62, 0.62, 0.72],
                 trailing_weight=8.0,
             )
     return selected_source, selected_tab
@@ -5039,7 +5109,7 @@ def render_source_inventory_tabs_lazy(source_type: str, selected_tab: str | None
         render_inbound_tab(source_type)
     elif selected_tab == "대시보드":
         render_inventory_dashboard_tab(source_type)
-    elif selected_tab in {"마스터", "마스터관리"}:
+    elif selected_tab in {"마스터", "마스터관리", "마스터 관리"}:
         product_master_page.render_master_tab(source_type, master_title(source_type))
     else:
         render_daily_tab(source_type)
