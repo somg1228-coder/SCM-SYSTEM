@@ -4901,7 +4901,7 @@ def inject_inventory_css() -> None:
             max-width: 100% !important;
             min-width: 0 !important;
             overflow: visible !important;
-            width: 100% !important;
+            width: fit-content !important;
         }
         .stApp:has(.st-key-inventory_nav_shell) .inventory-link-tab {
             align-items: center !important;
@@ -4949,6 +4949,7 @@ def inject_inventory_css() -> None:
         @media (max-width: 480px) {
             .stApp:has(.st-key-inventory_nav_shell) .inventory-link-tabs {
                 --inventory-tabs-column-gap: 18px;
+                width: 100% !important;
             }
         }
         </style>
@@ -5031,47 +5032,38 @@ def inventory_text_tab_selector(
         current = labels[0]
     st.session_state[state_key] = current
 
+    column_gap = "clamp(1.4rem, 3vw, 2.5rem)"
+    if key == "inventory_current_source":
+        column_gap = "clamp(1.6rem, 3.8vw, 3.2rem)"
+    elif key.endswith("_inventory_workflow"):
+        column_gap = "clamp(1.2rem, 2.4vw, 2.1rem)"
+
+    nav_style = (
+        "display:flex;flex-flow:row wrap;align-items:flex-end;justify-content:flex-start;"
+        f"gap:0.45rem {column_gap};width:fit-content;max-width:100%;overflow:visible;"
+    )
+    tab_style = (
+        "display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;"
+        "background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;"
+        "box-shadow:none;color:#52697F;font-size:0.9rem;font-weight:820;line-height:1.2;"
+        "min-height:34px;min-width:0;padding:0.2rem 0.02rem 0.28rem;text-align:center;"
+        "text-decoration:none;white-space:nowrap;width:auto;"
+    )
+    active_tab_style = tab_style.replace(
+        "border-bottom:2px solid transparent",
+        "border-bottom:2px solid #0F2B54",
+    ).replace("color:#52697F", "color:#0F2B54").replace("font-weight:820", "font-weight:950")
+
     with st.container(key=f"{inventory_nav_token(key)}_text_tabs"):
-        weights = item_weights or [item_weight] * len(labels)
-        weights = list(weights[: len(labels)])
-        if len(weights) < len(labels):
-            weights.extend([item_weight] * (len(labels) - len(weights)))
-
-        spacer_weight = 0.68
-        effective_trailing_weight = trailing_weight
-        if key == "inventory_current_source":
-            weights = [0.7, 1.15, 0.7]
-            spacer_weight = 0.9
-            effective_trailing_weight = 4.8
-        elif key.startswith("inventory_") and key.endswith("_section"):
-            weights = [0.72, 0.72, 1.35, 0.95]
-            spacer_weight = 0.92
-            effective_trailing_weight = 4.0
-        elif key.endswith("_inventory_workflow"):
-            weights = [1.05, 1.05, 1.05]
-            spacer_weight = 0.74
-            effective_trailing_weight = 4.8
-
-        interleaved_weights = []
-        tab_column_indexes = []
-        for index, weight in enumerate(weights):
-            tab_column_indexes.append(len(interleaved_weights))
-            interleaved_weights.append(weight)
-            if index < len(weights) - 1:
-                interleaved_weights.append(spacer_weight)
-        if effective_trailing_weight > 0:
-            interleaved_weights.append(effective_trailing_weight)
-
-        columns = st.columns(interleaved_weights, gap="small")
-        selected = current
-        for index, label in enumerate(labels):
-            tab_class = "inventory-text-tab-active" if label == current else "inventory-text-tab"
-            with columns[tab_column_indexes[index]]:
-                with st.container(key=f"{inventory_nav_token(key)}_{inventory_nav_token(label)}_text_tab_{tab_class}"):
-                    if st.button(label, key=f"{key}_{inventory_nav_token(label)}_button", use_container_width=True):
-                        st.session_state[state_key] = label
-                        selected = label
-        current = selected
+        tab_links = []
+        for label in labels:
+            active_class = " active" if label == current else ""
+            current_attr = ' aria-current="page"' if label == current else ""
+            style = active_tab_style if label == current else tab_style
+            tab_links.append(
+                f'<a class="inventory-link-tab{active_class}" style="{style}" href="{escape(inventory_tab_href(key, label), quote=True)}"{current_attr}>{escape(label)}</a>'
+            )
+        st.markdown(f'<nav class="inventory-link-tabs" style="{nav_style}">{"".join(tab_links)}</nav>', unsafe_allow_html=True)
     return current
 
 
