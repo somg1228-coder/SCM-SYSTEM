@@ -4,6 +4,7 @@ __pycache__/
 *.py[cod]
 *.pyc
 *.log
+*.pid
 *.db
 data/*.db
 *.db-journal

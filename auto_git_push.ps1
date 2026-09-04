@@ -169,7 +169,7 @@ function Test-IgnoredPath {
     }
 
     $extension = [System.IO.Path]::GetExtension($normalized).ToLowerInvariant()
-    $ignoredExtensions = @(".log", ".db", ".db-journal", ".db-wal", ".db-shm", ".pyc", ".pem", ".key")
+    $ignoredExtensions = @(".log", ".pid", ".db", ".db-journal", ".db-wal", ".db-shm", ".pyc", ".pem", ".key")
     if ($ignoredExtensions -contains $extension) {
         return $true
     }
