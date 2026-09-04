@@ -392,7 +392,7 @@ def sync_query_params_to_state() -> None:
 
 def main() -> None:
     st.set_page_config(
-        page_title="SCM SYSTEM",
+        page_title="SCM PORTAL",
         layout="wide",
         initial_sidebar_state="expanded",
     )
