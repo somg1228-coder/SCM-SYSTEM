@@ -295,6 +295,7 @@ def build_dashboard_inventory_summary_optimized(db, work_date: date, metrics: di
                 "name": source_type,
                 "rate": max(0, min(ratio, 100)),
                 "qty": current_stock,
+                "available_qty": available_stock,
                 "problem_count": problem_count,
                 "tone": source_status_tone(current_stock, ratio, problem_count),
             }
@@ -1046,6 +1047,7 @@ def get_source_status_rows(db, work_date: date) -> list[dict]:
                 "name": source_type,
                 "rate": max(0, min(ratio, 100)),
                 "qty": current_stock,
+                "available_qty": available_stock,
                 "problem_count": problem_count,
                 "tone": source_status_tone(current_stock, ratio, problem_count),
             }
@@ -2198,21 +2200,21 @@ def monthly_point_links(rows: list[dict], values: list[int]) -> str:
 
 def warehouse_status_html(rows: list[dict]) -> str:
     if not rows:
-        rows = [{"name": source_type, "rate": 0, "qty": 0, "problem_count": 0, "tone": "cyan"} for source_type in SOURCE_TYPES]
+        rows = [{"name": source_type, "rate": 0, "qty": 0, "available_qty": 0, "problem_count": 0, "tone": "cyan"} for source_type in SOURCE_TYPES]
     body = "".join(
         f"""
         <div class="warehouse-row {tone}">
             <span>{name}</span>
             <div class="bar"><i style="width:{rate}%"></i></div>
             <b>{rate}%</b>
-            <strong>{qty}</strong>
+            <strong>{available_qty}</strong>
         </div>
         """
-        for name, rate, qty, tone in [
+        for name, rate, available_qty, tone in [
             (
                 escape(str(row.get("name", "-"))),
                 int(row.get("rate") or 0),
-                format_metric(row.get("qty", 0)),
+                format_metric(row.get("available_qty", row.get("qty", 0))),
                 escape(str(row.get("tone", "cyan"))),
             )
             for row in rows
@@ -2221,7 +2223,7 @@ def warehouse_status_html(rows: list[dict]) -> str:
     return f"""
     <article class="panel warehouse-panel">
         <h2>재고처별 현황 <small>(재고관리)</small></h2>
-        <div class="warehouse-head"><span>구분</span><span>가용 비율</span><span>현재고</span></div>
+        <div class="warehouse-head"><span>구분</span><span>가용 비율</span><span>가용재고</span></div>
         {body}
         <a class="ghost-link" href="?{urlencode({"page": "재고관리"})}" target="_self">재고관리 바로가기&nbsp;&nbsp;→</a>
     </article>

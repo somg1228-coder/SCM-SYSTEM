@@ -236,6 +236,143 @@ class OfflineInventoryFlowTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_offline_outbound_file_date_is_ignored(self) -> None:
+        db = self.Session()
+        try:
+            product = OfflineProductMaster(
+                sku="DATE-1",
+                barcode="",
+                product_name="Date ignored product",
+                large_category="Offline",
+                supplier="Vendor",
+                min_stock=0,
+                is_active="사용",
+            )
+            db.add(product)
+            db.add(
+                InventoryDaily(
+                    source_type="오프라인",
+                    work_date=date(2026, 9, 4),
+                    product_code="DATE-1",
+                    product_name="Date ignored product",
+                    current_stock=10,
+                    available_stock=10,
+                    stock_status="정상",
+                )
+            )
+            db.commit()
+
+            outbound_df = pd.DataFrame(
+                [
+                    {
+                        "상품코드": "DATE-1",
+                        "상품명": "Date ignored product",
+                        "일자": "20260820",
+                        "매출수량": "3",
+                    }
+                ]
+            )
+            buffer = StringIO()
+            outbound_df.to_csv(buffer, index=False)
+
+            preview = services.prepare_offline_outbound_upload_preview(db, "오프라인", date(2026, 9, 5), buffer.getvalue().encode("utf-8-sig"), "salesList.csv")
+            self.assertEqual(preview["preview_rows"][0]["work_date"], date(2026, 9, 5))
+
+            applied = services.apply_offline_outbound_preview(db, preview, "tester")
+            self.assertTrue(applied["ok"])
+            self.assertEqual(applied["count"], 1)
+
+            selected_day = db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == "오프라인",
+                    InventoryDaily.work_date == date(2026, 9, 5),
+                    InventoryDaily.product_name == "Date ignored product",
+                )
+            ).scalar_one()
+            self.assertEqual(selected_day.current_stock, 7)
+            self.assertEqual(selected_day.available_stock, 7)
+
+            file_day = db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == "오프라인",
+                    InventoryDaily.work_date == date(2026, 8, 20),
+                    InventoryDaily.product_name == "Date ignored product",
+                )
+            ).scalar_one_or_none()
+            self.assertIsNone(file_day)
+        finally:
+            db.close()
+
+    def test_offline_outbound_can_make_available_stock_negative(self) -> None:
+        offline = "\uc624\ud504\ub77c\uc778"
+        db = self.Session()
+        try:
+            product = OfflineProductMaster(
+                sku="NEG-1",
+                barcode="",
+                product_name="Negative stock product",
+                large_category="Offline",
+                supplier="Vendor",
+                min_stock=0,
+                is_active="\uc0ac\uc6a9",
+            )
+            db.add(product)
+            db.add(
+                InventoryDaily(
+                    source_type=offline,
+                    work_date=date(2026, 9, 4),
+                    product_code="NEG-1",
+                    product_name="Negative stock product",
+                    current_stock=0,
+                    available_stock=0,
+                    stock_status="\uc815\uc0c1",
+                )
+            )
+            db.commit()
+
+            outbound_df = pd.DataFrame(
+                [
+                    {
+                        "sku": "NEG-1",
+                        "product_name": "Negative stock product",
+                        "date": "2026-09-05",
+                        "qty": "3",
+                    }
+                ]
+            )
+            buffer = StringIO()
+            outbound_df.to_csv(buffer, index=False)
+
+            preview = services.prepare_offline_outbound_upload_preview(
+                db,
+                offline,
+                date(2026, 9, 5),
+                buffer.getvalue().encode("utf-8-sig"),
+                "outbound.csv",
+            )
+            self.assertEqual(preview["matched_count"], 1)
+
+            applied = services.apply_offline_outbound_preview(db, preview, "tester")
+            self.assertTrue(applied["ok"])
+            self.assertEqual(applied["count"], 1)
+
+            selected_day = db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == offline,
+                    InventoryDaily.work_date == date(2026, 9, 5),
+                    InventoryDaily.product_name == "Negative stock product",
+                )
+            ).scalar_one()
+            self.assertEqual(selected_day.current_stock, -3)
+            self.assertEqual(selected_day.available_stock, -3)
+
+            rows = services.master_based_inventory_rows(db, offline, date(2026, 9, 5))
+            target = next(row for row in rows if row["product_code"] == "NEG-1")
+            self.assertEqual(target["current_stock"], -3)
+            self.assertEqual(target["available_stock"], -3)
+        finally:
+            db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

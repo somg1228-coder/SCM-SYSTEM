@@ -3822,7 +3822,7 @@ def prepare_offline_outbound_upload_preview(
     matched_count = 0
 
     for raw_row in df.fillna("").to_dict("records"):
-        outbound_date = parse_date(raw_row.get("work_date")) or work_date
+        outbound_date = work_date
         qty = to_int(raw_row.get("outbound_qty"))
         product, match_method = match_offline_product_for_outbound(
             lookup,
