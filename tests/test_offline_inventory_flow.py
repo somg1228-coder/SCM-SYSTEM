@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from io import StringIO
+from io import BytesIO, StringIO
 import unittest
 
 import pandas as pd
@@ -18,6 +18,53 @@ class OfflineInventoryFlowTest(unittest.TestCase):
         engine = create_engine("sqlite:///:memory:", future=True)
         Base.metadata.create_all(engine)
         self.Session = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+    def test_homecc_inbound_template_import_uses_filename_date_and_master_match(self) -> None:
+        db = self.Session()
+        try:
+            db.add(
+                OfflineProductMaster(
+                    sku="HCC-2",
+                    barcode="8800000000002",
+                    product_name="로긴 욕실선반 사각-2단",
+                    large_category="홈CC",
+                    supplier="홈CC",
+                    is_active="사용",
+                )
+            )
+            db.commit()
+
+            buffer = BytesIO()
+            sheet1 = pd.DataFrame(
+                [
+                    ["홈CC 상품입고", None],
+                    ["상품명", "수량"],
+                    ["로긴 욕실선반 사각-2단", 2],
+                ]
+            )
+            sheet2 = pd.DataFrame([["홈씨씨등록상품명", "바코드", "출고수량"]])
+            with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+                sheet1.to_excel(writer, index=False, header=False, sheet_name="Sheet1")
+                sheet2.to_excel(writer, index=False, header=False, sheet_name="Sheet2")
+
+            result = services.import_inbound_excel(
+                db,
+                "오프라인",
+                buffer.getvalue(),
+                "홈CC입고내역서_260723.xlsx",
+            )
+
+            self.assertEqual(result["count"], 1)
+            row = db.execute(select(InventoryInbound)).scalar_one()
+            self.assertEqual(row.inbound_date, date(2026, 7, 23))
+            self.assertEqual(row.product_code, "HCC-2")
+            self.assertEqual(row.barcode, "8800000000002")
+            self.assertEqual(row.product_name, "로긴 욕실선반 사각-2단")
+            self.assertEqual(row.inbound_qty, 2)
+            self.assertEqual(row.vendor, "홈CC")
+            self.assertEqual(row.inbound_type, "홈CC 상품입고")
+        finally:
+            db.close()
 
     def test_offline_inbound_and_outbound_are_cumulative_and_idempotent(self) -> None:
         db = self.Session()

@@ -101,6 +101,8 @@ INBOUND_COLUMNS = [
     "입고구분",
     "비고",
 ]
+HOMECC_INBOUND_TEMPLATE_COLUMNS = ["상품명", "수량"]
+HOMECC_INBOUND_REFERENCE_COLUMNS = ["홈씨씨등록상품명", "바코드", "출고수량"]
 
 DASHBOARD_FILTER_LABELS = {
     "all": "전체 재고 목록",
@@ -234,6 +236,9 @@ def import_upload_result(message: str, outcome) -> dict:
         if outcome.get("used_html"):
             html_message = outcome.get("message") or "엑셀 형식이 HTML 기반이라 read_html로 처리했습니다"
             return result(f"{message} - {html_message}", count)
+        detail_message = outcome.get("message")
+        if detail_message:
+            return result(f"{message} - {detail_message}", count)
         return result(message, count)
     return result(message, int(outcome or 0))
 
@@ -975,13 +980,17 @@ def render_daily_tab(source_type: str, source_label: str | None = None) -> None:
 
 def render_inbound_tab(source_type: str) -> None:
     st.markdown(f'<div class="inventory-tab-title">{source_type} 입고내역</div>', unsafe_allow_html=True)
+    if source_type == "오프라인":
+        inbound_help = "홈CC 상품입고 양식은 Sheet1의 상품명/수량을 읽고, 파일명 날짜 예: 260723을 입고일자로 자동 적용합니다."
+    else:
+        inbound_help = "성현물류 거래명세서는 품목명이 마스터 상품명과 같으면 해당 상품 입고로 자동 매칭됩니다."
     with st.container(key=f"{source_key(source_type)}_inbound_import_panel"):
         render_inventory_html(
-            """
+            f"""
             <div class="inventory-update-heading">
                 <div>
                     <h2>입고내역 파일 반영</h2>
-                    <p>성현물류 거래명세서는 품목명이 마스터 상품명과 같으면 해당 상품 입고로 자동 매칭됩니다.</p>
+                    <p>{escape(inbound_help)}</p>
                 </div>
             </div>
             """
@@ -1000,7 +1009,7 @@ def render_inbound_tab(source_type: str) -> None:
                 if uploaded is None:
                     st.warning("먼저 입고내역 파일을 업로드하세요.")
                 else:
-                    outcome = with_db(lambda db: import_upload_result("입고내역 파일 반영 완료", services.import_inbound_excel(db, source_type, uploaded.getvalue())))
+                    outcome = with_db(lambda db: import_upload_result("입고내역 파일 반영 완료", services.import_inbound_excel(db, source_type, uploaded.getvalue(), uploaded.name)))
                     if outcome and outcome.get("ok", True):
                         clear_inventory_editor_buffer(f"{source_type}_inbound_editor_buffer")
                     show_result(outcome)
@@ -1016,9 +1025,9 @@ def render_inbound_tab(source_type: str) -> None:
             st.write("")
             download_data = inbound_excel(source_type)
             st.download_button(
-                "엑셀 다운로드",
+                "양식 다운로드" if source_type == "오프라인" else "엑셀 다운로드",
                 data=download_data or b"",
-                file_name=f"{source_type}_입고내역.xlsx",
+                file_name="홈CC입고내역서_양식.xlsx" if source_type == "오프라인" else f"{source_type}_입고내역.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
                 key=f"{source_type}_inbound_download",
@@ -2658,7 +2667,58 @@ def daily_excel(source_type: str, work_date: date) -> bytes:
 
 
 def inbound_excel(source_type: str) -> bytes:
+    if source_type == "오프라인":
+        return homecc_inbound_excel(fetch_inbound(source_type))
     return dataframe_to_excel(inbound_to_editor(fetch_inbound(source_type)))
+
+
+def homecc_inbound_excel(rows: list[dict]) -> bytes:
+    export_df = pd.DataFrame(
+        [
+            {
+                "상품명": row.get("product_name", ""),
+                "수량": row.get("inbound_qty", 0),
+            }
+            for row in rows
+        ],
+        columns=HOMECC_INBOUND_TEMPLATE_COLUMNS,
+    )
+    reference_df = pd.DataFrame(columns=HOMECC_INBOUND_REFERENCE_COLUMNS)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        export_df.to_excel(writer, index=False, sheet_name="Sheet1", startrow=1)
+        reference_df.to_excel(writer, index=False, sheet_name="Sheet2")
+        workbook = writer.book
+        title_format = workbook.add_format({"bold": True, "font_size": 12, "align": "left", "valign": "vcenter"})
+        header_format = workbook.add_format(
+            {
+                "bold": True,
+                "bg_color": "#E7F0EA",
+                "border": 1,
+                "align": "center",
+                "valign": "vcenter",
+            }
+        )
+        body_format = workbook.add_format({"border": 1, "valign": "vcenter"})
+        qty_format = workbook.add_format({"border": 1, "align": "right", "valign": "vcenter", "num_format": "#,##0"})
+
+        sheet1 = writer.sheets["Sheet1"]
+        sheet1.write(0, 0, "홈CC 상품입고", title_format)
+        sheet1.set_column(0, 0, 34)
+        sheet1.set_column(1, 1, 10)
+        for column_index, column_name in enumerate(HOMECC_INBOUND_TEMPLATE_COLUMNS):
+            sheet1.write(1, column_index, column_name, header_format)
+        for row_index in range(len(export_df)):
+            sheet1.write(row_index + 2, 0, export_df.iat[row_index, 0], body_format)
+            sheet1.write(row_index + 2, 1, to_int(export_df.iat[row_index, 1]), qty_format)
+
+        sheet2 = writer.sheets["Sheet2"]
+        sheet2.set_column(0, 0, 28)
+        sheet2.set_column(1, 1, 18)
+        sheet2.set_column(2, 2, 10)
+        for column_index, column_name in enumerate(HOMECC_INBOUND_REFERENCE_COLUMNS):
+            sheet2.write(0, column_index, column_name, header_format)
+    return output.getvalue()
 
 
 def daily_to_editor(rows: list[dict]) -> pd.DataFrame:

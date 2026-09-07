@@ -156,6 +156,9 @@ OFFLINE_OUTBOUND_INVOICE_COLUMN_CANDIDATES = ["송장번호", "송장 번호", "
 OFFLINE_OUTBOUND_SKU_COLUMN_CANDIDATES = ["SKU", "상품코드", "품목코드", "상품번호", "옵션코드", "sku"]
 OFFLINE_OUTBOUND_BARCODE_COLUMN_CANDIDATES = ["바코드", "옵션바코드", "88바코드", "barcode"]
 OFFLINE_OUTBOUND_NAME_COLUMN_CANDIDATES = ["상품명", "품목", "품목명", "제품명", "product_name"]
+HOMECC_INBOUND_TITLE = "홈CC 상품입고"
+HOMECC_INBOUND_VENDOR = "홈CC"
+HOMECC_INBOUND_TYPE = "홈CC 상품입고"
 
 
 def product_master_model(source_type: str):
@@ -813,6 +816,80 @@ def read_seonghyun_inbound_statement(file_bytes: bytes) -> pd.DataFrame | None:
         if rows:
             df = pd.DataFrame(rows)
             df.attrs["read_method"] = "seonghyun_statement"
+            return df
+    return None
+
+
+def parse_homecc_inbound_date_from_filename(file_name: str | None) -> date | None:
+    text = clean_text(file_name)
+    if not text:
+        return None
+    matches = re.findall(r"(?<!\d)(\d{6})(?!\d)", text)
+    if not matches:
+        return None
+    raw = matches[-1]
+    try:
+        return date(2000 + int(raw[:2]), int(raw[2:4]), int(raw[4:6]))
+    except ValueError:
+        return None
+
+
+def read_homecc_inbound_statement(file_bytes: bytes, file_name: str | None = "") -> pd.DataFrame | None:
+    uploaded_file = BytesIO(file_bytes)
+    try:
+        sheets = pd.read_excel(uploaded_file, sheet_name=None, header=None, engine="openpyxl")
+    except Exception:
+        return None
+
+    inbound_date = parse_homecc_inbound_date_from_filename(file_name) or date.today()
+    for sheet_name, raw_df in sheets.items():
+        if raw_df.empty:
+            continue
+        title_cells = {
+            clean_text(value).replace(" ", "").upper()
+            for value in raw_df.head(5).to_numpy().ravel()
+            if clean_text(value)
+        }
+        has_homecc_title = any("홈CC" in value or "홈씨씨" in value for value in title_cells)
+        header_index = None
+        product_col = None
+        qty_col = None
+        scan_limit = min(len(raw_df), 12)
+        for index in range(scan_limit):
+            values = [normalize_import_header_name(clean_text(value)) for value in raw_df.iloc[index].tolist()]
+            normalized = [import_header_key(value) for value in values]
+            if import_header_key("상품명") in normalized and import_header_key("수량") in normalized:
+                header_index = index
+                product_col = normalized.index(import_header_key("상품명"))
+                qty_col = normalized.index(import_header_key("수량"))
+                break
+        if header_index is None or product_col is None or qty_col is None:
+            continue
+        if not has_homecc_title and clean_text(sheet_name).lower() != "sheet1":
+            continue
+
+        rows = []
+        for _, row in raw_df.iloc[header_index + 1 :].iterrows():
+            product_name = clean_text(row.iloc[product_col] if product_col < len(row) else "")
+            qty = to_int(row.iloc[qty_col] if qty_col < len(row) else "")
+            if not product_name or qty <= 0:
+                continue
+            rows.append(
+                {
+                    "입고일자": inbound_date,
+                    "상품명": product_name,
+                    "수량": qty,
+                    "거래처": HOMECC_INBOUND_VENDOR,
+                    "입고구분": HOMECC_INBOUND_TYPE,
+                }
+            )
+
+        if rows:
+            df = pd.DataFrame(rows)
+            df.attrs["read_method"] = "homecc_inbound"
+            df.attrs["selected_sheet"] = sheet_name
+            df.attrs["inbound_date"] = inbound_date.isoformat()
+            df.attrs["read_message"] = f"{HOMECC_INBOUND_TITLE} 양식으로 처리했습니다. 입고일자 {inbound_date.isoformat()}"
             return df
     return None
 
@@ -5593,10 +5670,13 @@ def import_order(db: Session, source_type: str, work_date: date, file_bytes: byt
     }
 
 
-def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes) -> dict:
+def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes, file_name: str | None = "") -> dict:
     df = read_seonghyun_inbound_statement(file_bytes) if source_type == "3PL" else None
+    if df is None and source_type == "오프라인":
+        df = read_homecc_inbound_statement(file_bytes, file_name)
     if df is None:
         df = read_excel(file_bytes)
+    default_inbound_date = parse_homecc_inbound_date_from_filename(file_name) if source_type == "오프라인" else None
     date_col = None
     try:
         date_col = find_column(df, ["입고일자", "입고일", "일자"])
@@ -5633,14 +5713,14 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes) -> di
                 continue
             rows.append(
                 {
-                    "inbound_date": parse_date(row.get(date_col)) if date_col else date.today(),
+                    "inbound_date": (parse_date(row.get(date_col)) if date_col else None) or default_inbound_date or date.today(),
                     "category": clean_text(row.get(category_col)) if category_col else "",
                     "product_code": clean_text(row.get(product_code_col)) if product_code_col else "",
                     "product_name": product_name,
                     "barcode": normalize_barcode_text(row.get(barcode_col)) if barcode_col else "",
                     "inbound_qty": to_int(row.get(qty_col)),
-                    "vendor": clean_text(row.get(vendor_col)) if vendor_col else "",
-                    "inbound_type": clean_text(row.get(type_col)) if type_col else "",
+                    "vendor": clean_text(row.get(vendor_col)) if vendor_col else (HOMECC_INBOUND_VENDOR if source_type == "오프라인" else ""),
+                    "inbound_type": clean_text(row.get(type_col)) if type_col else (HOMECC_INBOUND_TYPE if source_type == "오프라인" else ""),
                     "memo": "",
                 }
             )
@@ -5652,17 +5732,17 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes) -> di
         product_name = clean_text(row.get(name_col))
         if not product_name:
             continue
-        inbound_date = parse_date(row.get(date_col)) if date_col else date.today()
+        inbound_date = (parse_date(row.get(date_col)) if date_col else None) or default_inbound_date or date.today()
         item = InventoryInbound(
                 source_type=source_type,
-                inbound_date=inbound_date or date.today(),
+                inbound_date=inbound_date,
                 category=clean_text(row.get(category_col)) if category_col else "",
                 product_code=clean_text(row.get(product_code_col)) if product_code_col else "",
                 product_name=product_name,
                 barcode=normalize_barcode_text(row.get(barcode_col)) if barcode_col else "",
                 inbound_qty=to_int(row.get(qty_col)),
-                vendor=clean_text(row.get(vendor_col)) if vendor_col else "",
-                inbound_type=clean_text(row.get(type_col)) if type_col else "",
+                vendor=clean_text(row.get(vendor_col)) if vendor_col else (HOMECC_INBOUND_VENDOR if source_type == "오프라인" else ""),
+                inbound_type=clean_text(row.get(type_col)) if type_col else (HOMECC_INBOUND_TYPE if source_type == "오프라인" else ""),
                 is_applied=False,
             )
         apply_product_master_to_inbound(
