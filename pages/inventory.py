@@ -5705,6 +5705,7 @@ def stock_registration_dataframe(rows: list[dict], changes: dict[str, dict]) -> 
                 "보관위치": clean_cell(row.get("storage_location")),
                 "업체명": clean_cell(row.get("supplier")),
                 "현재고": edited_stock,
+                "안전재고": to_int(row.get("safe_stock")),
                 "증감수량": delta,
                 "비고": clean_cell(change.get("memo", base_memo)),
                 "_base_stock": current_stock,
@@ -5738,7 +5739,7 @@ def stock_registration_filter_dataframe(df: pd.DataFrame, filters: dict) -> pd.D
 
 
 def stock_registration_download_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    columns = ["내부 상품 ID", "SKU", "바코드", "상품명", "카테고리", "보관위치", "업체명", "현재고"]
+    columns = ["내부 상품 ID", "SKU", "바코드", "상품명", "카테고리", "보관위치", "업체명", "현재고", "안전재고"]
     if df is None or df.empty:
         return pd.DataFrame(columns=columns)
     export_df = df.copy()
@@ -5785,6 +5786,39 @@ def stock_registration_template_excel(df: pd.DataFrame) -> bytes:
     return output.getvalue()
 
 
+def stock_bulk_adjustment_template_excel(df: pd.DataFrame) -> bytes:
+    columns = ["카테고리", "SKU", "바코드", "상품명", "현재고", "안전재고"]
+    export_df = stock_registration_download_dataframe(df)
+    if export_df is None or export_df.empty:
+        export_df = pd.DataFrame(columns=columns)
+    else:
+        export_df = export_df[[column for column in columns if column in export_df.columns]].copy()
+        for column in columns:
+            if column not in export_df.columns:
+                export_df[column] = ""
+        export_df = export_df[columns]
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        sheet_name = "일괄재고수정"
+        export_df.to_excel(writer, index=False, sheet_name=sheet_name)
+        workbook = writer.book
+        worksheet = writer.sheets[sheet_name]
+        header_format = workbook.add_format(
+            {"bold": True, "bg_color": "#E6E0D7", "border": 1, "border_color": "#000000", "align": "center", "valign": "vcenter"}
+        )
+        text_format = workbook.add_format({"border": 1, "border_color": "#000000", "valign": "vcenter"})
+        number_format = workbook.add_format({"border": 1, "border_color": "#000000", "align": "right", "num_format": "#,##0", "valign": "vcenter"})
+        for col_idx, column in enumerate(export_df.columns):
+            worksheet.write(0, col_idx, column, header_format)
+            worksheet.set_column(col_idx, col_idx, excel_column_width(export_df[column], column))
+            column_format = number_format if column in {"현재고", "안전재고"} else text_format
+            for row_offset, value in enumerate(export_df[column].iloc[: excel_styled_row_count(export_df)], start=1):
+                write_excel_cell(worksheet, row_offset, col_idx, value, column_format)
+        worksheet.autofilter(0, 0, max(len(export_df.index), 1), max(len(export_df.columns) - 1, 0))
+    return output.getvalue()
+
+
 def text_download_href(file_name: str, data: bytes) -> str:
     encoded = base64.b64encode(data or b"").decode("ascii")
     return f'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{encoded}'
@@ -5828,6 +5862,37 @@ def stock_registration_preview_dataframe(preview: dict) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows, columns=["SKU", "상품명", "기존 재고", "변경 재고", "증감수량", "비고"])
+
+
+def stock_bulk_adjustment_preview_dataframe(preview: dict) -> pd.DataFrame:
+    rows = []
+    for row in (preview or {}).get("preview_rows", []):
+        previous_stock = row.get("previous_stock", "")
+        new_stock = row.get("new_stock", "")
+        delta = ""
+        if clean_cell(previous_stock) != "" and clean_cell(new_stock) != "":
+            delta_value = to_int(new_stock) - to_int(previous_stock)
+            delta = f"{delta_value:+,}"
+        rows.append(
+            {
+                "엑셀 행": row.get("row_no", ""),
+                "SKU": clean_cell(row.get("product_code")),
+                "바코드": clean_cell(row.get("barcode")),
+                "상품명": clean_cell(row.get("product_name")),
+                "카테고리": clean_cell(row.get("category")),
+                "기존재고": previous_stock,
+                "변경재고": new_stock,
+                "증감": delta,
+                "기존 안전재고": row.get("previous_safe_stock", ""),
+                "변경 안전재고": row.get("new_safe_stock", ""),
+                "매칭상태": clean_cell(row.get("status")) or ("정상" if row.get("matched") else "매칭실패"),
+                "매칭기준": clean_cell(row.get("match_method")),
+            }
+        )
+    return pd.DataFrame(
+        rows,
+        columns=["엑셀 행", "SKU", "바코드", "상품명", "카테고리", "기존재고", "변경재고", "증감", "기존 안전재고", "변경 안전재고", "매칭상태", "매칭기준"],
+    )
 
 
 def stock_registration_preview_from_changes(
@@ -6089,6 +6154,87 @@ def save_stock_registration_form(
     return services.apply_manual_stock_adjustment_preview(db, source_type, work_date, preview, current_user_name())
 
 
+def render_stock_bulk_adjustment_panel(source_type: str, work_date: date, full_df: pd.DataFrame) -> None:
+    panel_key = f"{source_key(source_type)}_bulk_stock_adjustment_{work_date.isoformat()}"
+    preview_key = f"{panel_key}_preview"
+    result_key = f"{panel_key}_result"
+
+    st.markdown("#### 엑셀 일괄 재고수정")
+    control_cols = st.columns([1.05, 2.2, 1.05, 1.05, 2.25], gap="small")
+    with control_cols[0]:
+        template_data = stock_bulk_adjustment_template_excel(full_df)
+        st.download_button(
+            "엑셀 양식 다운로드",
+            data=template_data,
+            file_name=f"{source_type}_일괄재고수정_{work_date:%Y%m%d}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key=f"{panel_key}_template_download",
+        )
+    with control_cols[1]:
+        uploaded = st.file_uploader(
+            "엑셀 파일 업로드",
+            type=["xlsx", "xls", "html"],
+            key=f"{panel_key}_file",
+            label_visibility="collapsed",
+        )
+    with control_cols[2]:
+        st.write("")
+        if st.button("업로드 내용 검증", key=f"{panel_key}_validate", use_container_width=True):
+            if uploaded is None:
+                st.warning("먼저 엑셀 파일을 업로드하세요.")
+            else:
+                preview = with_db(
+                    lambda db: services.prepare_excel_stock_adjustment_preview(
+                        db,
+                        source_type,
+                        work_date,
+                        uploaded.getvalue(),
+                        uploaded.name,
+                    )
+                )
+                if preview:
+                    st.session_state[preview_key] = preview
+                    st.session_state.pop(result_key, None)
+    preview = st.session_state.get(preview_key)
+    failed_count = int((preview or {}).get("failed_count") or 0)
+    changed_count = int((preview or {}).get("changed_count") or 0)
+    with control_cols[3]:
+        st.write("")
+        disabled = not preview or failed_count > 0 or changed_count <= 0
+        if st.button("재고 일괄 반영", key=f"{panel_key}_apply", type="primary", use_container_width=True, disabled=disabled):
+            outcome = with_db(
+                lambda db: services.apply_manual_stock_adjustment_preview(
+                    db,
+                    source_type,
+                    work_date,
+                    preview,
+                    current_user_name(),
+                )
+            )
+            st.session_state[result_key] = outcome
+            if outcome and outcome.get("ok", True):
+                clear_inventory_data_caches()
+                st.session_state.pop(preview_key, None)
+                st.success("엑셀 일괄 재고수정이 반영되었습니다.")
+                inventory_fragment_rerun()
+    with control_cols[4]:
+        st.caption("엑셀의 현재고 값으로 교체합니다. 기존 재고에 더하지 않습니다.")
+
+    if preview:
+        metric_cols = st.columns(4, gap="small")
+        metric_cols[0].metric("총 업로드 품목", f"{int(preview.get('total_rows') or 0):,}")
+        metric_cols[1].metric("매칭 성공", f"{int(preview.get('matched_count') or 0):,}")
+        metric_cols[2].metric("매칭 실패", f"{int(preview.get('failed_count') or 0):,}")
+        metric_cols[3].metric("재고 변경 품목", f"{changed_count:,}")
+        preview_df = stock_bulk_adjustment_preview_dataframe(preview)
+        render_plain_inventory_table(preview_df, height=280, empty_message="검증할 재고수정 데이터가 없습니다.")
+        if failed_count > 0:
+            st.warning("매칭 실패 또는 숫자 오류가 있어 일괄 반영할 수 없습니다. 엑셀을 수정한 뒤 다시 검증하세요.")
+
+    render_stock_upload_apply_result(st.session_state.get(result_key))
+
+
 def render_stock_registration_panel(source_type: str, work_date: date, rows: list[dict]) -> bool:
     panel_key = f"{source_key(source_type)}_stock_registration_{work_date.isoformat()}"
     result_key = f"{panel_key}_result"
@@ -6097,6 +6243,8 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
     selected_sku_key = f"{panel_key}_selected_sku"
     full_df = stock_registration_dataframe(rows, {})
     filtered_df = full_df.copy()
+
+    render_stock_bulk_adjustment_panel(source_type, work_date, full_df)
 
     st.markdown("#### 수정 대상 재고")
     page_size = st.selectbox("페이지 표시", [50, 100, 200], index=0, key=page_size_key)

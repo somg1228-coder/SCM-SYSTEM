@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from io import BytesIO
 import unittest
 
+import pandas as pd
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
@@ -142,6 +144,92 @@ class InventoryOutboundAverageTest(unittest.TestCase):
             self.assertEqual(exact_future.current_stock, 25)
         finally:
             db.close()
+
+    def test_excel_stock_adjustment_preview_reports_unmatched_rows(self) -> None:
+        work_date = date(2026, 8, 26)
+        db = self.Session()
+        try:
+            db.add(
+                ThirdpartyProductMaster(
+                    sku="SKU-BULK",
+                    barcode="1234567890123",
+                    product_name="Bulk Product",
+                    is_active="사용",
+                )
+            )
+            db.commit()
+            excel_bytes = self._excel_bytes(
+                [
+                    {"SKU": "SKU-BULK", "바코드": "1234567890123", "상품명": "Bulk Product", "현재고": 38, "안전재고": 5},
+                    {"SKU": "", "바코드": "", "상품명": "Missing Product", "현재고": 5, "안전재고": 1},
+                ]
+            )
+
+            preview = services.prepare_excel_stock_adjustment_preview(db, "3PL", work_date, excel_bytes, "bulk.xlsx")
+
+            self.assertEqual(preview["total_rows"], 2)
+            self.assertEqual(preview["matched_count"], 1)
+            self.assertEqual(preview["failed_count"], 1)
+            self.assertEqual(preview["unmatched_count"], 1)
+            self.assertEqual(preview["preview_rows"][1]["status"], "상품명 매칭 실패")
+        finally:
+            db.close()
+
+    def test_excel_stock_adjustment_replaces_stock_and_preserves_negative_quantity(self) -> None:
+        work_date = date(2026, 8, 26)
+        db = self.Session()
+        try:
+            product = ThirdpartyProductMaster(
+                sku="SKU-BULK",
+                barcode="1234567890123",
+                product_name="Bulk Product",
+                min_stock=3,
+                is_active="사용",
+            )
+            db.add(product)
+            db.add(
+                InventoryDaily(
+                    source_type="3PL",
+                    work_date=work_date,
+                    product_code="SKU-BULK",
+                    product_name="Bulk Product",
+                    barcode="1234567890123",
+                    current_stock=20,
+                    available_stock=20,
+                    safe_stock=3,
+                )
+            )
+            db.commit()
+            excel_bytes = self._excel_bytes(
+                [{"SKU": "SKU-BULK", "바코드": "1234567890123", "상품명": "Bulk Product", "현재고": -2, "안전재고": 7}]
+            )
+
+            preview = services.prepare_excel_stock_adjustment_preview(db, "3PL", work_date, excel_bytes, "bulk.xlsx")
+            result = services.apply_manual_stock_adjustment_preview(db, "3PL", work_date, preview, "tester")
+            daily = db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == "3PL",
+                    InventoryDaily.work_date == work_date,
+                    InventoryDaily.product_name == "Bulk Product",
+                )
+            ).scalar_one()
+            product = db.execute(select(ThirdpartyProductMaster).where(ThirdpartyProductMaster.sku == "SKU-BULK")).scalar_one()
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(daily.current_stock, -2)
+            self.assertEqual(daily.available_stock, -2)
+            self.assertEqual(daily.safe_stock, 7)
+            self.assertEqual(daily.stock_status, "품절")
+            self.assertEqual(product.min_stock, 7)
+        finally:
+            db.close()
+
+    @staticmethod
+    def _excel_bytes(rows: list[dict]) -> bytes:
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            pd.DataFrame(rows).to_excel(writer, index=False, sheet_name="재고수정")
+        return output.getvalue()
 
     def test_master_based_inventory_rows_separates_weekly_display_and_daily_order_rate(self) -> None:
         work_date = date(2026, 8, 26)

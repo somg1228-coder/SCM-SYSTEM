@@ -149,6 +149,7 @@ ERP_INVOICE_COLUMN_CANDIDATES = ["송장", "송장수량", "송장 수량", "inv
 ERP_RECEIVED_COLUMN_CANDIDATES = ["접수", "접수수량", "접수 수량", "accepted_qty", "receipt"]
 STOCK_CATEGORY_COLUMN_CANDIDATES = ["카테고리", "카테고리명", "상품카테고리", "상품 카테고리", "대분류", "대분류명", "분류", "상품분류", "category", "large_category"]
 STOCK_LOCATION_COLUMN_CANDIDATES = ["재고위치", "재고 위치", "보관위치", "보관 위치", "창고위치", "창고 위치", "로케이션", "랙위치", "랙 위치", "location", "storage_location"]
+STOCK_SAFE_COLUMN_CANDIDATES = ["안전재고", "최소재고", "적정재고", "safe_stock", "min_stock"]
 OFFLINE_OUTBOUND_OUTPUT_TYPE = "OFFLINE_OUTBOUND"
 OFFLINE_OUTBOUND_DATE_COLUMN_CANDIDATES = ["출고일자", "출고일", "발송일", "배송일", "판매일", "주문일", "일자", "date"]
 OFFLINE_OUTBOUND_QTY_COLUMN_CANDIDATES = ["출고수량", "출고 수량", "판매수량", "판매 수량", "매출수량", "매출 수량", "주문수량", "주문 수량", "수량", "qty", "quantity"]
@@ -1181,6 +1182,48 @@ def match_product_from_maps(
         source_type=source_type,
     )
     return product
+
+
+def match_stock_adjustment_product_from_maps(
+    product_code: str,
+    barcode: str,
+    product_name: str,
+    by_sku: dict[str, object],
+    by_barcode_name: dict[tuple[str, str], object],
+    by_barcode: dict[str, list],
+    by_name: dict[str, list],
+) -> tuple[object | None, str, str]:
+    sku = normalize_product_code_text(product_code)
+    barcode_key = normalize_product_barcode_match_key(barcode)
+    name_key = normalize_product_name_match_key(product_name)
+
+    if sku:
+        product = by_sku.get(sku)
+        if product is not None:
+            return product, "SKU", ""
+        return None, "", "SKU 매칭 실패"
+
+    if barcode_key:
+        if name_key:
+            product = by_barcode_name.get((barcode_key, name_key))
+            if product is not None:
+                return product, "바코드+상품명", ""
+        barcode_matches = by_barcode.get(barcode_key, [])
+        if len(barcode_matches) == 1:
+            return barcode_matches[0], "바코드", ""
+        if len(barcode_matches) > 1:
+            return None, "", "바코드 중복"
+        return None, "", "바코드 매칭 실패"
+
+    if name_key:
+        name_matches = by_name.get(name_key, [])
+        if len(name_matches) == 1:
+            return name_matches[0], "상품명", ""
+        if len(name_matches) > 1:
+            return None, "", "상품명 중복"
+        return None, "", "상품명 매칭 실패"
+
+    return None, "", "SKU, 바코드, 상품명 중 하나가 필요합니다"
 
 
 def match_3pl_product(products: list, product_code: str = "", barcode: str = "", product_name: str = ""):
@@ -4549,6 +4592,201 @@ def prepare_stock_upload_preview(
     }
 
 
+def prepare_excel_stock_adjustment_preview(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    file_bytes: bytes,
+    file_name: str = "",
+) -> dict:
+    total_started_at = time.perf_counter()
+    timings: dict[str, float] = {}
+
+    stage_started_at = time.perf_counter()
+    df = read_excel(file_bytes)
+    if df is None or df.empty:
+        return {
+            "ok": False,
+            "message": "엑셀에서 재고수정 데이터를 찾지 못했습니다.",
+            "total_rows": 0,
+            "matched_count": 0,
+            "failed_count": 0,
+            "unmatched_count": 0,
+            "duplicate_count": 0,
+            "preview_rows": [],
+        }
+    mark_inventory_update_stage(timings, "excel_read", stage_started_at)
+
+    try:
+        current_col = find_column(df, STOCK_CURRENT_COLUMN_CANDIDATES)
+    except ValueError as exc:
+        raise ValueError(f"필수 컬럼을 찾지 못했습니다: 현재고 / 인식된 컬럼: {', '.join(map(str, df.columns))}") from exc
+
+    try:
+        safe_col = find_column(df, STOCK_SAFE_COLUMN_CANDIDATES)
+    except ValueError:
+        safe_col = None
+    try:
+        category_col = find_column(df, STOCK_CATEGORY_COLUMN_CANDIDATES)
+    except ValueError:
+        category_col = None
+    try:
+        product_code_col = find_column(df, ["SKU", "상품코드", "품목코드", "상품번호"])
+    except ValueError:
+        product_code_col = None
+    try:
+        barcode_col = find_column(df, ["88바코드", "바코드", "옵션바코드"])
+    except ValueError:
+        barcode_col = None
+    try:
+        name_col = find_column(df, ["상품명", "품목", "품목명"])
+    except ValueError:
+        name_col = None
+    if not any([product_code_col, barcode_col, name_col]):
+        raise ValueError("SKU, 바코드, 상품명 중 하나 이상의 상품 식별 컬럼이 필요합니다.")
+
+    stage_started_at = time.perf_counter()
+    products = list(db.execute(select(product_master_model(source_type))).scalars())
+    product_maps = product_lookup_maps(products)
+    daily_rows = list(
+        db.execute(
+            select(InventoryDaily).where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date == work_date,
+            )
+        ).scalars()
+    )
+    daily_by_name = {
+        normalize_product_name_match_key(row.product_name): row
+        for row in daily_rows
+        if normalize_product_name_match_key(row.product_name)
+    }
+    daily_by_sku: dict[str, InventoryDaily] = {}
+    for row in daily_rows:
+        sku = normalize_product_code_text(row.product_code)
+        if sku:
+            daily_by_sku.setdefault(sku, row)
+    mark_inventory_update_stage(timings, "db_master_inventory_loading", stage_started_at)
+
+    seen_keys: set[str] = set()
+    preview_rows = []
+    matched_count = failed_count = unmatched_count = duplicate_count = 0
+    invalid_stock_count = invalid_safe_stock_count = changed_count = 0
+
+    stage_started_at = time.perf_counter()
+    for index, row in enumerate(df.fillna("").to_dict("records"), start=1):
+        product_code = normalize_product_code_text(row.get(product_code_col)) if product_code_col else ""
+        barcode = normalize_barcode_text(row.get(barcode_col)) if barcode_col else ""
+        product_name = clean_text(row.get(name_col)) if name_col else ""
+        uploaded_category = clean_text(row.get(category_col)) if category_col else ""
+        new_stock, stock_ok = to_int_strict(row.get(current_col))
+        safe_stock_provided = bool(safe_col and clean_text(row.get(safe_col)))
+        new_safe_stock, safe_ok = to_int_strict(row.get(safe_col)) if safe_stock_provided else (0, True)
+
+        product, match_method, match_error = match_stock_adjustment_product_from_maps(
+            product_code,
+            barcode,
+            product_name,
+            *product_maps,
+        )
+
+        errors = []
+        if not stock_ok:
+            invalid_stock_count += 1
+            errors.append("현재고 숫자 오류")
+        if not safe_ok:
+            invalid_safe_stock_count += 1
+            errors.append("안전재고 숫자 오류")
+        if product is None:
+            unmatched_count += 1
+            errors.append(match_error or "상품 매칭 실패")
+
+        matched_sku = normalize_product_code_text(getattr(product, "sku", "")) if product is not None else ""
+        upload_key = matched_sku or product_code or barcode or product_name or f"row_{index}"
+        if upload_key in seen_keys:
+            duplicate_count += 1
+            errors.append("업로드 중복")
+        else:
+            seen_keys.add(upload_key)
+
+        previous_stock = None
+        previous_safe_stock = None
+        matched_category = uploaded_category
+        matched_name = product_name
+        matched_barcode = barcode
+        matched_code = product_code
+        if product is not None:
+            matched_code = clean_text(product.sku)
+            matched_name = clean_text(product.product_name)
+            matched_barcode = normalize_barcode_text(product.barcode)
+            matched_category = product_category_text(product) or uploaded_category
+            daily = daily_by_name.get(normalize_product_name_match_key(product.product_name)) or daily_by_sku.get(normalize_product_code_text(product.sku))
+            if daily is None and source_type == "오프라인":
+                daily = latest_daily_row_before(
+                    db,
+                    source_type,
+                    work_date,
+                    product.sku,
+                    product.product_name,
+                    product.barcode,
+                    exact_product_name_only=True,
+                )
+            previous_stock = int(daily.current_stock or 0) if daily is not None else 0
+            previous_safe_stock = int(daily.safe_stock or product.min_stock or 0) if daily is not None else int(product.min_stock or 0)
+
+        if errors:
+            failed_count += 1
+        else:
+            matched_count += 1
+            if previous_stock != new_stock or (safe_stock_provided and previous_safe_stock != new_safe_stock):
+                changed_count += 1
+
+        preview_rows.append(
+            {
+                "row_no": index,
+                "product_code": matched_code,
+                "category": matched_category,
+                "product_name": matched_name,
+                "barcode": matched_barcode,
+                "previous_stock": "" if previous_stock is None else previous_stock,
+                "new_stock": new_stock if stock_ok else clean_text(row.get(current_col)),
+                "new_available_stock": new_stock if stock_ok else clean_text(row.get(current_col)),
+                "previous_safe_stock": "" if previous_safe_stock is None else previous_safe_stock,
+                "new_safe_stock": new_safe_stock if safe_stock_provided and safe_ok else "",
+                "safe_stock_provided": safe_stock_provided and safe_ok,
+                "status": "정상" if not errors else ", ".join(errors),
+                "matched": bool(product) and not errors,
+                "match_method": match_method,
+                "failure_reason": "" if not errors else ", ".join(errors),
+                "change_method": "엑셀 일괄 재고조정",
+                "memo": "엑셀 일괄 재고조정",
+            }
+        )
+
+    mark_inventory_update_stage(timings, "validation", stage_started_at)
+    timings["prepare_total"] = round(time.perf_counter() - total_started_at, 4)
+    return {
+        "ok": True,
+        "file_name": clean_text(file_name) or "엑셀 일괄 재고조정",
+        "upload_mode": "excel_bulk_stock_adjustment",
+        "change_method": "엑셀 일괄 재고조정",
+        "all_or_nothing": True,
+        "preserve_uploaded_safe_stock": True,
+        "timings": timings,
+        "total_rows": len(df.index),
+        "matched_count": matched_count,
+        "failed_count": failed_count,
+        "duplicate_count": duplicate_count,
+        "unmatched_count": unmatched_count,
+        "invalid_stock_count": invalid_stock_count,
+        "invalid_safe_stock_count": invalid_safe_stock_count,
+        "negative_stock_count": 0,
+        "changed_count": changed_count,
+        "zeroed_count": 0,
+        "preview_rows": preview_rows,
+    }
+
+
 def normalize_erp_stock_barcode(value) -> str:
     return normalize_barcode_text(value)
 
@@ -5082,6 +5320,10 @@ def apply_stock_upload_preview(
                     product.large_category = uploaded_category
                 new_stock = to_int(row.get("new_stock"))
                 new_available_stock = to_int(row.get("new_available_stock")) if "new_available_stock" in row else new_stock
+                safe_stock_provided = bool(row.get("safe_stock_provided"))
+                safe_stock = to_int(row.get("new_safe_stock")) if safe_stock_provided else int(product.min_stock or 0)
+                if safe_stock_provided:
+                    product.min_stock = safe_stock
                 storage_location = clean_text(row.get("storage_location")) or getattr(product, "storage_location", "")
                 if storage_location and hasattr(product, "storage_location"):
                     product.storage_location = storage_location
@@ -5094,7 +5336,19 @@ def apply_stock_upload_preview(
                     previous_stock = int(existing_final.current_stock or 0)
                 else:
                     previous_candidates = existing_by_sku.get(product_sku, [])
-                    previous = latest_daily_row_before(db, source_type, work_date, product.sku, product_name, product_barcode) if source_type == "오프라인" else None
+                    previous = (
+                        latest_daily_row_before(
+                            db,
+                            source_type,
+                            work_date,
+                            product.sku,
+                            product_name,
+                            product_barcode,
+                            exact_product_name_only=True,
+                        )
+                        if source_type == "오프라인"
+                        else None
+                    )
                     previous_stock = int(previous.current_stock or 0) if previous is not None else int(previous_candidates[0].current_stock or 0) if previous_candidates else 0
                 for stale in existing_by_sku.get(product_sku, []):
                     stale_identity = clean_text(stale.product_name)
@@ -5110,12 +5364,12 @@ def apply_stock_upload_preview(
                     "supplier": product.supplier,
                     "current_stock": new_stock,
                     "available_stock": new_available_stock,
-                    "safe_stock": int(product.min_stock or 0),
+                    "safe_stock": safe_stock,
                     "stock_status": inventory_stock_status_for_snapshot(
                         True,
                         new_available_stock,
                         new_stock,
-                        int(product.min_stock or 0),
+                        safe_stock,
                         outbound_qty,
                     ),
                     "outbound_qty": outbound_qty,
@@ -5129,6 +5383,7 @@ def apply_stock_upload_preview(
                 upsert_values_by_identity[identity] = values
                 expected_by_sku[product_sku] = {
                     "row": row,
+                    "product_name": product_name,
                     "current_stock": new_stock,
                     "available_stock": new_available_stock,
                 }
@@ -5171,22 +5426,38 @@ def apply_stock_upload_preview(
         for product_code, product_name, barcode, delta in offline_future_deltas:
             propagate_offline_daily_delta(db, work_date, product_code, product_name, barcode, delta)
         db.flush()
+        db.expire_all()
+        expected_names = [
+            clean_text(expected.get("product_name"))
+            for expected in expected_by_sku.values()
+            if clean_text(expected.get("product_name"))
+        ]
+        refresh_filters = []
+        if touched_skus:
+            refresh_filters.append(InventoryDaily.product_code.in_(list(touched_skus)))
+        if expected_names:
+            refresh_filters.append(InventoryDaily.product_name.in_(expected_names))
         refreshed_daily_rows = list(
             db.execute(
                 select(InventoryDaily).where(
                     InventoryDaily.source_type == source_type,
                     InventoryDaily.work_date == work_date,
-                    InventoryDaily.product_code.in_(list(touched_skus)),
+                    or_(*refresh_filters),
                 )
             ).scalars()
-        ) if touched_skus else []
+        ) if refresh_filters else []
         daily_by_sku = {
             normalize_product_code_text(row.product_code): row
             for row in refreshed_daily_rows
             if normalize_product_code_text(row.product_code)
         }
+        daily_by_name = {
+            clean_text(row.product_name): row
+            for row in refreshed_daily_rows
+            if clean_text(row.product_name)
+        }
         for sku, expected in expected_by_sku.items():
-            verified = daily_by_sku.get(sku)
+            verified = daily_by_sku.get(sku) or daily_by_name.get(clean_text(expected.get("product_name")))
             if (
                 verified is None
                 or int(verified.current_stock or 0) != int(expected["current_stock"] or 0)
@@ -5208,11 +5479,14 @@ def apply_stock_upload_preview(
         history.matched_count = count
         if apply_failures:
             history.failed_count = int(history.failed_count or 0) + len(apply_failures)
+            if preview.get("all_or_nothing"):
+                raise RuntimeError(f"재고 일괄 반영 중 {len(apply_failures)}건 오류가 발생해 전체 반영을 취소했습니다.")
         db.flush()
         mark_inventory_update_stage(timings, "inventory_db_save", stage_started_at)
 
         stage_started_at = time.perf_counter()
-        recalculate_uploaded_inventory_rows(db, source_type, work_date, products_by_sku, daily_by_sku, touched_skus)
+        if not preview.get("preserve_uploaded_safe_stock"):
+            recalculate_uploaded_inventory_rows(db, source_type, work_date, products_by_sku, daily_by_sku, touched_skus)
         db.flush()
         mark_inventory_update_stage(timings, "inventory_calculation", stage_started_at)
 
@@ -5226,7 +5500,12 @@ def apply_stock_upload_preview(
     total_seconds = float(timings.get("prepare_total") or 0) + apply_seconds
     log_inventory_update_performance(timings, total_seconds)
     apply_failed_count = len(apply_failures)
-    error_count = int(preview.get("invalid_stock_count") or 0) + int(preview.get("negative_stock_count") or 0) + apply_failed_count
+    error_count = (
+        int(preview.get("invalid_stock_count") or 0)
+        + int(preview.get("invalid_safe_stock_count") or 0)
+        + int(preview.get("negative_stock_count") or 0)
+        + apply_failed_count
+    )
     record_save_success(f"inventory upload {source_type} {work_date}")
     return {
         "ok": True,
