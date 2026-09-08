@@ -140,6 +140,8 @@ PRODUCT_MASTER_MODEL_BY_SOURCE = {
 
 PURCHASE_METRIC_SOURCE_ORDER = ["창고", "3PL", "오프라인"]
 STOCK_WARNING_RATIO = 0.2
+OUTBOUND_AVERAGE_LOOKBACK_DAYS = 30
+OUTBOUND_WEEK_DAYS = 7
 STOCK_CURRENT_COLUMN_CANDIDATES = ["수정재고", "변경재고", "실사재고", "조정재고", "보유재고", "현재고", "재고수량", "재고", "기본창고-정상", "정상재고", "수량", "상품수량"]
 STOCK_AVAILABLE_COLUMN_CANDIDATES = ["가용재고", "판매가능재고", "판매 가능 재고", "수량", "상품수량"]
 ERP_AVAILABLE_STOCK_COLUMN_CANDIDATES = ["가용재고", "판매가능재고", "판매 가능 재고", "available_stock"]
@@ -3303,6 +3305,63 @@ def recent_outbound_average_by_product(
     return {sku: round(total / divisor, 2) for sku, total in totals.items()}
 
 
+def recent_outbound_totals_by_product(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    products: list,
+    lookback_days: int = OUTBOUND_AVERAGE_LOOKBACK_DAYS,
+) -> dict[str, int]:
+    period_days = max(int(lookback_days or 0), 1)
+    start_date = work_date - timedelta(days=period_days - 1)
+    by_sku, by_barcode_name, by_barcode, by_name = product_lookup_maps(products)
+    totals: dict[str, int] = {}
+    rows = list(
+        db.execute(
+            select(InventoryDaily)
+            .where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date >= start_date,
+                InventoryDaily.work_date <= work_date,
+                InventoryDaily.outbound_qty != 0,
+            )
+        ).scalars()
+    )
+    for row in rows:
+        product = match_product_from_maps(row.product_code, row.barcode, row.product_name, by_sku, by_barcode_name, by_barcode, by_name, source_type=source_type)
+        if product is None:
+            continue
+        sku = clean_text(product.sku)
+        if sku:
+            totals[sku] = totals.get(sku, 0) + int(row.outbound_qty or 0)
+    return totals
+
+
+def recent_outbound_daily_average_by_product(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    products: list,
+    lookback_days: int = OUTBOUND_AVERAGE_LOOKBACK_DAYS,
+) -> dict[str, float]:
+    period_days = max(int(lookback_days or 0), 1)
+    totals = recent_outbound_totals_by_product(db, source_type, work_date, products, period_days)
+    return {sku: round(total / period_days, 2) for sku, total in totals.items()}
+
+
+def recent_outbound_weekly_average_by_product(
+    db: Session,
+    source_type: str,
+    work_date: date,
+    products: list,
+    lookback_days: int = OUTBOUND_AVERAGE_LOOKBACK_DAYS,
+) -> dict[str, float]:
+    period_days = max(int(lookback_days or 0), 1)
+    totals = recent_outbound_totals_by_product(db, source_type, work_date, products, period_days)
+    weeks = max(period_days / OUTBOUND_WEEK_DAYS, 1)
+    return {sku: round(total / weeks, 2) for sku, total in totals.items()}
+
+
 def order_needed_days(
     current_stock: int,
     safe_stock: int,
@@ -3543,7 +3602,8 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     purchase_metrics: dict[tuple[str, str], dict] = {}
     inbound_metrics: dict[tuple[str, str], dict] = {}
 
-    avg_outbound_by_sku = recent_outbound_average_by_product(db, source_type, work_date, products, business_day_count=5)
+    avg_daily_outbound_by_sku = recent_outbound_daily_average_by_product(db, source_type, work_date, products)
+    avg_weekly_outbound_by_sku = recent_outbound_weekly_average_by_product(db, source_type, work_date, products)
     pending_by_sku = pending_inbound_qty_by_product(db, source_type, work_date, products)
     location_summaries = warehouse_inventory_position_summaries(db) if source_type == "창고" else {}
     offline_return_qty_by_sku = offline_return_qty_by_product(db, work_date) if source_type == "오프라인" else {}
@@ -3586,9 +3646,10 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         pending_inbound_qty = int(pending_by_sku.get(product_sku, pending_by_sku.get(product_sku_key, 0)) or 0)
 
         shortage_qty = max(safe_stock - available_stock, 0)
-        avg_outbound = float(avg_outbound_by_sku.get(product_sku, avg_outbound_by_sku.get(product_sku_key, 0)) or 0)
+        avg_daily_outbound = float(avg_daily_outbound_by_sku.get(product_sku, avg_daily_outbound_by_sku.get(product_sku_key, 0)) or 0)
+        avg_weekly_outbound = float(avg_weekly_outbound_by_sku.get(product_sku, avg_weekly_outbound_by_sku.get(product_sku_key, 0)) or 0)
 
-        needed_days = order_needed_days(available_stock, safe_stock, avg_outbound, lead_time, pending_outbound_qty)
+        needed_days = order_needed_days(available_stock, safe_stock, avg_daily_outbound, lead_time, pending_outbound_qty)
 
         category = product_category_text(product)
         category_diagnostic = "" if category else "CATEGORY_EMPTY"
@@ -3631,8 +3692,10 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "pack_qty": int(product.pack_qty or 0),
                 "box_pallet_unit": box_pallet_unit,
                 "recommended_boxes": ceil(shortage_qty / box_qty) if box_qty and shortage_qty > 0 else 0,
-                "avg_daily_outbound_1w": avg_outbound,
-                "avg_daily_outbound_2w": avg_outbound,
+                "avg_daily_outbound": avg_daily_outbound,
+                "avg_weekly_outbound": avg_weekly_outbound,
+                "avg_daily_outbound_1w": avg_weekly_outbound,
+                "avg_daily_outbound_2w": avg_weekly_outbound,
                 "order_needed_days": needed_days,
                 "last_inventory_update_date": daily.work_date if has_snapshot else None,
                 "has_inventory_snapshot": has_snapshot,
@@ -5291,16 +5354,18 @@ def record_inventory_output(
     db.commit()
 
 
-def list_inbound(db: Session, source_type: str) -> list[InventoryInbound]:
+def list_inbound(db: Session, source_type: str, limit: int | None = None) -> list[InventoryInbound]:
     if use_legacy_supabase_rest_store():
-        return supabase_store.list_inbound(source_type)
-    return list(
-        db.execute(
-            select(InventoryInbound)
-            .where(InventoryInbound.source_type == source_type)
-            .order_by(InventoryInbound.inbound_date.desc(), InventoryInbound.id.desc())
-        ).scalars()
+        rows = supabase_store.list_inbound(source_type)
+        return rows[:limit] if limit else rows
+    query = (
+        select(InventoryInbound)
+        .where(InventoryInbound.source_type == source_type)
+        .order_by(InventoryInbound.inbound_date.desc(), InventoryInbound.id.desc())
     )
+    if limit:
+        query = query.limit(max(int(limit), 1))
+    return list(db.execute(query).scalars())
 
 
 def _outbound_query(
@@ -5539,6 +5604,7 @@ def latest_daily_row_before(
     product_code: str = "",
     product_name: str = "",
     barcode: str = "",
+    exact_product_name_only: bool = False,
 ) -> InventoryDaily | None:
     sku = normalize_product_code_text(product_code)
     name = clean_text(product_name)
@@ -5547,6 +5613,14 @@ def latest_daily_row_before(
         InventoryDaily.source_type == source_type,
         InventoryDaily.work_date < work_date,
     ]
+    if exact_product_name_only and name:
+        filters.append(InventoryDaily.product_name == name)
+        return db.execute(
+            select(InventoryDaily)
+            .where(*filters)
+            .order_by(InventoryDaily.work_date.desc(), InventoryDaily.id.desc())
+        ).scalars().first()
+
     identity_filters = []
     if name:
         identity_filters.append(InventoryDaily.product_name == name)
@@ -5592,7 +5666,15 @@ def ensure_offline_daily_row(
     if item is not None:
         return item
 
-    previous = latest_daily_row_before(db, "오프라인", work_date, product_code, product_name, barcode)
+    previous = latest_daily_row_before(
+        db,
+        "오프라인",
+        work_date,
+        product_code,
+        product_name,
+        barcode,
+        exact_product_name_only=True,
+    )
     item = InventoryDaily(
         source_type="오프라인",
         work_date=work_date,
@@ -5634,18 +5716,24 @@ def propagate_offline_daily_delta(
     identity_filters = []
     if name:
         identity_filters.append(InventoryDaily.product_name == name)
+    if name:
+        identity_clause = InventoryDaily.product_name == name
+    else:
+        identity_clause = None
     if sku:
         identity_filters.append(InventoryDaily.product_code == sku)
     if barcode_text:
         identity_filters.append(InventoryDaily.barcode == barcode_text)
-    if not identity_filters:
+    if identity_clause is None and identity_filters:
+        identity_clause = or_(*identity_filters)
+    if identity_clause is None:
         return 0
     rows = list(
         db.execute(
             select(InventoryDaily).where(
                 InventoryDaily.source_type == "오프라인",
                 InventoryDaily.work_date > work_date,
-                or_(*identity_filters),
+                identity_clause,
             )
         ).scalars()
     )
@@ -5728,6 +5816,7 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes, file_
 
     lookup = product_master_lookup(db, source_type)
     count = 0
+    items: list[InventoryInbound] = []
     for _, row in df.iterrows():
         product_name = clean_text(row.get(name_col))
         if not product_name:
@@ -5749,8 +5838,10 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes, file_
             item,
             find_product_master_from_lookup(lookup, item.product_code, item.barcode, item.product_name),
         )
-        db.add(item)
+        items.append(item)
         count += 1
+    if items:
+        db.add_all(items)
     db.commit()
     return import_result(count, df)
 
@@ -5812,16 +5903,18 @@ def apply_inbound_to_stock(db: Session, source_type: str, work_date: date) -> in
     count = 0
     for key, group in inbound_groups.items():
         if source_type == "오프라인":
-            item = ensure_offline_daily_row(
-                db,
-                work_date,
-                group["product"],
-                product_code=group["product_code"],
-                product_name=group["product_name"],
-                barcode=group["barcode"],
-                category=group["category"],
-                supplier=group["supplier"],
-            )
+            item = existing_daily.get(key)
+            if item is None:
+                item = ensure_offline_daily_row(
+                    db,
+                    work_date,
+                    group["product"],
+                    product_code=group["product_code"],
+                    product_name=group["product_name"],
+                    barcode=group["barcode"],
+                    category=group["category"],
+                    supplier=group["supplier"],
+                )
         else:
             item = existing_daily.get(key)
             if item is None:

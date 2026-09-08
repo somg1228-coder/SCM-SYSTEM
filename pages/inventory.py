@@ -89,6 +89,7 @@ INVENTORY_STATUS_DISPLAY_COLUMNS = [column["label"] for column in INVENTORY_STAT
 DAILY_COLUMNS = ["선택", *INVENTORY_STATUS_DISPLAY_COLUMNS]
 WEEKLY_OUTBOUND_LABEL = "주평균출고"
 LEGACY_WEEKLY_OUTBOUND_LABELS = ("1주 평균출고수량", "1주 평균 출고수량", "최근2주 평균출고")
+INBOUND_DISPLAY_LIMIT = 500
 
 INBOUND_COLUMNS = [
     "삭제",
@@ -1035,11 +1036,16 @@ def render_inbound_tab(source_type: str) -> None:
         with spacer:
             st.empty()
 
-    df = inbound_to_editor(fetch_inbound(source_type))
+    display_limit = INBOUND_DISPLAY_LIMIT if source_type == "오프라인" else None
+    df = inbound_to_editor(fetch_inbound(source_type, limit=display_limit))
     inbound_buffer_key = f"{source_type}_inbound_editor_buffer"
     st.session_state[inbound_buffer_key] = df
     display_df = df.drop(columns=["삭제"], errors="ignore")
+    if display_limit:
+        st.caption(f"최근 {display_limit:,}건만 표시합니다. 전체 내역은 다운로드로 확인하세요.")
     render_plain_inventory_table(display_df, height=360, empty_message="입고내역 데이터가 없습니다.")
+    if display_limit:
+        return
     with st.form(key=f"{source_type}_inbound_editor_form", clear_on_submit=False):
         if st.form_submit_button("입고내역 저장", type="primary", use_container_width=True):
             rows = inbound_payload(df, source_type)
@@ -2229,8 +2235,8 @@ def inventory_pdf_bytes(df: pd.DataFrame, source_type: str, work_date: date, fil
     return output.getvalue()
 
 
-def fetch_inbound(source_type: str) -> list[dict]:
-    return with_db(lambda db: [services.inbound_to_dict(row) for row in services.list_inbound(db, source_type)]) or []
+def fetch_inbound(source_type: str, limit: int | None = None) -> list[dict]:
+    return with_db(lambda db: [services.inbound_to_dict(row) for row in services.list_inbound(db, source_type, limit=limit)]) or []
 
 
 def material_inventory_rows(db) -> list[MaterialInventoryItem]:
@@ -2668,7 +2674,7 @@ def daily_excel(source_type: str, work_date: date) -> bytes:
 
 def inbound_excel(source_type: str) -> bytes:
     if source_type == "오프라인":
-        return homecc_inbound_excel(fetch_inbound(source_type))
+        return homecc_inbound_excel([])
     return dataframe_to_excel(inbound_to_editor(fetch_inbound(source_type)))
 
 
@@ -2733,7 +2739,7 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
                 "바코드": row.get("barcode", ""),
                 "상품명": row.get("product_name", ""),
                 "가용재고": row.get("available_stock", 0),
-            "주평균출고": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
+                "주평균출고": row.get("avg_weekly_outbound", row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0))),
                 "재고상태": clean_cell(row.get("stock_status")) or "미집계",
                 "출고예정": row.get("pending_outbound_qty", 0),
                 "현재고": row.get("current_stock", 0),
@@ -3006,7 +3012,7 @@ def parse_date_or_today(value) -> date:
 
 
 def format_order_required_date(row: dict) -> str:
-    avg_outbound = row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0))
+    avg_outbound = row.get("avg_daily_outbound", row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)))
     try:
         avg_outbound_value = float(avg_outbound or 0)
     except (TypeError, ValueError):
@@ -5033,21 +5039,6 @@ def master_title(source_type: str) -> str:
     return "창고 마스터" if source_type == "창고" else f"{source_type} 마스터"
 
 
-def render_inventory_page_lazy() -> None:
-    selected_source, selected_tab = render_inventory_navigation()
-    source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
-    if selected_tab in {"재고조회", "재고"}:
-        render_daily_tab(source_type, selected_source)
-    elif selected_tab in {"입고내역", "입고"}:
-        render_inbound_tab(source_type)
-    elif selected_tab == "대시보드":
-        render_inventory_dashboard_tab(source_type)
-    elif selected_tab in {"마스터 관리", "마스터관리", "마스터"}:
-        product_master_page.render_master_tab(source_type, master_title(source_type))
-    else:
-        render_daily_tab(source_type, selected_source)
-
-
 def inventory_nav_token(value: str) -> str:
     text = str(value)
     token = re.sub(r"[^0-9A-Za-z]+", "_", text).strip("_").lower()
@@ -5080,51 +5071,51 @@ def inventory_text_tab_selector(
     trailing_weight: float = 0.0,
     item_weights: list[float] | None = None,
 ) -> str:
-    _ = (item_weight, trailing_weight, item_weights)
     labels = [str(option) for option in options]
     if not labels:
         return ""
 
     state_key = f"{key}_selected"
     query_selected = query_value(inventory_tab_query_key(key))
-    current = (query_selected if query_selected in labels else "") or st.session_state.get(state_key) or default or labels[0]
+    current = st.session_state.get(state_key) or (query_selected if query_selected in labels else "") or default or labels[0]
     if current not in labels:
         current = labels[0]
     st.session_state[state_key] = current
 
-    column_gap = "clamp(1.4rem, 3vw, 2.5rem)"
-    if key == "inventory_current_source":
-        column_gap = "clamp(1.6rem, 3.8vw, 3.2rem)"
-    elif key.endswith("_inventory_workflow"):
-        column_gap = "clamp(1.2rem, 2.4vw, 2.1rem)"
-
-    nav_style = (
-        "display:flex;flex-flow:row wrap;align-items:flex-end;justify-content:flex-start;"
-        f"gap:0.45rem {column_gap};width:fit-content;max-width:100%;overflow:visible;"
-    )
-    tab_style = (
-        "display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;"
-        "background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;"
-        "box-shadow:none;color:#52697F;font-size:0.9rem;font-weight:820;line-height:1.2;"
-        "min-height:34px;min-width:0;padding:0.2rem 0.02rem 0.28rem;text-align:center;"
-        "text-decoration:none;white-space:nowrap;width:auto;"
-    )
-    active_tab_style = tab_style.replace(
-        "border-bottom:2px solid transparent",
-        "border-bottom:2px solid #0F2B54",
-    ).replace("color:#52697F", "color:#0F2B54").replace("font-weight:820", "font-weight:950")
+    weights = list(item_weights or [item_weight for _ in labels])
+    if len(weights) < len(labels):
+        weights.extend([item_weight] * (len(labels) - len(weights)))
+    weights = weights[: len(labels)]
+    if trailing_weight > 0:
+        weights.append(trailing_weight)
 
     with st.container(key=f"{inventory_nav_token(key)}_text_tabs"):
-        tab_links = []
-        for label in labels:
-            active_class = " active" if label == current else ""
-            current_attr = ' aria-current="page"' if label == current else ""
-            style = active_tab_style if label == current else tab_style
-            tab_links.append(
-                f'<a class="inventory-link-tab{active_class}" style="{style}" href="{escape(inventory_tab_href(key, label), quote=True)}"{current_attr}>{escape(label)}</a>'
-            )
-        st.markdown(f'<nav class="inventory-link-tabs" style="{nav_style}">{"".join(tab_links)}</nav>', unsafe_allow_html=True)
+        columns = st.columns(weights, gap="small")
+        for index, label in enumerate(labels):
+            state_suffix = "active" if label == current else "idle"
+            with columns[index].container(key=f"{key}_{inventory_nav_token(label)}_text_tab_{state_suffix}"):
+                if st.button(label, key=f"{key}_{inventory_nav_token(label)}_button", use_container_width=True):
+                    if label != current:
+                        st.session_state[state_key] = label
+                        inventory_fragment_rerun()
+                    current = label
     return current
+
+
+@inventory_fragment
+def render_inventory_page_lazy() -> None:
+    selected_source, selected_tab = render_inventory_navigation()
+    source_type = INVENTORY_SOURCE_MAP.get(selected_source, "3PL")
+    if selected_tab in {"재고조회", "재고"}:
+        render_daily_tab(source_type, selected_source)
+    elif selected_tab in {"입고내역", "입고"}:
+        render_inbound_tab(source_type)
+    elif selected_tab == "대시보드":
+        render_inventory_dashboard_tab(source_type)
+    elif selected_tab in {"마스터 관리", "마스터관리", "마스터"}:
+        product_master_page.render_master_tab(source_type, master_title(source_type))
+    else:
+        render_daily_tab(source_type, selected_source)
 
 
 def render_inventory_navigation() -> tuple[str, str]:
@@ -5185,7 +5176,7 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
             "바코드": row.get("barcode", ""),
             "상품명": row.get("product_name", ""),
             "가용재고": row.get("available_stock", 0),
-            "주평균출고": row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0)),
+            "주평균출고": row.get("avg_weekly_outbound", row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0))),
             "재고상태": clean_cell(row.get("stock_status")) or "미집계",
             "출고예정": pending_outbound_qty,
             "현재고": row.get("current_stock", 0),
