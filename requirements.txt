@@ -13,3 +13,4 @@ pillow
 streamlit-aggrid
 streamlit-drawable-canvas
 plotly
+pypdf

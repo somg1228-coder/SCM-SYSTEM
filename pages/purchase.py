@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from html import escape
-from io import BytesIO
+from io import BytesIO, StringIO
 import json
 from pathlib import Path
+import re
 
 import pandas as pd
 import streamlit as st
@@ -189,6 +190,34 @@ XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 MALGUN_FONT = "Malgun"
 MALGUN_BOLD_FONT = "Malgun-Bold"
 PURCHASE_BUDGET_STORE_NAME = "purchase_budgets.json"
+SUPPLIER_QUOTE_AUTOFILL_TYPES = ["xlsx", "xls", "csv", "html", "htm", "txt", "pdf"]
+SUPPLIER_AUTOFILL_FIELD_LABELS = {
+    "supplier_name": "업체명",
+    "business_number": "사업자등록번호",
+    "manager": "담당자",
+    "phone": "연락처",
+    "email": "이메일",
+    "handled_items": "취급품목",
+    "moq_terms": "MOQ 조건",
+    "avg_lead_time_days": "평균납기",
+    "avg_unit_price_text": "평균단가",
+    "payment_terms": "결제조건",
+    "memo": "비고",
+}
+RFQ_AUTOFILL_FIELD_LABELS = {
+    "supplier_name": "업체명",
+    "supplier_manager": "담당자",
+    "supplier_phone": "연락처",
+    "supplier_email": "이메일",
+    "unit_price": "단가",
+    "currency": "통화",
+    "moq": "MOQ",
+    "lead_time_days": "납기",
+    "shipping_fee": "배송비",
+    "payment_terms": "결제조건",
+    "quote_valid_until": "견적 유효기간",
+    "memo": "메모",
+}
 BUDGET_SUBTABS = ["연간 예산", "분기 예산", "월별 예산", "예산 사용현황", "예산 승인"]
 BUDGET_CATEGORIES = ["원재료", "포장재", "소모품", "설비", "기타"]
 BUDGET_FORM_CATEGORIES = ["전체"] + BUDGET_CATEGORIES
@@ -413,21 +442,25 @@ def render_rfq_tab() -> None:
         )
         supplier_defaults = supplier_by_name.get(selected_registered_supplier, {})
         default_price, default_currency = parse_compact_price(supplier_defaults.get("평균단가"))
+        rfq_form_suffix = re.sub(r"[^A-Za-z0-9가-힣_]+", "_", f"{selected_pr_number}_{selected_registered_supplier}")[:120]
+        initialize_rfq_form_state(rfq_form_suffix, supplier_defaults, default_price, default_currency)
+        render_rfq_quote_autofill_panel(rfq_form_suffix, pr)
+        rfq_keys = rfq_form_widget_keys(rfq_form_suffix)
         with st.form("purchase_rfq_form", clear_on_submit=True):
             cols = st.columns([1.1, 0.82, 0.9, 1.05, 0.72, 0.62, 0.56, 0.56, 0.72], gap="small")
-            supplier_name = cols[0].text_input("업체명", value=str(supplier_defaults.get("업체명", "")), placeholder="협력사명")
-            supplier_manager = cols[1].text_input("담당자", value=str(supplier_defaults.get("담당자", "")))
-            supplier_phone = cols[2].text_input("연락처", value=str(supplier_defaults.get("연락처", "")))
-            supplier_email = cols[3].text_input("이메일", value=str(supplier_defaults.get("이메일", "")))
-            unit_price = cols[4].number_input("단가", min_value=0.0, step=price_step(), value=default_price, format=price_input_format())
-            currency = cols[5].selectbox("통화", CURRENCIES, index=currency_index(default_currency), format_func=currency_label)
-            moq = cols[6].number_input("MOQ", min_value=0, step=1, value=parse_moq_quantity(supplier_defaults.get("MOQ 조건")))
-            lead_time_days = cols[7].number_input("납기", min_value=0, step=1, value=to_int(supplier_defaults.get("평균납기")))
-            shipping_fee = cols[8].number_input("배송비", min_value=0, step=100, value=0)
+            supplier_name = cols[0].text_input("업체명", placeholder="협력사명", key=rfq_keys["supplier_name"])
+            supplier_manager = cols[1].text_input("담당자", key=rfq_keys["supplier_manager"])
+            supplier_phone = cols[2].text_input("연락처", key=rfq_keys["supplier_phone"])
+            supplier_email = cols[3].text_input("이메일", key=rfq_keys["supplier_email"])
+            unit_price = cols[4].number_input("단가", min_value=0.0, step=price_step(), format=price_input_format(), key=rfq_keys["unit_price"])
+            currency = cols[5].selectbox("통화", CURRENCIES, format_func=currency_label, key=rfq_keys["currency"])
+            moq = cols[6].number_input("MOQ", min_value=0, step=1, key=rfq_keys["moq"])
+            lead_time_days = cols[7].number_input("납기", min_value=0, step=1, key=rfq_keys["lead_time_days"])
+            shipping_fee = cols[8].number_input("배송비", min_value=0, step=100, key=rfq_keys["shipping_fee"])
             doc_cols = st.columns([1.2, 0.9, 2.2], gap="small")
-            payment_terms = doc_cols[0].text_input("결제조건", value=str(supplier_defaults.get("결제조건", "")), placeholder="예: 월말 정산")
-            quote_valid_until = doc_cols[1].date_input("견적 유효기간", value=date.today() + timedelta(days=30))
-            memo = doc_cols[2].text_input("품질/거래조건 메모", placeholder="조건/특이사항")
+            payment_terms = doc_cols[0].text_input("결제조건", placeholder="예: 월말 정산", key=rfq_keys["payment_terms"])
+            quote_valid_until = doc_cols[1].date_input("견적 유효기간", key=rfq_keys["quote_valid_until"])
+            memo = doc_cols[2].text_input("품질/거래조건 메모", placeholder="조건/특이사항", key=rfq_keys["memo"])
             if st.form_submit_button("견적 저장", type="primary", use_container_width=True):
                 if not supplier_name.strip():
                     st.warning("업체명을 입력하세요.")
@@ -1050,6 +1083,844 @@ def render_budget_approval_tab(store: dict) -> None:
         st.caption("저장된 예산 승인 이력이 없습니다.")
 
 
+def render_supplier_quote_autofill_panel(form_key_suffix: str) -> None:
+    with st.expander("견적서 자동 인식", expanded=form_key_suffix == "new"):
+        st.caption("견적서 파일을 올리면 상호명, 사업자번호, 담당자, 연락처, 품목, MOQ, 결제조건 같은 협력사 기본정보를 초안으로 채웁니다.")
+        upload_cols = st.columns([2.4, 0.85, 0.9, 2.0], gap="small")
+        uploaded = upload_cols[0].file_uploader(
+            "견적서 파일",
+            type=SUPPLIER_QUOTE_AUTOFILL_TYPES,
+            key=f"purchase_supplier_quote_autofill_upload_{form_key_suffix}",
+        )
+        overwrite = upload_cols[1].checkbox(
+            "덮어쓰기",
+            value=False,
+            key=f"purchase_supplier_quote_autofill_overwrite_{form_key_suffix}",
+        )
+        with upload_cols[2]:
+            st.write("")
+            recognize = st.button(
+                "인식",
+                type="primary",
+                use_container_width=True,
+                key=f"purchase_supplier_quote_autofill_btn_{form_key_suffix}",
+            )
+        with upload_cols[3]:
+            st.info("Excel/CSV/HTML/TXT는 바로 처리하고, PDF는 pypdf가 설치된 환경에서 텍스트 PDF를 읽습니다.")
+
+        result_key = f"purchase_supplier_quote_autofill_result_{form_key_suffix}"
+        if recognize:
+            if uploaded is None:
+                st.warning("인식할 견적서 파일을 먼저 선택해주세요.")
+            else:
+                try:
+                    draft = extract_supplier_info_from_quote(uploaded.getvalue(), uploaded.name)
+                    applied = apply_supplier_quote_draft_to_session(draft, form_key_suffix, overwrite=overwrite)
+                    st.session_state[result_key] = {**draft, "applied_fields": applied}
+                    if applied:
+                        st.success(f"견적서에서 {len(applied)}개 항목을 폼에 채웠습니다. 확인 후 저장해주세요.")
+                    else:
+                        st.info("새로 채울 항목을 찾지 못했습니다. 덮어쓰기를 켜거나 파일 내용을 확인해주세요.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"견적서 인식 실패: {exc}")
+
+        draft = st.session_state.get(result_key)
+        if isinstance(draft, dict):
+            render_supplier_quote_autofill_result(draft)
+
+
+def render_supplier_quote_autofill_result(draft: dict) -> None:
+    extracted = draft.get("fields") if isinstance(draft.get("fields"), dict) else {}
+    applied = draft.get("applied_fields") if isinstance(draft.get("applied_fields"), list) else []
+    if not extracted:
+        st.caption("최근 인식 결과: 추출된 협력사 기본정보가 없습니다.")
+        return
+    rows = [
+        {
+            "항목": SUPPLIER_AUTOFILL_FIELD_LABELS.get(key, key),
+            "인식값": value,
+            "폼 반영": "반영" if key in applied else "",
+        }
+        for key, value in extracted.items()
+        if clean_text(value)
+    ]
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True, height=min(300, 48 + 36 * max(len(rows), 1)))
+    source_name = clean_text(draft.get("file_name"))
+    if source_name:
+        st.caption(f"최근 인식 파일: {source_name}")
+
+
+def apply_supplier_quote_draft_to_session(draft: dict, form_key_suffix: str, overwrite: bool = False) -> list[str]:
+    fields = draft.get("fields") if isinstance(draft.get("fields"), dict) else {}
+    widget_keys = {
+        "supplier_name": f"purchase_supplier_name_{form_key_suffix}",
+        "business_number": f"purchase_supplier_business_{form_key_suffix}",
+        "manager": f"purchase_supplier_manager_{form_key_suffix}",
+        "phone": f"purchase_supplier_phone_{form_key_suffix}",
+        "email": f"purchase_supplier_email_{form_key_suffix}",
+        "handled_items": f"purchase_supplier_items_{form_key_suffix}",
+        "moq_terms": f"purchase_supplier_moq_{form_key_suffix}",
+        "avg_lead_time_days": f"purchase_supplier_lead_{form_key_suffix}",
+        "avg_unit_price_text": f"purchase_supplier_price_{form_key_suffix}",
+        "payment_terms": f"purchase_supplier_payment_{form_key_suffix}",
+        "memo": f"purchase_supplier_memo_{form_key_suffix}",
+    }
+    applied = []
+    for field_name, widget_key in widget_keys.items():
+        value = fields.get(field_name)
+        if not clean_text(value) and field_name != "avg_lead_time_days":
+            continue
+        current_value = st.session_state.get(widget_key)
+        current_empty = clean_text(current_value) == "" or current_value == 0
+        if not overwrite and not current_empty:
+            continue
+        if field_name == "avg_lead_time_days":
+            value = max(to_int(value), 0)
+            if not value and not overwrite:
+                continue
+        st.session_state[widget_key] = value
+        applied.append(field_name)
+    return applied
+
+
+def render_rfq_quote_autofill_panel(form_key_suffix: str, pr: PurchaseRequest) -> None:
+    with st.expander("견적서 자동 인식", expanded=True):
+        st.caption("업체가 보낸 PDF/Excel 견적서를 올리면 RFQ 등록값을 자동으로 채웁니다. 인식값은 저장 전에 수정할 수 있습니다.")
+        upload_cols = st.columns([2.4, 0.85, 0.9, 2.0], gap="small")
+        uploaded = upload_cols[0].file_uploader(
+            "견적서 파일",
+            type=SUPPLIER_QUOTE_AUTOFILL_TYPES,
+            key=f"purchase_rfq_quote_autofill_upload_{form_key_suffix}",
+        )
+        overwrite = upload_cols[1].checkbox(
+            "덮어쓰기",
+            value=True,
+            key=f"purchase_rfq_quote_autofill_overwrite_{form_key_suffix}",
+        )
+        with upload_cols[2]:
+            st.write("")
+            recognize = st.button(
+                "인식",
+                type="primary",
+                use_container_width=True,
+                key=f"purchase_rfq_quote_autofill_btn_{form_key_suffix}",
+            )
+        with upload_cols[3]:
+            st.info("텍스트 PDF와 Excel 견적서의 상호명, 단가, MOQ, 납기, 배송비, 결제조건을 읽습니다.")
+
+        result_key = f"purchase_rfq_quote_autofill_result_{form_key_suffix}"
+        if recognize:
+            if uploaded is None:
+                st.warning("인식할 견적서 파일을 먼저 선택해주세요.")
+            else:
+                try:
+                    draft = extract_rfq_quote_info_from_quote(uploaded.getvalue(), uploaded.name, pr)
+                    applied = apply_rfq_quote_draft_to_session(draft, form_key_suffix, overwrite=overwrite)
+                    st.session_state[result_key] = {**draft, "applied_fields": applied}
+                    if applied:
+                        st.success(f"견적서에서 {len(applied)}개 항목을 RFQ 폼에 채웠습니다.")
+                    else:
+                        st.info("새로 채울 항목을 찾지 못했습니다. 덮어쓰기를 켜거나 파일 내용을 확인해주세요.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"견적서 인식 실패: {exc}")
+
+        draft = st.session_state.get(result_key)
+        if isinstance(draft, dict):
+            render_rfq_quote_autofill_result(draft)
+
+
+def render_rfq_quote_autofill_result(draft: dict) -> None:
+    extracted = draft.get("fields") if isinstance(draft.get("fields"), dict) else {}
+    applied = draft.get("applied_fields") if isinstance(draft.get("applied_fields"), list) else []
+    if not extracted:
+        st.caption("최근 인식 결과: 추출된 견적 정보가 없습니다.")
+        return
+    rows = [
+        {
+            "항목": RFQ_AUTOFILL_FIELD_LABELS.get(key, key),
+            "인식값": display_rfq_autofill_value(key, value),
+            "폼 반영": "반영" if key in applied else "",
+        }
+        for key, value in extracted.items()
+        if clean_text(value) or value == 0
+    ]
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True, height=min(330, 48 + 36 * max(len(rows), 1)))
+    source_name = clean_text(draft.get("file_name"))
+    if source_name:
+        st.caption(f"최근 인식 파일: {source_name}")
+
+
+def display_rfq_autofill_value(key: str, value) -> str:
+    if key == "quote_valid_until":
+        parsed = parse_date(value)
+        return parsed.isoformat() if parsed else clean_text(value)
+    if key in {"unit_price", "shipping_fee"}:
+        return format_number(value)
+    return clean_text(value)
+
+
+def rfq_form_widget_keys(form_key_suffix: str) -> dict[str, str]:
+    return {
+        "supplier_name": f"purchase_rfq_supplier_name_{form_key_suffix}",
+        "supplier_manager": f"purchase_rfq_supplier_manager_{form_key_suffix}",
+        "supplier_phone": f"purchase_rfq_supplier_phone_{form_key_suffix}",
+        "supplier_email": f"purchase_rfq_supplier_email_{form_key_suffix}",
+        "unit_price": f"purchase_rfq_unit_price_{form_key_suffix}",
+        "currency": f"purchase_rfq_currency_{form_key_suffix}",
+        "moq": f"purchase_rfq_moq_{form_key_suffix}",
+        "lead_time_days": f"purchase_rfq_lead_time_{form_key_suffix}",
+        "shipping_fee": f"purchase_rfq_shipping_fee_{form_key_suffix}",
+        "payment_terms": f"purchase_rfq_payment_terms_{form_key_suffix}",
+        "quote_valid_until": f"purchase_rfq_valid_until_{form_key_suffix}",
+        "memo": f"purchase_rfq_memo_{form_key_suffix}",
+    }
+
+
+def initialize_rfq_form_state(form_key_suffix: str, supplier_defaults: dict, default_price: float, default_currency: str) -> None:
+    keys = rfq_form_widget_keys(form_key_suffix)
+    defaults = {
+        "supplier_name": str(supplier_defaults.get("업체명", "")),
+        "supplier_manager": str(supplier_defaults.get("담당자", "")),
+        "supplier_phone": str(supplier_defaults.get("연락처", "")),
+        "supplier_email": str(supplier_defaults.get("이메일", "")),
+        "unit_price": float(default_price),
+        "currency": normalize_currency(default_currency),
+        "moq": parse_moq_quantity(supplier_defaults.get("MOQ 조건")),
+        "lead_time_days": to_int(supplier_defaults.get("평균납기")),
+        "shipping_fee": 0,
+        "payment_terms": str(supplier_defaults.get("결제조건", "")),
+        "quote_valid_until": date.today() + timedelta(days=30),
+        "memo": "",
+    }
+    for field_name, widget_key in keys.items():
+        if widget_key not in st.session_state:
+            st.session_state[widget_key] = defaults[field_name]
+
+
+def apply_rfq_quote_draft_to_session(draft: dict, form_key_suffix: str, overwrite: bool = False) -> list[str]:
+    fields = draft.get("fields") if isinstance(draft.get("fields"), dict) else {}
+    keys = rfq_form_widget_keys(form_key_suffix)
+    applied = []
+    for field_name, widget_key in keys.items():
+        if field_name not in fields:
+            continue
+        value = fields.get(field_name)
+        current_value = st.session_state.get(widget_key)
+        current_empty = clean_text(current_value) == "" or current_value == 0
+        if not overwrite and not current_empty:
+            continue
+        if field_name in {"unit_price"}:
+            value = max(to_float(value), 0.0)
+            if not value and not overwrite:
+                continue
+        elif field_name in {"moq", "lead_time_days", "shipping_fee"}:
+            value = max(to_int(value), 0)
+            if not value and not overwrite:
+                continue
+        elif field_name == "currency":
+            value = normalize_currency(value)
+        elif field_name == "quote_valid_until":
+            value = parse_date(value)
+            if value is None:
+                continue
+        elif not clean_text(value):
+            continue
+        st.session_state[widget_key] = value
+        applied.append(field_name)
+    return applied
+
+
+def extract_rfq_quote_info_from_quote(file_bytes: bytes, file_name: str, pr: PurchaseRequest | None = None) -> dict:
+    supplier_draft = extract_supplier_info_from_quote(file_bytes, file_name)
+    supplier_fields = supplier_draft.get("fields") if isinstance(supplier_draft.get("fields"), dict) else {}
+    text, rows = quote_document_text_and_rows(file_bytes, file_name)
+    lines = quote_text_lines(text)
+    fields: dict[str, object] = {}
+
+    field_map = {
+        "supplier_name": "supplier_name",
+        "supplier_manager": "manager",
+        "supplier_phone": "phone",
+        "supplier_email": "email",
+        "payment_terms": "payment_terms",
+    }
+    for target, source in field_map.items():
+        value = supplier_fields.get(source)
+        if clean_text(value):
+            fields[target] = value
+
+    unit_price_text = extract_quote_unit_price_for_pr(rows, lines, pr) or supplier_fields.get("avg_unit_price_text", "")
+    unit_price, currency = parse_compact_price(unit_price_text)
+    if unit_price:
+        fields["unit_price"] = unit_price
+        fields["currency"] = currency
+    moq = extract_quote_moq(rows, lines)
+    if moq:
+        fields["moq"] = moq
+    elif supplier_fields.get("moq_terms"):
+        fields["moq"] = parse_moq_quantity(supplier_fields.get("moq_terms"))
+    lead_time_days = to_int(supplier_fields.get("avg_lead_time_days")) or extract_quote_lead_time_days(rows, lines)
+    if lead_time_days:
+        fields["lead_time_days"] = lead_time_days
+    shipping_fee = extract_quote_shipping_fee(rows, lines)
+    if shipping_fee:
+        fields["shipping_fee"] = shipping_fee
+    quote_valid_until = extract_quote_valid_until(rows, lines)
+    if quote_valid_until:
+        fields["quote_valid_until"] = quote_valid_until
+
+    memo_parts = [f"견적서 자동인식: {file_name}"]
+    handled_items = clean_text(supplier_fields.get("handled_items"))
+    if handled_items:
+        memo_parts.append(f"인식 품목: {handled_items}")
+    fields["memo"] = " / ".join(memo_parts)
+    return {"file_name": file_name, "fields": fields, "raw_text_preview": text[:1200]}
+
+
+def extract_supplier_info_from_quote(file_bytes: bytes, file_name: str) -> dict:
+    text, rows = quote_document_text_and_rows(file_bytes, file_name)
+    fields: dict[str, str | int] = {}
+    lines = quote_text_lines(text)
+
+    supplier_name = extract_quote_supplier_name(lines, rows, file_name)
+    if supplier_name:
+        fields["supplier_name"] = supplier_name
+    business_number = extract_quote_business_number(text, rows)
+    if business_number:
+        fields["business_number"] = business_number
+    manager = extract_quote_labeled_value(rows, lines, ["담당자", "담당", "성명", "대표자", "Manager", "Contact"], max_length=40)
+    if manager:
+        fields["manager"] = manager
+    phone = extract_quote_phone(text, rows)
+    if phone:
+        fields["phone"] = phone
+    email = extract_quote_email(text, rows)
+    if email:
+        fields["email"] = email
+    handled_items = extract_quote_items(rows, lines)
+    if handled_items:
+        fields["handled_items"] = handled_items
+    moq_terms = extract_quote_labeled_value(rows, lines, ["MOQ", "최소주문", "최소 주문", "최소발주", "최소 발주"], max_length=90)
+    if moq_terms:
+        fields["moq_terms"] = moq_terms
+    lead_time_days = extract_quote_lead_time_days(rows, lines)
+    if lead_time_days:
+        fields["avg_lead_time_days"] = lead_time_days
+    avg_unit_price_text = extract_quote_unit_price(rows, lines)
+    if avg_unit_price_text:
+        fields["avg_unit_price_text"] = avg_unit_price_text
+    payment_terms = extract_quote_payment_terms(rows, lines)
+    if payment_terms:
+        fields["payment_terms"] = payment_terms
+
+    memo_parts = [f"견적서 자동인식: {file_name}"]
+    if not fields:
+        memo_parts.append("인식 가능한 기본정보 없음")
+    fields["memo"] = " / ".join(memo_parts)
+    return {"file_name": file_name, "fields": fields, "raw_text_preview": text[:1200]}
+
+
+def quote_document_text_and_rows(file_bytes: bytes, file_name: str) -> tuple[str, list[list[str]]]:
+    suffix = Path(file_name).suffix.lower().lstrip(".")
+    if suffix in {"xlsx", "xls"}:
+        return excel_quote_text_and_rows(file_bytes, suffix)
+    if suffix == "pdf":
+        return pdf_quote_text_and_rows(file_bytes)
+    text = decode_quote_bytes(file_bytes)
+    if suffix in {"html", "htm"}:
+        try:
+            tables = pd.read_html(StringIO(text))
+            rows = dataframe_rows(tables)
+            return rows_to_text(rows) or text, rows
+        except Exception:
+            return text, []
+    if suffix == "csv":
+        rows = csv_quote_rows(text)
+        return rows_to_text(rows) or text, rows
+    return text, []
+
+
+def excel_quote_text_and_rows(file_bytes: bytes, suffix: str) -> tuple[str, list[list[str]]]:
+    engine = "openpyxl" if suffix == "xlsx" else "xlrd"
+    sheets = pd.read_excel(BytesIO(file_bytes), sheet_name=None, header=None, dtype=str, engine=engine)
+    rows = dataframe_rows(list(sheets.values()))
+    return rows_to_text(rows), rows
+
+
+def pdf_quote_text_and_rows(file_bytes: bytes) -> tuple[str, list[list[str]]]:
+    try:
+        from pypdf import PdfReader
+    except ModuleNotFoundError as exc:
+        raise ValueError("PDF 견적서 인식을 위해 pypdf 설치가 필요합니다. requirements.txt 반영 후 재시작해주세요.") from exc
+    reader = PdfReader(BytesIO(file_bytes))
+    page_texts = []
+    for page in reader.pages:
+        page_texts.append(page.extract_text() or "")
+    text = "\n".join(page_texts).strip()
+    if not text:
+        raise ValueError("텍스트를 읽을 수 없는 PDF입니다. 스캔 이미지 PDF는 현재 자동 인식 대상이 아닙니다.")
+    return text, []
+
+
+def decode_quote_bytes(file_bytes: bytes) -> str:
+    for encoding in ("utf-8-sig", "cp949", "euc-kr", "utf-8"):
+        try:
+            return file_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return file_bytes.decode("utf-8", errors="ignore")
+
+
+def csv_quote_rows(text: str) -> list[list[str]]:
+    for separator in (None, ",", "\t", ";"):
+        try:
+            df = pd.read_csv(StringIO(text), header=None, dtype=str, sep=separator, engine="python")
+            rows = dataframe_rows([df])
+            if rows:
+                return rows
+        except Exception:
+            continue
+    return []
+
+
+def dataframe_rows(frames: list[pd.DataFrame]) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for frame in frames:
+        if frame is None or frame.empty:
+            continue
+        for values in frame.fillna("").astype(str).values.tolist():
+            row = [clean_quote_cell(value) for value in values]
+            if any(row):
+                rows.append(row)
+    return rows
+
+
+def rows_to_text(rows: list[list[str]]) -> str:
+    return "\n".join(" ".join(cell for cell in row if cell) for row in rows if any(row))
+
+
+def quote_text_lines(text: str) -> list[str]:
+    lines = []
+    for line in re.split(r"[\r\n]+", text or ""):
+        line = clean_quote_cell(line)
+        if line:
+            lines.append(line)
+    return lines
+
+
+def clean_quote_cell(value) -> str:
+    text = "" if value is None else str(value)
+    text = text.replace("\u00a0", " ")
+    return re.sub(r"\s+", " ", text).strip(" \t\r\n:：|")
+
+
+def extract_quote_labeled_value(rows: list[list[str]], lines: list[str], labels: list[str], max_length: int = 80) -> str:
+    lowered_labels = [label.lower() for label in labels]
+    for row_index, row in enumerate(rows):
+        for col_index, cell in enumerate(row):
+            if not any(label in cell.lower() for label in lowered_labels):
+                continue
+            inline = value_after_quote_label(cell, labels, max_length)
+            if inline:
+                return inline
+            for next_col in range(col_index + 1, min(col_index + 4, len(row))):
+                candidate = clean_quote_value(row[next_col], max_length)
+                if candidate:
+                    return candidate
+            if row_index + 1 < len(rows):
+                for next_col in range(col_index, min(col_index + 2, len(rows[row_index + 1]))):
+                    candidate = clean_quote_value(rows[row_index + 1][next_col], max_length)
+                    if candidate:
+                        return candidate
+    for line in lines:
+        inline = value_after_quote_label(line, labels, max_length)
+        if inline:
+            return inline
+    return ""
+
+
+def value_after_quote_label(text: str, labels: list[str], max_length: int) -> str:
+    for label in sorted(labels, key=len, reverse=True):
+        pattern = rf"{re.escape(label)}\s*(?:[:：\-]\s+|[:：\-]|\s+)(.+)$"
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return clean_quote_value(match.group(1), max_length)
+    return ""
+
+
+def extract_quote_labeled_raw_value(rows: list[list[str]], lines: list[str], labels: list[str], max_length: int = 80) -> str:
+    lowered_labels = [label.lower() for label in labels]
+    for row_index, row in enumerate(rows):
+        for col_index, cell in enumerate(row):
+            if not any(label in cell.lower() for label in lowered_labels):
+                continue
+            inline = raw_value_after_quote_label(cell, labels, max_length)
+            if inline:
+                return inline
+            for next_col in range(col_index + 1, min(col_index + 4, len(row))):
+                candidate = clean_quote_cell(row[next_col])
+                if candidate:
+                    return candidate[:max_length]
+            if row_index + 1 < len(rows):
+                for next_col in range(col_index, min(col_index + 2, len(rows[row_index + 1]))):
+                    candidate = clean_quote_cell(rows[row_index + 1][next_col])
+                    if candidate:
+                        return candidate[:max_length]
+    for line in lines:
+        inline = raw_value_after_quote_label(line, labels, max_length)
+        if inline:
+            return inline
+    return ""
+
+
+def raw_value_after_quote_label(text: str, labels: list[str], max_length: int) -> str:
+    for label in sorted(labels, key=len, reverse=True):
+        pattern = rf"{re.escape(label)}\s*(?:[:：\-]\s+|[:：\-]|\s+)(.+)$"
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return clean_quote_cell(match.group(1))[:max_length]
+    return ""
+
+
+def clean_quote_value(value, max_length: int = 80) -> str:
+    text = clean_quote_cell(value)
+    if not text:
+        return ""
+    text = re.split(r"\s{2,}|[|]", text)[0].strip()
+    text = re.split(r"\s+(?:사업자|사업자등록|대표자|담당자|전화|연락처|이메일|E-mail|TEL|FAX|주소|품명|단가)\b", text, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    text = text.strip(" -_/.,")
+    if len(text) > max_length:
+        text = text[:max_length].rstrip()
+    if is_quote_noise_value(text):
+        return ""
+    return text
+
+
+def is_quote_noise_value(text: str) -> bool:
+    normalized = clean_quote_cell(text).lower()
+    if not normalized:
+        return True
+    if normalized in {"nan", "none", "-", ":", "견적서", "quotation", "quote"}:
+        return True
+    if re.fullmatch(r"[\d,.\-/%\s]+", normalized):
+        return True
+    return False
+
+
+def extract_quote_supplier_name(lines: list[str], rows: list[list[str]], file_name: str) -> str:
+    labels = ["공급자", "공급사", "공급업체", "업체명", "회사명", "상호명", "상호", "거래처", "Vendor", "Supplier", "Company"]
+    candidate = extract_quote_labeled_value(rows, lines, labels, max_length=80)
+    candidate = clean_company_candidate(candidate)
+    if candidate:
+        return candidate
+    text = "\n".join(lines)
+    patterns = [
+        r"(?:\(주\)|㈜|주식회사)\s*[A-Za-z0-9가-힣&().,\- ]{2,50}",
+        r"[A-Za-z0-9가-힣&().,\- ]{2,50}\s*(?:\(주\)|㈜|주식회사)",
+    ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            candidate = clean_company_candidate(match.group(0))
+            if candidate:
+                return candidate
+    stem = Path(file_name).stem
+    stem = re.sub(r"(견적서|quotation|quote|estimate|발주|주문|_\d{6,8}|\d{6,8})", " ", stem, flags=re.IGNORECASE)
+    return clean_company_candidate(stem)
+
+
+def clean_company_candidate(value: str) -> str:
+    text = clean_quote_value(value, max_length=80)
+    if not text:
+        return ""
+    text = re.sub(r"^(공급자|공급사|공급업체|업체명|회사명|상호명|상호|거래처|vendor|supplier|company)\s*[:：\-]?\s*", "", text, flags=re.IGNORECASE)
+    text = text.strip(" -_/.,")
+    if len(text) < 2:
+        return ""
+    if any(token in text.lower() for token in ("quotation", "견적서", "합계", "공급가액", "수신", "발신")) and not re.search(r"(주식회사|\(주\)|㈜)", text):
+        return ""
+    return text
+
+
+def extract_quote_business_number(text: str, rows: list[list[str]]) -> str:
+    labeled = extract_quote_labeled_value(rows, quote_text_lines(text), ["사업자등록번호", "사업자 번호", "사업자", "Business No", "Registration No"], max_length=30)
+    source = f"{labeled}\n{text}"
+    match = re.search(r"(?<!\d)(\d{3})[-.\s]?(\d{2})[-.\s]?(\d{5})(?!\d)", source)
+    if not match:
+        return ""
+    return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+
+
+def extract_quote_phone(text: str, rows: list[list[str]]) -> str:
+    labeled = extract_quote_labeled_value(rows, quote_text_lines(text), ["연락처", "전화", "전화번호", "TEL", "Phone", "Mobile"], max_length=40)
+    source = f"{labeled}\n{text}"
+    match = re.search(r"(?<!\d)(?:\+?82[-.\s]?)?0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)", source)
+    if match:
+        return normalize_phone(match.group(0))
+    match = re.search(r"(?<!\d)(?:15|16|18)\d{2}[-.\s]?\d{4}(?!\d)", source)
+    return normalize_phone(match.group(0)) if match else ""
+
+
+def normalize_phone(value: str) -> str:
+    digits = re.sub(r"\D", "", value)
+    if digits.startswith("82"):
+        digits = "0" + digits[2:]
+    if len(digits) == 8:
+        return f"{digits[:4]}-{digits[4:]}"
+    if len(digits) == 10:
+        if digits.startswith("02"):
+            return f"{digits[:2]}-{digits[2:6]}-{digits[6:]}"
+        return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+    if len(digits) == 11:
+        return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
+    return value.strip()
+
+
+def extract_quote_email(text: str, rows: list[list[str]]) -> str:
+    labeled = extract_quote_labeled_value(rows, quote_text_lines(text), ["이메일", "메일", "E-mail", "Email"], max_length=80)
+    source = f"{labeled}\n{text}"
+    match = re.search(r"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}", source, flags=re.IGNORECASE)
+    return match.group(0) if match else ""
+
+
+def extract_quote_items(rows: list[list[str]], lines: list[str]) -> str:
+    item_labels = ["품명", "품목", "제품명", "상품명", "자재명", "Item", "Description", "Product"]
+    items = []
+    lowered_labels = [label.lower() for label in item_labels]
+    for row_index, row in enumerate(rows):
+        for col_index, cell in enumerate(row):
+            if not any(label in cell.lower() for label in lowered_labels):
+                continue
+            inline = value_after_quote_label(cell, item_labels, 90)
+            if inline:
+                items.append(inline)
+            for next_row in rows[row_index + 1 : row_index + 9]:
+                if col_index >= len(next_row):
+                    continue
+                candidate = clean_quote_item(next_row[col_index])
+                if candidate:
+                    items.append(candidate)
+            if items:
+                return ", ".join(unique_ordered(items)[:5])
+    labeled = extract_quote_labeled_value(rows, lines, item_labels, max_length=120)
+    candidate = clean_quote_item(labeled)
+    return candidate
+
+
+def clean_quote_item(value: str) -> str:
+    text = clean_quote_value(value, max_length=90)
+    if not text or len(text) < 2:
+        return ""
+    if re.search(r"(합계|공급가액|부가세|총액|단가|수량|금액|비고|납기|결제)", text):
+        return ""
+    return text
+
+
+def unique_ordered(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        key = clean_quote_cell(value).lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(value)
+    return result
+
+
+def extract_quote_lead_time_days(rows: list[list[str]], lines: list[str]) -> int:
+    value = extract_quote_labeled_value(rows, lines, ["납기", "리드타임", "Lead time", "Delivery"], max_length=80)
+    source = value or "\n".join(line for line in lines if re.search(r"(납기|리드타임|lead|delivery)", line, re.IGNORECASE))
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(영업일|일|day|days|주|week|weeks)", source, flags=re.IGNORECASE)
+    if not match:
+        return 0
+    amount = float(match.group(1))
+    unit = match.group(2).lower()
+    if unit in {"주", "week", "weeks"}:
+        amount *= 7
+    return max(int(round(amount)), 0)
+
+
+def extract_quote_unit_price(rows: list[list[str]], lines: list[str]) -> str:
+    price_labels = ["단가", "Unit Price", "UnitPrice", "Price"]
+    value = extract_quote_labeled_value(rows, lines, price_labels, max_length=50)
+    price = normalize_quote_price(value)
+    if price:
+        return price
+    lowered_labels = [label.lower() for label in price_labels]
+    for row_index, row in enumerate(rows):
+        for col_index, cell in enumerate(row):
+            if not any(label in cell.lower() for label in lowered_labels):
+                continue
+            for next_row in rows[row_index + 1 : row_index + 8]:
+                if col_index < len(next_row):
+                    price = normalize_quote_price(next_row[col_index])
+                    if price:
+                        return price
+    for line in lines:
+        if re.search(r"(단가|unit price|price)", line, re.IGNORECASE):
+            price = normalize_quote_price(line)
+            if price:
+                return price
+    return ""
+
+
+def normalize_quote_price(value: str) -> str:
+    text = clean_quote_cell(value)
+    if not text:
+        return ""
+    currency = "USD" if re.search(r"(\$|USD)", text, re.IGNORECASE) else "KRW"
+    match = re.search(r"(?<!\d)(\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?!\d)", text)
+    if not match:
+        return ""
+    amount = to_float(match.group(0).replace(",", ""))
+    if amount <= 0:
+        return ""
+    return format_detected_quote_price(amount, currency)
+
+
+def format_detected_quote_price(amount: float, currency: str) -> str:
+    if float(amount).is_integer():
+        amount_text = f"{int(amount):,}"
+    else:
+        amount_text = f"{amount:,.4f}".rstrip("0").rstrip(".")
+    return f"{amount_text}{'$' if normalize_currency(currency) == 'USD' else 'W'}"
+
+
+def extract_quote_unit_price_for_pr(rows: list[list[str]], lines: list[str], pr: PurchaseRequest | None = None) -> str:
+    if pr is not None:
+        pr_tokens = quote_match_tokens(getattr(pr, "item_name", ""), getattr(pr, "item_code", ""), getattr(pr, "spec", ""))
+        if pr_tokens:
+            table_price = extract_quote_table_price_for_tokens(rows, pr_tokens)
+            if table_price:
+                return table_price
+    return extract_quote_unit_price(rows, lines)
+
+
+def quote_match_tokens(*values) -> list[str]:
+    tokens = []
+    for value in values:
+        text = clean_quote_cell(value)
+        if not text:
+            continue
+        tokens.append(text.lower())
+        for part in re.split(r"[\s/_(),.-]+", text):
+            part = clean_quote_cell(part)
+            if len(part) >= 3:
+                tokens.append(part.lower())
+    return unique_ordered(tokens)
+
+
+def extract_quote_table_price_for_tokens(rows: list[list[str]], tokens: list[str]) -> str:
+    price_labels = ["단가", "Unit Price", "UnitPrice", "Price"]
+    for row_index, row in enumerate(rows):
+        price_indexes = [
+            col_index
+            for col_index, cell in enumerate(row)
+            if any(label.lower() in cell.lower() for label in price_labels)
+        ]
+        if not price_indexes:
+            continue
+        for next_row in rows[row_index + 1 : row_index + 20]:
+            joined = " ".join(next_row).lower()
+            if not any(token in joined for token in tokens):
+                continue
+            for price_index in price_indexes:
+                if price_index < len(next_row):
+                    price = normalize_quote_price(next_row[price_index])
+                    if price:
+                        return price
+    return ""
+
+
+def extract_quote_moq(rows: list[list[str]], lines: list[str]) -> int:
+    value = extract_quote_labeled_raw_value(rows, lines, ["MOQ", "최소주문", "최소 주문", "최소발주", "최소 발주"], max_length=80)
+    return parse_moq_quantity(value)
+
+
+def extract_quote_shipping_fee(rows: list[list[str]], lines: list[str]) -> int:
+    value = extract_quote_labeled_raw_value(rows, lines, ["배송비", "운송비", "택배비", "물류비", "Shipping", "Freight", "Delivery fee"], max_length=80)
+    if re.search(r"(무료|무상|free|included|포함)", value, flags=re.IGNORECASE):
+        return 0
+    price = normalize_quote_price(value)
+    amount, _currency = parse_compact_price(price)
+    if amount:
+        return int(round(amount))
+    for line in lines:
+        if not re.search(r"(배송비|운송비|택배비|물류비|shipping|freight|delivery fee)", line, flags=re.IGNORECASE):
+            continue
+        if re.search(r"(무료|무상|free|included|포함)", line, flags=re.IGNORECASE):
+            return 0
+        price = normalize_quote_price(line)
+        amount, _currency = parse_compact_price(price)
+        if amount:
+            return int(round(amount))
+    return 0
+
+
+def extract_quote_valid_until(rows: list[list[str]], lines: list[str]) -> date | None:
+    labels = ["견적 유효기간", "견적유효기간", "유효기간", "유효 일자", "Valid Until", "Validity", "Quote Valid Until"]
+    value = extract_quote_labeled_raw_value(rows, lines, labels, max_length=90)
+    parsed = parse_quote_date(value)
+    if parsed:
+        return parsed
+    duration = quote_duration_days(value)
+    if duration:
+        return date.today() + timedelta(days=duration)
+    for line in lines:
+        if not re.search(r"(유효기간|valid|validity)", line, flags=re.IGNORECASE):
+            continue
+        parsed = parse_quote_date(line)
+        if parsed:
+            return parsed
+        duration = quote_duration_days(line)
+        if duration:
+            return date.today() + timedelta(days=duration)
+    return None
+
+
+def parse_quote_date(value: str) -> date | None:
+    text = clean_quote_cell(value)
+    patterns = [
+        r"(?<!\d)(20\d{2})[-./년\s]*(0?[1-9]|1[0-2])[-./월\s]*([0-2]?\d|3[01])(?:일)?(?!\d)",
+        r"(?<!\d)(20\d{2})(0[1-9]|1[0-2])([0-2]\d|3[01])(?!\d)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        try:
+            return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            continue
+    return parse_date(text)
+
+
+def quote_duration_days(value: str) -> int:
+    text = clean_quote_cell(value)
+    match = re.search(r"(\d{1,3})\s*(일|day|days|주|week|weeks|개월|month|months)", text, flags=re.IGNORECASE)
+    if not match:
+        return 0
+    amount = int(match.group(1))
+    unit = match.group(2).lower()
+    if unit in {"주", "week", "weeks"}:
+        return amount * 7
+    if unit in {"개월", "month", "months"}:
+        return amount * 30
+    return amount
+
+
+def extract_quote_payment_terms(rows: list[list[str]], lines: list[str]) -> str:
+    value = extract_quote_labeled_value(rows, lines, ["결제조건", "지급조건", "Payment", "Payment Terms"], max_length=80)
+    if value:
+        return value
+    for line in lines:
+        if re.search(r"(월말|익월|현금|선금|후불|카드|계좌|납품 후|payment)", line, re.IGNORECASE):
+            return clean_quote_value(line, max_length=80)
+    return ""
+
+
 def render_supplier_list_tab() -> None:
     rows = with_db(lambda db: [supplier_to_dict(row) for row in list_suppliers(db)]) or []
     supplier_by_name = {str(row.get("업체명", "")).strip(): row for row in rows if str(row.get("업체명", "")).strip()}
@@ -1075,6 +1946,7 @@ def render_supplier_list_tab() -> None:
     selected_supplier_name = "" if edit_target == "신규 협력사 등록" else edit_target
     selected_supplier = supplier_by_name.get(selected_supplier_name, {})
     form_key_suffix = selected_supplier_name or "new"
+    render_supplier_quote_autofill_panel(form_key_suffix)
     with st.form("purchase_supplier_form", clear_on_submit=True):
         code_cols = st.columns([0.8, 1.2, 0.9, 0.9], gap="small")
         supplier_code = code_cols[0].text_input(
