@@ -3092,12 +3092,15 @@ def inventory_stock_status_for_snapshot(
 
 
 def inventory_stock_status_for_daily_row(row: InventoryDaily) -> str:
+    pending_outbound_qty = int(getattr(row, "outbound_qty", 0) or 0)
+    if clean_text(getattr(row, "source_type", "")) == "오프라인":
+        pending_outbound_qty = 0
     return inventory_stock_status_for_snapshot(
         True,
         getattr(row, "available_stock", None),
         getattr(row, "current_stock", 0),
         int(getattr(row, "safe_stock", 0) or 0),
-        int(getattr(row, "outbound_qty", 0) or 0),
+        pending_outbound_qty,
     )
 
 
@@ -3673,7 +3676,13 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         has_snapshot = daily is not None
         has_exact_snapshot = has_snapshot and getattr(daily, "work_date", None) == work_date
         current_stock = int(daily.current_stock or 0) if has_snapshot else 0
-        available_stock = int(daily.available_stock if daily and daily.available_stock is not None else current_stock) if has_snapshot else 0
+        raw_pending_outbound_qty = int(daily.outbound_qty or 0) if has_exact_snapshot else 0
+        if source_type == "오프라인":
+            pending_outbound_qty = 0
+            available_stock = current_stock if has_snapshot else 0
+        else:
+            pending_outbound_qty = max(raw_pending_outbound_qty, 0)
+            available_stock = current_stock - pending_outbound_qty if has_snapshot else 0
         placed_quantity = int(location_summary.get("placed_quantity") or 0)
         actual_locations = bool(location_summary.get("location_count") or placed_quantity)
         master_location_registered = bool(getattr(product, "location_registered", False))
@@ -3681,12 +3690,11 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         unplaced_quantity = max(current_stock - placed_quantity, 0)
 
         safe_stock = int(product.min_stock or 0)
-        pending_outbound_qty = int(daily.outbound_qty or 0) if has_exact_snapshot else 0
 
         status = inventory_stock_status_for_snapshot(
             has_snapshot,
-            daily.available_stock if daily is not None else None,
-            daily.current_stock if daily is not None else None,
+            available_stock if has_snapshot else None,
+            current_stock if has_snapshot else None,
             safe_stock,
             pending_outbound_qty,
         )
@@ -5029,6 +5037,7 @@ def apply_erp_stock_upload_file(
             product = matched["product"]
             new_stock = int(matched["stock"] or 0)
             outbound_qty = int(matched.get("outbound_qty") or 0)
+            new_available_stock = new_stock - max(outbound_qty, 0)
             uploaded_category = clean_text(matched.get("category"))
             if uploaded_category and not product_category_text(product):
                 product.large_category = uploaded_category
@@ -5055,11 +5064,11 @@ def apply_erp_stock_upload_file(
                 "barcode": product_barcode,
                 "supplier": product.supplier,
                 "current_stock": new_stock,
-                "available_stock": new_stock,
+                "available_stock": new_available_stock,
                 "safe_stock": int(product.min_stock or 0),
                 "stock_status": inventory_stock_status_for_snapshot(
                     True,
-                    new_stock,
+                    new_available_stock,
                     new_stock,
                     int(product.min_stock or 0),
                     outbound_qty,
@@ -5147,10 +5156,11 @@ def apply_erp_stock_upload_file(
             verified = verified_by_sku.get(product_sku)
             expected_stock = int(matched["stock"] or 0)
             expected_outbound_qty = int(matched.get("outbound_qty") or 0)
+            expected_available_stock = expected_stock - max(expected_outbound_qty, 0)
             if (
                 verified is None
                 or int(verified.current_stock or 0) != expected_stock
-                or int(verified.available_stock or 0) != expected_stock
+                or int(verified.available_stock or 0) != expected_available_stock
                 or int(verified.outbound_qty or 0) != expected_outbound_qty
             ):
                 failure_rows.append(

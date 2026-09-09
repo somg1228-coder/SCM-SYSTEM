@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from backend.database import Base
-from backend.models import InventoryDaily, InventoryInbound, InventoryOutputHistory, InventoryUploadHistory, OfflineProductMaster
+from backend.models import InventoryDaily, InventoryInbound, InventoryOutputHistory, InventoryUploadHistory, OfflineProductMaster, ThirdpartyProductMaster
 from backend import services
 
 
@@ -417,6 +417,95 @@ class OfflineInventoryFlowTest(unittest.TestCase):
             target = next(row for row in rows if row["product_code"] == "NEG-1")
             self.assertEqual(target["current_stock"], -3)
             self.assertEqual(target["available_stock"], -3)
+        finally:
+            db.close()
+
+    def test_offline_stock_carries_forward_after_confirmed_outbound(self) -> None:
+        offline = "\uc624\ud504\ub77c\uc778"
+        db = self.Session()
+        try:
+            product = OfflineProductMaster(
+                sku="CARRY-1",
+                barcode="8800000000201",
+                product_name="Carry forward product",
+                large_category="Offline",
+                supplier="Vendor",
+                min_stock=0,
+                is_active="\uc0ac\uc6a9",
+            )
+            db.add(product)
+            db.add(
+                InventoryDaily(
+                    source_type=offline,
+                    work_date=date(2026, 9, 8),
+                    product_code="CARRY-1",
+                    barcode="8800000000201",
+                    product_name="Carry forward product",
+                    current_stock=100,
+                    available_stock=100,
+                    stock_status="\uc815\uc0c1",
+                )
+            )
+            db.commit()
+
+            outbound_df = pd.DataFrame([{"sku": "CARRY-1", "product_name": "Carry forward product", "qty": "15"}])
+            buffer = StringIO()
+            outbound_df.to_csv(buffer, index=False)
+            preview = services.prepare_offline_outbound_upload_preview(db, offline, date(2026, 9, 9), buffer.getvalue().encode("utf-8-sig"), "outbound.csv")
+
+            applied = services.apply_offline_outbound_preview(db, preview, "tester")
+
+            self.assertTrue(applied["ok"])
+            day9_rows = services.master_based_inventory_rows(db, offline, date(2026, 9, 9))
+            day9 = next(row for row in day9_rows if row["product_code"] == "CARRY-1")
+            self.assertEqual(day9["current_stock"], 85)
+            self.assertEqual(day9["available_stock"], 85)
+            self.assertEqual(day9["pending_outbound_qty"], 0)
+            day10_rows = services.master_based_inventory_rows(db, offline, date(2026, 9, 10))
+            day10 = next(row for row in day10_rows if row["product_code"] == "CARRY-1")
+            self.assertEqual(day10["current_stock"], 85)
+            self.assertEqual(day10["available_stock"], 85)
+            self.assertEqual(day10["pending_outbound_qty"], 0)
+            self.assertTrue(day10["is_carried_inventory_snapshot"])
+        finally:
+            db.close()
+
+    def test_pending_outbound_reduces_available_stock_without_changing_current_stock(self) -> None:
+        db = self.Session()
+        try:
+            db.add(
+                ThirdpartyProductMaster(
+                    sku="PEND-1",
+                    barcode="8800000000301",
+                    product_name="Pending outbound product",
+                    large_category="3PL",
+                    supplier="Vendor",
+                    min_stock=10,
+                    is_active="\uc0ac\uc6a9",
+                )
+            )
+            db.add(
+                InventoryDaily(
+                    source_type="3PL",
+                    work_date=date(2026, 9, 9),
+                    product_code="PEND-1",
+                    barcode="8800000000301",
+                    product_name="Pending outbound product",
+                    current_stock=100,
+                    available_stock=100,
+                    outbound_qty=12,
+                    safe_stock=10,
+                    stock_status="\uc815\uc0c1",
+                )
+            )
+            db.commit()
+
+            rows = services.master_based_inventory_rows(db, "3PL", date(2026, 9, 9))
+            target = next(row for row in rows if row["product_code"] == "PEND-1")
+
+            self.assertEqual(target["current_stock"], 100)
+            self.assertEqual(target["pending_outbound_qty"], 12)
+            self.assertEqual(target["available_stock"], 88)
         finally:
             db.close()
 
