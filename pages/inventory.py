@@ -2865,6 +2865,7 @@ def render_offline_outbound_upload_panel(work_date: date | None = None) -> None:
     panel_key = "offline_outbound_upload"
     preview_key = f"{panel_key}_preview"
     result_key = f"{panel_key}_result"
+    processing_key = f"{panel_key}_processing"
     with st.container(key=panel_key):
         render_inventory_html(
             """
@@ -2892,34 +2893,70 @@ def render_offline_outbound_upload_panel(work_date: date | None = None) -> None:
                 st.markdown(f"**{work_date:%Y-%m-%d}**")
         with apply_col:
             st.write("")
-            disabled = uploaded is None
+            disabled = uploaded is None or bool(st.session_state.get(processing_key))
             if st.button("재고 반영", key=f"{panel_key}_apply_btn", type="primary", use_container_width=True, disabled=disabled):
                 if uploaded is None:
                     st.warning("먼저 출고파일을 업로드하세요.")
                 else:
-                    def apply_action(db):
-                        preview = services.prepare_offline_outbound_upload_preview(
-                            db,
-                            "오프라인",
-                            work_date,
-                            uploaded.getvalue(),
-                            uploaded.name,
-                        )
-                        if not preview or not preview.get("ok", True):
-                            return preview, preview
-                        outcome = services.apply_offline_outbound_preview(db, preview, current_user_name())
-                        return outcome, preview
+                    st.session_state[processing_key] = True
+                    should_rerun = False
+                    try:
+                        file_bytes = uploaded.getvalue()
+                        file_name = uploaded.name
+                        with st.status("오프라인 출고 재고 반영", expanded=True) as status:
+                            st.write("파일 확인 중...")
 
-                    result_payload = with_db(apply_action)
-                    if isinstance(result_payload, tuple):
-                        outcome, preview = result_payload
-                    else:
-                        outcome, preview = result_payload, None
-                    st.session_state[preview_key] = preview
-                    st.session_state[result_key] = outcome
-                    if outcome and outcome.get("ok", True):
-                        clear_inventory_data_caches()
-                    show_result(outcome)
+                            def apply_action(db):
+                                preview = services.prepare_offline_outbound_upload_preview(
+                                    db,
+                                    "오프라인",
+                                    work_date,
+                                    file_bytes,
+                                    file_name,
+                                )
+                                if not isinstance(preview, dict) or not preview.get("ok", True):
+                                    return preview, preview
+                                if int(preview.get("matched_count") or 0) <= 0:
+                                    outcome = {
+                                        **preview,
+                                        "ok": False,
+                                        "message": "반영 가능한 출고 행이 없습니다. 미매칭/중복/오류 행을 확인해주세요.",
+                                        "count": 0,
+                                    }
+                                    return outcome, preview
+                                st.write(f"{int(preview.get('matched_count') or 0):,}건 재고 차감 중...")
+                                outcome = services.apply_offline_outbound_preview(db, preview, current_user_name())
+                                return outcome, preview
+
+                            result_payload = with_db(apply_action)
+                            if isinstance(result_payload, tuple):
+                                outcome, preview = result_payload
+                            else:
+                                outcome, preview = result_payload, None
+                            if not isinstance(outcome, dict):
+                                outcome = {
+                                    "ok": False,
+                                    "message": "오프라인 출고파일 처리 중 오류가 발생했습니다. 파일 형식과 컬럼명을 확인해주세요.",
+                                    "count": 0,
+                                    "total_rows": int((preview or {}).get("total_rows") or 0) if isinstance(preview, dict) else 0,
+                                    "matched_count": int((preview or {}).get("matched_count") or 0) if isinstance(preview, dict) else 0,
+                                    "unmatched_count": int((preview or {}).get("unmatched_count") or 0) if isinstance(preview, dict) else 0,
+                                    "duplicate_count": int((preview or {}).get("duplicate_count") or 0) if isinstance(preview, dict) else 0,
+                                    "error_count": int((preview or {}).get("error_count") or 0) if isinstance(preview, dict) else 1,
+                                }
+                            st.session_state[preview_key] = preview
+                            st.session_state[result_key] = outcome
+                            if outcome.get("ok", True):
+                                clear_inventory_data_caches()
+                                st.write("재고조회 갱신 중...")
+                                status.update(label="오프라인 출고 재고 반영 완료", state="complete")
+                                should_rerun = True
+                            else:
+                                status.update(label="오프라인 출고 재고 반영 오류", state="error")
+                    finally:
+                        st.session_state[processing_key] = False
+                    if should_rerun:
+                        inventory_fragment_rerun()
         with spacer:
             st.empty()
 
@@ -6778,8 +6815,11 @@ def render_stock_upload_apply_result(outcome: dict | None, excluded_df: pd.DataF
     ok = outcome.get("ok", True)
     result_title = "재고 반영 완료" if ok else "재고 반영 오류"
     st.markdown(f'<div class="inventory-subsection-title">{result_title}</div>', unsafe_allow_html=True)
-    if not ok and outcome.get("message"):
-        st.error(str(outcome.get("message")))
+    if outcome.get("message"):
+        if ok:
+            st.success(str(outcome.get("message")))
+        else:
+            st.error(str(outcome.get("message")))
     metric_cols = st.columns(6, gap="small")
     metric_cols[0].metric("총 데이터", f"{int(outcome.get('total_rows') or 0):,}건")
     success_count = outcome.get("count") if "count" in outcome else outcome.get("matched_count")

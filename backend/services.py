@@ -4118,6 +4118,20 @@ def apply_offline_outbound_preview(db: Session, preview: dict, uploaded_by: str 
         for row in list((preview or {}).get("preview_rows") or [])
         if row.get("matched") and to_int(row.get("outbound_qty")) != 0
     ]
+    if not candidate_rows:
+        return {
+            "ok": False,
+            "message": "반영 가능한 출고 행이 없습니다. 미매칭/중복/오류 행을 확인해주세요.",
+            "count": 0,
+            "total_rows": int((preview or {}).get("total_rows") or 0),
+            "matched_count": 0,
+            "unmatched_count": int((preview or {}).get("unmatched_count") or 0),
+            "duplicate_count": int((preview or {}).get("duplicate_count") or 0),
+            "error_count": int((preview or {}).get("error_count") or 0),
+            "apply_failed_count": 0,
+            "failure_rows": [],
+            "processing_seconds": round(time.perf_counter() - started_at, 2),
+        }
     candidate_keys = {
         (clean_text(row.get("external_key")), normalize_product_code_text(row.get("product_code")))
         for row in candidate_rows

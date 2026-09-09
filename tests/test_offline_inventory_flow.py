@@ -186,6 +186,36 @@ class OfflineInventoryFlowTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_offline_outbound_apply_without_matched_rows_returns_error(self) -> None:
+        db = self.Session()
+        try:
+            preview = {
+                "ok": True,
+                "total_rows": 1,
+                "matched_count": 0,
+                "unmatched_count": 1,
+                "duplicate_count": 0,
+                "error_count": 0,
+                "preview_rows": [
+                    {
+                        "matched": False,
+                        "product_code": "MISSING",
+                        "product_name": "Missing product",
+                        "outbound_qty": 3,
+                        "status": "미매칭 상품",
+                    }
+                ],
+            }
+
+            applied = services.apply_offline_outbound_preview(db, preview, "tester")
+
+            self.assertFalse(applied["ok"])
+            self.assertEqual(applied["count"], 0)
+            self.assertEqual(applied["total_rows"], 1)
+            self.assertEqual(applied["unmatched_count"], 1)
+        finally:
+            db.close()
+
     def test_offline_outbound_sales_list_columns_are_supported(self) -> None:
         outbound_df = pd.DataFrame(
             [
