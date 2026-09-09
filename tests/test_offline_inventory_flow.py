@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from backend.database import Base
-from backend.models import InventoryDaily, InventoryInbound, InventoryOutputHistory, OfflineProductMaster
+from backend.models import InventoryDaily, InventoryInbound, InventoryOutputHistory, InventoryUploadHistory, OfflineProductMaster
 from backend import services
 
 
@@ -417,6 +417,54 @@ class OfflineInventoryFlowTest(unittest.TestCase):
             target = next(row for row in rows if row["product_code"] == "NEG-1")
             self.assertEqual(target["current_stock"], -3)
             self.assertEqual(target["available_stock"], -3)
+        finally:
+            db.close()
+
+    def test_stock_upload_history_mode_is_shortened_for_bulk_adjustment(self) -> None:
+        offline = "\uc624\ud504\ub77c\uc778"
+        db = self.Session()
+        try:
+            db.add(
+                OfflineProductMaster(
+                    sku="BULK-1",
+                    barcode="8800000000101",
+                    product_name="Bulk adjusted product",
+                    large_category="Offline",
+                    supplier="Vendor",
+                    min_stock=0,
+                    is_active="\uc0ac\uc6a9",
+                )
+            )
+            db.commit()
+
+            preview = {
+                "file_name": "bulk.xlsx",
+                "upload_mode": "excel_bulk_stock_adjustment",
+                "total_rows": 1,
+                "matched_count": 1,
+                "failed_count": 0,
+                "duplicate_count": 0,
+                "zeroed_count": 0,
+                "preview_rows": [
+                    {
+                        "row_no": 1,
+                        "matched": True,
+                        "product_code": "BULK-1",
+                        "barcode": "8800000000101",
+                        "product_name": "Bulk adjusted product",
+                        "category": "Offline",
+                        "new_stock": 42,
+                        "new_available_stock": 42,
+                    }
+                ],
+            }
+
+            result = services.apply_stock_upload_preview(db, offline, date(2026, 9, 9), preview, "tester")
+
+            self.assertTrue(result["ok"])
+            history = db.execute(select(InventoryUploadHistory)).scalar_one()
+            self.assertEqual(history.upload_mode, "excel_bulk_adjust")
+            self.assertLessEqual(len(history.upload_mode), 20)
         finally:
             db.close()
 

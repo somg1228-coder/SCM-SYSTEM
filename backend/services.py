@@ -47,10 +47,20 @@ INVENTORY_UPDATE_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "inve
 INVENTORY_RENDER_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "inventory_render_perf.log"
 INVENTORY_LOGGER = logging.getLogger("scm.inventory_update")
 INVENTORY_TRACE_BARCODE = "8809722102830"
+INVENTORY_UPLOAD_MODE_MAX_LENGTH = 20
+INVENTORY_UPLOAD_MODE_ALIASES = {
+    "excel_bulk_stock_adjustment": "excel_bulk_adjust",
+}
 
 
 def use_legacy_supabase_rest_store() -> bool:
     return False
+
+
+def normalize_inventory_upload_mode(value) -> str:
+    mode = clean_text(value) or "partial"
+    mode = INVENTORY_UPLOAD_MODE_ALIASES.get(mode, mode)
+    return mode[:INVENTORY_UPLOAD_MODE_MAX_LENGTH]
 
 
 HTML_TABLE_FALLBACK_MESSAGE = "엑셀 형식이 HTML 기반이라 read_html로 처리했습니다"
@@ -4768,7 +4778,7 @@ def prepare_excel_stock_adjustment_preview(
     return {
         "ok": True,
         "file_name": clean_text(file_name) or "엑셀 일괄 재고조정",
-        "upload_mode": "excel_bulk_stock_adjustment",
+        "upload_mode": "excel_bulk_adjust",
         "change_method": "엑셀 일괄 재고조정",
         "all_or_nothing": True,
         "preserve_uploaded_safe_stock": True,
@@ -5263,7 +5273,7 @@ def apply_stock_upload_preview(
             work_date=work_date,
             file_name=clean_text(preview.get("file_name")),
             uploaded_by=clean_text(uploaded_by) or "SYSTEM",
-            upload_mode=clean_text(preview.get("upload_mode")) or "partial",
+            upload_mode=normalize_inventory_upload_mode(preview.get("upload_mode")),
             total_rows=int(preview.get("total_rows") or 0),
             matched_count=int(preview.get("matched_count") or 0),
             failed_count=int(preview.get("failed_count") or 0),
