@@ -222,14 +222,14 @@ class OfflineInventoryFlowTest(unittest.TestCase):
                     InventoryDaily.product_name == "Alpha product",
                 )
             ).scalar_one()
-            self.assertEqual(day3.current_stock, 105)
+            self.assertEqual(day3.current_stock, 120)
             self.assertEqual(day3.available_stock, 105)
             self.assertEqual(day3.outbound_qty, 15)
 
             carried_rows = services.master_based_inventory_rows(db, "오프라인", date(2026, 9, 4))
             carried = next(row for row in carried_rows if row["product_code"] == "OFF-A")
-            self.assertEqual(carried["current_stock"], 105)
-            self.assertEqual(carried["available_stock"], 105)
+            self.assertEqual(carried["current_stock"], 120)
+            self.assertEqual(carried["available_stock"], 120)
             self.assertEqual(carried["pending_outbound_qty"], 0)
             self.assertEqual(carried["last_inventory_update_date"], date(2026, 9, 3))
             self.assertTrue(carried["is_carried_inventory_snapshot"])
@@ -363,8 +363,8 @@ class OfflineInventoryFlowTest(unittest.TestCase):
                     InventoryDaily.product_name == "Return product",
                 )
             ).scalar_one()
-            self.assertEqual(day3.current_stock, 11)
-            self.assertEqual(day3.available_stock, 11)
+            self.assertEqual(day3.current_stock, 10)
+            self.assertEqual(day3.available_stock, 10)
             self.assertEqual(day3.outbound_qty, -1)
 
             rows = services.master_based_inventory_rows(db, "오프라인", date(2026, 8, 23))
@@ -373,8 +373,8 @@ class OfflineInventoryFlowTest(unittest.TestCase):
 
             next_rows = services.master_based_inventory_rows(db, "오프라인", date(2026, 8, 24))
             next_target = next(row for row in next_rows if row["product_code"] == "RET-1")
-            self.assertEqual(next_target["current_stock"], 11)
-            self.assertEqual(next_target["available_stock"], 11)
+            self.assertEqual(next_target["current_stock"], 10)
+            self.assertEqual(next_target["available_stock"], 10)
             self.assertEqual(next_target["return_qty"], 0)
         finally:
             db.close()
@@ -432,7 +432,7 @@ class OfflineInventoryFlowTest(unittest.TestCase):
                     InventoryDaily.product_name == "Date ignored product",
                 )
             ).scalar_one()
-            self.assertEqual(selected_day.current_stock, 7)
+            self.assertEqual(selected_day.current_stock, 10)
             self.assertEqual(selected_day.available_stock, 7)
 
             file_day = db.execute(
@@ -506,12 +506,12 @@ class OfflineInventoryFlowTest(unittest.TestCase):
                     InventoryDaily.product_name == "Negative stock product",
                 )
             ).scalar_one()
-            self.assertEqual(selected_day.current_stock, -3)
+            self.assertEqual(selected_day.current_stock, 0)
             self.assertEqual(selected_day.available_stock, -3)
 
             rows = services.master_based_inventory_rows(db, offline, date(2026, 9, 5))
             target = next(row for row in rows if row["product_code"] == "NEG-1")
-            self.assertEqual(target["current_stock"], -3)
+            self.assertEqual(target["current_stock"], 0)
             self.assertEqual(target["available_stock"], -3)
         finally:
             db.close()
@@ -554,13 +554,13 @@ class OfflineInventoryFlowTest(unittest.TestCase):
             self.assertTrue(applied["ok"])
             day9_rows = services.master_based_inventory_rows(db, offline, date(2026, 9, 9))
             day9 = next(row for row in day9_rows if row["product_code"] == "CARRY-1")
-            self.assertEqual(day9["current_stock"], 85)
+            self.assertEqual(day9["current_stock"], 100)
             self.assertEqual(day9["available_stock"], 85)
-            self.assertEqual(day9["pending_outbound_qty"], 0)
+            self.assertEqual(day9["pending_outbound_qty"], 15)
             day10_rows = services.master_based_inventory_rows(db, offline, date(2026, 9, 10))
             day10 = next(row for row in day10_rows if row["product_code"] == "CARRY-1")
-            self.assertEqual(day10["current_stock"], 85)
-            self.assertEqual(day10["available_stock"], 85)
+            self.assertEqual(day10["current_stock"], 100)
+            self.assertEqual(day10["available_stock"], 100)
             self.assertEqual(day10["pending_outbound_qty"], 0)
             self.assertTrue(day10["is_carried_inventory_snapshot"])
         finally:

@@ -3101,8 +3101,6 @@ def inventory_stock_status_for_snapshot(
 
 def inventory_stock_status_for_daily_row(row: InventoryDaily) -> str:
     pending_outbound_qty = int(getattr(row, "outbound_qty", 0) or 0)
-    if clean_text(getattr(row, "source_type", "")) == "오프라인":
-        pending_outbound_qty = 0
     available_stock = available_stock_after_pending(
         getattr(row, "source_type", ""),
         getattr(row, "current_stock", 0),
@@ -3691,10 +3689,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         has_exact_snapshot = has_snapshot and getattr(daily, "work_date", None) == work_date
         current_stock = int(daily.current_stock or 0) if has_snapshot else 0
         raw_pending_outbound_qty = int(daily.outbound_qty or 0) if has_exact_snapshot else 0
-        if source_type == "오프라인":
-            pending_outbound_qty = 0
-        else:
-            pending_outbound_qty = max(raw_pending_outbound_qty, 0)
+        pending_outbound_qty = max(raw_pending_outbound_qty, 0)
         available_stock = available_stock_after_pending(source_type, current_stock, pending_outbound_qty, has_snapshot)
         placed_quantity = int(location_summary.get("placed_quantity") or 0)
         actual_locations = bool(location_summary.get("location_count") or placed_quantity)
@@ -4193,20 +4188,9 @@ def apply_offline_outbound_preview(db: Session, preview: dict, uploaded_by: str 
             product_name=getattr(product, "product_name", ""),
             barcode=getattr(product, "barcode", ""),
         )
-        previous_stock = int(daily.current_stock or 0)
-        previous_available = int(daily.available_stock if daily.available_stock is not None else previous_stock)
         daily.outbound_qty = int(daily.outbound_qty or 0) + outbound_qty
-        daily.current_stock = previous_stock - outbound_qty
-        daily.available_stock = previous_available - outbound_qty
+        daily.available_stock = available_stock_after_pending(source_type, daily.current_stock, daily.outbound_qty)
         daily.stock_status = inventory_stock_status_for_daily_row(daily)
-        propagate_offline_daily_delta(
-            db,
-            target_date,
-            daily.product_code,
-            daily.product_name,
-            daily.barcode,
-            -outbound_qty,
-        )
         db.add(
             InventoryOutputHistory(
                 source_type=source_type,
@@ -6010,7 +5994,7 @@ def ensure_offline_daily_row(
         category=clean_text(category),
         supplier=clean_text(supplier),
         current_stock=int(previous.current_stock or 0) if previous else 0,
-        available_stock=int(previous.available_stock if previous and previous.available_stock is not None else previous.current_stock if previous else 0),
+        available_stock=int(previous.current_stock or 0) if previous else 0,
         safe_stock=int(previous.safe_stock or getattr(product, "min_stock", 0) or 0) if previous else int(getattr(product, "min_stock", 0) or 0),
         outbound_qty=0,
         inbound_qty=0,
@@ -6278,7 +6262,7 @@ def apply_inbound_to_stock(db: Session, source_type: str, work_date: date) -> in
         qty = int(group["qty"] or 0)
         item.inbound_qty = int(item.inbound_qty or 0) + qty
         item.current_stock = int(item.current_stock or 0) + qty
-        item.available_stock = int(item.available_stock or 0) + qty
+        item.available_stock = available_stock_after_pending(source_type, item.current_stock, item.outbound_qty)
         if group["safe_stock"] and not item.safe_stock:
             item.safe_stock = group["safe_stock"]
         if item.last_inbound_date and item.last_inbound_date != group["last_inbound_date"]:
@@ -6432,8 +6416,6 @@ def dataframe_for_inbound(rows: list[InventoryInbound]) -> pd.DataFrame:
 
 def daily_to_dict(row: InventoryDaily) -> dict:
     pending_outbound_qty = int(row.outbound_qty or 0)
-    if clean_text(row.source_type) == "오프라인":
-        pending_outbound_qty = 0
     available_stock = available_stock_after_pending(row.source_type, row.current_stock, pending_outbound_qty)
     return {
         "id": row.id,
