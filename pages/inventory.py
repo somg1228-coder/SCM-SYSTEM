@@ -5204,6 +5204,11 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
         category = clean_cell(row.get("category") or row.get("large_category") or row.get("medium_category") or row.get("small_category"))
         row_source_type = clean_cell(row.get("source_type"))
         pending_outbound_qty = row.get("pending_outbound_qty", 0)
+        current_stock = to_int(row.get("current_stock", 0))
+        available_stock = row.get("available_stock", 0)
+        pending_outbound_value = max(to_int(pending_outbound_qty), 0)
+        if pending_outbound_value:
+            available_stock = current_stock - pending_outbound_value
         return_qty = to_int(row.get("return_qty"))
         if row_source_type == "오프라인" and return_qty <= 0 and to_int(pending_outbound_qty) < 0:
             return_qty = abs(to_int(pending_outbound_qty))
@@ -5213,11 +5218,11 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
             "카테고리": category or "미분류",
             "바코드": row.get("barcode", ""),
             "상품명": row.get("product_name", ""),
-            "가용재고": row.get("available_stock", 0),
+            "가용재고": available_stock,
             "주평균출고": row.get("avg_weekly_outbound", row.get("avg_daily_outbound_1w", row.get("avg_daily_outbound_2w", 0))),
             "재고상태": clean_cell(row.get("stock_status")) or "미집계",
             "출고예정": pending_outbound_qty,
-            "현재고": row.get("current_stock", 0),
+            "현재고": current_stock,
             "발주필요일": format_order_required_date(row),
             "박스/파렛트 단위": row.get("box_pallet_unit", ""),
             "업체명": row.get("supplier", ""),

@@ -3072,6 +3072,13 @@ def stock_status_for_snapshot(has_snapshot: bool, available_stock, current_stock
     return stock_status_for_values(stock_value, safe_stock)
 
 
+def available_stock_after_pending(source_type: str, current_stock, pending_outbound_qty: int = 0, has_snapshot: bool = True) -> int:
+    if not has_snapshot:
+        return 0
+    pending_outbound = max(int(pending_outbound_qty or 0), 0)
+    return int(current_stock or 0) - pending_outbound
+
+
 def inventory_stock_status_for_snapshot(
     has_snapshot: bool,
     available_stock,
@@ -3096,9 +3103,15 @@ def inventory_stock_status_for_daily_row(row: InventoryDaily) -> str:
     pending_outbound_qty = int(getattr(row, "outbound_qty", 0) or 0)
     if clean_text(getattr(row, "source_type", "")) == "오프라인":
         pending_outbound_qty = 0
+    available_stock = available_stock_after_pending(
+        getattr(row, "source_type", ""),
+        getattr(row, "current_stock", 0),
+        pending_outbound_qty,
+        True,
+    )
     return inventory_stock_status_for_snapshot(
         True,
-        getattr(row, "available_stock", None),
+        available_stock,
         getattr(row, "current_stock", 0),
         int(getattr(row, "safe_stock", 0) or 0),
         pending_outbound_qty,
@@ -3680,10 +3693,9 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         raw_pending_outbound_qty = int(daily.outbound_qty or 0) if has_exact_snapshot else 0
         if source_type == "오프라인":
             pending_outbound_qty = 0
-            available_stock = current_stock if has_snapshot else 0
         else:
             pending_outbound_qty = max(raw_pending_outbound_qty, 0)
-            available_stock = current_stock - pending_outbound_qty if has_snapshot else 0
+        available_stock = available_stock_after_pending(source_type, current_stock, pending_outbound_qty, has_snapshot)
         placed_quantity = int(location_summary.get("placed_quantity") or 0)
         actual_locations = bool(location_summary.get("location_count") or placed_quantity)
         master_location_registered = bool(getattr(product, "location_registered", False))
@@ -3711,7 +3723,7 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         avg_daily_outbound = float(avg_daily_outbound_by_sku.get(product_sku, avg_daily_outbound_by_sku.get(product_sku_key, 0)) or 0)
         avg_weekly_outbound = float(avg_weekly_outbound_by_sku.get(product_sku, avg_weekly_outbound_by_sku.get(product_sku_key, 0)) or 0)
 
-        needed_days = order_needed_days(available_stock, safe_stock, avg_daily_outbound, lead_time, pending_outbound_qty)
+        needed_days = order_needed_days(current_stock, safe_stock, avg_daily_outbound, lead_time, pending_outbound_qty)
 
         category = product_category_text(product)
         category_diagnostic = "" if category else "CATEGORY_EMPTY"
@@ -6419,6 +6431,10 @@ def dataframe_for_inbound(rows: list[InventoryInbound]) -> pd.DataFrame:
 
 
 def daily_to_dict(row: InventoryDaily) -> dict:
+    pending_outbound_qty = int(row.outbound_qty or 0)
+    if clean_text(row.source_type) == "오프라인":
+        pending_outbound_qty = 0
+    available_stock = available_stock_after_pending(row.source_type, row.current_stock, pending_outbound_qty)
     return {
         "id": row.id,
         "source_type": row.source_type,
@@ -6430,7 +6446,7 @@ def daily_to_dict(row: InventoryDaily) -> dict:
         "supplier": row.supplier,
         "storage_location": getattr(row, "storage_location", ""),
         "current_stock": row.current_stock,
-        "available_stock": row.available_stock,
+        "available_stock": available_stock,
         "safe_stock": row.safe_stock,
         "stock_status": inventory_stock_status_for_daily_row(row),
         "outbound_qty": row.outbound_qty,

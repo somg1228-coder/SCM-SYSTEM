@@ -581,6 +581,17 @@ class OfflineInventoryFlowTest(unittest.TestCase):
                 )
             )
             db.add(
+                ThirdpartyProductMaster(
+                    sku="PEND-2",
+                    barcode="8800000000302",
+                    product_name="Small pending outbound product",
+                    large_category="3PL",
+                    supplier="Vendor",
+                    min_stock=0,
+                    is_active="\uc0ac\uc6a9",
+                )
+            )
+            db.add(
                 InventoryDaily(
                     source_type="3PL",
                     work_date=date(2026, 9, 9),
@@ -594,14 +605,32 @@ class OfflineInventoryFlowTest(unittest.TestCase):
                     stock_status="\uc815\uc0c1",
                 )
             )
+            small_daily = InventoryDaily(
+                source_type="3PL",
+                work_date=date(2026, 9, 9),
+                product_code="PEND-2",
+                barcode="8800000000302",
+                product_name="Small pending outbound product",
+                current_stock=4,
+                available_stock=4,
+                outbound_qty=2,
+                safe_stock=0,
+                stock_status="\uc815\uc0c1",
+            )
+            db.add(small_daily)
             db.commit()
 
             rows = services.master_based_inventory_rows(db, "3PL", date(2026, 9, 9))
             target = next(row for row in rows if row["product_code"] == "PEND-1")
+            small_target = next(row for row in rows if row["product_code"] == "PEND-2")
 
             self.assertEqual(target["current_stock"], 100)
             self.assertEqual(target["pending_outbound_qty"], 12)
             self.assertEqual(target["available_stock"], 88)
+            self.assertEqual(small_target["current_stock"], 4)
+            self.assertEqual(small_target["pending_outbound_qty"], 2)
+            self.assertEqual(small_target["available_stock"], 2)
+            self.assertEqual(services.daily_to_dict(small_daily)["available_stock"], 2)
         finally:
             db.close()
 
