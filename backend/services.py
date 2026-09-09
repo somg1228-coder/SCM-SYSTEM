@@ -907,11 +907,12 @@ def read_homecc_inbound_statement(file_bytes: bytes, file_name: str | None = "")
     return None
 
 
-def import_result(count: int, df: pd.DataFrame) -> dict:
+def import_result(count: int, df: pd.DataFrame, inbound_dates: list[date] | None = None) -> dict:
     return {
         "count": count,
         "used_html": df.attrs.get("read_method") == "html",
         "message": df.attrs.get("read_message", ""),
+        "inbound_dates": [value.isoformat() for value in sorted(set(inbound_dates or [])) if value],
     }
 
 
@@ -6108,13 +6109,16 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes, file_
 
     if use_legacy_supabase_rest_store():
         rows = []
+        inbound_dates: list[date] = []
         for _, row in df.iterrows():
             product_name = clean_text(row.get(name_col))
             if not product_name:
                 continue
+            inbound_date = (parse_date(row.get(date_col)) if date_col else None) or default_inbound_date or date.today()
+            inbound_dates.append(inbound_date)
             rows.append(
                 {
-                    "inbound_date": (parse_date(row.get(date_col)) if date_col else None) or default_inbound_date or date.today(),
+                    "inbound_date": inbound_date,
                     "category": clean_text(row.get(category_col)) if category_col else "",
                     "product_code": clean_text(row.get(product_code_col)) if product_code_col else "",
                     "product_name": product_name,
@@ -6125,16 +6129,18 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes, file_
                     "memo": "",
                 }
             )
-        return import_result(supabase_store.bulk_save_inbound(source_type, rows), df)
+        return import_result(supabase_store.bulk_save_inbound(source_type, rows), df, inbound_dates)
 
     lookup = product_master_lookup(db, source_type)
     count = 0
     items: list[InventoryInbound] = []
+    inbound_dates: list[date] = []
     for _, row in df.iterrows():
         product_name = clean_text(row.get(name_col))
         if not product_name:
             continue
         inbound_date = (parse_date(row.get(date_col)) if date_col else None) or default_inbound_date or date.today()
+        inbound_dates.append(inbound_date)
         item = InventoryInbound(
                 source_type=source_type,
                 inbound_date=inbound_date,
@@ -6156,7 +6162,19 @@ def import_inbound_excel(db: Session, source_type: str, file_bytes: bytes, file_
     if items:
         db.add_all(items)
     db.commit()
-    return import_result(count, df)
+    return import_result(count, df, inbound_dates)
+
+
+def import_inbound_excel_and_apply_stock(db: Session, source_type: str, file_bytes: bytes, file_name: str | None = "") -> dict:
+    outcome = import_inbound_excel(db, source_type, file_bytes, file_name)
+    inbound_dates = [parse_date(value) for value in list((outcome or {}).get("inbound_dates") or [])]
+    stock_apply_count = 0
+    for inbound_date in sorted({value for value in inbound_dates if value}):
+        stock_apply_count += apply_inbound_to_stock(db, source_type, inbound_date)
+    outcome["stock_apply_count"] = stock_apply_count
+    if stock_apply_count:
+        outcome["message"] = f"{outcome.get('message') or ''} 재고현황 {stock_apply_count:,}건 자동 반영".strip()
+    return outcome
 
 
 def apply_inbound_to_stock(db: Session, source_type: str, work_date: date) -> int:

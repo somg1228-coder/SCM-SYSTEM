@@ -66,6 +66,72 @@ class OfflineInventoryFlowTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_import_inbound_excel_and_apply_stock_updates_daily_on_inbound_date(self) -> None:
+        db = self.Session()
+        try:
+            db.add(
+                OfflineProductMaster(
+                    sku="IN-AUTO",
+                    barcode="8800000000999",
+                    product_name="Auto inbound product",
+                    large_category="Offline",
+                    supplier="Vendor",
+                    min_stock=3,
+                    is_active="사용",
+                )
+            )
+            db.add(
+                InventoryDaily(
+                    source_type="오프라인",
+                    work_date=date(2026, 9, 8),
+                    product_code="IN-AUTO",
+                    barcode="8800000000999",
+                    product_name="Auto inbound product",
+                    category="Offline",
+                    supplier="Vendor",
+                    current_stock=10,
+                    available_stock=10,
+                    safe_stock=3,
+                    stock_status="정상",
+                )
+            )
+            db.commit()
+
+            buffer = BytesIO()
+            inbound_df = pd.DataFrame(
+                [
+                    {
+                        "입고일자": "2026-09-09",
+                        "SKU": "IN-AUTO",
+                        "바코드": "8800000000999",
+                        "상품명": "Auto inbound product",
+                        "수량": 4,
+                    }
+                ]
+            )
+            with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+                inbound_df.to_excel(writer, index=False)
+
+            outcome = services.import_inbound_excel_and_apply_stock(db, "오프라인", buffer.getvalue(), "inbound.xlsx")
+
+            self.assertEqual(outcome["count"], 1)
+            self.assertEqual(outcome["stock_apply_count"], 1)
+            inbound = db.execute(select(InventoryInbound)).scalar_one()
+            self.assertTrue(inbound.is_applied)
+            daily = db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == "오프라인",
+                    InventoryDaily.work_date == date(2026, 9, 9),
+                    InventoryDaily.product_name == "Auto inbound product",
+                )
+            ).scalar_one()
+            self.assertEqual(daily.current_stock, 14)
+            self.assertEqual(daily.available_stock, 14)
+            self.assertEqual(daily.inbound_qty, 4)
+            self.assertEqual(daily.last_inbound_date, date(2026, 9, 9))
+        finally:
+            db.close()
+
     def test_offline_inbound_and_outbound_are_cumulative_and_idempotent(self) -> None:
         db = self.Session()
         try:

@@ -1010,8 +1010,9 @@ def render_inbound_tab(source_type: str) -> None:
                 if uploaded is None:
                     st.warning("먼저 입고내역 파일을 업로드하세요.")
                 else:
-                    outcome = with_db(lambda db: import_upload_result("입고내역 파일 반영 완료", services.import_inbound_excel(db, source_type, uploaded.getvalue(), uploaded.name)))
+                    outcome = with_db(lambda db: import_upload_result("입고내역 파일 반영 완료", services.import_inbound_excel_and_apply_stock(db, source_type, uploaded.getvalue(), uploaded.name)))
                     if outcome and outcome.get("ok", True):
+                        clear_inventory_data_caches()
                         clear_inventory_editor_buffer(f"{source_type}_inbound_editor_buffer")
                     show_result(outcome)
         with apply_col:
