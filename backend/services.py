@@ -3330,6 +3330,55 @@ def latest_daily_rows_by_product(db: Session, source_type: str, work_date: date,
     return matched
 
 
+def inventory_identity_keys(product_code: str = "", barcode: str = "", product_name: str = "") -> set[tuple[str, str]]:
+    keys: set[tuple[str, str]] = set()
+    sku = normalize_product_code_text(product_code)
+    barcode_text = normalize_barcode_text(barcode)
+    name = normalize_product_name_match_key(product_name)
+    if sku:
+        keys.add(("sku", sku))
+    if barcode_text:
+        keys.add(("barcode", barcode_text))
+    if name:
+        keys.add(("name", name))
+    return keys
+
+
+def offline_upload_snapshot_identity_keys(db: Session, work_date: date) -> set[tuple[str, str]]:
+    rows = db.execute(
+        select(
+            InventoryUploadSnapshot.product_code,
+            InventoryUploadSnapshot.barcode,
+            InventoryUploadSnapshot.product_name,
+        ).where(
+            InventoryUploadSnapshot.source_type == "오프라인",
+            InventoryUploadSnapshot.work_date == work_date,
+        )
+    ).all()
+    keys: set[tuple[str, str]] = set()
+    for product_code, barcode, product_name in rows:
+        keys.update(inventory_identity_keys(product_code, barcode, product_name))
+    return keys
+
+
+def has_inventory_identity_match(identity_keys: set[tuple[str, str]], product_code: str = "", barcode: str = "", product_name: str = "") -> bool:
+    return bool(identity_keys.intersection(inventory_identity_keys(product_code, barcode, product_name)))
+
+
+def is_offline_empty_stock_placeholder(row: InventoryDaily | None, upload_snapshot_keys: set[tuple[str, str]] | None = None) -> bool:
+    if row is None or row.source_type != "오프라인":
+        return False
+    if int(row.current_stock or 0) != 0:
+        return False
+    if int(row.available_stock if row.available_stock is not None else row.current_stock or 0) != 0:
+        return False
+    if int(row.inbound_qty or 0) != 0:
+        return False
+    if upload_snapshot_keys and has_inventory_identity_match(upload_snapshot_keys, row.product_code, row.barcode, row.product_name):
+        return False
+    return True
+
+
 def recent_business_days(target: date, count: int = 10) -> list[date]:
     days: list[date] = []
     current = target
@@ -3664,6 +3713,8 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     products = inventory_master_rows_for_display(source_type, products)
     daily_by_product = daily_rows_by_product(db, source_type, work_date, products)
     carried_daily_by_sku = latest_daily_rows_by_product(db, source_type, work_date, products) if source_type == "오프라인" else {}
+    previous_daily_by_sku = latest_daily_rows_by_product(db, source_type, work_date - timedelta(days=1), products) if source_type == "오프라인" else {}
+    offline_upload_snapshot_keys = offline_upload_snapshot_identity_keys(db, work_date) if source_type == "오프라인" else set()
 
     # Purchase/order history is intentionally not loaded during the normal page render.
     # The dedicated sync button still updates those metrics when the user asks for it.
@@ -3682,15 +3733,23 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         product_sku_key = normalize_product_code_text(product.sku)
         product_barcode = normalize_barcode_text(product.barcode)
         location_summary = location_summaries.get(product_sku) or location_summaries.get(product_sku_key) or location_summaries.get(product_barcode) or {}
-        daily = daily_by_product.get(product_daily_lookup_key(product)) or daily_by_product.get(product_sku_key)
-        if daily is None and source_type == "오프라인":
-            daily = carried_daily_by_sku.get(product_sku_key)
+        exact_daily = daily_by_product.get(product_daily_lookup_key(product)) or daily_by_product.get(product_sku_key)
+        daily = exact_daily
+        stock_daily = daily
+        if source_type == "오프라인":
+            previous_daily = previous_daily_by_sku.get(product_sku_key)
+            if daily is None:
+                daily = carried_daily_by_sku.get(product_sku_key)
+                stock_daily = daily
+            elif previous_daily is not None and is_offline_empty_stock_placeholder(daily, offline_upload_snapshot_keys):
+                stock_daily = previous_daily
         has_snapshot = daily is not None
-        has_exact_snapshot = has_snapshot and getattr(daily, "work_date", None) == work_date
-        current_stock = int(daily.current_stock or 0) if has_snapshot else 0
-        raw_pending_outbound_qty = int(daily.outbound_qty or 0) if has_exact_snapshot else 0
+        has_stock_snapshot = stock_daily is not None
+        has_exact_snapshot = has_stock_snapshot and getattr(stock_daily, "work_date", None) == work_date
+        current_stock = int(stock_daily.current_stock or 0) if has_stock_snapshot else 0
+        raw_pending_outbound_qty = int(exact_daily.outbound_qty or 0) if exact_daily is not None else 0
         pending_outbound_qty = max(raw_pending_outbound_qty, 0)
-        available_stock = available_stock_after_pending(source_type, current_stock, pending_outbound_qty, has_snapshot)
+        available_stock = available_stock_after_pending(source_type, current_stock, pending_outbound_qty, has_stock_snapshot)
         placed_quantity = int(location_summary.get("placed_quantity") or 0)
         actual_locations = bool(location_summary.get("location_count") or placed_quantity)
         master_location_registered = bool(getattr(product, "location_registered", False))
@@ -3700,9 +3759,9 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         safe_stock = int(product.min_stock or 0)
 
         status = inventory_stock_status_for_snapshot(
-            has_snapshot,
-            available_stock if has_snapshot else None,
-            current_stock if has_snapshot else None,
+            has_stock_snapshot,
+            available_stock if has_stock_snapshot else None,
+            current_stock if has_stock_snapshot else None,
             safe_stock,
             pending_outbound_qty,
         )
@@ -3766,8 +3825,8 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
                 "avg_daily_outbound_1w": avg_weekly_outbound,
                 "avg_daily_outbound_2w": avg_weekly_outbound,
                 "order_needed_days": needed_days,
-                "last_inventory_update_date": daily.work_date if has_snapshot else None,
-                "has_inventory_snapshot": has_snapshot,
+                "last_inventory_update_date": stock_daily.work_date if has_stock_snapshot else None,
+                "has_inventory_snapshot": has_stock_snapshot,
                 "is_carried_inventory_snapshot": has_snapshot and not has_exact_snapshot,
                 "measured_lead_time": measured_lead_time,
                 "last_purchase_order_date": purchase_metric.get("last_order_date"),
@@ -5974,6 +6033,23 @@ def ensure_offline_daily_row(
         )
     ).scalar_one_or_none()
     if item is not None:
+        previous = latest_daily_row_before(
+            db,
+            "오프라인",
+            work_date,
+            product_code,
+            product_name,
+            barcode,
+            exact_product_name_only=True,
+        )
+        if previous is not None and is_offline_empty_stock_placeholder(item, offline_upload_snapshot_identity_keys(db, work_date)):
+            item.current_stock = int(previous.current_stock or 0)
+            item.available_stock = available_stock_after_pending("오프라인", item.current_stock, item.outbound_qty)
+            item.previous_inbound_date = item.previous_inbound_date or previous.previous_inbound_date
+            item.last_inbound_date = item.last_inbound_date or previous.last_inbound_date
+            item.inbound_cycle = item.inbound_cycle or previous.inbound_cycle
+            item.memo = item.memo or previous.memo
+            item.stock_status = inventory_stock_status_for_daily_row(item)
         return item
 
     previous = latest_daily_row_before(

@@ -606,6 +606,124 @@ class OfflineInventoryFlowTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_offline_lookup_ignores_empty_today_placeholder_and_carries_previous_stock(self) -> None:
+        offline = "\uc624\ud504\ub77c\uc778"
+        db = self.Session()
+        try:
+            db.add(
+                OfflineProductMaster(
+                    sku="PLACEHOLDER-1",
+                    barcode="8800000000501",
+                    product_name="Placeholder carry product",
+                    large_category="Offline",
+                    supplier="Vendor",
+                    min_stock=0,
+                    is_active="\uc0ac\uc6a9",
+                )
+            )
+            db.add(
+                InventoryDaily(
+                    source_type=offline,
+                    work_date=date(2026, 9, 9),
+                    product_code="PLACEHOLDER-1",
+                    barcode="8800000000501",
+                    product_name="Placeholder carry product",
+                    current_stock=64,
+                    available_stock=64,
+                    stock_status="\uc815\uc0c1",
+                )
+            )
+            db.add(
+                InventoryDaily(
+                    source_type=offline,
+                    work_date=date(2026, 9, 14),
+                    product_code="PLACEHOLDER-1",
+                    barcode="8800000000501",
+                    product_name="Placeholder carry product",
+                    current_stock=0,
+                    available_stock=0,
+                    stock_status="\ud488\uc808",
+                )
+            )
+            db.commit()
+
+            rows = services.master_based_inventory_rows(db, offline, date(2026, 9, 14))
+            target = next(row for row in rows if row["product_code"] == "PLACEHOLDER-1")
+
+            self.assertEqual(target["current_stock"], 64)
+            self.assertEqual(target["available_stock"], 64)
+            self.assertEqual(target["last_inventory_update_date"], date(2026, 9, 9))
+            self.assertTrue(target["is_carried_inventory_snapshot"])
+        finally:
+            db.close()
+
+    def test_offline_outbound_uses_previous_stock_when_today_row_is_empty_placeholder(self) -> None:
+        offline = "\uc624\ud504\ub77c\uc778"
+        db = self.Session()
+        try:
+            db.add(
+                OfflineProductMaster(
+                    sku="PLACEHOLDER-OUT-1",
+                    barcode="8800000000502",
+                    product_name="Placeholder outbound product",
+                    large_category="Offline",
+                    supplier="Vendor",
+                    min_stock=0,
+                    is_active="\uc0ac\uc6a9",
+                )
+            )
+            db.add(
+                InventoryDaily(
+                    source_type=offline,
+                    work_date=date(2026, 9, 9),
+                    product_code="PLACEHOLDER-OUT-1",
+                    barcode="8800000000502",
+                    product_name="Placeholder outbound product",
+                    current_stock=80,
+                    available_stock=80,
+                    stock_status="\uc815\uc0c1",
+                )
+            )
+            db.add(
+                InventoryDaily(
+                    source_type=offline,
+                    work_date=date(2026, 9, 14),
+                    product_code="PLACEHOLDER-OUT-1",
+                    barcode="8800000000502",
+                    product_name="Placeholder outbound product",
+                    current_stock=0,
+                    available_stock=0,
+                    stock_status="\ud488\uc808",
+                )
+            )
+            db.commit()
+
+            outbound_df = pd.DataFrame([{"sku": "PLACEHOLDER-OUT-1", "product_name": "Placeholder outbound product", "qty": "13"}])
+            buffer = StringIO()
+            outbound_df.to_csv(buffer, index=False)
+            preview = services.prepare_offline_outbound_upload_preview(
+                db,
+                offline,
+                date(2026, 9, 14),
+                buffer.getvalue().encode("utf-8-sig"),
+                "outbound.csv",
+            )
+            applied = services.apply_offline_outbound_preview(db, preview, "tester")
+
+            self.assertTrue(applied["ok"])
+            daily = db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == offline,
+                    InventoryDaily.work_date == date(2026, 9, 14),
+                    InventoryDaily.product_name == "Placeholder outbound product",
+                )
+            ).scalar_one()
+            self.assertEqual(daily.current_stock, 80)
+            self.assertEqual(daily.available_stock, 67)
+            self.assertEqual(daily.outbound_qty, 13)
+        finally:
+            db.close()
+
     def test_pending_outbound_reduces_available_stock_without_changing_current_stock(self) -> None:
         db = self.Session()
         try:
