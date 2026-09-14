@@ -763,7 +763,7 @@ class OfflineInventoryFlowTest(unittest.TestCase):
         finally:
             db.close()
 
-    def test_pending_outbound_reduces_available_stock_without_changing_current_stock(self) -> None:
+    def test_threepl_pending_outbound_does_not_recalculate_uploaded_available_stock(self) -> None:
         db = self.Session()
         try:
             db.add(
@@ -823,11 +823,11 @@ class OfflineInventoryFlowTest(unittest.TestCase):
 
             self.assertEqual(target["current_stock"], 100)
             self.assertEqual(target["pending_outbound_qty"], 12)
-            self.assertEqual(target["available_stock"], 88)
+            self.assertEqual(target["available_stock"], 100)
             self.assertEqual(small_target["current_stock"], 4)
             self.assertEqual(small_target["pending_outbound_qty"], 2)
-            self.assertEqual(small_target["available_stock"], 2)
-            self.assertEqual(services.daily_to_dict(small_daily)["available_stock"], 2)
+            self.assertEqual(small_target["available_stock"], 4)
+            self.assertEqual(services.daily_to_dict(small_daily)["available_stock"], 4)
         finally:
             db.close()
 

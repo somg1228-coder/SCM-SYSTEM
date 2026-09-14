@@ -3072,9 +3072,19 @@ def stock_status_for_snapshot(has_snapshot: bool, available_stock, current_stock
     return stock_status_for_values(stock_value, safe_stock)
 
 
-def available_stock_after_pending(source_type: str, current_stock, pending_outbound_qty: int = 0, has_snapshot: bool = True) -> int:
+def available_stock_after_pending(
+    source_type: str,
+    current_stock,
+    pending_outbound_qty: int = 0,
+    has_snapshot: bool = True,
+    stored_available_stock=None,
+) -> int:
     if not has_snapshot:
         return 0
+    if source_type != "오프라인":
+        if stored_available_stock is not None:
+            return int(stored_available_stock or 0)
+        return int(current_stock or 0)
     pending_outbound = max(int(pending_outbound_qty or 0), 0)
     return int(current_stock or 0) - pending_outbound
 
@@ -3089,11 +3099,8 @@ def inventory_stock_status_for_snapshot(
     if not has_snapshot:
         return "미집계"
     stock_value = int(available_stock if available_stock is not None else current_stock or 0)
-    pending_outbound = max(int(pending_outbound_qty or 0), 0)
     if stock_value <= 0:
         return "품절"
-    if pending_outbound > 0 and stock_value < pending_outbound:
-        return "부족"
     if safe_stock > 0 and stock_value <= stock_warning_limit(safe_stock):
         return "주의"
     return "정상"
@@ -3106,6 +3113,7 @@ def inventory_stock_status_for_daily_row(row: InventoryDaily) -> str:
         getattr(row, "current_stock", 0),
         pending_outbound_qty,
         True,
+        getattr(row, "available_stock", None),
     )
     return inventory_stock_status_for_snapshot(
         True,
@@ -3229,9 +3237,11 @@ def daily_rows_by_product(db: Session, source_type: str, work_date: date, produc
         row = None
         if row is None and product_name and product_name_counts.get(product_name, 0) == 1 and len(by_name.get(product_name, [])) == 1:
             row = by_name[product_name][0]
-        if row is not None:
+        if row is not None and source_type == "오프라인":
             for key in product_inventory_lookup_keys(product):
                 matched.setdefault(key, row)
+        elif row is not None and product_sku:
+            matched[product_daily_lookup_key(product)] = row
     trace_barcode = normalize_barcode_text(INVENTORY_TRACE_BARCODE)
     trace_products = [product for product in products if normalize_barcode_text(getattr(product, "barcode", "")) == trace_barcode]
     trace_daily_rows = [row for row in rows if normalize_barcode_text(getattr(row, "barcode", "")) == trace_barcode]
@@ -3285,6 +3295,37 @@ def strict_daily_rows_by_product(db: Session, source_type: str, work_date: date,
 def latest_daily_rows_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, InventoryDaily]:
     matched: dict[str, InventoryDaily] = {}
     if not products:
+        return matched
+
+    if source_type != "오프라인":
+        skus = [clean_text(product.sku) for product in products if clean_text(product.sku)]
+        if not skus:
+            return matched
+        sku_set = set(skus)
+        row_number = func.row_number().over(
+            partition_by=InventoryDaily.product_code,
+            order_by=(InventoryDaily.work_date.desc(), InventoryDaily.id.desc()),
+        ).label("row_number")
+        latest_by_sku = (
+            select(InventoryDaily.id, InventoryDaily.product_code, row_number)
+            .where(
+                InventoryDaily.source_type == source_type,
+                InventoryDaily.work_date <= work_date,
+                InventoryDaily.product_code.in_(skus),
+            )
+            .subquery()
+        )
+        rows = list(
+            db.execute(
+                select(InventoryDaily)
+                .join(latest_by_sku, InventoryDaily.id == latest_by_sku.c.id)
+                .where(latest_by_sku.c.row_number == 1)
+            ).scalars()
+        )
+        for row in rows:
+            sku = clean_text(row.product_code)
+            if sku in sku_set:
+                matched[sku] = row
         return matched
 
     by_sku, by_barcode_name, by_barcode, by_name = product_lookup_maps(products)
@@ -3726,10 +3767,14 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         product_lookup_key = product_daily_lookup_key(product)
         product_barcode = normalize_barcode_text(product.barcode)
         location_summary = location_summaries.get(product_sku) or location_summaries.get(product_sku_key) or location_summaries.get(product_barcode) or {}
-        exact_daily = daily_by_product.get(product_lookup_key) or daily_by_product.get(product_sku_key) or daily_by_product.get(product_barcode)
+        exact_daily = daily_by_product.get(product_lookup_key) or daily_by_product.get(product_sku_key)
         daily = exact_daily
         stock_daily = daily
         if source_type == "오프라인":
+            if exact_daily is None:
+                exact_daily = daily_by_product.get(product_barcode)
+                daily = exact_daily
+                stock_daily = daily
             previous_daily = previous_daily_by_sku.get(product_lookup_key) or previous_daily_by_sku.get(product_sku_key) or previous_daily_by_sku.get(product_barcode)
             if daily is None:
                 daily = carried_daily_by_sku.get(product_lookup_key) or carried_daily_by_sku.get(product_sku_key) or carried_daily_by_sku.get(product_barcode)
@@ -3742,7 +3787,14 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
         current_stock = int(stock_daily.current_stock or 0) if has_stock_snapshot else 0
         raw_pending_outbound_qty = int(exact_daily.outbound_qty or 0) if exact_daily is not None else 0
         pending_outbound_qty = max(raw_pending_outbound_qty, 0)
-        available_stock = available_stock_after_pending(source_type, current_stock, pending_outbound_qty, has_stock_snapshot)
+        stored_available_stock = getattr(stock_daily, "available_stock", None) if has_stock_snapshot else None
+        available_stock = available_stock_after_pending(
+            source_type,
+            current_stock,
+            pending_outbound_qty,
+            has_stock_snapshot,
+            stored_available_stock,
+        )
         placed_quantity = int(location_summary.get("placed_quantity") or 0)
         actual_locations = bool(location_summary.get("location_count") or placed_quantity)
         master_location_registered = bool(getattr(product, "location_registered", False))
@@ -6485,7 +6537,7 @@ def dataframe_for_inbound(rows: list[InventoryInbound]) -> pd.DataFrame:
 
 def daily_to_dict(row: InventoryDaily) -> dict:
     pending_outbound_qty = int(row.outbound_qty or 0)
-    available_stock = available_stock_after_pending(row.source_type, row.current_stock, pending_outbound_qty)
+    available_stock = available_stock_after_pending(row.source_type, row.current_stock, pending_outbound_qty, True, row.available_stock)
     return {
         "id": row.id,
         "source_type": row.source_type,

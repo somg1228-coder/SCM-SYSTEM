@@ -5207,7 +5207,7 @@ def daily_to_editor(rows: list[dict]) -> pd.DataFrame:
         current_stock = to_int(row.get("current_stock", 0))
         available_stock = row.get("available_stock", 0)
         pending_outbound_value = max(to_int(pending_outbound_qty), 0)
-        if pending_outbound_value:
+        if row_source_type == "오프라인" and pending_outbound_value:
             available_stock = current_stock - pending_outbound_value
         return_qty = to_int(row.get("return_qty"))
         if row_source_type == "오프라인" and return_qty <= 0 and to_int(pending_outbound_qty) < 0:
