@@ -6460,6 +6460,28 @@ def inbound_to_dict(row: InventoryInbound) -> dict:
     }
 
 
+def dashboard_inventory_rows(db: Session, work_date: date, source_type: str | None = None) -> list[dict]:
+    sources = [source_type] if source_type and source_type != "전체" else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
+    rows: list[dict] = []
+    for source in sources:
+        if source == "오프라인":
+            rows.extend(master_based_inventory_rows(db, source, work_date))
+            continue
+        if use_legacy_supabase_rest_store():
+            rows.extend(supabase_store.daily_rows(source, work_date))
+            continue
+        daily_rows = list(
+            db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == source,
+                    InventoryDaily.work_date == work_date,
+                )
+            ).scalars()
+        )
+        rows.extend(daily_to_dict(row) for row in daily_rows)
+    return rows
+
+
 def excel_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -6468,43 +6490,23 @@ def excel_bytes(df: pd.DataFrame, sheet_name: str) -> bytes:
 
 
 def dashboard_summary(db: Session, work_date: date, source_type: str | None = None) -> dict:
-    if use_legacy_supabase_rest_store():
-        sources = [source_type] if source_type and source_type != "전체" else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
-        rows = []
-        for source in sources:
-            rows.extend(supabase_store.daily_rows(source, work_date))
-        statuses = [
-            inventory_stock_status_for_snapshot(
-                True,
-                row.get("available_stock"),
-                row.get("current_stock"),
-                int(row.get("safe_stock") or 0),
-                int(row.get("outbound_qty") or 0),
-            )
-            for row in rows
-        ]
-        return {
-            "sku_count": len(rows),
-            "current_stock": sum(int(row.get("current_stock") or 0) for row in rows),
-            "available_stock": sum(int(row.get("available_stock") or 0) for row in rows),
-            "need_inbound_count": sum(1 for status in statuses if status in {"부족", "주의", "입고필요"}),
-            "soldout_count": sum(1 for status in statuses if status == "품절"),
-            "short_count": sum(1 for status in statuses if status in {"부족", "품절", "미출"}),
-            "outbound_qty": 0,
-            "inbound_qty": 0,
-        }
-
-    filters = [InventoryDaily.work_date == work_date]
-    if source_type and source_type != "전체":
-        filters.append(InventoryDaily.source_type == source_type)
-    rows = list(db.execute(select(InventoryDaily).where(*filters)).scalars())
-    statuses = [inventory_stock_status_for_daily_row(row) for row in rows]
+    rows = dashboard_inventory_rows(db, work_date, source_type)
+    statuses = [
+        inventory_stock_status_for_snapshot(
+            True,
+            row.get("available_stock"),
+            row.get("current_stock"),
+            int(row.get("safe_stock") or 0),
+            int(row.get("pending_outbound_qty", row.get("outbound_qty", 0)) or 0),
+        )
+        for row in rows
+    ]
     return {
         "sku_count": len(rows),
-        "current_stock": sum(int(row.current_stock or 0) for row in rows),
-        "available_stock": sum(int(row.available_stock if row.available_stock is not None else row.current_stock or 0) for row in rows),
-        "outbound_qty": sum(int(row.outbound_qty or 0) for row in rows),
-        "inbound_qty": sum(int(row.inbound_qty or 0) for row in rows),
+        "current_stock": sum(int(row.get("current_stock") or 0) for row in rows),
+        "available_stock": sum(int(row.get("available_stock") or 0) for row in rows),
+        "outbound_qty": sum(int(row.get("pending_outbound_qty", row.get("outbound_qty", 0)) or 0) for row in rows),
+        "inbound_qty": sum(int(row.get("inbound_qty") or 0) for row in rows),
         "need_inbound_count": sum(1 for status in statuses if status in {"부족", "주의", "입고필요"}),
         "soldout_count": sum(1 for status in statuses if status == "품절"),
         "short_count": sum(1 for status in statuses if status in {"부족", "품절", "미출"}),
@@ -6512,100 +6514,73 @@ def dashboard_summary(db: Session, work_date: date, source_type: str | None = No
 
 
 def dashboard_chart(db: Session, work_date: date, source_type: str | None = None) -> dict:
-    if use_legacy_supabase_rest_store():
-        sources = [source_type] if source_type and source_type != "전체" else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
-        rows = []
-        for source in sources:
-            rows.extend(supabase_store.daily_rows(source, work_date))
-        category_totals: dict[str, int] = {}
-        for row in rows:
-            label = row.get("category") or "미분류"
-            category_totals[label] = category_totals.get(label, 0) + int(row.get("current_stock") or 0)
-        need_rows = sorted(
-            [
-                row
-                for row in rows
-                if inventory_stock_status_for_snapshot(
-                    True,
-                    row.get("available_stock"),
-                    row.get("current_stock"),
-                    int(row.get("safe_stock") or 0),
-                    int(row.get("outbound_qty") or 0),
-                )
-                in {"부족", "주의", "입고필요"}
-            ],
-            key=lambda row: int(row.get("safe_stock") or 0) - int(row.get("available_stock") or row.get("current_stock") or 0),
-            reverse=True,
-        )[:10]
-        return {
-            "stock_by_source": [
-                {"label": source, "value": sum(int(row.get("current_stock") or 0) for row in rows if row.get("source_type") == source)}
-                for source in sources
-            ],
-            "stock_by_category": [{"label": label, "value": value} for label, value in sorted(category_totals.items())],
-            "outbound_by_category": [],
-            "stock_trend": [{"date": str(work_date), "value": sum(int(row.get("current_stock") or 0) for row in rows)}],
-            "outbound_trend": [],
-            "need_inbound_top10": [
-                {
-                    "product_name": row.get("product_name"),
-                    "current_stock": int(row.get("current_stock") or 0),
-                    "safe_stock": int(row.get("safe_stock") or 0),
-                }
-                for row in need_rows
-            ],
-        }
+    effective_rows = dashboard_inventory_rows(db, work_date, source_type)
+    sources = [source_type] if source_type and source_type != "전체" else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
+    category_totals: dict[str, int] = {}
+    outbound_category_totals: dict[str, int] = {}
+    for row in effective_rows:
+        label = row.get("category") or "미분류"
+        category_totals[label] = category_totals.get(label, 0) + int(row.get("current_stock") or 0)
+        outbound_category_totals[label] = outbound_category_totals.get(label, 0) + int(row.get("pending_outbound_qty", row.get("outbound_qty", 0)) or 0)
 
-    base_filters = [InventoryDaily.work_date == work_date]
+    need_rows = sorted(
+        [
+            row
+            for row in effective_rows
+            if inventory_stock_status_for_snapshot(
+                True,
+                row.get("available_stock"),
+                row.get("current_stock"),
+                int(row.get("safe_stock") or 0),
+                int(row.get("pending_outbound_qty", row.get("outbound_qty", 0)) or 0),
+            )
+            in {"부족", "주의", "입고필요"}
+        ],
+        key=lambda row: int(row.get("safe_stock") or 0) - int(row.get("available_stock") or row.get("current_stock") or 0),
+        reverse=True,
+    )[:10]
+
     trend_filters = []
     if source_type and source_type != "전체":
-        base_filters.append(InventoryDaily.source_type == source_type)
         trend_filters.append(InventoryDaily.source_type == source_type)
 
-    def grouped(label_column, value_column, filters):
-        rows = db.execute(
-            select(label_column, func.sum(value_column)).where(*filters).group_by(label_column)
-        ).all()
-        return [{"label": str(label or "미분류"), "value": int(value or 0)} for label, value in rows]
-
-    def grouped_by_master_category(value_attr: str) -> list[dict]:
-        value_column = getattr(InventoryDaily, value_attr)
-        rows = db.execute(
-            select(InventoryDaily.category, func.sum(value_column))
-            .where(*base_filters)
-            .group_by(InventoryDaily.category)
-        ).all()
-        return [{"label": str(label or "미분류"), "value": int(value or 0)} for label, value in rows]
-
-    def trend(value_column):
+    def trend(value_column, value_key: str):
+        selected_value = sum(
+            int(row.get("pending_outbound_qty", row.get("outbound_qty", 0)) or 0)
+            if value_key == "outbound_qty"
+            else int(row.get(value_key) or 0)
+            for row in effective_rows
+        )
+        if use_legacy_supabase_rest_store():
+            return [{"date": str(work_date), "value": selected_value}]
         rows = db.execute(
             select(InventoryDaily.work_date, func.sum(value_column))
             .where(*trend_filters)
             .group_by(InventoryDaily.work_date)
             .order_by(InventoryDaily.work_date)
         ).all()
-        return [{"date": str(day), "value": int(value or 0)} for day, value in rows]
-
-    daily_rows = list(db.execute(select(InventoryDaily).where(*base_filters)).scalars())
-    top_rows = sorted(
-        [
-            row
-            for row in daily_rows
-            if inventory_stock_status_for_daily_row(row) in {"부족", "주의", "입고필요"}
-        ],
-        key=lambda row: int(row.safe_stock or 0) - int(row.available_stock if row.available_stock is not None else row.current_stock or 0),
-        reverse=True,
-    )[:10]
+        points = [{"date": str(day), "value": int(value or 0)} for day, value in rows]
+        for point in points:
+            if point["date"] == str(work_date):
+                point["value"] = selected_value
+                break
+        else:
+            points.append({"date": str(work_date), "value": selected_value})
+            points.sort(key=lambda point: point["date"])
+        return points
 
     return {
-        "stock_by_source": grouped(InventoryDaily.source_type, InventoryDaily.current_stock, [InventoryDaily.work_date == work_date]),
-        "stock_by_category": grouped_by_master_category("current_stock"),
-        "outbound_by_category": grouped_by_master_category("outbound_qty"),
-        "stock_trend": trend(InventoryDaily.current_stock),
-        "outbound_trend": trend(InventoryDaily.outbound_qty),
+        "stock_by_source": [
+            {"label": source, "value": sum(int(row.get("current_stock") or 0) for row in effective_rows if row.get("source_type") == source)}
+            for source in sources
+        ],
+        "stock_by_category": [{"label": label, "value": value} for label, value in sorted(category_totals.items())],
+        "outbound_by_category": [{"label": label, "value": value} for label, value in sorted(outbound_category_totals.items())],
+        "stock_trend": trend(InventoryDaily.current_stock, "current_stock"),
+        "outbound_trend": trend(InventoryDaily.outbound_qty, "outbound_qty"),
         "need_inbound_top10": [
-            {"product_name": row.product_name, "current_stock": int(row.current_stock or 0), "safe_stock": int(row.safe_stock or 0)}
-            for row in top_rows
+            {"product_name": row.get("product_name"), "current_stock": int(row.get("current_stock") or 0), "safe_stock": int(row.get("safe_stock") or 0)}
+            for row in need_rows
         ],
     }
 

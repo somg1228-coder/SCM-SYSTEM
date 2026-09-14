@@ -566,6 +566,46 @@ class OfflineInventoryFlowTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_offline_dashboard_uses_carried_inventory_snapshot(self) -> None:
+        offline = "\uc624\ud504\ub77c\uc778"
+        db = self.Session()
+        try:
+            db.add(
+                OfflineProductMaster(
+                    sku="DASH-CARRY-1",
+                    barcode="8800000000401",
+                    product_name="Dashboard carry product",
+                    large_category="Offline",
+                    supplier="Vendor",
+                    min_stock=0,
+                    is_active="\uc0ac\uc6a9",
+                )
+            )
+            db.add(
+                InventoryDaily(
+                    source_type=offline,
+                    work_date=date(2026, 9, 8),
+                    product_code="DASH-CARRY-1",
+                    barcode="8800000000401",
+                    product_name="Dashboard carry product",
+                    current_stock=37,
+                    available_stock=37,
+                    stock_status="\uc815\uc0c1",
+                )
+            )
+            db.commit()
+
+            summary = services.dashboard_summary(db, date(2026, 9, 9), offline)
+            chart = services.dashboard_chart(db, date(2026, 9, 9), offline)
+
+            self.assertEqual(summary["sku_count"], 1)
+            self.assertEqual(summary["current_stock"], 37)
+            self.assertEqual(summary["available_stock"], 37)
+            self.assertIn({"label": offline, "value": 37}, chart["stock_by_source"])
+            self.assertIn({"date": "2026-09-09", "value": 37}, chart["stock_trend"])
+        finally:
+            db.close()
+
     def test_pending_outbound_reduces_available_stock_without_changing_current_stock(self) -> None:
         db = self.Session()
         try:
