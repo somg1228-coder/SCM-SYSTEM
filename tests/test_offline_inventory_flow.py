@@ -657,6 +657,45 @@ class OfflineInventoryFlowTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_offline_lookup_carries_previous_stock_without_sku(self) -> None:
+        offline = "\uc624\ud504\ub77c\uc778"
+        db = self.Session()
+        try:
+            db.add(
+                OfflineProductMaster(
+                    sku="",
+                    barcode="8800000000601",
+                    product_name="Barcode only carry product",
+                    large_category="Offline",
+                    supplier="Vendor",
+                    min_stock=0,
+                    is_active="\uc0ac\uc6a9",
+                )
+            )
+            db.add(
+                InventoryDaily(
+                    source_type=offline,
+                    work_date=date(2026, 9, 9),
+                    product_code="",
+                    barcode="8800000000601",
+                    product_name="Barcode only carry product",
+                    current_stock=25,
+                    available_stock=25,
+                    stock_status="\uc815\uc0c1",
+                )
+            )
+            db.commit()
+
+            rows = services.master_based_inventory_rows(db, offline, date(2026, 9, 14))
+            target = next(row for row in rows if row["barcode"] == "8800000000601")
+
+            self.assertEqual(target["current_stock"], 25)
+            self.assertEqual(target["available_stock"], 25)
+            self.assertEqual(target["last_inventory_update_date"], date(2026, 9, 9))
+            self.assertTrue(target["is_carried_inventory_snapshot"])
+        finally:
+            db.close()
+
     def test_offline_outbound_uses_previous_stock_when_today_row_is_empty_placeholder(self) -> None:
         offline = "\uc624\ud504\ub77c\uc778"
         db = self.Session()

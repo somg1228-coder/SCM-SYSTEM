@@ -3190,6 +3190,18 @@ def product_daily_lookup_key(product) -> str:
     return product_name or normalize_product_code_text(getattr(product, "sku", ""))
 
 
+def product_inventory_lookup_keys(product) -> list[str]:
+    keys: list[str] = []
+    daily_key = product_daily_lookup_key(product)
+    sku = normalize_product_code_text(getattr(product, "sku", ""))
+    barcode = normalize_barcode_text(getattr(product, "barcode", ""))
+    name = normalize_product_name_match_key(getattr(product, "product_name", ""))
+    for key in (daily_key, sku, barcode, name):
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
 def daily_rows_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, InventoryDaily]:
     rows = list(
         db.execute(
@@ -3217,8 +3229,9 @@ def daily_rows_by_product(db: Session, source_type: str, work_date: date, produc
         row = None
         if row is None and product_name and product_name_counts.get(product_name, 0) == 1 and len(by_name.get(product_name, [])) == 1:
             row = by_name[product_name][0]
-        if row is not None and product_sku:
-            matched[product_daily_lookup_key(product)] = row
+        if row is not None:
+            for key in product_inventory_lookup_keys(product):
+                matched.setdefault(key, row)
     trace_barcode = normalize_barcode_text(INVENTORY_TRACE_BARCODE)
     trace_products = [product for product in products if normalize_barcode_text(getattr(product, "barcode", "")) == trace_barcode]
     trace_daily_rows = [row for row in rows if normalize_barcode_text(getattr(row, "barcode", "")) == trace_barcode]
@@ -3270,43 +3283,11 @@ def strict_daily_rows_by_product(db: Session, source_type: str, work_date: date,
 
 
 def latest_daily_rows_by_product(db: Session, source_type: str, work_date: date, products: list) -> dict[str, InventoryDaily]:
-    skus = [clean_text(product.sku) for product in products if clean_text(product.sku)]
-    if not skus:
-        return {}
-
-    sku_set = set(skus)
-    row_number = func.row_number().over(
-        partition_by=InventoryDaily.product_code,
-        order_by=(InventoryDaily.work_date.desc(), InventoryDaily.id.desc()),
-    ).label("row_number")
-    latest_by_sku = (
-        select(InventoryDaily.id, InventoryDaily.product_code, row_number)
-        .where(
-            InventoryDaily.source_type == source_type,
-            InventoryDaily.work_date <= work_date,
-            InventoryDaily.product_code.in_(skus),
-        )
-        .subquery()
-    )
     matched: dict[str, InventoryDaily] = {}
-    sku_rows = list(
-        db.execute(
-            select(InventoryDaily)
-            .join(latest_by_sku, InventoryDaily.id == latest_by_sku.c.id)
-            .where(latest_by_sku.c.row_number == 1)
-        ).scalars()
-    )
-    for row in sku_rows:
-        sku = clean_text(row.product_code)
-        if sku in sku_set:
-            matched[sku] = row
-    if len(matched) == len(sku_set):
+    if not products:
         return matched
 
-    remaining_products = [product for product in products if clean_text(product.sku) and clean_text(product.sku) not in matched]
-    if not remaining_products:
-        return matched
-
+    by_sku, by_barcode_name, by_barcode, by_name = product_lookup_maps(products)
     cutoff_date = work_date - timedelta(days=120)
     rows = list(
         db.execute(
@@ -3319,14 +3300,25 @@ def latest_daily_rows_by_product(db: Session, source_type: str, work_date: date,
             .order_by(InventoryDaily.work_date.desc(), InventoryDaily.id.desc())
         ).scalars()
     )
-    by_sku, by_barcode_name, by_barcode, by_name = product_lookup_maps(remaining_products)
     for row in rows:
-        product = match_product_from_maps(row.product_code, row.barcode, row.product_name, by_sku, by_barcode_name, by_barcode, by_name, source_type=source_type)
-        if product is None:
-            continue
-        sku = clean_text(product.sku)
-        if sku and sku not in matched:
-            matched[sku] = row
+        row_sku = normalize_product_code_text(row.product_code)
+        row_barcode = normalize_barcode_text(row.barcode)
+        row_name = normalize_product_name_match_key(row.product_name)
+        candidate_products: list[object] = []
+        if row_sku and by_sku.get(row_sku) is not None:
+            candidate_products.append(by_sku[row_sku])
+        if row_barcode and row_name and by_barcode_name.get((row_barcode, row_name)) is not None:
+            candidate_products.append(by_barcode_name[(row_barcode, row_name)])
+        if row_barcode and len(by_barcode.get(row_barcode, [])) == 1:
+            candidate_products.append(by_barcode[row_barcode][0])
+        if row_name:
+            name_product = preferred_master_product(by_name.get(row_name, []))
+            if name_product is not None:
+                candidate_products.append(name_product)
+
+        for product in candidate_products:
+            for key in product_inventory_lookup_keys(product):
+                matched.setdefault(key, row)
     return matched
 
 
@@ -3731,15 +3723,16 @@ def master_based_inventory_rows(db: Session, source_type: str, work_date: date, 
     for product in products:
         product_sku = clean_text(product.sku)
         product_sku_key = normalize_product_code_text(product.sku)
+        product_lookup_key = product_daily_lookup_key(product)
         product_barcode = normalize_barcode_text(product.barcode)
         location_summary = location_summaries.get(product_sku) or location_summaries.get(product_sku_key) or location_summaries.get(product_barcode) or {}
-        exact_daily = daily_by_product.get(product_daily_lookup_key(product)) or daily_by_product.get(product_sku_key)
+        exact_daily = daily_by_product.get(product_lookup_key) or daily_by_product.get(product_sku_key) or daily_by_product.get(product_barcode)
         daily = exact_daily
         stock_daily = daily
         if source_type == "오프라인":
-            previous_daily = previous_daily_by_sku.get(product_sku_key)
+            previous_daily = previous_daily_by_sku.get(product_lookup_key) or previous_daily_by_sku.get(product_sku_key) or previous_daily_by_sku.get(product_barcode)
             if daily is None:
-                daily = carried_daily_by_sku.get(product_sku_key)
+                daily = carried_daily_by_sku.get(product_lookup_key) or carried_daily_by_sku.get(product_sku_key) or carried_daily_by_sku.get(product_barcode)
                 stock_daily = daily
             elif previous_daily is not None and is_offline_empty_stock_placeholder(daily, offline_upload_snapshot_keys):
                 stock_daily = previous_daily
