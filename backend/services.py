@@ -5152,7 +5152,7 @@ def apply_erp_stock_upload_file(
             product = matched["product"]
             new_stock = int(matched["stock"] or 0)
             outbound_qty = int(matched.get("outbound_qty") or 0)
-            new_available_stock = new_stock - max(outbound_qty, 0)
+            new_available_stock = new_stock
             uploaded_category = clean_text(matched.get("category"))
             if uploaded_category and not product_category_text(product):
                 product.large_category = uploaded_category
@@ -5271,7 +5271,7 @@ def apply_erp_stock_upload_file(
             verified = verified_by_sku.get(product_sku)
             expected_stock = int(matched["stock"] or 0)
             expected_outbound_qty = int(matched.get("outbound_qty") or 0)
-            expected_available_stock = expected_stock - max(expected_outbound_qty, 0)
+            expected_available_stock = expected_stock
             if (
                 verified is None
                 or int(verified.current_stock or 0) != expected_stock
