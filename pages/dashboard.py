@@ -471,10 +471,7 @@ def build_weekly_schedule_html_from_production(production_rows: list) -> str:
         <div class="panel-title-row">
             <h2>물류 주간 일정표</h2>
             <div class="week-range">
-                <span>월</span>
                 <strong>{week_start:%Y.%m.%d} ~ {week_end:%Y.%m.%d}</strong>
-                <span>주</span>
-                <span>차</span>
             </div>
         </div>
         <div class="week-board">{cells}</div>
@@ -1520,10 +1517,7 @@ def weekly_schedule_html() -> str:
         <div class="panel-title-row">
             <h2>물류 주간 일정표</h2>
             <div class="week-range">
-                <span>‹</span>
                 <strong>{week_start:%Y.%m.%d} ~ {week_end:%Y.%m.%d}</strong>
-                <span>›</span>
-                <span>›</span>
             </div>
         </div>
         <div class="week-board">{cells}</div>

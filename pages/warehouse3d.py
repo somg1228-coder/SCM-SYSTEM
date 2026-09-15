@@ -3657,6 +3657,12 @@ def warehouse_scene3d_html(
                 white-space: normal;
             }}
             .item-list td:nth-child(3)::before {{ content: "바코드"; }}
+            .item-list td.item-barcode {{
+                display: none;
+            }}
+            .item-list td.item-barcode::before {{
+                display: none;
+            }}
             .item-list th:nth-child(4),
             .item-list td:nth-child(4) {{
                 line-height: 1.35;
@@ -3675,7 +3681,47 @@ def warehouse_scene3d_html(
             .item-list td:nth-child(6) {{
                 grid-column: 1 / -1;
             }}
-            .item-list td:nth-child(6)::before {{ content: "관리"; }}
+            .item-list td:nth-child(6)::before {{
+                content: "관리";
+            }}
+            .item-list .item-name-main {{
+                color: #1F2933;
+                display: block;
+                font-size: 0.78rem;
+                font-weight: 950;
+                line-height: 1.32;
+                overflow-wrap: anywhere;
+            }}
+            .item-list .item-meta {{
+                color: #64748B;
+                display: block;
+                font-size: 0.62rem;
+                font-weight: 850;
+                line-height: 1.28;
+                margin-top: 0.08rem;
+                overflow-wrap: anywhere;
+            }}
+            .item-edit {{
+                width: 100%;
+            }}
+            .item-edit summary {{
+                align-items: center;
+                background: #EDE8E1;
+                border: 1px solid #D8D2C8;
+                border-radius: 8px;
+                color: #2F4659;
+                cursor: pointer;
+                display: flex;
+                font-size: 0.68rem;
+                font-weight: 950;
+                justify-content: center;
+                min-height: 30px;
+                padding: 0 0.44rem;
+                user-select: none;
+            }}
+            .item-edit[open] summary {{
+                margin-bottom: 0.42rem;
+            }}
             .item-list .empty {{
                 display: block;
                 grid-column: 1 / -1;
@@ -4535,6 +4581,14 @@ def warehouse_scene3d_html(
                 return boxes > 0
                     ? `${{countText}} 파렛트 · ${{boxes.toLocaleString("ko-KR")}}박스/파렛트`
                     : `${{countText}} 파렛트`;
+            }}
+
+            function compactPackageDisplayText(item) {{
+                const unit = storageUnitForItem(item);
+                const countText = packageCount(item).toLocaleString("ko-KR");
+                if (unit === "EA") return `${{countText}}EA`;
+                if (unit === "BOX") return `${{countText}}박스`;
+                return `${{countText}}파렛트`;
             }}
 
             function actualStockText(item) {{
@@ -5465,10 +5519,10 @@ def warehouse_scene3d_html(
                 return mesh;
             }}
 
-            function makeLabel(text, position, scale = 1, emphasis = false) {{
+            function makeLabel(text, position, scale = 1, emphasis = false, compact = false) {{
                 const rawText = String(text ?? "").trim();
                 if (!rawText) return new THREE.Group();
-                const wrapLabel = (value, maxChars = 18) => {{
+                const wrapLabel = (value, maxChars = compact ? 12 : 18) => {{
                     if (value.length <= maxChars) return [value];
                     const words = value.split(/\\s+/).filter(Boolean);
                     const lines = [];
@@ -5489,14 +5543,14 @@ def warehouse_scene3d_html(
                 }};
                 const lines = wrapLabel(rawText);
                 const labelCanvas = document.createElement("canvas");
-                const pixelRatio = emphasis ? 3 : 2.2;
-                const baseFontSize = lines.length > 1 ? 30 : 37;
+                const pixelRatio = compact ? 2 : (emphasis ? 3 : 2.2);
+                const baseFontSize = compact ? (lines.length > 1 ? 24 : 28) : (lines.length > 1 ? 30 : 37);
                 const measureCtx = labelCanvas.getContext("2d");
                 measureCtx.font = `900 ${{baseFontSize}}px Pretendard, Arial, sans-serif`;
                 const measuredTextWidth = Math.max(...lines.map(line => measureCtx.measureText(line).width), 1);
-                const horizontalPadding = emphasis ? 50 : 44;
-                const logicalWidth = Math.min(680, Math.max(120, Math.ceil(measuredTextWidth + horizontalPadding)));
-                const logicalHeight = lines.length > 1 ? 132 : 92;
+                const horizontalPadding = compact ? 30 : (emphasis ? 50 : 44);
+                const logicalWidth = Math.min(compact ? 360 : 680, Math.max(compact ? 92 : 120, Math.ceil(measuredTextWidth + horizontalPadding)));
+                const logicalHeight = compact ? (lines.length > 1 ? 88 : 60) : (lines.length > 1 ? 132 : 92);
                 labelCanvas.width = Math.round(logicalWidth * pixelRatio);
                 labelCanvas.height = Math.round(logicalHeight * pixelRatio);
                 const ctx = labelCanvas.getContext("2d");
@@ -5504,10 +5558,10 @@ def warehouse_scene3d_html(
                 ctx.clearRect(0, 0, logicalWidth, logicalHeight);
                 ctx.fillStyle = emphasis ? "rgba(232, 194, 122, 0.98)" : "rgba(250, 248, 244, 0.98)";
                 ctx.strokeStyle = emphasis ? "rgba(96, 72, 38, 0.96)" : "rgba(31, 48, 64, 0.92)";
-                ctx.lineWidth = emphasis ? 8 : 7;
+                ctx.lineWidth = compact ? 5 : (emphasis ? 8 : 7);
                 ctx.shadowColor = emphasis ? "rgba(82, 58, 30, 0.28)" : "rgba(15, 23, 42, 0.24)";
-                ctx.shadowBlur = emphasis ? 12 : 12;
-                ctx.shadowOffsetY = emphasis ? 5 : 5;
+                ctx.shadowBlur = compact ? 8 : (emphasis ? 12 : 12);
+                ctx.shadowOffsetY = compact ? 3 : (emphasis ? 5 : 5);
                 if (ctx.roundRect) {{
                     ctx.roundRect(10, 14, logicalWidth - 20, logicalHeight - 28, 12);
                 }} else {{
@@ -5523,7 +5577,7 @@ def warehouse_scene3d_html(
                 ctx.textBaseline = "middle";
                 let fontSize = baseFontSize;
                 ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
-                while (fontSize > 20 && lines.some(line => ctx.measureText(line).width > logicalWidth - 48)) {{
+                while (fontSize > (compact ? 17 : 20) && lines.some(line => ctx.measureText(line).width > logicalWidth - (compact ? 28 : 48))) {{
                     fontSize -= 2;
                     ctx.font = `900 ${{fontSize}}px Pretendard, Arial, sans-serif`;
                 }}
@@ -5531,7 +5585,7 @@ def warehouse_scene3d_html(
                 const startY = logicalHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
                 ctx.lineJoin = "round";
                 ctx.strokeStyle = emphasis ? "rgba(255, 250, 240, 0.62)" : "rgba(255, 255, 255, 0.82)";
-                ctx.lineWidth = emphasis ? 4 : 3;
+                ctx.lineWidth = compact ? 2.4 : (emphasis ? 4 : 3);
                 lines.forEach((line, index) => {{
                     const textY = startY + index * lineHeight;
                     ctx.strokeText(line, logicalWidth / 2, textY);
@@ -5546,7 +5600,9 @@ def warehouse_scene3d_html(
                 sprite.renderOrder = emphasis ? 30 : 20;
                 sprite.position.copy(position);
                 const emphasisScale = emphasis ? 1.1 : 1;
-                sprite.scale.set(Math.max(3.6, logicalWidth / 76) * scale * emphasisScale, Math.max(1.28, logicalHeight / 76) * scale * emphasisScale, 1);
+                const minSpriteWidth = compact ? 2.35 : 3.6;
+                const minSpriteHeight = compact ? 0.78 : 1.28;
+                sprite.scale.set(Math.max(minSpriteWidth, logicalWidth / 82) * scale * emphasisScale, Math.max(minSpriteHeight, logicalHeight / 82) * scale * emphasisScale, 1);
                 return sprite;
             }}
 
@@ -5773,7 +5829,7 @@ def warehouse_scene3d_html(
             }}
 
             function itemLabelText(item) {{
-                return `${{shortLabel(item.name, 11)}} ${{labelQuantityText(item)}}`;
+                return `${{shortLabel(item.name, 10)}} ${{compactPackageDisplayText(item)}}`;
             }}
 
             function makeShelfRack(rack, world, floorY) {{
@@ -5901,7 +5957,7 @@ def warehouse_scene3d_html(
                             group.add(itemHitbox);
                             itemHitboxes.push(itemHitbox);
                             if (shouldShowItemLabel) {{
-                                group.add(makeLabel(itemLabelText(item), new THREE.Vector3(x, y + (stackCount - 1) * layerStep + 0.08 + layerBoxH * palletBoxLevels + 0.38, z), 0.42, itemKey === selectedRackItemKey));
+                                group.add(makeLabel(itemLabelText(item), new THREE.Vector3(x, y + (stackCount - 1) * layerStep + 0.08 + layerBoxH * palletBoxLevels + 0.38, z), 0.42, itemKey === selectedRackItemKey, true));
                             }}
                         }} else {{
                             const boxMaterial = itemMaterialFor(itemIndex + shelfIndex, status);
@@ -5913,7 +5969,7 @@ def warehouse_scene3d_html(
                             group.add(boxMesh);
                             itemHitboxes.push(boxMesh);
                             if (shouldShowItemLabel) {{
-                                group.add(makeLabel(itemLabelText(item), new THREE.Vector3(x, y + boxH + 0.3, z), 0.36, itemKey === selectedRackItemKey));
+                                group.add(makeLabel(itemLabelText(item), new THREE.Vector3(x, y + boxH + 0.3, z), 0.36, itemKey === selectedRackItemKey, true));
                             }}
                         }}
                     }});
@@ -6260,6 +6316,21 @@ def warehouse_scene3d_html(
                 `;
             }}
 
+            function itemNameCellHtml(item) {{
+                const barcode = String(item?.barcode || "").trim();
+                const barcodeText = barcode ? `<span class="item-meta">바코드 ${{escapeHtml(barcode)}}</span>` : "";
+                return `<strong class="item-name-main">${{escapeHtml(item?.name || "품목")}}</strong>${{barcodeText}}`;
+            }}
+
+            function itemEditCellHtml(item, actionName, actionValue, deleteName = "data-remove") {{
+                return `
+                    <details class="item-edit">
+                        <summary>수정</summary>
+                        ${{packageEditorControls(item, actionName, actionValue, deleteName)}}
+                    </details>
+                `;
+            }}
+
             function applyPackageEditor(button, target) {{
                 const container = button.closest(".package-actions");
                 if (!container || !target) return;
@@ -6329,12 +6400,12 @@ def warehouse_scene3d_html(
                     }} else {{
                         itemBody.innerHTML = deleteFixtureRow + fixture.items.map((item, index) => `
                             <tr>
-                                <td>파렛트 내부</td>
-                                <td>${{escapeHtml(item.name)}}</td>
-                                <td>${{escapeHtml(item.barcode || "-")}}</td>
+                                <td>파렛트</td>
+                                <td>${{itemNameCellHtml(item)}}</td>
+                                <td class="item-barcode">${{escapeHtml(item.barcode || "-")}}</td>
                                 <td title="${{escapeHtml(loadQtyText(item))}}">${{packageDisplayText(item)}}</td>
                                 <td>${{actualStockText(item)}}</td>
-                                <td>${{packageEditorControls(item, "data-pallet-update", index, "data-pallet-remove")}}</td>
+                                <td>${{itemEditCellHtml(item, "data-pallet-update", index, "data-pallet-remove")}}</td>
                             </tr>
                         `).join("");
                         itemBody.querySelectorAll("[data-pallet-update]").forEach(button => {{
@@ -6364,12 +6435,12 @@ def warehouse_scene3d_html(
                 }} else {{
                     itemBody.innerHTML = isLoadFixture(fixture)
                         ? `<tr>
-                                <td>바닥 시설물</td>
-                                <td>${{escapeHtml(fixture.label || fixture.name || "바닥 품목")}}</td>
-                                <td>${{escapeHtml(fixture.barcode || "-")}}</td>
+                                <td>바닥</td>
+                                <td>${{itemNameCellHtml({{ ...fixture, name: fixture.label || fixture.name || "바닥 품목" }})}}</td>
+                                <td class="item-barcode">${{escapeHtml(fixture.barcode || "-")}}</td>
                                 <td title="${{escapeHtml(loadQtyText(fixture))}}">${{packageDisplayText(fixture)}}</td>
                                 <td>${{actualStockText(fixture)}}</td>
-                                <td>${{packageEditorControls(fixture, "data-fixture-update", "1", "data-fixture-delete")}}</td>
+                                <td>${{itemEditCellHtml(fixture, "data-fixture-update", "1", "data-fixture-delete")}}</td>
                             </tr>
                             <tr><td colspan="6" class="empty">이 품목은 이동할 렉과 단을 선택한 뒤 렉에 넣기로 적재할 수 있습니다.</td></tr>`
                         : '<tr><td colspan="6" class="empty">시설물은 선택 후 바로 드래그해서 위치를 옮기고, 시설물 배치 도구에서 회전/삭제할 수 있습니다.</td></tr>';
@@ -6456,12 +6527,12 @@ def warehouse_scene3d_html(
                 }}
                 itemBody.innerHTML = rack.items.map((item, index) => `
                     <tr>
-                        <td>${{escapeHtml(rackInfoText(rack, item, shelfParts[shelfPartIndex(item.part, index)]))}}</td>
-                        <td>${{escapeHtml(item.name)}}</td>
-                        <td>${{escapeHtml(item.barcode || "-")}}</td>
+                        <td>${{escapeHtml(item.part || shelfParts[shelfPartIndex(item.part, index)])}}</td>
+                        <td>${{itemNameCellHtml(item)}}</td>
+                        <td class="item-barcode">${{escapeHtml(item.barcode || "-")}}</td>
                         <td title="${{escapeHtml(loadQtyText(item))}}">${{packageDisplayText(item)}}</td>
                         <td>${{actualStockText(item)}}</td>
-                        <td>${{packageEditorControls(item, "data-package-update", rackItemKey(item, index))}}</td>
+                        <td>${{itemEditCellHtml(item, "data-package-update", rackItemKey(item, index))}}</td>
                     </tr>
                 `).join("");
                 itemBody.querySelectorAll("[data-package-update]").forEach(button => {{
