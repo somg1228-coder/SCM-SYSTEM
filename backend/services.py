@@ -29,6 +29,7 @@ from backend.models import (
     InventoryUploadHistory,
     InventoryUploadSnapshot,
     OfflineProductMaster,
+    PurchasePriceMasterHistory,
     PurchaseOrder,
     PurchaseRequest,
     ThirdpartyProductMaster,
@@ -486,6 +487,8 @@ def to_box_unit_int(value) -> int:
 def parse_date(value) -> date | None:
     if value in (None, ""):
         return None
+    if isinstance(value, datetime):
+        return value.date()
     if isinstance(value, date):
         return value
     parsed = pd.to_datetime(value, errors="coerce")
@@ -497,6 +500,8 @@ def parse_date(value) -> date | None:
 def parse_excel_serial_date(value) -> date | None:
     if value in (None, ""):
         return None
+    if isinstance(value, datetime):
+        return value.date()
     if isinstance(value, date):
         return value
     text = clean_text(value)
@@ -767,6 +772,292 @@ def read_threepl_master_excel(file_bytes: bytes) -> pd.DataFrame:
     data_df.attrs["normalized_columns"] = [str(column) for column in data_df.columns]
     data_df.attrs["normalized_head"] = data_df.head(5).fillna("").astype(str).to_dict("records")
     return data_df
+
+
+PURCHASE_PRICE_MASTER_COLUMNS = ["구매일자", "품목코드", "품목명", "규격", "업체명", "구매수량", "개별단가", "통화", "비고"]
+PURCHASE_PRICE_REQUIRED_COLUMNS = list(PURCHASE_PRICE_MASTER_COLUMNS)
+
+
+def normalize_purchase_price_master_headers(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None:
+        return pd.DataFrame()
+    aliases = {
+        "구매일자": ["구매일자", "구매 일자", "구입일자", "매입일자", "발주일", "날짜", "purchase_date"],
+        "품목코드": ["품목코드", "품목 코드", "상품코드", "SKU", "item_code"],
+        "품목명": ["품목명", "품목", "상품명", "item_name"],
+        "규격": ["규격", "스펙", "사양", "spec"],
+        "업체명": ["업체명", "업체", "협력사", "공급업체", "supplier", "vendor"],
+        "구매수량": ["구매수량", "수량", "발주수량", "quantity"],
+        "개별단가": ["개별단가", "단가", "구매단가", "unit_price"],
+        "통화": ["통화", "currency"],
+        "비고": ["비고", "메모", "memo", "note"],
+    }
+    alias_map = {import_header_key(alias): standard for standard, names in aliases.items() for alias in names}
+    next_df = df.copy()
+    next_df.columns = [alias_map.get(import_header_key(column), clean_text(column)) for column in next_df.columns]
+    next_df.attrs.update(getattr(df, "attrs", {}))
+    return next_df
+
+
+def purchase_price_plain_headers(headers: list[str]) -> list[str]:
+    seen: dict[str, int] = {}
+    result = []
+    for index, header in enumerate(headers, start=1):
+        name = normalize_html_cell(str(header)) or f"column_{index}"
+        seen[name] = seen.get(name, 0) + 1
+        result.append(name if seen[name] == 1 else f"{name}_{seen[name]}")
+    return result
+
+
+def read_purchase_price_master_excel(file_bytes: bytes) -> pd.DataFrame:
+    try:
+        workbook = pd.ExcelFile(BytesIO(file_bytes), engine="openpyxl")
+    except Exception:
+        return normalize_purchase_price_master_headers(read_excel(file_bytes))
+    if not workbook.sheet_names:
+        return pd.DataFrame()
+
+    required = {import_header_key(column) for column in PURCHASE_PRICE_REQUIRED_COLUMNS}
+    selected_sheet = workbook.sheet_names[0]
+    selected_df = pd.DataFrame()
+    header_row_number = 1
+    for sheet_name in workbook.sheet_names:
+        raw_df = workbook.parse(sheet_name=sheet_name, header=None, dtype=object)
+        if raw_df is None or raw_df.dropna(how="all").empty:
+            continue
+        for index in range(min(len(raw_df), 20)):
+            values = ["" if pd.isna(value) else normalize_html_cell(str(value)) for value in raw_df.iloc[index].tolist()]
+            normalized_values = {import_header_key(value) for value in values if clean_text(value)}
+            if not required.issubset(normalized_values):
+                continue
+            last_header_position = max((position for position, value in enumerate(values) if clean_text(value)), default=0)
+            headers = purchase_price_plain_headers(values[: last_header_position + 1])
+            data_df = raw_df.iloc[index + 1 :].copy()
+            data_df = data_df.iloc[:, : len(headers)]
+            data_df.columns = headers
+            selected_sheet = sheet_name
+            selected_df = data_df.dropna(how="all").reset_index(drop=True)
+            header_row_number = index + 1
+            break
+        if not selected_df.empty or header_row_number > 1:
+            break
+
+    if selected_df.empty:
+        selected_df = workbook.parse(sheet_name=selected_sheet, dtype=object)
+    selected_df = normalize_purchase_price_master_headers(selected_df)
+    selected_df.attrs["read_method"] = "excel"
+    selected_df.attrs["selected_sheet"] = selected_sheet
+    selected_df.attrs["sheet_names"] = list(workbook.sheet_names)
+    selected_df.attrs["header_row_number"] = header_row_number
+    return selected_df
+
+
+def purchase_price_number(value) -> tuple[float, bool]:
+    text = clean_text(value).replace(",", "")
+    if not text:
+        return 0.0, False
+    try:
+        return float(text), True
+    except ValueError:
+        return 0.0, False
+
+
+def purchase_price_duplicate_key(row: dict) -> tuple:
+    return (
+        row.get("purchase_date"),
+        import_header_key(row.get("item_code")),
+        clean_text(row.get("item_name")).lower(),
+        clean_text(row.get("spec")).lower(),
+        clean_text(row.get("supplier_name")).lower(),
+        round(float(row.get("quantity") or 0), 6),
+        round(float(row.get("unit_price") or 0), 6),
+        clean_text(row.get("currency")).upper(),
+    )
+
+
+def existing_purchase_price_master_keys(db: Session) -> set[tuple]:
+    rows = db.execute(select(PurchasePriceMasterHistory)).scalars()
+    return {
+        purchase_price_duplicate_key(
+            {
+                "purchase_date": row.purchase_date,
+                "item_code": row.item_code,
+                "item_name": row.item_name,
+                "spec": row.spec,
+                "supplier_name": row.supplier_name,
+                "quantity": row.quantity,
+                "unit_price": row.unit_price,
+                "currency": row.currency,
+            }
+        )
+        for row in rows
+    }
+
+
+def prepare_purchase_price_master_upload_preview(db: Session, file_bytes: bytes, file_name: str = "") -> dict:
+    started_at = time.perf_counter()
+    df = read_purchase_price_master_excel(file_bytes)
+    total_rows = len(df.index) if df is not None else 0
+    missing_columns = [column for column in PURCHASE_PRICE_REQUIRED_COLUMNS if column not in getattr(df, "columns", [])]
+    if missing_columns:
+        return {
+            "ok": False,
+            "message": f"구매단가 마스터 양식에서 다음 컬럼을 찾을 수 없습니다: {', '.join(missing_columns)}",
+            "summary": {"전체 엑셀 행 수": total_rows, "저장 예정": 0, "중복": 0, "오류": len(missing_columns), "처리시간": round(time.perf_counter() - started_at, 2)},
+            "details": [],
+            "missing_columns": missing_columns,
+        }
+
+    header_row_number = int(df.attrs.get("header_row_number") or 1)
+    details: list[dict] = []
+    parsed_rows: list[dict] = []
+    existing_keys = existing_purchase_price_master_keys(db)
+    upload_keys: set[tuple] = set()
+    errors = 0
+    duplicates = 0
+    skipped_blank = 0
+
+    for offset, record in enumerate(df.fillna("").to_dict("records"), start=1):
+        row_number = header_row_number + offset
+        raw = {column: record.get(column, "") for column in PURCHASE_PRICE_REQUIRED_COLUMNS}
+        if not any(clean_text(value) for value in raw.values()):
+            skipped_blank += 1
+            continue
+
+        purchase_date = parse_excel_serial_date(raw.get("구매일자"))
+        quantity, quantity_ok = purchase_price_number(raw.get("구매수량"))
+        unit_price, price_ok = purchase_price_number(raw.get("개별단가"))
+        row = {
+            "purchase_date": purchase_date,
+            "item_code": normalize_code_text(raw.get("품목코드"), uppercase=False),
+            "item_name": clean_text(raw.get("품목명")),
+            "spec": clean_text(raw.get("규격")),
+            "supplier_name": clean_text(raw.get("업체명")),
+            "quantity": quantity,
+            "unit_price": unit_price,
+            "currency": clean_text(raw.get("통화")).upper() or "KRW",
+            "memo": clean_text(raw.get("비고")),
+            "source_file": clean_text(file_name),
+        }
+        row_errors = []
+        if purchase_date is None:
+            row_errors.append("구매일자 형식 오류")
+        if not row["item_code"]:
+            row_errors.append("품목코드 누락")
+        if not row["item_name"]:
+            row_errors.append("품목명 누락")
+        if not row["spec"]:
+            row_errors.append("규격 누락")
+        if not row["supplier_name"]:
+            row_errors.append("업체명 누락")
+        if not quantity_ok:
+            row_errors.append("구매수량 숫자 오류")
+        elif quantity <= 0:
+            row_errors.append("구매수량은 0보다 커야 함")
+        if not price_ok:
+            row_errors.append("개별단가 숫자 오류")
+        elif unit_price < 0:
+            row_errors.append("개별단가는 0 이상이어야 함")
+        if row["currency"] not in {"KRW", "USD"}:
+            row_errors.append("통화는 KRW 또는 USD만 가능")
+
+        duplicate_key = purchase_price_duplicate_key(row)
+        is_duplicate = not row_errors and (duplicate_key in existing_keys or duplicate_key in upload_keys)
+        if is_duplicate:
+            duplicates += 1
+        elif not row_errors:
+            upload_keys.add(duplicate_key)
+            parsed_rows.append(row)
+        else:
+            errors += 1
+
+        details.append(
+            {
+                "행 번호": row_number,
+                "구매일자": purchase_date or clean_text(raw.get("구매일자")),
+                "품목코드": row["item_code"],
+                "품목명": row["item_name"],
+                "규격": row["spec"],
+                "업체명": row["supplier_name"],
+                "구매수량": quantity if quantity_ok else clean_text(raw.get("구매수량")),
+                "개별단가": unit_price if price_ok else clean_text(raw.get("개별단가")),
+                "통화": row["currency"],
+                "비고": row["memo"],
+                "처리 결과": "중복 - 저장 제외" if is_duplicate else "오류 - 저장 제외" if row_errors else "저장 예정",
+                "오류 내용": "; ".join(row_errors),
+                "_apply": not row_errors and not is_duplicate,
+                "_data": row,
+            }
+        )
+
+    return {
+        "ok": errors == 0,
+        "message": "구매단가 마스터 업로드 검증 완료" if errors == 0 else f"구매단가 마스터에서 오류 {errors:,}건을 확인했습니다.",
+        "summary": {
+            "전체 엑셀 행 수": total_rows,
+            "저장 예정": len(parsed_rows),
+            "중복": duplicates,
+            "빈 행 제외": skipped_blank,
+            "오류": errors,
+            "처리시간": round(time.perf_counter() - started_at, 2),
+        },
+        "details": details,
+        "_rows": parsed_rows,
+    }
+
+
+def apply_purchase_price_master_upload_preview(db: Session, preview: dict, uploaded_by: str = "") -> dict:
+    rows = preview.get("_rows") or [detail.get("_data") for detail in preview.get("details", []) if detail.get("_apply")]
+    rows = [row for row in rows if row]
+    if not rows:
+        result = dict(preview)
+        result.update({"ok": False, "message": "저장 가능한 구매단가 마스터 행이 없습니다.", "count": 0})
+        return result
+    now = datetime.utcnow()
+    insert_rows = []
+    for row in rows:
+        insert_rows.append(
+            {
+                "purchase_date": row["purchase_date"],
+                "item_code": row["item_code"],
+                "item_name": row["item_name"],
+                "spec": row["spec"],
+                "supplier_name": row["supplier_name"],
+                "quantity": float(row["quantity"] or 0),
+                "unit_price": float(row["unit_price"] or 0),
+                "currency": row["currency"],
+                "memo": row.get("memo", ""),
+                "source_file": row.get("source_file", ""),
+                "created_by": clean_text(uploaded_by) or "SYSTEM",
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+    try:
+        db.bulk_insert_mappings(PurchasePriceMasterHistory, insert_rows)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        record_save_failure("purchase price master upload", exc)
+        raise
+    record_save_success("purchase price master upload")
+    result_details = []
+    for detail in preview.get("details", []):
+        next_detail = dict(detail)
+        if next_detail.get("_apply"):
+            next_detail["처리 결과"] = "저장 완료"
+        next_detail.pop("_data", None)
+        next_detail.pop("_apply", None)
+        result_details.append(next_detail)
+    summary = dict(preview.get("summary") or {})
+    summary["저장 완료"] = len(insert_rows)
+    return {
+        "ok": True,
+        "message": f"구매단가 마스터 {len(insert_rows):,}건을 저장했습니다.",
+        "count": len(insert_rows),
+        "summary": summary,
+        "details": result_details,
+    }
 
 
 def read_seonghyun_inbound_statement(file_bytes: bytes) -> pd.DataFrame | None:

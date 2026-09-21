@@ -284,6 +284,30 @@ CREATE INDEX IF NOT EXISTS ix_purchase_orders_po_number ON purchase_orders (po_n
 CREATE INDEX IF NOT EXISTS ix_purchase_orders_pr_number ON purchase_orders (pr_number);
 CREATE INDEX IF NOT EXISTS ix_purchase_orders_supplier_name ON purchase_orders (supplier_name);
 
+CREATE TABLE IF NOT EXISTS purchase_price_master_history (
+	id SERIAL NOT NULL, 
+	purchase_date DATE NOT NULL, 
+	item_code VARCHAR(120) NOT NULL, 
+	item_name VARCHAR(255) NOT NULL, 
+	spec VARCHAR(160) NOT NULL, 
+	supplier_name VARCHAR(160) NOT NULL, 
+	quantity FLOAT NOT NULL, 
+	unit_price FLOAT NOT NULL, 
+	currency VARCHAR(10) NOT NULL, 
+	memo VARCHAR(500) NOT NULL, 
+	source_file VARCHAR(255) NOT NULL, 
+	created_by VARCHAR(120) NOT NULL, 
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
+	PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_purchase_price_master_history_id ON purchase_price_master_history (id);
+CREATE INDEX IF NOT EXISTS ix_purchase_price_master_history_item_code ON purchase_price_master_history (item_code);
+CREATE INDEX IF NOT EXISTS ix_purchase_price_master_history_item_name ON purchase_price_master_history (item_name);
+CREATE INDEX IF NOT EXISTS ix_purchase_price_master_history_purchase_date ON purchase_price_master_history (purchase_date);
+CREATE INDEX IF NOT EXISTS ix_purchase_price_master_history_supplier_name ON purchase_price_master_history (supplier_name);
+
 CREATE TABLE IF NOT EXISTS purchase_requests (
 	id SERIAL NOT NULL, 
 	pr_number VARCHAR(40) NOT NULL, 

@@ -526,6 +526,30 @@ class PurchaseOrder(Base):
     )
 
 
+class PurchasePriceMasterHistory(Base):
+    __tablename__ = "purchase_price_master_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    purchase_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    item_code: Mapped[str] = mapped_column(String(120), default="", index=True, nullable=False)
+    item_name: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    spec: Mapped[str] = mapped_column(String(160), default="", nullable=False)
+    supplier_name: Mapped[str] = mapped_column(String(160), index=True, nullable=False)
+    quantity: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    unit_price: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="KRW", nullable=False)
+    memo: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    source_file: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    created_by: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+
 class Supplier(Base):
     __tablename__ = "suppliers"
     __table_args__ = (UniqueConstraint("supplier_name", name="uq_suppliers_supplier_name"),)

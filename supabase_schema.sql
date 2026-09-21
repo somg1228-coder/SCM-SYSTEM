@@ -383,6 +383,28 @@ CREATE INDEX IF NOT EXISTS "ix_purchase_orders_pr_number" ON "purchase_orders" (
 CREATE UNIQUE INDEX IF NOT EXISTS "uq_purchase_orders_po_number" ON "purchase_orders" ("po_number");
 SELECT setval(pg_get_serial_sequence('purchase_orders', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM "purchase_orders"), 1), 1), (SELECT COUNT(*) FROM "purchase_orders") > 0);
 
+CREATE TABLE IF NOT EXISTS "purchase_price_master_history" (
+    "id" BIGSERIAL PRIMARY KEY,
+    "purchase_date" DATE NOT NULL,
+    "item_code" VARCHAR(120) NOT NULL,
+    "item_name" VARCHAR(255) NOT NULL,
+    "spec" VARCHAR(160) NOT NULL,
+    "supplier_name" VARCHAR(160) NOT NULL,
+    "quantity" FLOAT NOT NULL,
+    "unit_price" FLOAT NOT NULL,
+    "currency" VARCHAR(10) NOT NULL,
+    "memo" VARCHAR(500) NOT NULL,
+    "source_file" VARCHAR(255) NOT NULL,
+    "created_by" VARCHAR(120) NOT NULL,
+    "created_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    "updated_at" TIMESTAMP WITHOUT TIME ZONE NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "ix_purchase_price_master_history_purchase_date" ON "purchase_price_master_history" ("purchase_date");
+CREATE INDEX IF NOT EXISTS "ix_purchase_price_master_history_item_code" ON "purchase_price_master_history" ("item_code");
+CREATE INDEX IF NOT EXISTS "ix_purchase_price_master_history_item_name" ON "purchase_price_master_history" ("item_name");
+CREATE INDEX IF NOT EXISTS "ix_purchase_price_master_history_supplier_name" ON "purchase_price_master_history" ("supplier_name");
+SELECT setval(pg_get_serial_sequence('purchase_price_master_history', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM "purchase_price_master_history"), 1), 1), (SELECT COUNT(*) FROM "purchase_price_master_history") > 0);
+
 CREATE TABLE IF NOT EXISTS "purchase_requests" (
     "id" BIGSERIAL PRIMARY KEY,
     "pr_number" VARCHAR(40) NOT NULL,

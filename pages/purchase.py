@@ -41,6 +41,7 @@ try:
     InventoryDaily = backend_models.InventoryDaily
     InventoryInbound = backend_models.InventoryInbound
     PurchaseDocument = backend_models.PurchaseDocument
+    PurchasePriceMasterHistory = backend_models.PurchasePriceMasterHistory
     PurchaseOrder = backend_models.PurchaseOrder
     PurchaseRequest = backend_models.PurchaseRequest
     RfqQuote = backend_models.RfqQuote
@@ -64,6 +65,7 @@ except (ModuleNotFoundError, ImportError, AttributeError, RuntimeError) as exc:
     InventoryDaily = None
     PurchaseDocument = None
     PurchaseBudgetStore = None
+    PurchasePriceMasterHistory = None
     PurchaseOrder = None
     PurchaseRequest = None
     RfqQuote = None
@@ -145,7 +147,7 @@ DEFAULT_SPECIAL_RULES = {
     "우수 협력사 추천 대상": ("", False, False, False),
 }
 PRICE_DECIMAL_OPTIONS = [0, 1, 2, 3, 4, 5]
-PRICE_DECIMAL_COLUMNS = {"단가", "공급가액", "부가세", "총금액", "배송비", "발주금액", "총 구매비용", "구매금액"}
+PRICE_DECIMAL_COLUMNS = {"단가", "개별단가", "공급가액", "부가세", "총금액", "배송비", "발주금액", "총 구매금액", "총 구매비용", "구매금액"}
 PR_EDITOR_COLUMNS = [
     "선택",
     "구매요청번호",
@@ -182,7 +184,8 @@ PO_EDITOR_COLUMNS = [
     "진행상태",
     "발주금액",
 ]
-PRICE_HISTORY_COLUMNS = ["날짜", "품목", "업체", "단가", "통화", "수량", "발주금액", "발주번호"]
+PURCHASE_PRICE_MASTER_COLUMNS = ["구매일자", "품목코드", "품목명", "규격", "업체명", "구매수량", "개별단가", "통화", "비고"]
+PRICE_HISTORY_COLUMNS = ["구매일자", "품목코드", "품목명", "규격", "업체", "수량", "개별단가", "통화", "총 구매금액", "데이터 출처"]
 COMPANY_NAME = "SCM 물류운영포털"
 DEFAULT_DELIVERY_PLACE = "로긴 물류센터"
 PDF_MIME = "application/pdf"
@@ -2547,28 +2550,173 @@ def render_supplier_history_tab() -> None:
 
 
 def render_price_history_tab() -> None:
-    item_options = with_db(lambda db: list_price_history_items(db)) or []
-    st.markdown('<div class="purchase-section-title">단가이력 조회</div>', unsafe_allow_html=True)
-    if item_options:
-        selected_item = st.selectbox("품목", item_options, key="purchase_price_item")
-        rows = with_db(lambda db: price_history_rows(db, selected_item)) or []
-    else:
-        st.text_input("품목", value="데이터 없음", disabled=True, key="purchase_price_item_empty")
-        rows = []
+    st.markdown('<div class="purchase-section-title">구매단가 마스터 업로드</div>', unsafe_allow_html=True)
+    preview_key = "purchase_price_master_upload_preview"
+    result_key = "purchase_price_master_upload_result"
+    upload_cols = st.columns([1.35, 0.78, 0.78, 0.95, 2.2], gap="small")
+    with upload_cols[0]:
+        uploaded = st.file_uploader("Excel 업로드", type=["xlsx", "xls"], key="purchase_price_master_upload")
+    with upload_cols[1]:
+        st.write("")
+        if st.button("미리보기", key="purchase_price_master_preview_btn", use_container_width=True):
+            if uploaded is None:
+                st.warning("먼저 구매단가 마스터 Excel 파일을 업로드하세요.")
+            else:
+                with st.spinner("구매단가 마스터를 검증하는 중입니다..."):
+                    preview = with_db(lambda db: services.prepare_purchase_price_master_upload_preview(db, uploaded.getvalue(), uploaded.name))
+                if preview and preview.get("details") is not None:
+                    st.session_state[preview_key] = preview
+                    st.session_state.pop(result_key, None)
+                else:
+                    st.session_state[result_key] = preview
+                st.rerun()
+    with upload_cols[2]:
+        st.write("")
+        if st.button("데이터 저장", key="purchase_price_master_apply_btn", type="primary", use_container_width=True):
+            if uploaded is None and preview_key not in st.session_state:
+                st.warning("먼저 구매단가 마스터 Excel 파일을 업로드하세요.")
+            else:
+                with st.spinner("정상 구매단가 데이터를 저장하는 중입니다..."):
+                    preview = st.session_state.get(preview_key)
+                    if preview is None and uploaded is not None:
+                        preview = with_db(lambda db: services.prepare_purchase_price_master_upload_preview(db, uploaded.getvalue(), uploaded.name))
+                    result = with_db(lambda db: services.apply_purchase_price_master_upload_preview(db, preview or {}, "구매담당"))
+                st.session_state[result_key] = result
+                if result and result.get("ok"):
+                    st.session_state.pop(preview_key, None)
+                st.rerun()
+    with upload_cols[3]:
+        st.write("")
+        st.download_button(
+            "양식 다운로드",
+            data=purchase_price_master_template_excel(),
+            file_name="구매단가_마스터_양식.xlsx",
+            mime=XLSX_MIME,
+            use_container_width=True,
+            key="purchase_price_master_template_download",
+        )
+    with upload_cols[4]:
+        st.info("과거 구매자료는 마스터 업로드로 저장하고, 앞으로 생성되는 PO는 자동으로 단가이력에 포함됩니다.")
 
+    render_purchase_price_upload_feedback(preview_key, result_key)
+
+    item_options = with_db(lambda db: list_price_history_items(db)) or []
+    st.markdown('<div class="purchase-section-title">구매단가 조회</div>', unsafe_allow_html=True)
+    if st.session_state.pop("purchase_price_filter_reset_requested", False):
+        for key in [
+            "purchase_price_item_code_filter",
+            "purchase_price_item_name_filter",
+            "purchase_price_spec_filter",
+            "purchase_price_supplier_filter",
+            "purchase_price_period_filter",
+        ]:
+            st.session_state.pop(key, None)
+        st.session_state["purchase_price_item_filter"] = "전체"
+    filter_cols = st.columns([1.0, 1.05, 1.0, 1.0, 1.2, 0.72, 0.72], gap="small")
+    selected_item = filter_cols[0].selectbox("품목 선택", ["전체"] + item_options, key="purchase_price_item_filter")
+    item_code = filter_cols[1].text_input("품목코드", key="purchase_price_item_code_filter")
+    item_name = filter_cols[2].text_input("품목명", key="purchase_price_item_name_filter")
+    spec = filter_cols[3].text_input("규격", key="purchase_price_spec_filter")
+    supplier = filter_cols[4].text_input("업체명", key="purchase_price_supplier_filter")
+    period = filter_cols[5].date_input("구매기간", value=(), key="purchase_price_period_filter")
+    with filter_cols[6]:
+        st.write("")
+        if st.button("초기화", key="purchase_price_filter_reset", use_container_width=True):
+            st.session_state["purchase_price_filter_reset_requested"] = True
+            st.rerun()
+
+    start_date, end_date = price_period_bounds(period)
+    filters = {
+        "item_code": item_code,
+        "item_name": item_name or ("" if selected_item == "전체" else selected_item),
+        "spec": spec,
+        "supplier": supplier,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    rows = with_db(lambda db: price_history_rows(db, filters=filters)) or []
     df = pd.DataFrame(rows, columns=PRICE_HISTORY_COLUMNS)
+
+    render_price_history_metrics(df)
+
     st.markdown('<div class="purchase-section-title">단가 추이</div>', unsafe_allow_html=True)
     if df.empty:
-        st.markdown('<div class="purchase-empty-chart">발주 이력이 생성되면 품목별 단가 추이가 표시됩니다.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="purchase-empty-chart">구매단가 마스터 또는 PO 이력이 있으면 구매일자별 단가 추이가 표시됩니다.</div>', unsafe_allow_html=True)
     else:
         chart_df = df.copy()
-        chart_df["날짜"] = pd.to_datetime(chart_df["날짜"], errors="coerce")
-        st.line_chart(chart_df.dropna(subset=["날짜"]).set_index("날짜")["단가"])
+        chart_df["구매일자"] = pd.to_datetime(chart_df["구매일자"], errors="coerce")
+        chart_df["개별단가"] = chart_df["개별단가"].apply(to_float)
+        supplier_count = chart_df["업체"].dropna().astype(str).nunique()
+        if supplier_count > 1:
+            pivot = chart_df.dropna(subset=["구매일자"]).pivot_table(index="구매일자", columns="업체", values="개별단가", aggfunc="mean")
+            st.line_chart(pivot)
+        else:
+            st.line_chart(chart_df.dropna(subset=["구매일자"]).set_index("구매일자")["개별단가"])
 
     st.markdown('<div class="purchase-section-title">단가이력 상세</div>', unsafe_allow_html=True)
     if df.empty:
-        st.caption("아직 표시할 단가 이력이 없습니다.")
-    st.dataframe(center_aligned_dataframe(df), hide_index=True, use_container_width=True, height=330)
+        st.caption("조건에 맞는 단가 이력이 없습니다.")
+    st.dataframe(center_aligned_dataframe(df), hide_index=True, use_container_width=True, height=360)
+
+
+def render_purchase_price_upload_feedback(preview_key: str, result_key: str) -> None:
+    payload = st.session_state.get(result_key) or st.session_state.get(preview_key)
+    if not payload:
+        return
+    if payload.get("ok", True):
+        st.success(payload.get("message", "처리 완료"))
+    else:
+        st.warning(payload.get("message", "확인이 필요한 행이 있습니다."))
+    summary = payload.get("summary") or {}
+    if summary:
+        metric_cols = st.columns(min(len(summary), 6), gap="small")
+        for col, (label, value) in zip(metric_cols, summary.items()):
+            col.metric(label, f"{value:,}" if isinstance(value, int) else str(value))
+    details = payload.get("details") or []
+    if details:
+        detail_df = pd.DataFrame(details).drop(columns=["_data", "_apply"], errors="ignore")
+        st.dataframe(center_aligned_dataframe(detail_df), hide_index=True, use_container_width=True, height=220)
+
+
+def price_period_bounds(period) -> tuple[date | None, date | None]:
+    if isinstance(period, tuple):
+        if len(period) >= 2:
+            return period[0], period[1]
+        if len(period) == 1:
+            return period[0], period[0]
+    if isinstance(period, list):
+        if len(period) >= 2:
+            return period[0], period[1]
+        if len(period) == 1:
+            return period[0], period[0]
+    if isinstance(period, date):
+        return period, period
+    return None, None
+
+
+def render_price_history_metrics(df: pd.DataFrame) -> None:
+    metric_cols = st.columns(6, gap="small")
+    labels = ["최근 구매단가", "평균 구매단가", "최저 구매단가", "최고 구매단가", "최근 구매업체", "최근 구매일"]
+    if df.empty:
+        for col, label in zip(metric_cols, labels):
+            col.metric(label, "-")
+        return
+    metric_df = df.copy()
+    metric_df["구매일자"] = pd.to_datetime(metric_df["구매일자"], errors="coerce")
+    metric_df["개별단가"] = metric_df["개별단가"].apply(to_float)
+    metric_df = metric_df.dropna(subset=["구매일자"]).sort_values(["구매일자"], ascending=False)
+    latest = metric_df.iloc[0] if not metric_df.empty else df.iloc[0]
+    prices = metric_df["개별단가"] if not metric_df.empty else df["개별단가"].apply(to_float)
+    currency = normalize_currency(latest.get("통화", "KRW"))
+    metric_cols[0].metric("최근 구매단가", format_currency_amount(latest.get("개별단가", 0), currency))
+    metric_cols[1].metric("평균 구매단가", format_currency_amount(prices.mean(), currency))
+    metric_cols[2].metric("최저 구매단가", format_currency_amount(prices.min(), currency))
+    metric_cols[3].metric("최고 구매단가", format_currency_amount(prices.max(), currency))
+    metric_cols[4].metric("최근 구매업체", clean_text(latest.get("업체")) or "-")
+    latest_date = latest.get("구매일자")
+    if hasattr(latest_date, "date"):
+        latest_date = latest_date.date()
+    metric_cols[5].metric("최근 구매일", str(latest_date or "-"))
 
 
 def center_aligned_dataframe(df: pd.DataFrame):
@@ -4803,30 +4951,90 @@ def supplier_to_dict(row: Supplier) -> dict:
 
 
 def list_price_history_items(db: Session) -> list[str]:
-    return [
+    items = {
         row[0]
-        for row in db.execute(select(PurchaseOrder.item_name).distinct().order_by(PurchaseOrder.item_name)).all()
+        for row in db.execute(select(PurchaseOrder.item_name).distinct()).all()
         if row[0]
-    ]
+    }
+    if PurchasePriceMasterHistory is not None:
+        items.update(
+            row[0]
+            for row in db.execute(select(PurchasePriceMasterHistory.item_name).distinct()).all()
+            if row[0]
+        )
+    return sorted(items)
 
 
-def price_history_rows(db: Session, item_name: str) -> list[dict]:
-    rows = list(
-        db.execute(select(PurchaseOrder).where(PurchaseOrder.item_name == item_name).order_by(PurchaseOrder.order_date)).scalars()
-    )
-    return [
-        {
-            "날짜": row.order_date,
-            "품목": row.item_name,
-            "업체": row.supplier_name,
-            "단가": row.unit_price,
-            "통화": normalize_currency(row.currency),
-            "수량": row.quantity,
-            "발주금액": row.order_amount,
-            "발주번호": row.po_number,
-        }
-        for row in rows
-    ]
+def price_history_rows(db: Session, item_name: str = "", filters: dict | None = None) -> list[dict]:
+    filters = dict(filters or {})
+    if item_name and not filters.get("item_name"):
+        filters["item_name"] = item_name
+    pr_by_number = {row.pr_number: row for row in list_purchase_requests(db)}
+    rows = []
+    for row in db.execute(select(PurchaseOrder).order_by(PurchaseOrder.order_date, PurchaseOrder.id)).scalars():
+        pr = pr_by_number.get(row.pr_number)
+        quantity = to_float(row.quantity)
+        unit_price = to_float(row.unit_price)
+        rows.append(
+            {
+                "구매일자": row.order_date,
+                "품목코드": clean_text(getattr(pr, "item_code", "")),
+                "품목명": row.item_name,
+                "규격": row.spec,
+                "업체": row.supplier_name,
+                "수량": quantity,
+                "개별단가": unit_price,
+                "통화": normalize_currency(row.currency),
+                "총 구매금액": to_float(row.order_amount) or quantity * unit_price,
+                "데이터 출처": "시스템 PO",
+            }
+        )
+    if PurchasePriceMasterHistory is not None:
+        master_rows = db.execute(select(PurchasePriceMasterHistory).order_by(PurchasePriceMasterHistory.purchase_date, PurchasePriceMasterHistory.id)).scalars()
+        for row in master_rows:
+            quantity = to_float(row.quantity)
+            unit_price = to_float(row.unit_price)
+            rows.append(
+                {
+                    "구매일자": row.purchase_date,
+                    "품목코드": row.item_code,
+                    "품목명": row.item_name,
+                    "규격": row.spec,
+                    "업체": row.supplier_name,
+                    "수량": quantity,
+                    "개별단가": unit_price,
+                    "통화": normalize_currency(row.currency),
+                    "총 구매금액": quantity * unit_price,
+                    "데이터 출처": "마스터 업로드",
+                }
+            )
+    return sorted(filter_price_history_rows(rows, filters), key=lambda row: (row.get("구매일자") or date.min, row.get("품목명", ""), row.get("업체", "")))
+
+
+def filter_price_history_rows(rows: list[dict], filters: dict) -> list[dict]:
+    item_code = clean_text(filters.get("item_code")).lower()
+    item_name = clean_text(filters.get("item_name")).lower()
+    spec = clean_text(filters.get("spec")).lower()
+    supplier = clean_text(filters.get("supplier")).lower()
+    start_date = filters.get("start_date")
+    end_date = filters.get("end_date")
+    filtered = []
+    for row in rows:
+        purchase_date = row.get("구매일자")
+        if start_date and purchase_date and purchase_date < start_date:
+            continue
+        if end_date and purchase_date and purchase_date > end_date:
+            continue
+        if item_code and item_code not in clean_text(row.get("품목코드")).lower():
+            continue
+        if item_name and item_name not in clean_text(row.get("품목명")).lower():
+            continue
+        if spec and spec not in clean_text(row.get("규격")).lower():
+            continue
+        if supplier and supplier not in clean_text(row.get("업체")).lower():
+            continue
+        filtered.append(row)
+    return filtered
 
 
 def purchase_kpi(db: Session) -> dict:
@@ -5308,6 +5516,40 @@ def pdf_footer(canvas, doc) -> None:
     canvas.setFont(MALGUN_FONT, 7)
     canvas.drawRightString(A4[0] - 14 * mm if doc.pagesize == A4 else landscape(A4)[0] - 10 * mm, 8 * mm, f"Page {doc.page}")
     canvas.restoreState()
+
+
+def purchase_price_master_template_excel() -> bytes:
+    sample = [[date.today(), "SKU-001", "와이어 바스켓", "300x200", "케이리빙", 100, 2500.0, "KRW", "과거 구매자료"]]
+    df = pd.DataFrame(sample, columns=PURCHASE_PRICE_MASTER_COLUMNS)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter", date_format="yyyy-mm-dd", datetime_format="yyyy-mm-dd") as writer:
+        sheet_name = "구매단가 마스터"
+        df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=2)
+        workbook = writer.book
+        worksheet = writer.sheets[sheet_name]
+        title_fmt = workbook.add_format({"bold": True, "font_size": 16, "font_color": "#064e3b"})
+        guide_fmt = workbook.add_format({"font_color": "#475569"})
+        header_fmt = workbook.add_format({"bold": True, "bg_color": "#d9f4ef", "border": 1, "align": "center"})
+        date_fmt = workbook.add_format({"num_format": "yyyy-mm-dd"})
+        qty_fmt = workbook.add_format({"num_format": "#,##0.####"})
+        money_fmt = workbook.add_format({"num_format": "#,##0.####"})
+        worksheet.write(0, 0, "구매단가 마스터 양식", title_fmt)
+        worksheet.write(1, 0, "필수 컬럼명을 변경하지 말고 작성하세요. 통화는 KRW 또는 USD를 입력하세요.", guide_fmt)
+        for col_idx, column in enumerate(PURCHASE_PRICE_MASTER_COLUMNS):
+            worksheet.write(2, col_idx, column, header_fmt)
+            worksheet.set_column(col_idx, col_idx, max(len(column) + 6, 14))
+        worksheet.set_column(0, 0, 14, date_fmt)
+        worksheet.set_column(5, 5, 13, qty_fmt)
+        worksheet.set_column(6, 6, 14, money_fmt)
+        worksheet.freeze_panes(3, 0)
+        worksheet.autofilter(2, 0, 3, len(PURCHASE_PRICE_MASTER_COLUMNS) - 1)
+        guide = workbook.add_worksheet("작성방법")
+        guide.write(0, 0, "작성방법", title_fmt)
+        guide.write(2, 0, "1. 구매일자는 yyyy-mm-dd 형식으로 입력하세요.")
+        guide.write(3, 0, "2. 구매수량과 개별단가는 숫자로 입력하세요.")
+        guide.write(4, 0, "3. 품목코드, 품목명, 규격, 업체명은 비워두지 마세요.")
+        guide.write(5, 0, "4. 기존 DB와 같은 구매일자/품목/규격/업체/수량/단가/통화 조합은 중복으로 표시되고 저장에서 제외됩니다.")
+    return output.getvalue()
 
 
 def quote_reply_template_excel() -> bytes:
