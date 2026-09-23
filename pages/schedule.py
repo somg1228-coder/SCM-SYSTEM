@@ -188,6 +188,10 @@ def render_highlights(week_id: int) -> pd.DataFrame:
             st.session_state[buffer_key] = normalize_highlights_df(edited_source)
             if action != "save":
                 st.rerun()
+            save_highlights_only(week_id, st.session_state[buffer_key])
+            clear_dashboard_cache()
+            st.success("핵심업무 저장 완료")
+            st.rerun()
     return normalize_highlights_df(st.session_state[buffer_key])
 
 
@@ -657,6 +661,26 @@ def save_week(week_id: int, week_start: date, highlights_df: pd.DataFrame, slots
                     clean_text(row.get("목")),
                     clean_text(row.get("금")),
                 ),
+            )
+
+
+def save_highlights_only(week_id: int, highlights_df: pd.DataFrame) -> None:
+    now = datetime.now().isoformat(timespec="microseconds")
+    title_column = HIGHLIGHT_COLUMNS[1]
+    checked_column = HIGHLIGHT_COLUMNS[0]
+    with connect_sqlite_compatible(DB_PATH) as conn:
+        conn.execute("UPDATE schedule_weeks SET updated_at = ? WHERE id = ?", (now, week_id))
+        conn.execute("DELETE FROM schedule_highlights WHERE week_id = ?", (week_id,))
+        for order, row in normalize_highlights_df(highlights_df).iterrows():
+            title = clean_text(row.get(title_column))
+            if not title:
+                continue
+            conn.execute(
+                """
+                INSERT INTO schedule_highlights (week_id, sort_order, title, checked)
+                VALUES (?, ?, ?, ?)
+                """,
+                (week_id, int(order), title, int(bool(row.get(checked_column)))),
             )
 
 
