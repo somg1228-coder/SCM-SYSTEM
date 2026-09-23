@@ -240,15 +240,27 @@ def render_save_actions(week_id: int, week_start: date, highlights_df: pd.DataFr
     with save_col:
         if st.button("저장", key=f"schedule_save_{week_id}", type="primary", use_container_width=True):
             save_week(week_id, week_start, highlights_df, slots_df, comment)
+            clear_dashboard_cache()
             st.session_state.pop("schedule_history_download_payload", None)
             st.success("주간 일정 저장 완료")
             st.rerun()
     with copy_col:
         if st.button("전주 일정 복사", key=f"schedule_copy_previous_{week_id}", use_container_width=True):
             copied = copy_previous_week(week_id, week_start)
+            clear_dashboard_cache()
             st.session_state.pop("schedule_history_download_payload", None)
             st.success(f"전주 일정 복사 완료 ({copied}건)")
             st.rerun()
+
+
+def clear_dashboard_cache() -> None:
+    try:
+        from pages import dashboard
+
+        dashboard.get_dashboard_data.clear()
+        dashboard.get_dashboard_core_tasks.clear()
+    except Exception:
+        pass
 
 def render_schedule_visible_editor(
     df: pd.DataFrame,

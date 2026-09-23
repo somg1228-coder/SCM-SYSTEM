@@ -581,6 +581,34 @@ def get_dashboard_core_tasks_without_production(limit: int = 8) -> dict:
                 """,
                 (week_row["id"], limit),
             ).fetchall()
+            if not rows and summary["source"] == "current":
+                fallback_week = conn.execute(
+                    """
+                    SELECT id, week_start
+                    FROM schedule_weeks
+                    WHERE week_start <> ?
+                      AND EXISTS (
+                          SELECT 1 FROM schedule_highlights
+                          WHERE schedule_highlights.week_id = schedule_weeks.id
+                      )
+                    ORDER BY week_start DESC
+                    LIMIT 1
+                    """,
+                    (current_week_start.date().isoformat(),),
+                ).fetchone()
+                if fallback_week is not None:
+                    week_row = fallback_week
+                    summary["source"] = "latest"
+                    rows = conn.execute(
+                        """
+                        SELECT title, checked
+                        FROM schedule_highlights
+                        WHERE week_id = ?
+                        ORDER BY checked ASC, sort_order, id
+                        LIMIT ?
+                        """,
+                        (week_row["id"], limit),
+                    ).fetchall()
             week_start = pd.Timestamp(week_row["week_start"])
             summary.update(
                 {

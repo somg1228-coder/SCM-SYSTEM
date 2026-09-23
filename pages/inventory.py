@@ -1326,15 +1326,113 @@ def render_inventory_dashboard_tab(source_type: str) -> None:
 
     table_cols = st.columns(2, gap="small")
     with table_cols[0]:
-        st.markdown("#### 상품별 입고수량 TOP")
-        top_df = valid_df.groupby(["상품명"], as_index=False)["입고수량"].sum().sort_values("입고수량", ascending=False).head(10)
-        st.dataframe(top_df, hide_index=True, use_container_width=True)
+        st.markdown("#### 최근입고 상품별 출고수량 TOP")
+        outbound_top_rows = with_db(lambda db: recent_inbound_outbound_top(db, source_type, valid_df, work_date)) or []
+        outbound_top_df = pd.DataFrame(outbound_top_rows)
+        if outbound_top_df.empty:
+            st.info("최근 입고 상품의 출고 데이터가 없습니다.")
+        else:
+            st.dataframe(outbound_top_df, hide_index=True, use_container_width=True)
     with table_cols[1]:
         st.markdown("#### 최근 입고내역")
         recent_cols = ["입고일자", "SKU", "바코드", "상품명", "입고수량", "입고구분", "비고"]
         recent_df = valid_df.sort_values("입고일자", ascending=False)[recent_cols].head(10)
         recent_df["입고일자"] = recent_df["입고일자"].dt.date
         st.dataframe(recent_df, hide_index=True, use_container_width=True)
+
+
+def recent_inbound_outbound_top(
+    db,
+    source_type: str,
+    inbound_df: pd.DataFrame,
+    work_date: date,
+    recent_item_limit: int = 50,
+    top_limit: int = 10,
+) -> list[dict]:
+    if InventoryDaily is None or inbound_df is None or inbound_df.empty:
+        return []
+
+    required_columns = {"입고일자", "SKU", "바코드", "상품명"}
+    if not required_columns.issubset(set(inbound_df.columns)):
+        return []
+
+    recent_df = inbound_df.copy()
+    recent_df["입고일자"] = pd.to_datetime(recent_df["입고일자"], errors="coerce")
+    recent_df = recent_df.dropna(subset=["입고일자"])
+    recent_df = recent_df[recent_df["입고일자"].dt.date <= work_date]
+    if recent_df.empty:
+        return []
+
+    recent_df["_sku"] = recent_df["SKU"].apply(clean_cell)
+    recent_df["_barcode"] = recent_df["바코드"].apply(inventory_normalize_barcode)
+    recent_df["_name"] = recent_df["상품명"].apply(clean_cell)
+    recent_df["_inbound_date"] = recent_df["입고일자"].dt.date
+    recent_df = recent_df[recent_df["_name"] != ""]
+    if recent_df.empty:
+        return []
+
+    recent_items = (
+        recent_df.sort_values("입고일자", ascending=False)
+        .drop_duplicates(["_sku", "_barcode", "_name"])
+        .head(recent_item_limit)
+    )
+    if recent_items.empty:
+        return []
+
+    items: list[dict] = []
+    sku_index: dict[str, dict] = {}
+    barcode_index: dict[str, dict] = {}
+    name_index: dict[str, dict] = {}
+    for _, row in recent_items.iterrows():
+        item = {
+            "sku": clean_cell(row.get("_sku")),
+            "barcode": clean_cell(row.get("_barcode")),
+            "product_name": clean_cell(row.get("_name")),
+            "latest_inbound_date": row.get("_inbound_date"),
+            "outbound_qty": 0,
+        }
+        items.append(item)
+        if item["sku"]:
+            sku_index.setdefault(item["sku"], item)
+        if item["barcode"]:
+            barcode_index.setdefault(item["barcode"], item)
+        if item["product_name"]:
+            name_index.setdefault(item["product_name"], item)
+
+    start_date = min(item["latest_inbound_date"] for item in items)
+    outbound_rows = db.execute(
+        select(InventoryDaily).where(
+            InventoryDaily.source_type == source_type,
+            InventoryDaily.work_date >= start_date,
+            InventoryDaily.work_date <= work_date,
+            InventoryDaily.outbound_qty != 0,
+        )
+    ).scalars()
+
+    for daily in outbound_rows:
+        sku = clean_cell(getattr(daily, "product_code", ""))
+        barcode = inventory_normalize_barcode(getattr(daily, "barcode", ""))
+        product_name = clean_cell(getattr(daily, "product_name", ""))
+        item = sku_index.get(sku) or barcode_index.get(barcode) or name_index.get(product_name)
+        if item is None or daily.work_date < item["latest_inbound_date"]:
+            continue
+        item["outbound_qty"] += to_int(getattr(daily, "outbound_qty", 0))
+
+    top_items = sorted(
+        [item for item in items if item["outbound_qty"] > 0],
+        key=lambda item: item["outbound_qty"],
+        reverse=True,
+    )[:top_limit]
+    return [
+        {
+            "상품명": item["product_name"],
+            "SKU": item["sku"],
+            "바코드": item["barcode"],
+            "최근입고일": item["latest_inbound_date"],
+            "출고수량": item["outbound_qty"],
+        }
+        for item in top_items
+    ]
 
 
 def render_inventory_line_chart(rows: list[dict], label: str) -> None:
