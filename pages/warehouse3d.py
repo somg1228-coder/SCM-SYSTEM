@@ -1676,6 +1676,7 @@ def warehouse3d_float(value) -> float:
 
 
 WAREHOUSE_SOURCE_TYPE = "창고"
+WAREHOUSE_MASTER_TEMPLATE_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 WAREHOUSE_MASTER_ACTUAL_COLUMNS = [
     "No.",
     "상품코드",
@@ -1714,6 +1715,122 @@ WAREHOUSE_MASTER_BOX_UNIT_COLUMNS = ["박스/파렛트 단위", "박스파렛트
 WAREHOUSE_MASTER_MANAGER_COLUMNS = ["담당자", "비고", "memo"]
 WAREHOUSE_MASTER_LEAD_TIME_COLUMNS = ["리드타임", "기본 리드타임", "제조기간", "default_lead_time"]
 WAREHOUSE_MASTER_BUILDING_COLUMNS = ["창고", "건물", "거래처", "building", "warehouse"]
+
+
+def warehouse_master_template_floor_value(building: str, floor: str) -> str:
+    floor_match = re.search(r"([1-9])", warehouse_service_clean(floor))
+    if floor_match:
+        return f"{building}-{int(floor_match.group(1)):02d}"
+    return ""
+
+
+def warehouse_master_template_location_values(row: dict, building: str) -> tuple[str, str]:
+    storage_location = warehouse3d_text(row.get("storage_location") or row.get("location"))
+    row_building = warehouse_building_from_text(storage_location, building)
+    floor = canonical_warehouse_floor(storage_location, row_building)
+    rack = warehouse_rack_from_text(storage_location)
+    return warehouse_master_template_floor_value(row_building, floor), rack
+
+
+def warehouse_master_template_records(inventory_rows: list[dict], building: str) -> list[dict]:
+    records = []
+    for index, row in enumerate(inventory_rows or [], start=1):
+        floor_value, rack_value = warehouse_master_template_location_values(row, building)
+        records.append(
+            {
+                "No.": index,
+                "상품코드": warehouse3d_text(row.get("product_code")),
+                "상품명": warehouse3d_text(row.get("product_name")),
+                "입수": warehouse3d_text(row.get("box_qty") or row.get("pack_qty")),
+                "단위": warehouse3d_text(row.get("unit")) or "EA",
+                "거래처": warehouse3d_text(row.get("supplier")),
+                "바코드": warehouse3d_text(row.get("barcode")),
+                "원가단가": warehouse3d_text(row.get("unit_cost")),
+                "안전재고": warehouse3d_int(row.get("safe_stock")),
+                "현재고": warehouse3d_int(row.get("current_stock")),
+                "재고금액": "",
+                "사입입고": "",
+                "사입반품": "",
+                "매장판매": "",
+                "폐기": "",
+                "조정": "",
+                "세트생성": "",
+                "최초입고일": "",
+                "최종입고일": "",
+                "최초판매일": "",
+                "최종판매일": "",
+                "재고위치": floor_value,
+                "랙위치": rack_value,
+            }
+        )
+    return records
+
+
+def warehouse_master_template_excel(inventory_rows: list[dict], building: str) -> bytes:
+    floor_options = [warehouse_master_template_floor_value(building, floor) for floor in LOCATIONS.get(building, {}).get("floors", [])]
+    rack_options = [f"{zone}-{index:02d}" for zone in ("A", "B", "C", "D") for index in range(1, 7)]
+    records = warehouse_master_template_records(inventory_rows, building)
+    template_df = pd.DataFrame(records, columns=WAREHOUSE_MASTER_ACTUAL_COLUMNS)
+    guide_df = pd.DataFrame(
+        [
+            {"항목": "재고위치", "설명": "창고와 층을 입력합니다. 로긴-01은 1층, 로긴-02는 2층입니다.", "예시": f"{building}-01"},
+            {"항목": "랙위치", "설명": "3D 창고에서 사용 중인 랙 코드를 입력합니다.", "예시": "A-01"},
+            {"항목": "현재고", "설명": "0이면 재고 데이터는 저장되지만 3D 창고에는 박스가 표시되지 않습니다.", "예시": "30"},
+            {"항목": "품목 식별", "설명": "상품코드 또는 바코드 중 하나는 반드시 입력합니다.", "예시": "A001"},
+        ]
+    )
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        sheet_name = "재고마스터"
+        template_df.to_excel(writer, index=False, sheet_name=sheet_name)
+        guide_df.to_excel(writer, index=False, sheet_name="작성안내")
+        workbook = writer.book
+        worksheet = writer.sheets[sheet_name]
+        guide_sheet = writer.sheets["작성안내"]
+        header_format = workbook.add_format(
+            {
+                "bold": True,
+                "font_color": "#FFFFFF",
+                "bg_color": "#0B6B60",
+                "border": 1,
+                "align": "center",
+                "valign": "vcenter",
+            }
+        )
+        required_format = workbook.add_format(
+            {
+                "bold": True,
+                "font_color": "#FFFFFF",
+                "bg_color": "#92400E",
+                "border": 1,
+                "align": "center",
+                "valign": "vcenter",
+            }
+        )
+        cell_format = workbook.add_format({"border": 1, "border_color": "#E5EFEA", "valign": "vcenter"})
+        required_columns = {"상품코드", "상품명", "현재고", "재고위치", "랙위치"}
+        for col_index, column in enumerate(WAREHOUSE_MASTER_ACTUAL_COLUMNS):
+            worksheet.write(0, col_index, column, required_format if column in required_columns else header_format)
+            width = 12
+            if column in {"상품명", "거래처"}:
+                width = 28
+            elif column in {"최초입고일", "최종입고일", "최초판매일", "최종판매일"}:
+                width = 14
+            worksheet.set_column(col_index, col_index, width, cell_format)
+        max_rows = max(len(template_df.index) + 100, 200)
+        worksheet.freeze_panes(1, 0)
+        worksheet.autofilter(0, 0, max(len(template_df.index), 1), len(WAREHOUSE_MASTER_ACTUAL_COLUMNS) - 1)
+        floor_col = WAREHOUSE_MASTER_ACTUAL_COLUMNS.index("재고위치")
+        rack_col = WAREHOUSE_MASTER_ACTUAL_COLUMNS.index("랙위치")
+        if floor_options:
+            worksheet.data_validation(1, floor_col, max_rows, floor_col, {"validate": "list", "source": floor_options})
+        worksheet.data_validation(1, rack_col, max_rows, rack_col, {"validate": "list", "source": rack_options})
+        guide_sheet.set_column(0, 0, 14)
+        guide_sheet.set_column(1, 1, 66)
+        guide_sheet.set_column(2, 2, 18)
+        for col_index, column in enumerate(guide_df.columns):
+            guide_sheet.write(0, col_index, column, header_format)
+    return output.getvalue()
 
 
 def warehouse_service_clean(value) -> str:
@@ -2481,7 +2598,7 @@ def render_warehouse_master_upload_result(outcome: dict | None) -> None:
             st.dataframe(detail_df, hide_index=True, use_container_width=True, height=320)
 
 
-def render_warehouse_master_upload_panel(building: str, work_date: str) -> None:
+def render_warehouse_master_upload_panel(building: str, work_date: str, inventory_rows: list[dict] | None = None) -> None:
     default_work_date = pd.to_datetime(work_date, errors="coerce")
     default_date = default_work_date.date() if not pd.isna(default_work_date) else date.today()
     result_key = "warehouse3d_master_upload_result"
@@ -2493,6 +2610,18 @@ def render_warehouse_master_upload_panel(building: str, work_date: str) -> None:
             + ", ".join(WAREHOUSE_MASTER_ACTUAL_COLUMNS)
             + " / 3D 자동 배치는 현재고, 재고위치(예: 로긴-01), 랙위치(예: A-01) 기준으로 반영합니다."
         )
+        template_cols = st.columns([1.1, 2.9], gap="small")
+        with template_cols[0]:
+            st.download_button(
+                "재고 마스터 양식 다운로드",
+                data=warehouse_master_template_excel(inventory_rows or [], building),
+                file_name=f"재고마스터_3D창고_양식_{date.today().strftime('%Y%m%d')}.xlsx",
+                mime=WAREHOUSE_MASTER_TEMPLATE_MIME,
+                use_container_width=True,
+                key="warehouse3d_master_template_download",
+            )
+        with template_cols[1]:
+            st.caption("기존 재고가 있으면 상품 정보와 현재고를 채워 내려받고, 마지막 두 칸의 재고위치/랙위치를 입력해 다시 업로드하면 됩니다.")
         upload_cols = st.columns([1.0, 2.2, 0.9, 2.2], gap="small")
         with upload_cols[0]:
             upload_date = st.date_input("기준일자", value=default_date, key="warehouse3d_master_upload_date")
@@ -2544,7 +2673,7 @@ def render_warehouse_master_upload_panel(building: str, work_date: str) -> None:
 def render_warehouse_inventory_tab(inventory_rows: list[dict], work_date: str, building: str = "로긴") -> None:
     st.markdown("#### 재고관리")
     st.caption(f"창고재고 원본 기준 현재고 조회 · 기준일자 {work_date or '-'}")
-    render_warehouse_master_upload_panel(building, work_date)
+    render_warehouse_master_upload_panel(building, work_date, inventory_rows)
     if not inventory_rows:
         st.info("표시할 창고 재고 데이터가 없습니다.")
         return
