@@ -8,7 +8,9 @@ import json
 import re
 import tempfile
 import threading
+import time
 from html import escape
+from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
@@ -30,7 +32,7 @@ try:
         record_save_success,
         writable_runtime_data_dir,
     )
-    from backend.models import WarehouseInventoryPosition, WarehouseLayout, WarehouseRack
+    from backend.models import InventoryDaily, WarehouseInventoryPosition, WarehouseLayout, WarehouseProductMaster, WarehouseRack
     from backend import services, supabase_store
 except (ModuleNotFoundError, RuntimeError) as exc:
     DATABASE_URL = ""
@@ -41,8 +43,10 @@ except (ModuleNotFoundError, RuntimeError) as exc:
     record_save_failure = None
     record_save_success = None
     writable_runtime_data_dir = None
+    InventoryDaily = None
     WarehouseInventoryPosition = None
     WarehouseLayout = None
+    WarehouseProductMaster = None
     WarehouseRack = None
     services = None
     supabase_store = None
@@ -920,7 +924,7 @@ def render_warehouse3d_page() -> None:
     if selected_view == "재고관리":
         with perf_span("warehouse3d.fetch_inventory", component="inventory_tab"):
             inventory_rows, work_date = fetch_latest_warehouse_inventory()
-        render_warehouse_inventory_tab(inventory_rows, work_date)
+        render_warehouse_inventory_tab(inventory_rows, work_date, building)
         return
 
     with perf_span("warehouse3d.fetch_inventory"):
@@ -1671,6 +1675,655 @@ def warehouse3d_float(value) -> float:
         return 0.0
 
 
+WAREHOUSE_SOURCE_TYPE = "창고"
+WAREHOUSE_MASTER_ACTUAL_COLUMNS = [
+    "No.",
+    "상품코드",
+    "상품명",
+    "입수",
+    "단위",
+    "거래처",
+    "바코드",
+    "원가단가",
+    "안전재고",
+    "현재고",
+    "재고금액",
+    "사입입고",
+    "사입반품",
+    "매장판매",
+    "폐기",
+    "조정",
+    "세트생성",
+    "최초입고일",
+    "최종입고일",
+    "최초판매일",
+    "최종판매일",
+    "재고위치",
+    "랙위치",
+]
+WAREHOUSE_MASTER_PRODUCT_CODE_COLUMNS = ["SKU", "상품코드", "품목코드", "상품번호", "대표상품코드", "product_code", "sku"]
+WAREHOUSE_MASTER_BARCODE_COLUMNS = ["바코드", "88바코드", "옵션바코드", "barcode"]
+WAREHOUSE_MASTER_NAME_COLUMNS = ["상품명", "품목", "품목명", "제품명", "product_name"]
+WAREHOUSE_MASTER_STOCK_COLUMNS = ["현재 재고수량", "현재고", "재고수량", "재고", "보유재고", "수량", "quantity", "current_stock"]
+WAREHOUSE_MASTER_RACK_COLUMNS = ["랙위치", "랙 위치", "랙", "랙번호", "보관랙", "rack", "rack_location"]
+WAREHOUSE_MASTER_FLOOR_COLUMNS = ["재고위치", "재고 위치", "보관위치", "보관 위치", "층", "창고층", "보관층", "위치층", "floor", "storage_location"]
+WAREHOUSE_MASTER_SHELF_COLUMNS = ["단", "랙 단", "랙단", "선반", "선반층", "랙층", "part", "shelf"]
+WAREHOUSE_MASTER_SUPPLIER_COLUMNS = ["업체명", "공급처", "거래처", "supplier"]
+WAREHOUSE_MASTER_CATEGORY_COLUMNS = ["카테고리", "카테고리명", "상품카테고리", "대분류", "분류", "category", "large_category"]
+WAREHOUSE_MASTER_BOX_UNIT_COLUMNS = ["박스/파렛트 단위", "박스파렛트단위", "파렛트,박스단위"]
+WAREHOUSE_MASTER_MANAGER_COLUMNS = ["담당자", "비고", "memo"]
+WAREHOUSE_MASTER_LEAD_TIME_COLUMNS = ["리드타임", "기본 리드타임", "제조기간", "default_lead_time"]
+WAREHOUSE_MASTER_BUILDING_COLUMNS = ["창고", "건물", "거래처", "building", "warehouse"]
+
+
+def warehouse_service_clean(value) -> str:
+    if services is not None and hasattr(services, "clean_text"):
+        return services.clean_text(value)
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip()
+
+
+def warehouse_service_barcode(value) -> str:
+    if services is not None and hasattr(services, "normalize_barcode_text"):
+        return services.normalize_barcode_text(value)
+    return warehouse_service_clean(value).replace(",", "")
+
+
+def warehouse_service_code(value) -> str:
+    if services is not None and hasattr(services, "normalize_product_code_text"):
+        return services.normalize_product_code_text(value)
+    text = warehouse_service_clean(value).replace(",", "").strip().strip("'\"`")
+    return text.upper()
+
+
+def warehouse_service_int_strict(value) -> tuple[int, bool]:
+    if services is not None and hasattr(services, "to_int_strict"):
+        return services.to_int_strict(value)
+    text = warehouse_service_clean(value).replace(",", "")
+    if not text:
+        return 0, True
+    try:
+        return int(float(text)), True
+    except (TypeError, ValueError):
+        return 0, False
+
+
+def warehouse_optional_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    if df is None or df.empty:
+        return None
+    if services is not None and hasattr(services, "find_column"):
+        try:
+            return services.find_column(df, candidates)
+        except Exception:
+            return None
+
+    normalized = {re.sub(r"[\s_\-./]+", "", str(column)).lower(): column for column in df.columns}
+    for candidate in candidates:
+        key = re.sub(r"[\s_\-./]+", "", candidate).lower()
+        if key in normalized:
+            return normalized[key]
+    return None
+
+
+def read_warehouse_master_upload_file(file_bytes: bytes, file_name: str) -> pd.DataFrame:
+    lower_name = (file_name or "").lower()
+    if lower_name.endswith(".csv"):
+        for encoding in ("utf-8-sig", "cp949", "utf-8"):
+            try:
+                df = pd.read_csv(BytesIO(file_bytes), dtype=str, encoding=encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            df = pd.read_csv(BytesIO(file_bytes), dtype=str)
+        if services is not None and hasattr(services, "normalize_import_headers"):
+            df = services.normalize_import_headers(df)
+        return df
+
+    if services is not None and hasattr(services, "read_threepl_master_excel"):
+        return services.read_threepl_master_excel(file_bytes)
+    if services is not None and hasattr(services, "read_excel"):
+        return services.read_excel(file_bytes)
+    return pd.read_excel(BytesIO(file_bytes), dtype=str)
+
+
+def canonical_warehouse_floor(value, building: str) -> str:
+    text = warehouse_service_clean(value)
+    floors = LOCATIONS.get(building, {}).get("floors", [])
+    if text in floors:
+        return text
+    match = re.search(r"([1-9])\s*(?:층|F|f)?", text)
+    if match:
+        candidate = f"{int(match.group(1))}층"
+        if candidate in floors:
+            return candidate
+    return ""
+
+
+def warehouse_building_from_text(value, default_building: str) -> str:
+    text = warehouse_service_clean(value)
+    for building in LOCATIONS:
+        if building and building in text:
+            return building
+    return default_building if default_building in LOCATIONS else next(iter(LOCATIONS))
+
+
+def warehouse_rack_from_text(value) -> str:
+    text = warehouse_service_clean(value).upper()
+    match = re.search(r"\b([A-Z])\s*[-_ ]\s*(\d{1,3})\b", text)
+    if match:
+        return f"{match.group(1)}-{int(match.group(2)):02d}"
+    match = re.search(r"\bR\s*[-_ ]\s*(\d{1,3})\b", text)
+    if match:
+        return warehouse3d_rack_code_from_index(int(match.group(1)))
+    return canonical_warehouse3d_rack_code(text, 1) if text else ""
+
+
+def warehouse_shelf_part(value) -> str:
+    text = warehouse_service_clean(value)
+    match = re.search(r"([1-9])", text)
+    if match:
+        return f"{int(match.group(1))}층"
+    return "1층"
+
+
+def default_warehouse_floor_racks(floor: str) -> list[dict]:
+    racks = []
+    for index, rack in enumerate(build_rack_layout([], floor)):
+        racks.append(
+            {
+                **rack,
+                "x": 8 + (index % 6) * 13.2,
+                "y": 16 + (index // 6) * 15.2,
+                "w": 10.8,
+                "h": 8.4,
+                "type": rack.get("type") or "light",
+                "levels": int(rack.get("levels") or 2),
+                "items": list(rack.get("items") or []),
+            }
+        )
+    return racks
+
+
+def floor_data_for_layout(store: dict, building: str, floor: str, create: bool = False) -> dict:
+    locations = store.setdefault("locations", {}) if create else store.get("locations", {})
+    floors = locations.setdefault(building, {}) if create else locations.get(building, {})
+    floor_data = floors.get(floor) if isinstance(floors, dict) else None
+    if isinstance(floor_data, dict):
+        floor_data.setdefault("racks", [])
+        return floor_data
+    if not create:
+        return {}
+    floor_data = {"racks": default_warehouse_floor_racks(floor), "fixtures": []}
+    floors[floor] = floor_data
+    return floor_data
+
+
+def warehouse_valid_rack_codes(store: dict, building: str, floor: str) -> set[str]:
+    floor_data = floor_data_for_layout(store, building, floor, create=False)
+    racks = floor_data.get("racks") if isinstance(floor_data.get("racks"), list) else []
+    if not racks:
+        racks = default_warehouse_floor_racks(floor)
+    return {
+        canonical_warehouse3d_rack_code(rack.get("id") or rack.get("rack_code"), index + 1)
+        for index, rack in enumerate(racks)
+        if isinstance(rack, dict)
+    }
+
+
+def warehouse_item_identity_keys(item: dict) -> set[str]:
+    keys = set()
+    sku = warehouse_service_code(item.get("sku") or item.get("product_code"))
+    barcode = warehouse_service_barcode(item.get("barcode"))
+    name = warehouse_service_clean(item.get("name") or item.get("product_name") or item.get("item_name"))
+    if sku:
+        keys.add(f"sku:{sku}")
+    if barcode:
+        keys.add(f"barcode:{barcode}")
+    if name:
+        keys.add(f"name:{name}")
+    return keys
+
+
+def warehouse_upload_identity_keys(row: dict) -> set[str]:
+    keys = set()
+    for field in ("product_code", "previous_product_code"):
+        value = warehouse_service_code(row.get(field))
+        if value:
+            keys.add(f"sku:{value}")
+    for field in ("barcode", "previous_barcode"):
+        value = warehouse_service_barcode(row.get(field))
+        if value:
+            keys.add(f"barcode:{value}")
+    for field in ("product_name", "previous_product_name"):
+        value = warehouse_service_clean(row.get(field))
+        if value:
+            keys.add(f"name:{value}")
+    return keys
+
+
+def warehouse_master_row_to_rack_item(row: dict) -> dict:
+    stock = max(0, warehouse3d_int(row.get("current_stock")))
+    return {
+        "sku": row.get("product_code", ""),
+        "product_code": row.get("product_code", ""),
+        "name": row.get("product_name", ""),
+        "product_name": row.get("product_name", ""),
+        "barcode": row.get("barcode", ""),
+        "stock": stock,
+        "current_stock": stock,
+        "available_stock": stock,
+        "qty": stock,
+        "quantity": stock,
+        "total_quantity": stock,
+        "storage_unit": "EA",
+        "package_type": "EA",
+        "package_count": stock,
+        "qty_per_package": 1,
+        "boxes_per_pallet": 0,
+        "part": row.get("shelf_part") or "1층",
+        "shape": "box",
+        "stack": 1,
+        "display_mode": "SINGLE",
+        "status": "master_upload",
+    }
+
+
+def sync_warehouse_master_rows_to_layout(store: dict, rows: list[dict]) -> tuple[int, int]:
+    if not rows:
+        return 0, 0
+    store.setdefault("version", 1)
+    store.setdefault("locations", {})
+    row_identity_sets = [warehouse_upload_identity_keys(row) for row in rows]
+    removed = 0
+    added = 0
+
+    for floors in store.get("locations", {}).values():
+        if not isinstance(floors, dict):
+            continue
+        for floor_data in floors.values():
+            if not isinstance(floor_data, dict):
+                continue
+            racks = floor_data.get("racks")
+            if not isinstance(racks, list):
+                continue
+            for rack in racks:
+                if not isinstance(rack, dict):
+                    continue
+                items = rack.get("items") if isinstance(rack.get("items"), list) else []
+                kept = []
+                for item in items:
+                    item_keys = warehouse_item_identity_keys(item) if isinstance(item, dict) else set()
+                    if item_keys and any(item_keys & keys for keys in row_identity_sets):
+                        removed += 1
+                        continue
+                    kept.append(item)
+                rack["items"] = kept
+
+    for row in rows:
+        stock = warehouse3d_int(row.get("current_stock"))
+        if stock <= 0:
+            continue
+        building = row["building"]
+        floor = row["floor"]
+        rack_code = row["rack"]
+        floor_data = floor_data_for_layout(store, building, floor, create=True)
+        racks = floor_data.get("racks") if isinstance(floor_data.get("racks"), list) else []
+        if not racks:
+            racks = default_warehouse_floor_racks(floor)
+            floor_data["racks"] = racks
+        target = None
+        for index, rack in enumerate(racks):
+            if canonical_warehouse3d_rack_code(rack.get("id") or rack.get("rack_code"), index + 1) == rack_code:
+                target = rack
+                break
+        if target is None:
+            continue
+        target.setdefault("items", [])
+        target["items"].append(warehouse_master_row_to_rack_item(row))
+        added += 1
+    return removed, added
+
+
+def warehouse_stock_status(current_stock: int, safe_stock: int = 0) -> str:
+    if services is not None and hasattr(services, "inventory_stock_status_for_snapshot"):
+        return services.inventory_stock_status_for_snapshot(True, current_stock, current_stock, safe_stock, 0)
+    if current_stock <= 0:
+        return "품절"
+    if safe_stock and current_stock <= safe_stock:
+        return "부족"
+    return "정상"
+
+
+def apply_warehouse_master_excel_upload(db, building: str, work_date: date, file_bytes: bytes, file_name: str) -> dict:
+    started_at = time.perf_counter()
+    source_type = WAREHOUSE_SOURCE_TYPE
+    details: list[dict] = []
+    valid_rows: list[dict] = []
+    skipped_empty = 0
+
+    try:
+        df = read_warehouse_master_upload_file(file_bytes, file_name)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "message": f"엑셀 파일을 읽지 못했습니다: {exc}",
+            "count": 0,
+            "total_rows": 0,
+            "error_count": 1,
+            "details": [],
+        }
+
+    if df is None or df.empty:
+        return {
+            "ok": False,
+            "message": "업로드한 파일에서 재고 마스터 데이터를 찾지 못했습니다.",
+            "count": 0,
+            "total_rows": 0,
+            "error_count": 0,
+            "details": [],
+        }
+
+    product_code_col = warehouse_optional_column(df, WAREHOUSE_MASTER_PRODUCT_CODE_COLUMNS)
+    barcode_col = warehouse_optional_column(df, WAREHOUSE_MASTER_BARCODE_COLUMNS)
+    name_col = warehouse_optional_column(df, WAREHOUSE_MASTER_NAME_COLUMNS)
+    stock_col = warehouse_optional_column(df, WAREHOUSE_MASTER_STOCK_COLUMNS)
+    rack_col = warehouse_optional_column(df, WAREHOUSE_MASTER_RACK_COLUMNS)
+    floor_col = warehouse_optional_column(df, WAREHOUSE_MASTER_FLOOR_COLUMNS)
+    if not rack_col and floor_col:
+        duplicate_location_columns = [
+            column
+            for column in df.columns
+            if str(column).startswith(str(floor_col) + "_")
+        ]
+        if duplicate_location_columns:
+            rack_col = duplicate_location_columns[0]
+    shelf_col = warehouse_optional_column(df, WAREHOUSE_MASTER_SHELF_COLUMNS)
+    supplier_col = warehouse_optional_column(df, WAREHOUSE_MASTER_SUPPLIER_COLUMNS)
+    category_col = warehouse_optional_column(df, WAREHOUSE_MASTER_CATEGORY_COLUMNS)
+    box_unit_col = warehouse_optional_column(df, WAREHOUSE_MASTER_BOX_UNIT_COLUMNS)
+    manager_col = warehouse_optional_column(df, WAREHOUSE_MASTER_MANAGER_COLUMNS)
+    lead_time_col = warehouse_optional_column(df, WAREHOUSE_MASTER_LEAD_TIME_COLUMNS)
+    building_col = warehouse_optional_column(df, WAREHOUSE_MASTER_BUILDING_COLUMNS)
+
+    layout_store = load_warehouse_layout_store()
+    model = services.product_master_model(source_type) if services is not None and hasattr(services, "product_master_model") else WarehouseProductMaster
+    if model is None or InventoryDaily is None:
+        return {
+            "ok": False,
+            "message": "창고 재고 DB 모델을 사용할 수 없습니다.",
+            "count": 0,
+            "total_rows": int(len(df.index)),
+            "error_count": 1,
+            "details": [],
+        }
+
+    products = list(db.execute(select(model)).scalars())
+    existing_by_sku = {warehouse_service_code(getattr(product, "sku", "")): product for product in products if warehouse_service_code(getattr(product, "sku", ""))}
+    existing_by_barcode = {warehouse_service_barcode(getattr(product, "barcode", "")): product for product in products if warehouse_service_barcode(getattr(product, "barcode", ""))}
+    existing_by_name = {warehouse_service_clean(getattr(product, "product_name", "")): product for product in products if warehouse_service_clean(getattr(product, "product_name", ""))}
+    seen_identities: set[str] = set()
+    seen_product_names: set[str] = set()
+    duplicate_count = 0
+    error_count = 0
+
+    header_row_number = int(getattr(df, "attrs", {}).get("header_row_number") or 1)
+    for offset, record in enumerate(df.fillna("").to_dict("records"), start=1):
+        row_no = header_row_number + offset
+        product_code_raw = record.get(product_code_col) if product_code_col else ""
+        barcode_raw = record.get(barcode_col) if barcode_col else ""
+        explicit_product_code = warehouse_service_code(product_code_raw)
+        product_code = explicit_product_code
+        barcode = warehouse_service_barcode(barcode_raw)
+        product_name = warehouse_service_clean(record.get(name_col)) if name_col else ""
+        if not product_code and barcode:
+            product_code = barcode
+        if not product_code and not barcode and not product_name and not any(warehouse_service_clean(value) for value in record.values()):
+            skipped_empty += 1
+            continue
+
+        rack_text = warehouse_service_clean(record.get(rack_col)) if rack_col else ""
+        floor_text = warehouse_service_clean(record.get(floor_col)) if floor_col else ""
+        building_text = warehouse_service_clean(record.get(building_col)) if building_col else ""
+        row_building = warehouse_building_from_text(building_text or floor_text or rack_text, building)
+        floor = canonical_warehouse_floor(floor_text, row_building)
+        if not floor and rack_text:
+            floor = canonical_warehouse_floor(rack_text, row_building)
+        rack = warehouse_rack_from_text(record.get(rack_col) if rack_col else "")
+        if not rack and rack_text:
+            rack = warehouse_rack_from_text(rack_text)
+        shelf_part = warehouse_shelf_part(record.get(shelf_col) if shelf_col else "")
+
+        current_stock = 0
+        stock_ok = False
+        if stock_col:
+            current_stock, stock_ok = warehouse_service_int_strict(record.get(stock_col))
+        supplier = warehouse_service_clean(record.get(supplier_col)) if supplier_col else ""
+        category = warehouse_service_clean(record.get(category_col)) if category_col else ""
+        box_unit = warehouse_service_clean(record.get(box_unit_col)) if box_unit_col else ""
+        memo = warehouse_service_clean(record.get(manager_col)) if manager_col else ""
+        lead_time = warehouse3d_int(record.get(lead_time_col)) if lead_time_col else 0
+
+        errors = []
+        identity = product_code or barcode
+        if not identity:
+            errors.append("품목코드/바코드 누락")
+        if not product_name:
+            errors.append("상품명 누락")
+        if not stock_col:
+            errors.append("현재 재고수량 컬럼 없음")
+        elif not stock_ok:
+            errors.append("재고수량 형식 오류")
+        elif current_stock < 0:
+            errors.append("재고수량 음수")
+
+        duplicate_key = warehouse_service_code(identity) or warehouse_service_barcode(identity)
+        if duplicate_key:
+            if duplicate_key in seen_identities:
+                duplicate_count += 1
+                errors.append("동일 품목 중복 데이터")
+            else:
+                seen_identities.add(duplicate_key)
+        if product_name:
+            if product_name in seen_product_names:
+                duplicate_count += 1
+                errors.append("동일 상품명 중복 데이터")
+            else:
+                seen_product_names.add(product_name)
+
+        existing_product = existing_by_sku.get(explicit_product_code) or existing_by_barcode.get(barcode) or existing_by_name.get(product_name)
+        if not explicit_product_code and existing_product is not None and warehouse_service_code(getattr(existing_product, "sku", "")):
+            product_code = warehouse_service_code(getattr(existing_product, "sku", ""))
+        sku_owner = existing_by_sku.get(product_code) if product_code else None
+        name_owner = existing_by_name.get(product_name) if product_name else None
+        if sku_owner is not None and existing_product is not None and sku_owner is not existing_product:
+            errors.append("품목코드가 다른 기존 품목과 충돌")
+        if name_owner is not None and existing_product is not None and name_owner is not existing_product:
+            errors.append("상품명이 다른 기존 품목과 충돌")
+
+        if current_stock > 0:
+            if not floor:
+                errors.append("층 누락 또는 형식 오류")
+            elif floor not in LOCATIONS.get(row_building, {}).get("floors", []):
+                errors.append("존재하지 않는 층")
+            if not rack:
+                errors.append("랙 위치 누락")
+            elif floor and rack not in warehouse_valid_rack_codes(layout_store, row_building, floor):
+                errors.append("존재하지 않는 랙 위치")
+        else:
+            if floor and floor not in LOCATIONS.get(row_building, {}).get("floors", []):
+                errors.append("존재하지 않는 층")
+            if rack and floor and rack not in warehouse_valid_rack_codes(layout_store, row_building, floor):
+                errors.append("존재하지 않는 랙 위치")
+
+        detail = {
+            "행 번호": row_no,
+            "품목코드": product_code,
+            "바코드": barcode,
+            "상품명": product_name,
+            "현재고": current_stock if stock_col and stock_ok else warehouse_service_clean(record.get(stock_col)) if stock_col else "",
+            "랙 위치": rack,
+            "층": floor,
+            "처리 결과": "오류" if errors else "정상",
+            "오류 내용": ", ".join(errors),
+        }
+        if errors:
+            error_count += 1
+            details.append(detail)
+            continue
+
+        row = {
+            "row_no": row_no,
+            "product_code": product_code,
+            "barcode": barcode,
+            "product_name": product_name,
+            "current_stock": current_stock,
+            "building": row_building,
+            "floor": floor,
+            "rack": rack,
+            "shelf_part": shelf_part,
+            "supplier": supplier,
+            "category": category,
+            "box_unit": box_unit,
+            "memo": memo,
+            "lead_time": lead_time,
+            "_product": existing_product,
+            "previous_product_code": warehouse_service_clean(getattr(existing_product, "sku", "")) if existing_product else "",
+            "previous_barcode": warehouse_service_clean(getattr(existing_product, "barcode", "")) if existing_product else "",
+            "previous_product_name": warehouse_service_clean(getattr(existing_product, "product_name", "")) if existing_product else "",
+        }
+        valid_rows.append(row)
+        details.append(detail)
+
+    applied = 0
+    inserted = 0
+    updated = 0
+    zero_count = 0
+    try:
+        for row in valid_rows:
+            product = row.pop("_product", None)
+            if product is None:
+                product = model()
+                if hasattr(product, "created_at"):
+                    product.created_at = datetime.utcnow()
+                db.add(product)
+                inserted += 1
+            else:
+                updated += 1
+
+            product.sku = row["product_code"]
+            product.barcode = row["barcode"]
+            product.product_name = row["product_name"]
+            product.large_category = row["category"] or getattr(product, "large_category", "")
+            product.supplier = row["supplier"] or getattr(product, "supplier", "")
+            product.default_lead_time = row["lead_time"] or int(getattr(product, "default_lead_time", 0) or 0)
+            product.memo = row["memo"] or getattr(product, "memo", "")
+            product.location_registered = bool(row["current_stock"] > 0 and row.get("rack") and row.get("floor"))
+            product.is_active = getattr(product, "is_active", "") or "사용"
+            if hasattr(product, "updated_at"):
+                product.updated_at = datetime.utcnow()
+            if row.get("box_unit") and services is not None and hasattr(services, "parse_box_pallet_unit"):
+                box_qty, pack_qty = services.parse_box_pallet_unit(row["box_unit"])
+                if box_qty:
+                    product.box_qty = box_qty
+                if pack_qty:
+                    product.pack_qty = pack_qty
+
+            db.flush()
+            stale_rows = list(
+                db.execute(
+                    select(InventoryDaily).where(
+                        InventoryDaily.source_type == source_type,
+                        InventoryDaily.work_date == work_date,
+                        InventoryDaily.product_code == row["product_code"],
+                        InventoryDaily.product_name != row["product_name"],
+                    )
+                ).scalars()
+            )
+            for stale in stale_rows:
+                db.delete(stale)
+
+            daily = db.execute(
+                select(InventoryDaily).where(
+                    InventoryDaily.source_type == source_type,
+                    InventoryDaily.work_date == work_date,
+                    InventoryDaily.product_name == row["product_name"],
+                )
+            ).scalar_one_or_none()
+            if daily is None:
+                daily = InventoryDaily(source_type=source_type, work_date=work_date, product_name=row["product_name"])
+                db.add(daily)
+            daily.product_code = row["product_code"]
+            daily.barcode = row["barcode"]
+            daily.category = product.large_category
+            daily.supplier = product.supplier
+            daily.current_stock = int(row["current_stock"] or 0)
+            daily.available_stock = int(row["current_stock"] or 0)
+            daily.safe_stock = int(getattr(product, "min_stock", 0) or 0)
+            daily.outbound_qty = 0
+            daily.inbound_cycle = int(getattr(product, "default_lead_time", 0) or 0) or None
+            daily.memo = row["memo"] or daily.memo
+            daily.stock_status = warehouse_stock_status(daily.current_stock, daily.safe_stock)
+            daily.updated_at = datetime.utcnow()
+            applied += 1
+            if daily.current_stock <= 0:
+                zero_count += 1
+
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        return {
+            "ok": False,
+            "message": f"재고 DB 저장 중 오류가 발생했습니다: {exc}",
+            "count": 0,
+            "total_rows": int(len(df.index)),
+            "error_count": error_count + 1,
+            "duplicate_count": duplicate_count,
+            "details": details,
+        }
+
+    try:
+        removed_positions, added_positions = sync_warehouse_master_rows_to_layout(layout_store, valid_rows)
+        if valid_rows:
+            save_warehouse_layout_store(layout_store)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "message": f"재고 DB는 저장했지만 3D 배치 저장에 실패했습니다: {exc}",
+            "count": applied,
+            "total_rows": int(len(df.index)),
+            "error_count": error_count + 1,
+            "duplicate_count": duplicate_count,
+            "details": details,
+        }
+
+    clear_warehouse3d_data_caches()
+    return {
+        "ok": applied > 0 or error_count == 0,
+        "message": "재고 마스터 엑셀 업로드 반영 완료",
+        "count": applied,
+        "total_rows": int(len(df.index)),
+        "inserted_count": inserted,
+        "updated_count": updated,
+        "zeroed_count": zero_count,
+        "duplicate_count": duplicate_count,
+        "error_count": error_count,
+        "skipped_empty": skipped_empty,
+        "layout_removed_count": removed_positions,
+        "layout_added_count": added_positions,
+        "processing_seconds": round(time.perf_counter() - started_at, 2),
+        "details": details,
+        "columns": [str(column) for column in df.columns],
+        "selected_sheet": getattr(df, "attrs", {}).get("selected_sheet", ""),
+    }
+
+
 def warehouse_inventory_filter_options(rows: list[dict], field: str) -> list[str]:
     values = sorted({warehouse3d_text(row.get(field)) for row in rows if warehouse3d_text(row.get(field))})
     return ["전체", *values]
@@ -1800,9 +2453,98 @@ def warehouse_inventory_table_html(df: pd.DataFrame) -> str:
     """
 
 
-def render_warehouse_inventory_tab(inventory_rows: list[dict], work_date: str) -> None:
+def render_warehouse_master_upload_result(outcome: dict | None) -> None:
+    if not isinstance(outcome, dict):
+        return
+    if outcome.get("ok"):
+        st.success(outcome.get("message") or "재고 마스터 업로드 반영 완료")
+    else:
+        st.error(outcome.get("message") or "재고 마스터 업로드 반영 중 오류가 발생했습니다.")
+
+    metric_cols = st.columns(7, gap="small")
+    metric_cols[0].metric("전체 행", f"{int(outcome.get('total_rows') or 0):,}")
+    metric_cols[1].metric("반영", f"{int(outcome.get('count') or 0):,}")
+    metric_cols[2].metric("신규", f"{int(outcome.get('inserted_count') or 0):,}")
+    metric_cols[3].metric("업데이트", f"{int(outcome.get('updated_count') or 0):,}")
+    metric_cols[4].metric("3D 배치", f"{int(outcome.get('layout_added_count') or 0):,}")
+    metric_cols[5].metric("오류", f"{int(outcome.get('error_count') or 0):,}")
+    metric_cols[6].metric("처리시간", f"{float(outcome.get('processing_seconds') or 0):,.1f}초")
+
+    details = outcome.get("details") or []
+    if details:
+        detail_df = pd.DataFrame(details)
+        error_df = detail_df[detail_df.get("처리 결과", "") == "오류"] if "처리 결과" in detail_df else pd.DataFrame()
+        if not error_df.empty:
+            with st.expander(f"업로드 오류 {len(error_df):,}건", expanded=True):
+                st.dataframe(error_df, hide_index=True, use_container_width=True, height=260)
+        with st.expander("업로드 처리 상세", expanded=False):
+            st.dataframe(detail_df, hide_index=True, use_container_width=True, height=320)
+
+
+def render_warehouse_master_upload_panel(building: str, work_date: str) -> None:
+    default_work_date = pd.to_datetime(work_date, errors="coerce")
+    default_date = default_work_date.date() if not pd.isna(default_work_date) else date.today()
+    result_key = "warehouse3d_master_upload_result"
+    processing_key = "warehouse3d_master_upload_processing"
+
+    with st.expander("재고 마스터 엑셀 업로드", expanded=False):
+        st.caption(
+            "현재 프로젝트의 마스터 양식 컬럼: "
+            + ", ".join(WAREHOUSE_MASTER_ACTUAL_COLUMNS)
+            + " / 3D 자동 배치는 현재고, 재고위치(예: 로긴-01), 랙위치(예: A-01) 기준으로 반영합니다."
+        )
+        upload_cols = st.columns([1.0, 2.2, 0.9, 2.2], gap="small")
+        with upload_cols[0]:
+            upload_date = st.date_input("기준일자", value=default_date, key="warehouse3d_master_upload_date")
+        with upload_cols[1]:
+            uploaded = st.file_uploader(
+                "재고 마스터 파일",
+                type=["xlsx", "xls", "csv"],
+                key="warehouse3d_master_upload_file",
+            )
+        with upload_cols[2]:
+            st.write("")
+            disabled = uploaded is None or bool(st.session_state.get(processing_key))
+            if st.button("업로드 반영", type="primary", disabled=disabled, use_container_width=True, key="warehouse3d_master_upload_apply"):
+                st.session_state[processing_key] = True
+                try:
+                    file_bytes = uploaded.getvalue()
+                    file_name = uploaded.name
+                    try:
+                        outcome = with_db(
+                            lambda db: apply_warehouse_master_excel_upload(
+                                db,
+                                building,
+                                upload_date,
+                                file_bytes,
+                                file_name,
+                            )
+                        )
+                    except Exception as exc:
+                        outcome = {
+                            "ok": False,
+                            "message": f"재고 마스터 업로드 처리 실패: {exc}",
+                            "count": 0,
+                            "total_rows": 0,
+                            "error_count": 1,
+                            "details": [],
+                        }
+                    st.session_state[result_key] = outcome
+                    if isinstance(outcome, dict) and outcome.get("ok"):
+                        clear_warehouse3d_data_caches()
+                finally:
+                    st.session_state[processing_key] = False
+                st.rerun()
+        with upload_cols[3]:
+            st.info("품목코드 또는 바코드로 기존 품목을 찾아 업데이트하고, 현재고가 0이면 3D 적재 표시는 제거합니다.")
+
+        render_warehouse_master_upload_result(st.session_state.get(result_key))
+
+
+def render_warehouse_inventory_tab(inventory_rows: list[dict], work_date: str, building: str = "로긴") -> None:
     st.markdown("#### 재고관리")
     st.caption(f"창고재고 원본 기준 현재고 조회 · 기준일자 {work_date or '-'}")
+    render_warehouse_master_upload_panel(building, work_date)
     if not inventory_rows:
         st.info("표시할 창고 재고 데이터가 없습니다.")
         return
