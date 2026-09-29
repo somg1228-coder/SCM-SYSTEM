@@ -288,7 +288,8 @@ def render_schedule_visible_editor(
     st.session_state[row_count_key] = current_row_count
 
     row_action = "none"
-    control_cols = st.columns([0.34, 0.34, 0.72, 5.0], gap="small")
+    control_weights = [0.42, 0.42, 1.0, 7.0] if columns == HIGHLIGHT_COLUMNS else [0.34, 0.34, 0.72, 5.0]
+    control_cols = st.columns(control_weights, gap="small")
     if control_cols[0].form_submit_button("-", use_container_width=True):
         row_action = "row_minus"
     if control_cols[1].form_submit_button("+", use_container_width=True):
@@ -328,7 +329,7 @@ def render_schedule_visible_editor(
                     label_visibility="collapsed",
                 )
             else:
-                height = 44 if compact else 76
+                height = 58 if columns == HIGHLIGHT_COLUMNS else 44 if compact else 76
                 edited_row[column] = row_cols[column_index].text_area(
                     column,
                     value=clean_text(value),
@@ -404,7 +405,8 @@ def render_schedule_editor_actions(key_prefix: str, save_label: str, delete_labe
         if action_cols[0].form_submit_button(save_label, type="primary", use_container_width=True):
             action = "save"
         return action
-    action_cols = st.columns([0.9, 0.9, 4.0], gap="small")
+    action_weights = [1.05, 1.05, 6.9] if key_prefix == "schedule_highlights" else [0.9, 0.9, 4.0]
+    action_cols = st.columns(action_weights, gap="small")
     if action_cols[0].form_submit_button(save_label, type="primary", use_container_width=True):
         action = "save"
     if action_cols[1].form_submit_button(delete_label, use_container_width=True):
@@ -466,7 +468,7 @@ def schedule_editor_row_count_key(key_prefix: str) -> str:
 
 def schedule_editor_column_weights(columns: list[str]) -> list[float]:
     if columns == HIGHLIGHT_COLUMNS:
-        return [0.42, 0.5, 4.4]
+        return [0.36, 0.36, 8.0]
     return [0.42, 0.88, 1.3, 1.3, 1.3, 1.3, 1.3]
 
 
