@@ -251,74 +251,19 @@ def week_start_date(value: date) -> date:
 
 
 def build_dashboard_inventory_summary_optimized(db, work_date: date, metrics: dict) -> dict:
-    summary_row = dashboard_query(
-        metrics,
-        db,
-        "inventory_kpi_summary",
-        select(
-            func.count(InventoryDaily.id),
-            func.coalesce(func.sum(InventoryDaily.current_stock), 0),
-            func.coalesce(func.sum(InventoryDaily.available_stock), 0),
-            func.coalesce(func.sum(InventoryDaily.outbound_qty), 0),
-            func.coalesce(func.sum(InventoryDaily.inbound_qty), 0),
-            func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
-            func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
-            func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
-        ).where(InventoryDaily.work_date == work_date),
-        "one",
-    )
-    source_rows = dashboard_query(
-        metrics,
-        db,
-        "inventory_source_group",
-        select(
-            InventoryDaily.source_type,
-            func.coalesce(func.sum(InventoryDaily.current_stock), 0),
-            func.coalesce(func.sum(InventoryDaily.available_stock), 0),
-            func.coalesce(func.sum(case((InventoryDaily.available_stock <= InventoryDaily.safe_stock, 1), else_=0)), 0),
-            func.coalesce(func.sum(case((InventoryDaily.current_stock <= 0, 1), else_=0)), 0),
-            func.coalesce(func.sum(case((InventoryDaily.available_stock < InventoryDaily.safe_stock, 1), else_=0)), 0),
-        )
-        .where(InventoryDaily.work_date == work_date)
-        .group_by(InventoryDaily.source_type),
-    )
-    source_lookup = {str(row[0] or ""): row for row in source_rows}
-    source_status = []
-    for source_type in SOURCE_TYPES:
-        row = source_lookup.get(source_type)
-        current_stock = int(row[1] or 0) if row else 0
-        available_stock = int(row[2] or 0) if row else 0
-        problem_count = (int(row[3] or 0) + int(row[4] or 0) + int(row[5] or 0)) if row else 0
-        ratio = round((available_stock / current_stock) * 100) if current_stock > 0 else 0
-        source_status.append(
-            {
-                "name": source_type,
-                "rate": max(0, min(ratio, 100)),
-                "qty": current_stock,
-                "available_qty": available_stock,
-                "problem_count": problem_count,
-                "tone": source_status_tone(current_stock, ratio, problem_count),
-            }
-        )
-
-    charts = {
-        "stock_by_source": [{"label": str(row[0] or "미분류"), "value": int(row[1] or 0)} for row in source_rows],
-        "stock_by_category": [],
-        "outbound_by_category": [],
-        "stock_trend": [],
-        "outbound_trend": [],
-        "need_inbound_top10": [],
-    }
+    summary = services.dashboard_summary(db, work_date)
+    charts = services.dashboard_chart(db, work_date)
+    source_status = get_source_status_rows(db, work_date)
 
     return {
-        "sku_count": int(summary_row[0] or 0),
-        "current_stock": int(summary_row[1] or 0),
-        "available_stock": int(summary_row[2] or 0),
-        "outbound_qty": int(summary_row[3] or 0),
-        "inbound_qty": int(summary_row[4] or 0),
-        "need_inbound_count": int(summary_row[5] or 0),
-        "soldout_count": int(summary_row[6] or 0),
-        "short_count": int(summary_row[7] or 0),
+        "sku_count": int(summary.get("sku_count") or 0),
+        "current_stock": int(summary.get("current_stock") or 0),
+        "available_stock": int(summary.get("available_stock") or 0),
+        "outbound_qty": int(summary.get("outbound_qty") or 0),
+        "inbound_qty": int(summary.get("inbound_qty") or 0),
+        "need_inbound_count": int(summary.get("need_inbound_count") or 0),
+        "soldout_count": int(summary.get("soldout_count") or 0),
+        "short_count": int(summary.get("short_count") or 0),
         "work_date": work_date,
         "charts": charts,
         "source_status": source_status,
@@ -2229,14 +2174,15 @@ def warehouse_status_html(rows: list[dict]) -> str:
             <span>{name}</span>
             <div class="bar"><i style="width:{rate}%"></i></div>
             <b>{rate}%</b>
-            <strong>{available_qty}</strong>
+            <strong title="가용 {available_qty} / 총 {total_qty}">{available_qty} / {total_qty}</strong>
         </div>
         """
-        for name, rate, available_qty, tone in [
+        for name, rate, available_qty, total_qty, tone in [
             (
                 escape(str(row.get("name", "-"))),
                 int(row.get("rate") or 0),
                 format_metric(row.get("available_qty", row.get("qty", 0))),
+                format_metric(row.get("qty", 0)),
                 escape(str(row.get("tone", "cyan"))),
             )
             for row in rows
@@ -2245,7 +2191,7 @@ def warehouse_status_html(rows: list[dict]) -> str:
     return f"""
     <article class="panel warehouse-panel">
         <h2>재고처별 현황 <small>(재고관리)</small></h2>
-        <div class="warehouse-head"><span>구분</span><span>가용 비율</span><span>가용재고</span></div>
+        <div class="warehouse-head"><span>구분</span><span>가용 비율</span><span>가용/총 재고</span></div>
         {body}
         <a class="ghost-link" href="?{urlencode({"page": "재고관리"})}" target="_self">재고관리 바로가기&nbsp;&nbsp;→</a>
     </article>

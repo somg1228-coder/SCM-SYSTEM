@@ -14086,7 +14086,7 @@ html {
 .dashboard-shell .warehouse-head,
 .dashboard-shell .warehouse-row {
     display: grid !important;
-    grid-template-columns: minmax(64px, 0.8fr) minmax(110px, 1.4fr) 54px minmax(74px, 0.85fr) !important;
+    grid-template-columns: minmax(64px, 0.8fr) minmax(110px, 1.3fr) 54px minmax(112px, 1.05fr) !important;
     align-items: center !important;
     gap: clamp(8px, 0.7vw, 12px) !important;
 }

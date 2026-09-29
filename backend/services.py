@@ -6876,7 +6876,7 @@ def dashboard_inventory_rows(db: Session, work_date: date, source_type: str | No
     sources = [source_type] if source_type and source_type != "전체" else list(PRODUCT_MASTER_MODEL_BY_SOURCE.keys())
     rows: list[dict] = []
     for source in sources:
-        if source == "오프라인":
+        if source in {"오프라인", "창고"}:
             rows.extend(master_based_inventory_rows(db, source, work_date))
             continue
         if use_legacy_supabase_rest_store():
