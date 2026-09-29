@@ -1103,11 +1103,23 @@ def inject_schedule_css() -> None:
             justify-content: center !important;
             min-height: 40px !important;
         }
+        div[class*="st-key-schedule_highlights_form_"] {
+            width: 100% !important;
+        }
         div[class*="st-key-schedule_highlights_editor_"] {
-            max-width: 640px;
+            max-width: none !important;
+            width: 100% !important;
         }
         div[class*="st-key-schedule_highlights_editor_"] [data-testid="stDataFrame"] {
-            max-width: 640px;
+            max-width: none !important;
+            width: 100% !important;
+        }
+        div[class*="st-key-schedule_highlights_editor_"] textarea {
+            min-height: 58px !important;
+            resize: vertical !important;
+        }
+        div[class*="st-key-schedule_highlights_form_"] [data-testid="stFormSubmitButton"] button {
+            min-height: 38px !important;
         }
         .weekly-section-title.history-title {
             background: rgba(120, 74, 49, 0.72);
