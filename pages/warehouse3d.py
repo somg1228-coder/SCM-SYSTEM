@@ -1766,9 +1766,45 @@ def warehouse_master_template_records(inventory_rows: list[dict], building: str)
     return records
 
 
+def warehouse_master_template_layout_options(building: str) -> tuple[list[str], list[str]]:
+    floor_options = [
+        warehouse_master_template_floor_value(building, floor)
+        for floor in LOCATIONS.get(building, {}).get("floors", [])
+    ]
+    rack_codes: set[str] = set()
+    try:
+        layout_store = load_warehouse_layout_store()
+    except Exception:
+        layout_store = {}
+    floors = (
+        layout_store.get("locations", {}).get(building, {})
+        if isinstance(layout_store.get("locations"), dict)
+        else {}
+    )
+    if isinstance(floors, dict):
+        for floor_name, floor_data in floors.items():
+            if floor_name not in LOCATIONS.get(building, {}).get("floors", []):
+                continue
+            racks = floor_data.get("racks") if isinstance(floor_data, dict) else []
+            if not isinstance(racks, list):
+                continue
+            for index, rack in enumerate(racks, start=1):
+                if not isinstance(rack, dict):
+                    continue
+                rack_code = canonical_warehouse3d_rack_code(rack.get("id") or rack.get("rack_code"), index)
+                if rack_code:
+                    rack_codes.add(rack_code)
+    if not rack_codes:
+        for floor in LOCATIONS.get(building, {}).get("floors", []):
+            for index, rack in enumerate(default_warehouse_floor_racks(floor), start=1):
+                rack_code = canonical_warehouse3d_rack_code(rack.get("id") or rack.get("rack_code"), index)
+                if rack_code:
+                    rack_codes.add(rack_code)
+    return [value for value in floor_options if value], sorted(rack_codes)
+
+
 def warehouse_master_template_excel(inventory_rows: list[dict], building: str) -> bytes:
-    floor_options = [warehouse_master_template_floor_value(building, floor) for floor in LOCATIONS.get(building, {}).get("floors", [])]
-    rack_options = [f"{zone}-{index:02d}" for zone in ("A", "B", "C", "D") for index in range(1, 7)]
+    floor_options, rack_options = warehouse_master_template_layout_options(building)
     records = warehouse_master_template_records(inventory_rows, building)
     template_df = pd.DataFrame(records, columns=WAREHOUSE_MASTER_ACTUAL_COLUMNS)
     guide_df = pd.DataFrame(
@@ -1787,6 +1823,7 @@ def warehouse_master_template_excel(inventory_rows: list[dict], building: str) -
         workbook = writer.book
         worksheet = writer.sheets[sheet_name]
         guide_sheet = writer.sheets["작성안내"]
+        option_sheet = workbook.add_worksheet("선택목록")
         header_format = workbook.add_format(
             {
                 "bold": True,
@@ -1822,9 +1859,29 @@ def warehouse_master_template_excel(inventory_rows: list[dict], building: str) -
         worksheet.autofilter(0, 0, max(len(template_df.index), 1), len(WAREHOUSE_MASTER_ACTUAL_COLUMNS) - 1)
         floor_col = WAREHOUSE_MASTER_ACTUAL_COLUMNS.index("재고위치")
         rack_col = WAREHOUSE_MASTER_ACTUAL_COLUMNS.index("랙위치")
+        option_sheet.write(0, 0, "재고위치")
+        option_sheet.write(0, 1, "랙위치")
+        for row_index, value in enumerate(floor_options, start=1):
+            option_sheet.write(row_index, 0, value)
+        for row_index, value in enumerate(rack_options, start=1):
+            option_sheet.write(row_index, 1, value)
+        option_sheet.hide()
         if floor_options:
-            worksheet.data_validation(1, floor_col, max_rows, floor_col, {"validate": "list", "source": floor_options})
-        worksheet.data_validation(1, rack_col, max_rows, rack_col, {"validate": "list", "source": rack_options})
+            worksheet.data_validation(
+                1,
+                floor_col,
+                max_rows,
+                floor_col,
+                {"validate": "list", "source": f"='선택목록'!$A$2:$A${len(floor_options) + 1}"},
+            )
+        if rack_options:
+            worksheet.data_validation(
+                1,
+                rack_col,
+                max_rows,
+                rack_col,
+                {"validate": "list", "source": f"='선택목록'!$B$2:$B${len(rack_options) + 1}"},
+            )
         guide_sheet.set_column(0, 0, 14)
         guide_sheet.set_column(1, 1, 66)
         guide_sheet.set_column(2, 2, 18)

@@ -6,7 +6,8 @@ param(
     [int]$DebounceSeconds = 5,
     [int]$RetryCount = 3,
     [int]$RetryDelaySeconds = 20,
-    [string]$LogFilePath = ""
+    [string]$LogFilePath = "",
+    [datetime]$StopAt = [datetime]::MaxValue
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +28,11 @@ function Write-Status {
 
     Write-Host "[auto-git-push] $Message"
     Write-Log $Message
+}
+
+if ($StopAt -le (Get-Date)) {
+    Write-Status "StopAt '$($StopAt.ToString("yyyy-MM-dd HH:mm:ss"))' has already passed. Exiting."
+    exit 0
 }
 
 function ConvertTo-ProcessArgument {
@@ -317,7 +323,8 @@ $registrations = @()
 
 try {
     Set-Content -LiteralPath $PidFile -Value $PID -Encoding ascii
-    Write-Status "Auto git push watcher running. PID=$PID Repo=$RepoPath Log=$LogFile"
+    $stopAtText = if ($StopAt -eq [datetime]::MaxValue) { "none" } else { $StopAt.ToString("yyyy-MM-dd HH:mm:ss") }
+    Write-Status "Auto git push watcher running. PID=$PID Repo=$RepoPath Log=$LogFile StopAt=$stopAtText"
 
     $watcher = New-Object System.IO.FileSystemWatcher
     $watcher.Path = $RepoPath
@@ -338,7 +345,7 @@ try {
         Write-Log "Startup sync scheduled."
     }
 
-    while ($true) {
+    while ((Get-Date) -lt $StopAt) {
         $timeout = 5
         if ($pending) {
             $secondsUntilRun = [Math]::Ceiling(($nextRunAt - (Get-Date)).TotalSeconds)
@@ -368,6 +375,8 @@ try {
             }
         }
     }
+
+    Write-Status "StopAt reached. Auto git push watcher exiting."
 }
 catch {
     Write-Status "Fatal watcher error: $($_.Exception.Message)"
