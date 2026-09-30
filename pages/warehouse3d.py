@@ -1766,51 +1766,64 @@ def warehouse_master_template_records(inventory_rows: list[dict], building: str)
     return records
 
 
+def warehouse_layout_rack_is_active(rack: dict) -> bool:
+    return not (
+        rack.get("active") is False
+        or rack.get("enabled") is False
+        or rack.get("is_active") is False
+        or rack.get("deleted") is True
+    )
+
+
+def warehouse_active_layout_racks(store: dict, building: str, floor: str) -> list[dict]:
+    locations = store.get("locations", {}) if isinstance(store, dict) else {}
+    floors = locations.get(building, {}) if isinstance(locations, dict) else {}
+    floor_data = floors.get(floor) if isinstance(floors, dict) else None
+    racks = floor_data.get("racks") if isinstance(floor_data, dict) else []
+    if not isinstance(racks, list):
+        return []
+    return [rack for rack in racks if isinstance(rack, dict) and warehouse_layout_rack_is_active(rack)]
+
+
+def warehouse_active_layout_rack_codes(store: dict, building: str, floor: str) -> set[str]:
+    rack_codes: set[str] = set()
+    for index, rack in enumerate(warehouse_active_layout_racks(store, building, floor), start=1):
+        rack_code = canonical_warehouse3d_rack_code(rack.get("id") or rack.get("rack_code"), index)
+        if rack_code:
+            rack_codes.add(rack_code)
+    return rack_codes
+
+
 def warehouse_master_template_layout_options(building: str) -> tuple[list[str], list[str]]:
-    floor_options = [
-        warehouse_master_template_floor_value(building, floor)
-        for floor in LOCATIONS.get(building, {}).get("floors", [])
-    ]
+    floor_options: list[str] = []
     rack_codes: set[str] = set()
     try:
         layout_store = load_warehouse_layout_store()
     except Exception:
         layout_store = {}
-    floors = (
-        layout_store.get("locations", {}).get(building, {})
-        if isinstance(layout_store.get("locations"), dict)
-        else {}
-    )
-    if isinstance(floors, dict):
-        for floor_name, floor_data in floors.items():
-            if floor_name not in LOCATIONS.get(building, {}).get("floors", []):
-                continue
-            racks = floor_data.get("racks") if isinstance(floor_data, dict) else []
-            if not isinstance(racks, list):
-                continue
-            for index, rack in enumerate(racks, start=1):
-                if not isinstance(rack, dict):
-                    continue
-                rack_code = canonical_warehouse3d_rack_code(rack.get("id") or rack.get("rack_code"), index)
-                if rack_code:
-                    rack_codes.add(rack_code)
-    if not rack_codes:
-        for floor in LOCATIONS.get(building, {}).get("floors", []):
-            for index, rack in enumerate(default_warehouse_floor_racks(floor), start=1):
-                rack_code = canonical_warehouse3d_rack_code(rack.get("id") or rack.get("rack_code"), index)
-                if rack_code:
-                    rack_codes.add(rack_code)
+    for floor in LOCATIONS.get(building, {}).get("floors", []):
+        floor_rack_codes = warehouse_active_layout_rack_codes(layout_store, building, floor)
+        if not floor_rack_codes:
+            continue
+        floor_value = warehouse_master_template_floor_value(building, floor)
+        if floor_value:
+            floor_options.append(floor_value)
+        rack_codes.update(floor_rack_codes)
     return [value for value in floor_options if value], sorted(rack_codes)
 
 
-def warehouse_master_template_excel(inventory_rows: list[dict], building: str) -> bytes:
-    floor_options, rack_options = warehouse_master_template_layout_options(building)
+def warehouse_master_template_excel(
+    inventory_rows: list[dict],
+    building: str,
+    layout_options: tuple[list[str], list[str]] | None = None,
+) -> bytes:
+    floor_options, rack_options = layout_options or warehouse_master_template_layout_options(building)
     records = warehouse_master_template_records(inventory_rows, building)
     template_df = pd.DataFrame(records, columns=WAREHOUSE_MASTER_ACTUAL_COLUMNS)
     guide_df = pd.DataFrame(
         [
-            {"항목": "재고위치", "설명": "창고와 층을 입력합니다. 로긴-01은 1층, 로긴-02는 2층입니다.", "예시": f"{building}-01"},
-            {"항목": "랙위치", "설명": "3D 창고에서 사용 중인 랙 코드를 입력합니다.", "예시": "A-01"},
+            {"항목": "재고위치", "설명": "3D 창고 배치에 저장된 렉이 있는 위치만 선택할 수 있습니다. 로긴-01은 1층, 로긴-02는 2층입니다.", "예시": f"{building}-01"},
+            {"항목": "랙위치", "설명": "3D 창고 모델에 활성화되어 저장된 렉 코드만 선택할 수 있습니다.", "예시": "A-01"},
             {"항목": "현재고", "설명": "0이면 재고 데이터는 저장되지만 3D 창고에는 박스가 표시되지 않습니다.", "예시": "30"},
             {"항목": "품목 식별", "설명": "상품코드 또는 바코드 중 하나는 반드시 입력합니다.", "예시": "A001"},
         ]
@@ -2040,15 +2053,7 @@ def floor_data_for_layout(store: dict, building: str, floor: str, create: bool =
 
 
 def warehouse_valid_rack_codes(store: dict, building: str, floor: str) -> set[str]:
-    floor_data = floor_data_for_layout(store, building, floor, create=False)
-    racks = floor_data.get("racks") if isinstance(floor_data.get("racks"), list) else []
-    if not racks:
-        racks = default_warehouse_floor_racks(floor)
-    return {
-        canonical_warehouse3d_rack_code(rack.get("id") or rack.get("rack_code"), index + 1)
-        for index, rack in enumerate(racks)
-        if isinstance(rack, dict)
-    }
+    return warehouse_active_layout_rack_codes(store, building, floor)
 
 
 def warehouse_item_identity_keys(item: dict) -> set[str]:
@@ -2147,13 +2152,12 @@ def sync_warehouse_master_rows_to_layout(store: dict, rows: list[dict]) -> tuple
         building = row["building"]
         floor = row["floor"]
         rack_code = row["rack"]
-        floor_data = floor_data_for_layout(store, building, floor, create=True)
+        floor_data = floor_data_for_layout(store, building, floor, create=False)
         racks = floor_data.get("racks") if isinstance(floor_data.get("racks"), list) else []
-        if not racks:
-            racks = default_warehouse_floor_racks(floor)
-            floor_data["racks"] = racks
         target = None
         for index, rack in enumerate(racks):
+            if not isinstance(rack, dict) or not warehouse_layout_rack_is_active(rack):
+                continue
             if canonical_warehouse3d_rack_code(rack.get("id") or rack.get("rack_code"), index + 1) == rack_code:
                 target = rack
                 break
@@ -2662,16 +2666,19 @@ def render_warehouse_master_upload_panel(building: str, work_date: str, inventor
     processing_key = "warehouse3d_master_upload_processing"
 
     with st.expander("재고 마스터 엑셀 업로드", expanded=False):
+        floor_options, rack_options = warehouse_master_template_layout_options(building)
         st.caption(
             "현재 프로젝트의 마스터 양식 컬럼: "
             + ", ".join(WAREHOUSE_MASTER_ACTUAL_COLUMNS)
             + " / 3D 자동 배치는 현재고, 재고위치(예: 로긴-01), 랙위치(예: A-01) 기준으로 반영합니다."
         )
+        if not floor_options or not rack_options:
+            st.warning("선택 가능한 3D 활성 렉이 없습니다. 3D 창고에서 렉을 배치한 뒤 배치저장을 먼저 실행하세요.")
         template_cols = st.columns([1.1, 2.9], gap="small")
         with template_cols[0]:
             st.download_button(
                 "재고 마스터 양식 다운로드",
-                data=warehouse_master_template_excel(inventory_rows or [], building),
+                data=warehouse_master_template_excel(inventory_rows or [], building, (floor_options, rack_options)),
                 file_name=f"재고마스터_3D창고_양식_{date.today().strftime('%Y%m%d')}.xlsx",
                 mime=WAREHOUSE_MASTER_TEMPLATE_MIME,
                 use_container_width=True,
