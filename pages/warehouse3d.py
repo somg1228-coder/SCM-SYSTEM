@@ -1677,6 +1677,7 @@ def warehouse3d_float(value) -> float:
 
 WAREHOUSE_SOURCE_TYPE = "창고"
 WAREHOUSE_MASTER_TEMPLATE_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+WAREHOUSE_MASTER_REPORT_TITLE = "현재고현황 (상품)"
 WAREHOUSE_MASTER_ACTUAL_COLUMNS = [
     "No.",
     "상품코드",
@@ -1705,7 +1706,7 @@ WAREHOUSE_MASTER_BARCODE_COLUMNS = ["바코드", "88바코드", "옵션바코드
 WAREHOUSE_MASTER_NAME_COLUMNS = ["상품명", "품목", "품목명", "제품명", "product_name"]
 WAREHOUSE_MASTER_STOCK_COLUMNS = ["현재 재고수량", "현재고", "재고수량", "재고", "보유재고", "수량", "quantity", "current_stock"]
 WAREHOUSE_MASTER_RACK_COLUMNS = ["랙위치", "랙 위치", "랙", "랙번호", "보관랙", "rack", "rack_location"]
-WAREHOUSE_MASTER_FLOOR_COLUMNS = ["재고위치", "재고 위치", "보관위치", "보관 위치", "층", "창고층", "보관층", "위치층", "floor", "storage_location"]
+WAREHOUSE_MASTER_FLOOR_COLUMNS = ["층수", "층 수", "재고위치", "재고 위치", "보관위치", "보관 위치", "층", "창고층", "보관층", "위치층", "floor", "storage_location"]
 WAREHOUSE_MASTER_SHELF_COLUMNS = ["단", "랙 단", "랙단", "선반", "선반층", "랙층", "part", "shelf"]
 WAREHOUSE_MASTER_SUPPLIER_COLUMNS = ["업체명", "공급처", "거래처", "supplier"]
 WAREHOUSE_MASTER_CATEGORY_COLUMNS = ["카테고리", "카테고리명", "상품카테고리", "대분류", "분류", "category", "large_category"]
@@ -1713,14 +1714,14 @@ WAREHOUSE_MASTER_BOX_UNIT_COLUMNS = ["입수", "박스/파렛트 단위", "박�
 WAREHOUSE_MASTER_MANAGER_COLUMNS = ["담당자", "비고", "memo"]
 WAREHOUSE_MASTER_LEAD_TIME_COLUMNS = ["리드타임", "기본 리드타임", "제조기간", "default_lead_time"]
 WAREHOUSE_MASTER_BUILDING_COLUMNS = ["창고", "건물", "building", "warehouse"]
-WAREHOUSE_MASTER_LOCATION_COLUMNS = ["재고위치", "랙위치"]
+WAREHOUSE_MASTER_LOCATION_COLUMNS = ["랙위치", "층수"]
 WAREHOUSE_MASTER_EXPORT_COLUMNS = WAREHOUSE_MASTER_ACTUAL_COLUMNS + WAREHOUSE_MASTER_LOCATION_COLUMNS
 
 
 def warehouse_master_template_floor_value(building: str, floor: str) -> str:
     floor_match = re.search(r"([1-9])", warehouse_service_clean(floor))
     if floor_match:
-        return f"{building}-{int(floor_match.group(1)):02d}"
+        return f"{int(floor_match.group(1))}층"
     return ""
 
 
@@ -1813,8 +1814,8 @@ def warehouse_master_template_records(
                 "최종입고일": "",
                 "최초판매일": "",
                 "최종판매일": "",
-                "재고위치": warehouse_master_template_location_values(row, building)[0],
                 "랙위치": warehouse_master_template_location_values(row, building)[1],
+                "층수": warehouse_master_template_location_values(row, building)[0],
             }
         )
     return records
@@ -1875,22 +1876,14 @@ def warehouse_master_template_excel(
     floor_options, rack_options = layout_options or warehouse_master_template_layout_options(building)
     records = warehouse_master_template_records(inventory_rows, building, references_by_barcode)
     template_df = pd.DataFrame(records, columns=WAREHOUSE_MASTER_EXPORT_COLUMNS)
-    guide_df = pd.DataFrame(
-        [
-            {"항목": "바코드", "설명": "기존 창고 마스터와 바코드가 같으면 상품코드, 상품명, 입수, 거래처, 안전재고를 마스터 정보로 채웁니다.", "예시": "8800000000000"},
-            {"항목": "입수", "설명": "창고 마스터에 등록된 박스 입수를 우선 표시합니다.", "예시": "24"},
-            {"항목": "현재고", "설명": "현재고 값을 기준일자의 창고 재고로 저장합니다.", "예시": "30"},
-            {"항목": "품목 식별", "설명": "상품코드 또는 바코드 중 하나는 반드시 입력합니다.", "예시": "A001"},
-        ]
-    )
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        sheet_name = "재고마스터"
-        template_df.to_excel(writer, index=False, sheet_name=sheet_name)
-        guide_df.to_excel(writer, index=False, sheet_name="작성안내")
+        sheet_name = "Sheet"
+        template_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=5)
         workbook = writer.book
         worksheet = writer.sheets[sheet_name]
-        guide_sheet = writer.sheets["작성안내"]
+        title_format = workbook.add_format({"bold": True, "font_size": 14, "align": "left", "valign": "vcenter"})
+        summary_format = workbook.add_format({"align": "left", "valign": "vcenter"})
         header_format = workbook.add_format(
             {
                 "bold": True,
@@ -1912,9 +1905,11 @@ def warehouse_master_template_excel(
             }
         )
         cell_format = workbook.add_format({"border": 1, "border_color": "#E5EFEA", "valign": "vcenter"})
-        required_columns = {"상품코드", "상품명", "현재고", "재고위치", "랙위치"}
+        required_columns = {"상품코드", "상품명", "현재고", "랙위치", "층수"}
+        worksheet.write(0, 0, WAREHOUSE_MASTER_REPORT_TITLE, title_format)
+        worksheet.write(2, 0, f"거래처분류 : 전체      분류정보 : 전체      재고상태 : 전체      조회건수 : {len(template_df.index)}", summary_format)
         for col_index, column in enumerate(WAREHOUSE_MASTER_EXPORT_COLUMNS):
-            worksheet.write(0, col_index, column, required_format if column in required_columns else header_format)
+            worksheet.write(5, col_index, column, required_format if column in required_columns else header_format)
             width = 12
             if column in {"상품명", "거래처"}:
                 width = 28
@@ -1922,40 +1917,35 @@ def warehouse_master_template_excel(
                 width = 14
             worksheet.set_column(col_index, col_index, width, cell_format)
         max_rows = max(len(template_df.index) + 100, 200)
-        worksheet.freeze_panes(1, 0)
-        worksheet.autofilter(0, 0, max(len(template_df.index), 1), len(WAREHOUSE_MASTER_EXPORT_COLUMNS) - 1)
-        if "재고위치" in WAREHOUSE_MASTER_EXPORT_COLUMNS and "랙위치" in WAREHOUSE_MASTER_EXPORT_COLUMNS:
+        worksheet.freeze_panes(6, 0)
+        worksheet.autofilter(5, 0, max(len(template_df.index) + 5, 6), len(WAREHOUSE_MASTER_EXPORT_COLUMNS) - 1)
+        if "랙위치" in WAREHOUSE_MASTER_EXPORT_COLUMNS and "층수" in WAREHOUSE_MASTER_EXPORT_COLUMNS:
             option_sheet = workbook.add_worksheet("선택목록")
-            floor_col = WAREHOUSE_MASTER_EXPORT_COLUMNS.index("재고위치")
             rack_col = WAREHOUSE_MASTER_EXPORT_COLUMNS.index("랙위치")
-            option_sheet.write(0, 0, "재고위치")
-            option_sheet.write(0, 1, "랙위치")
-            for row_index, value in enumerate(floor_options, start=1):
-                option_sheet.write(row_index, 0, value)
+            floor_col = WAREHOUSE_MASTER_EXPORT_COLUMNS.index("층수")
+            option_sheet.write(0, 0, "랙위치")
+            option_sheet.write(0, 1, "층수")
             for row_index, value in enumerate(rack_options, start=1):
+                option_sheet.write(row_index, 0, value)
+            for row_index, value in enumerate(floor_options, start=1):
                 option_sheet.write(row_index, 1, value)
             option_sheet.hide()
-        if floor_options and "재고위치" in WAREHOUSE_MASTER_EXPORT_COLUMNS:
-            worksheet.data_validation(
-                1,
-                floor_col,
-                max_rows,
-                floor_col,
-                {"validate": "list", "source": f"='선택목록'!$A$2:$A${len(floor_options) + 1}"},
-            )
         if rack_options and "랙위치" in WAREHOUSE_MASTER_EXPORT_COLUMNS:
             worksheet.data_validation(
-                1,
+                6,
                 rack_col,
                 max_rows,
                 rack_col,
-                {"validate": "list", "source": f"='선택목록'!$B$2:$B${len(rack_options) + 1}"},
+                {"validate": "list", "source": f"='선택목록'!$A$2:$A${len(rack_options) + 1}"},
             )
-        guide_sheet.set_column(0, 0, 14)
-        guide_sheet.set_column(1, 1, 66)
-        guide_sheet.set_column(2, 2, 18)
-        for col_index, column in enumerate(guide_df.columns):
-            guide_sheet.write(0, col_index, column, header_format)
+        if floor_options and "층수" in WAREHOUSE_MASTER_EXPORT_COLUMNS:
+            worksheet.data_validation(
+                6,
+                floor_col,
+                max_rows,
+                floor_col,
+                {"validate": "list", "source": f"='선택목록'!$B$2:$B${len(floor_options) + 1}"},
+            )
     return output.getvalue()
 
 
@@ -2434,6 +2424,7 @@ def apply_warehouse_master_excel_upload(db, building: str, work_date: date, file
             "floor": floor,
             "rack": rack,
             "shelf_part": shelf_part,
+            "has_location_input": has_location_input,
             "supplier": supplier,
             "category": category,
             "box_unit": box_unit,
@@ -2470,7 +2461,8 @@ def apply_warehouse_master_excel_upload(db, building: str, work_date: date, file
             product.supplier = row["supplier"] or getattr(product, "supplier", "")
             product.default_lead_time = row["lead_time"] or int(getattr(product, "default_lead_time", 0) or 0)
             product.memo = row["memo"] or getattr(product, "memo", "")
-            product.location_registered = bool(row["current_stock"] > 0 and row.get("rack") and row.get("floor"))
+            if row.get("has_location_input") or row["current_stock"] <= 0:
+                product.location_registered = bool(row["current_stock"] > 0 and row.get("rack") and row.get("floor"))
             product.is_active = getattr(product, "is_active", "") or "사용"
             if hasattr(product, "updated_at"):
                 product.updated_at = datetime.utcnow()
@@ -2733,18 +2725,17 @@ def render_warehouse_master_upload_panel(building: str, work_date: str, inventor
     result_key = "warehouse3d_master_upload_result"
     processing_key = "warehouse3d_master_upload_processing"
 
-    with st.expander("재고 마스터 엑셀 업로드", expanded=False):
+    with st.expander("현재고현황 엑셀 업로드", expanded=False):
         floor_options, rack_options = warehouse_master_template_layout_options(building)
         master_references_by_barcode = fetch_warehouse_master_reference_by_barcode()
         st.caption(
-            "현재 프로젝트의 마스터 양식 컬럼: "
+            "다운로드한 현재고현황 (상품) 파일을 그대로 업로드하면 창고 재고현황을 갱신합니다. 위치를 지정할 때만 끝에 컬럼을 추가하세요: "
             + ", ".join(WAREHOUSE_MASTER_EXPORT_COLUMNS)
-            + " / 바코드가 기존 창고 마스터와 같으면 거래처는 기존 마스터 정보를 우선 적용합니다."
         )
         template_cols = st.columns([1.1, 2.9], gap="small")
         with template_cols[0]:
             st.download_button(
-                "재고 마스터 양식 다운로드",
+                "위치 입력용 양식 다운로드",
                 data=warehouse_master_template_excel(
                     inventory_rows or [],
                     building,
@@ -2757,13 +2748,13 @@ def render_warehouse_master_upload_panel(building: str, work_date: str, inventor
                 key="warehouse3d_master_template_download",
             )
         with template_cols[1]:
-            st.caption("기존 재고가 있으면 상품 정보와 현재고를 채워 내려받고, 바코드가 같은 창고 마스터 정보는 그대로 보강됩니다.")
+            st.caption("원본 현재고현황 파일은 수정 없이 업로드할 수 있고, 랙위치/층수 컬럼이 있으면 3D 배치까지 반영합니다.")
         upload_cols = st.columns([1.0, 2.2, 0.9, 2.2], gap="small")
         with upload_cols[0]:
             upload_date = st.date_input("기준일자", value=default_date, key="warehouse3d_master_upload_date")
         with upload_cols[1]:
             uploaded = st.file_uploader(
-                "재고 마스터 파일",
+                "현재고현황 파일",
                 type=["xlsx", "xls", "csv"],
                 key="warehouse3d_master_upload_file",
             )
@@ -2801,7 +2792,7 @@ def render_warehouse_master_upload_panel(building: str, work_date: str, inventor
                     st.session_state[processing_key] = False
                 st.rerun()
         with upload_cols[3]:
-            st.info("품목코드 또는 바코드로 기존 품목을 찾아 업데이트하고, 현재고가 0이면 3D 적재 표시는 제거합니다.")
+            st.info("원본 파일 그대로 재고를 갱신합니다. 위치 컬럼이 없는 행은 기존 3D 위치를 유지하고, 현재고가 0이면 적재 표시는 제거합니다.")
 
         render_warehouse_master_upload_result(st.session_state.get(result_key))
 
