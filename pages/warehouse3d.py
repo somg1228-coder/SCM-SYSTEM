@@ -1721,7 +1721,7 @@ WAREHOUSE_MASTER_EXPORT_COLUMNS = WAREHOUSE_MASTER_ACTUAL_COLUMNS + WAREHOUSE_MA
 def warehouse_master_template_floor_value(building: str, floor: str) -> str:
     floor_match = re.search(r"([1-9])", warehouse_service_clean(floor))
     if floor_match:
-        return f"{int(floor_match.group(1))}층"
+        return f"{building}-{int(floor_match.group(1)):02d}"
     return ""
 
 
