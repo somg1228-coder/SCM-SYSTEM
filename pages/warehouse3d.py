@@ -1699,8 +1699,6 @@ WAREHOUSE_MASTER_ACTUAL_COLUMNS = [
     "최종입고일",
     "최초판매일",
     "최종판매일",
-    "재고위치",
-    "랙위치",
 ]
 WAREHOUSE_MASTER_PRODUCT_CODE_COLUMNS = ["SKU", "상품코드", "품목코드", "상품번호", "대표상품코드", "product_code", "sku"]
 WAREHOUSE_MASTER_BARCODE_COLUMNS = ["바코드", "88바코드", "옵션바코드", "barcode"]
@@ -1711,10 +1709,12 @@ WAREHOUSE_MASTER_FLOOR_COLUMNS = ["재고위치", "재고 위치", "보관위치
 WAREHOUSE_MASTER_SHELF_COLUMNS = ["단", "랙 단", "랙단", "선반", "선반층", "랙층", "part", "shelf"]
 WAREHOUSE_MASTER_SUPPLIER_COLUMNS = ["업체명", "공급처", "거래처", "supplier"]
 WAREHOUSE_MASTER_CATEGORY_COLUMNS = ["카테고리", "카테고리명", "상품카테고리", "대분류", "분류", "category", "large_category"]
-WAREHOUSE_MASTER_BOX_UNIT_COLUMNS = ["박스/파렛트 단위", "박스파렛트단위", "파렛트,박스단위"]
+WAREHOUSE_MASTER_BOX_UNIT_COLUMNS = ["입수", "박스/파렛트 단위", "박스파렛트단위", "파렛트,박스단위"]
 WAREHOUSE_MASTER_MANAGER_COLUMNS = ["담당자", "비고", "memo"]
 WAREHOUSE_MASTER_LEAD_TIME_COLUMNS = ["리드타임", "기본 리드타임", "제조기간", "default_lead_time"]
-WAREHOUSE_MASTER_BUILDING_COLUMNS = ["창고", "건물", "거래처", "building", "warehouse"]
+WAREHOUSE_MASTER_BUILDING_COLUMNS = ["창고", "건물", "building", "warehouse"]
+WAREHOUSE_MASTER_LOCATION_COLUMNS = ["재고위치", "랙위치"]
+WAREHOUSE_MASTER_EXPORT_COLUMNS = WAREHOUSE_MASTER_ACTUAL_COLUMNS + WAREHOUSE_MASTER_LOCATION_COLUMNS
 
 
 def warehouse_master_template_floor_value(building: str, floor: str) -> str:
@@ -1732,21 +1732,75 @@ def warehouse_master_template_location_values(row: dict, building: str) -> tuple
     return warehouse_master_template_floor_value(row_building, floor), rack
 
 
-def warehouse_master_template_records(inventory_rows: list[dict], building: str) -> list[dict]:
+def fetch_warehouse_master_reference_by_barcode() -> dict[str, dict]:
+    def action(db):
+        if services is None or not hasattr(services, "product_master_model"):
+            return {}
+        model = services.product_master_model(WAREHOUSE_SOURCE_TYPE)
+        rows = list(db.execute(select(model)).scalars())
+        references: dict[str, dict] = {}
+        for product in rows:
+            barcode = warehouse_service_barcode(getattr(product, "barcode", ""))
+            if not barcode:
+                continue
+            references[barcode] = {
+                "product_code": getattr(product, "sku", ""),
+                "product_name": getattr(product, "product_name", ""),
+                "barcode": getattr(product, "barcode", ""),
+                "supplier": getattr(product, "supplier", ""),
+                "box_qty": getattr(product, "box_qty", 0),
+                "pack_qty": getattr(product, "pack_qty", 0),
+                "safe_stock": getattr(product, "min_stock", 0),
+                "storage_location": getattr(product, "storage_location", ""),
+            }
+        return references
+
+    return with_db(action) or {}
+
+
+def warehouse_master_reference_for_row(row: dict, references_by_barcode: dict[str, dict]) -> dict:
+    barcode = warehouse_service_barcode(row.get("barcode"))
+    if not barcode:
+        return {}
+    return references_by_barcode.get(barcode, {})
+
+
+def warehouse_first_text(*values) -> str:
+    for value in values:
+        text = warehouse3d_text(value)
+        if text:
+            return text
+    return ""
+
+
+def warehouse_first_int(*values) -> int:
+    for value in values:
+        number = warehouse3d_int(value)
+        if number:
+            return number
+    return 0
+
+
+def warehouse_master_template_records(
+    inventory_rows: list[dict],
+    building: str,
+    references_by_barcode: dict[str, dict] | None = None,
+) -> list[dict]:
     records = []
+    references_by_barcode = references_by_barcode or {}
     for index, row in enumerate(inventory_rows or [], start=1):
-        floor_value, rack_value = warehouse_master_template_location_values(row, building)
+        master_row = warehouse_master_reference_for_row(row, references_by_barcode)
         records.append(
             {
                 "No.": index,
-                "상품코드": warehouse3d_text(row.get("product_code")),
-                "상품명": warehouse3d_text(row.get("product_name")),
-                "입수": warehouse3d_text(row.get("box_qty") or row.get("pack_qty")),
+                "상품코드": warehouse_first_text(master_row.get("product_code"), row.get("product_code")),
+                "상품명": warehouse_first_text(master_row.get("product_name"), row.get("product_name")),
+                "입수": warehouse_first_int(master_row.get("box_qty"), master_row.get("pack_qty"), row.get("box_qty"), row.get("pack_qty")),
                 "단위": warehouse3d_text(row.get("unit")) or "EA",
-                "거래처": warehouse3d_text(row.get("supplier")),
-                "바코드": warehouse3d_text(row.get("barcode")),
+                "거래처": warehouse_first_text(master_row.get("supplier"), row.get("supplier")),
+                "바코드": warehouse_first_text(master_row.get("barcode"), row.get("barcode")),
                 "원가단가": warehouse3d_text(row.get("unit_cost")),
-                "안전재고": warehouse3d_int(row.get("safe_stock")),
+                "안전재고": warehouse_first_int(master_row.get("safe_stock"), row.get("safe_stock")),
                 "현재고": warehouse3d_int(row.get("current_stock")),
                 "재고금액": "",
                 "사입입고": "",
@@ -1759,8 +1813,8 @@ def warehouse_master_template_records(inventory_rows: list[dict], building: str)
                 "최종입고일": "",
                 "최초판매일": "",
                 "최종판매일": "",
-                "재고위치": floor_value,
-                "랙위치": rack_value,
+                "재고위치": warehouse_master_template_location_values(row, building)[0],
+                "랙위치": warehouse_master_template_location_values(row, building)[1],
             }
         )
     return records
@@ -1816,15 +1870,16 @@ def warehouse_master_template_excel(
     inventory_rows: list[dict],
     building: str,
     layout_options: tuple[list[str], list[str]] | None = None,
+    references_by_barcode: dict[str, dict] | None = None,
 ) -> bytes:
     floor_options, rack_options = layout_options or warehouse_master_template_layout_options(building)
-    records = warehouse_master_template_records(inventory_rows, building)
-    template_df = pd.DataFrame(records, columns=WAREHOUSE_MASTER_ACTUAL_COLUMNS)
+    records = warehouse_master_template_records(inventory_rows, building, references_by_barcode)
+    template_df = pd.DataFrame(records, columns=WAREHOUSE_MASTER_EXPORT_COLUMNS)
     guide_df = pd.DataFrame(
         [
-            {"항목": "재고위치", "설명": "3D 창고 배치에 저장된 렉이 있는 위치만 선택할 수 있습니다. 로긴-01은 1층, 로긴-02는 2층입니다.", "예시": f"{building}-01"},
-            {"항목": "랙위치", "설명": "3D 창고 모델에 활성화되어 저장된 렉 코드만 선택할 수 있습니다.", "예시": "A-01"},
-            {"항목": "현재고", "설명": "0이면 재고 데이터는 저장되지만 3D 창고에는 박스가 표시되지 않습니다.", "예시": "30"},
+            {"항목": "바코드", "설명": "기존 창고 마스터와 바코드가 같으면 상품코드, 상품명, 입수, 거래처, 안전재고를 마스터 정보로 채웁니다.", "예시": "8800000000000"},
+            {"항목": "입수", "설명": "창고 마스터에 등록된 박스 입수를 우선 표시합니다.", "예시": "24"},
+            {"항목": "현재고", "설명": "현재고 값을 기준일자의 창고 재고로 저장합니다.", "예시": "30"},
             {"항목": "품목 식별", "설명": "상품코드 또는 바코드 중 하나는 반드시 입력합니다.", "예시": "A001"},
         ]
     )
@@ -1836,7 +1891,6 @@ def warehouse_master_template_excel(
         workbook = writer.book
         worksheet = writer.sheets[sheet_name]
         guide_sheet = writer.sheets["작성안내"]
-        option_sheet = workbook.add_worksheet("선택목록")
         header_format = workbook.add_format(
             {
                 "bold": True,
@@ -1859,7 +1913,7 @@ def warehouse_master_template_excel(
         )
         cell_format = workbook.add_format({"border": 1, "border_color": "#E5EFEA", "valign": "vcenter"})
         required_columns = {"상품코드", "상품명", "현재고", "재고위치", "랙위치"}
-        for col_index, column in enumerate(WAREHOUSE_MASTER_ACTUAL_COLUMNS):
+        for col_index, column in enumerate(WAREHOUSE_MASTER_EXPORT_COLUMNS):
             worksheet.write(0, col_index, column, required_format if column in required_columns else header_format)
             width = 12
             if column in {"상품명", "거래처"}:
@@ -1869,17 +1923,19 @@ def warehouse_master_template_excel(
             worksheet.set_column(col_index, col_index, width, cell_format)
         max_rows = max(len(template_df.index) + 100, 200)
         worksheet.freeze_panes(1, 0)
-        worksheet.autofilter(0, 0, max(len(template_df.index), 1), len(WAREHOUSE_MASTER_ACTUAL_COLUMNS) - 1)
-        floor_col = WAREHOUSE_MASTER_ACTUAL_COLUMNS.index("재고위치")
-        rack_col = WAREHOUSE_MASTER_ACTUAL_COLUMNS.index("랙위치")
-        option_sheet.write(0, 0, "재고위치")
-        option_sheet.write(0, 1, "랙위치")
-        for row_index, value in enumerate(floor_options, start=1):
-            option_sheet.write(row_index, 0, value)
-        for row_index, value in enumerate(rack_options, start=1):
-            option_sheet.write(row_index, 1, value)
-        option_sheet.hide()
-        if floor_options:
+        worksheet.autofilter(0, 0, max(len(template_df.index), 1), len(WAREHOUSE_MASTER_EXPORT_COLUMNS) - 1)
+        if "재고위치" in WAREHOUSE_MASTER_EXPORT_COLUMNS and "랙위치" in WAREHOUSE_MASTER_EXPORT_COLUMNS:
+            option_sheet = workbook.add_worksheet("선택목록")
+            floor_col = WAREHOUSE_MASTER_EXPORT_COLUMNS.index("재고위치")
+            rack_col = WAREHOUSE_MASTER_EXPORT_COLUMNS.index("랙위치")
+            option_sheet.write(0, 0, "재고위치")
+            option_sheet.write(0, 1, "랙위치")
+            for row_index, value in enumerate(floor_options, start=1):
+                option_sheet.write(row_index, 0, value)
+            for row_index, value in enumerate(rack_options, start=1):
+                option_sheet.write(row_index, 1, value)
+            option_sheet.hide()
+        if floor_options and "재고위치" in WAREHOUSE_MASTER_EXPORT_COLUMNS:
             worksheet.data_validation(
                 1,
                 floor_col,
@@ -1887,7 +1943,7 @@ def warehouse_master_template_excel(
                 floor_col,
                 {"validate": "list", "source": f"='선택목록'!$A$2:$A${len(floor_options) + 1}"},
             )
-        if rack_options:
+        if rack_options and "랙위치" in WAREHOUSE_MASTER_EXPORT_COLUMNS:
             worksheet.data_validation(
                 1,
                 rack_col,
@@ -2119,7 +2175,14 @@ def sync_warehouse_master_rows_to_layout(store: dict, rows: list[dict]) -> tuple
         return 0, 0
     store.setdefault("version", 1)
     store.setdefault("locations", {})
-    row_identity_sets = [warehouse_upload_identity_keys(row) for row in rows]
+    layout_rows = [
+        row
+        for row in rows
+        if warehouse3d_int(row.get("current_stock")) <= 0 or (warehouse3d_text(row.get("floor")) and warehouse3d_text(row.get("rack")))
+    ]
+    if not layout_rows:
+        return 0, 0
+    row_identity_sets = [warehouse_upload_identity_keys(row) for row in layout_rows]
     removed = 0
     added = 0
 
@@ -2145,13 +2208,15 @@ def sync_warehouse_master_rows_to_layout(store: dict, rows: list[dict]) -> tuple
                     kept.append(item)
                 rack["items"] = kept
 
-    for row in rows:
+    for row in layout_rows:
         stock = warehouse3d_int(row.get("current_stock"))
         if stock <= 0:
             continue
         building = row["building"]
         floor = row["floor"]
         rack_code = row["rack"]
+        if not floor or not rack_code:
+            continue
         floor_data = floor_data_for_layout(store, building, floor, create=False)
         racks = floor_data.get("racks") if isinstance(floor_data.get("racks"), list) else []
         target = None
@@ -2287,6 +2352,14 @@ def apply_warehouse_master_excel_upload(db, building: str, work_date: date, file
         box_unit = warehouse_service_clean(record.get(box_unit_col)) if box_unit_col else ""
         memo = warehouse_service_clean(record.get(manager_col)) if manager_col else ""
         lead_time = warehouse3d_int(record.get(lead_time_col)) if lead_time_col else 0
+        existing_product = existing_by_sku.get(explicit_product_code) or existing_by_barcode.get(barcode) or existing_by_name.get(product_name)
+        if existing_product is not None and barcode and warehouse_service_barcode(getattr(existing_product, "barcode", "")) == barcode:
+            product_code = product_code or warehouse_service_code(getattr(existing_product, "sku", ""))
+            product_name = product_name or warehouse_service_clean(getattr(existing_product, "product_name", ""))
+            supplier = warehouse_service_clean(getattr(existing_product, "supplier", "")) or supplier
+            category = category or warehouse_service_clean(getattr(existing_product, "large_category", ""))
+            if not box_unit:
+                box_unit = warehouse_service_clean(getattr(existing_product, "box_qty", 0) or getattr(existing_product, "pack_qty", 0))
 
         errors = []
         identity = product_code or barcode
@@ -2315,7 +2388,6 @@ def apply_warehouse_master_excel_upload(db, building: str, work_date: date, file
             else:
                 seen_product_names.add(product_name)
 
-        existing_product = existing_by_sku.get(explicit_product_code) or existing_by_barcode.get(barcode) or existing_by_name.get(product_name)
         if not explicit_product_code and existing_product is not None and warehouse_service_code(getattr(existing_product, "sku", "")):
             product_code = warehouse_service_code(getattr(existing_product, "sku", ""))
         sku_owner = existing_by_sku.get(product_code) if product_code else None
@@ -2325,7 +2397,8 @@ def apply_warehouse_master_excel_upload(db, building: str, work_date: date, file
         if name_owner is not None and existing_product is not None and name_owner is not existing_product:
             errors.append("상품명이 다른 기존 품목과 충돌")
 
-        if current_stock > 0:
+        has_location_input = bool(floor_text or rack_text or building_text)
+        if has_location_input:
             if not floor:
                 errors.append("층 누락 또는 형식 오류")
             elif floor not in LOCATIONS.get(row_building, {}).get("floors", []):
@@ -2333,11 +2406,6 @@ def apply_warehouse_master_excel_upload(db, building: str, work_date: date, file
             if not rack:
                 errors.append("랙 위치 누락")
             elif floor and rack not in warehouse_valid_rack_codes(layout_store, row_building, floor):
-                errors.append("존재하지 않는 랙 위치")
-        else:
-            if floor and floor not in LOCATIONS.get(row_building, {}).get("floors", []):
-                errors.append("존재하지 않는 층")
-            if rack and floor and rack not in warehouse_valid_rack_codes(layout_store, row_building, floor):
                 errors.append("존재하지 않는 랙 위치")
 
         detail = {
@@ -2667,25 +2735,29 @@ def render_warehouse_master_upload_panel(building: str, work_date: str, inventor
 
     with st.expander("재고 마스터 엑셀 업로드", expanded=False):
         floor_options, rack_options = warehouse_master_template_layout_options(building)
+        master_references_by_barcode = fetch_warehouse_master_reference_by_barcode()
         st.caption(
             "현재 프로젝트의 마스터 양식 컬럼: "
-            + ", ".join(WAREHOUSE_MASTER_ACTUAL_COLUMNS)
-            + " / 3D 자동 배치는 현재고, 재고위치(예: 로긴-01), 랙위치(예: A-01) 기준으로 반영합니다."
+            + ", ".join(WAREHOUSE_MASTER_EXPORT_COLUMNS)
+            + " / 바코드가 기존 창고 마스터와 같으면 거래처는 기존 마스터 정보를 우선 적용합니다."
         )
-        if not floor_options or not rack_options:
-            st.warning("선택 가능한 3D 활성 렉이 없습니다. 3D 창고에서 렉을 배치한 뒤 배치저장을 먼저 실행하세요.")
         template_cols = st.columns([1.1, 2.9], gap="small")
         with template_cols[0]:
             st.download_button(
                 "재고 마스터 양식 다운로드",
-                data=warehouse_master_template_excel(inventory_rows or [], building, (floor_options, rack_options)),
+                data=warehouse_master_template_excel(
+                    inventory_rows or [],
+                    building,
+                    (floor_options, rack_options),
+                    master_references_by_barcode,
+                ),
                 file_name=f"재고마스터_3D창고_양식_{date.today().strftime('%Y%m%d')}.xlsx",
                 mime=WAREHOUSE_MASTER_TEMPLATE_MIME,
                 use_container_width=True,
                 key="warehouse3d_master_template_download",
             )
         with template_cols[1]:
-            st.caption("기존 재고가 있으면 상품 정보와 현재고를 채워 내려받고, 마지막 두 칸의 재고위치/랙위치를 입력해 다시 업로드하면 됩니다.")
+            st.caption("기존 재고가 있으면 상품 정보와 현재고를 채워 내려받고, 바코드가 같은 창고 마스터 정보는 그대로 보강됩니다.")
         upload_cols = st.columns([1.0, 2.2, 0.9, 2.2], gap="small")
         with upload_cols[0]:
             upload_date = st.date_input("기준일자", value=default_date, key="warehouse3d_master_upload_date")
