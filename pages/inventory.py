@@ -6178,6 +6178,43 @@ def stock_registration_select_options(values: pd.Series, current_value: str) -> 
     return options or ([current] if current else [""])
 
 
+def render_stock_registration_selectable_table(
+    panel_key: str,
+    page_df: pd.DataFrame,
+    selected_sku: str,
+) -> str:
+    next_selected_sku = clean_cell(selected_sku)
+    header_cols = st.columns([0.52, 1.0, 1.15, 2.6, 1.15, 1.1, 1.1, 0.85, 1.3], gap="small")
+    headers = ["선택", "SKU", "바코드", "상품명", "카테고리", "보관위치", "업체명", "현재고", "비고"]
+    for col, header in zip(header_cols, headers):
+        col.markdown(f"**{header}**")
+
+    for row_index, row in page_df.iterrows():
+        sku = clean_cell(row.get("SKU"))
+        is_selected = sku and sku == next_selected_sku
+        row_cols = st.columns([0.52, 1.0, 1.15, 2.6, 1.15, 1.1, 1.1, 0.85, 1.3], gap="small")
+        button_label = "선택됨" if is_selected else "선택"
+        if row_cols[0].button(
+            button_label,
+            key=f"{panel_key}_row_select_{row_index}_{hashlib.sha1(sku.encode('utf-8')).hexdigest()[:8]}",
+            disabled=not sku,
+            use_container_width=True,
+            type="primary" if is_selected else "secondary",
+        ):
+            next_selected_sku = sku
+            st.session_state[f"{panel_key}_selected_sku"] = sku
+            st.rerun()
+        row_cols[1].caption(sku or "-")
+        row_cols[2].caption(clean_cell(row.get("바코드")) or "-")
+        row_cols[3].caption(clean_cell(row.get("상품명")) or "-")
+        row_cols[4].caption(clean_cell(row.get("카테고리")) or "-")
+        row_cols[5].caption(clean_cell(row.get("보관위치")) or "-")
+        row_cols[6].caption(clean_cell(row.get("업체명")) or "-")
+        row_cols[7].caption(f"{to_int(row.get('현재고')):,}")
+        row_cols[8].caption(clean_cell(row.get("비고")) or "-")
+    return next_selected_sku
+
+
 def save_stock_registration_form(
     db,
     source_type: str,
@@ -6382,13 +6419,96 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
     page_key = f"{panel_key}_page"
     page_size_key = f"{panel_key}_page_size"
     selected_sku_key = f"{panel_key}_selected_sku"
+    search_key = f"{panel_key}_search"
+    category_key = f"{panel_key}_category"
+    supplier_key = f"{panel_key}_supplier"
+    product_select_key = f"{panel_key}_product_select"
     full_df = stock_registration_dataframe(rows, {})
-    filtered_df = full_df.copy()
 
-    render_stock_bulk_adjustment_panel(source_type, work_date, full_df)
+    bulk_panel_key = f"{source_key(source_type)}_bulk_stock_adjustment_{work_date.isoformat()}"
+    bulk_has_state = bool(st.session_state.get(f"{bulk_panel_key}_preview") or st.session_state.get(f"{bulk_panel_key}_result"))
+    with st.expander("엑셀 일괄 재고수정", expanded=bulk_has_state):
+        render_stock_bulk_adjustment_panel(source_type, work_date, full_df)
 
     st.markdown("#### 수정 대상 재고")
-    page_size = st.selectbox("페이지 표시", [50, 100, 200], index=0, key=page_size_key)
+    category_options = ["전체", *sorted({clean_cell(value) for value in full_df.get("카테고리", pd.Series(dtype=str)).dropna().tolist() if clean_cell(value)})]
+    supplier_options = ["전체", *sorted({clean_cell(value) for value in full_df.get("업체명", pd.Series(dtype=str)).dropna().tolist() if clean_cell(value)})]
+    if clean_cell(st.session_state.get(category_key)) not in category_options:
+        st.session_state[category_key] = "전체"
+    if clean_cell(st.session_state.get(supplier_key)) not in supplier_options:
+        st.session_state[supplier_key] = "전체"
+
+    previous_filter_signature = st.session_state.get(f"{panel_key}_filter_signature")
+    control_cols = st.columns([2.0, 1.15, 1.15, 0.85], gap="small")
+    with control_cols[0]:
+        search = st.text_input("상품 검색", key=search_key, placeholder="SKU, 바코드, 상품명")
+    with control_cols[1]:
+        category_filter = st.selectbox("카테고리", category_options, key=category_key)
+    with control_cols[2]:
+        supplier_filter = st.selectbox("업체명", supplier_options, key=supplier_key)
+    with control_cols[3]:
+        page_size = st.selectbox("페이지 표시", [50, 100, 200], index=0, key=page_size_key)
+
+    filter_signature = (clean_cell(search), clean_cell(category_filter), clean_cell(supplier_filter), int(page_size or 50))
+    if previous_filter_signature != filter_signature:
+        st.session_state[page_key] = 1
+        st.session_state[f"{panel_key}_filter_signature"] = filter_signature
+
+    filtered_df = stock_registration_filter_dataframe(
+        full_df,
+        {
+            "search": search,
+            "category": category_filter,
+            "supplier": supplier_filter,
+        },
+    )
+
+    selected_sku = clean_cell(st.session_state.get(selected_sku_key))
+    filtered_skus = set(filtered_df.get("SKU", pd.Series(dtype=str)).astype(str))
+    if selected_sku and selected_sku not in filtered_skus:
+        selected_sku = ""
+        st.session_state.pop(selected_sku_key, None)
+
+    product_options = []
+    if not filtered_df.empty:
+        product_options = [
+            (
+                clean_cell(row.get("SKU")),
+                f"{clean_cell(row.get('상품명'))} / {clean_cell(row.get('SKU'))}"
+                + (f" / {clean_cell(row.get('바코드'))}" if clean_cell(row.get("바코드")) else ""),
+            )
+            for _, row in filtered_df.iterrows()
+            if clean_cell(row.get("SKU"))
+        ]
+    product_skus = [sku for sku, _ in product_options]
+    product_labels = {sku: label for sku, label in product_options}
+    if product_skus:
+        product_select_options = ["", *product_skus]
+        product_index = product_select_options.index(selected_sku) if selected_sku in product_select_options else 0
+        product_options_signature = hashlib.sha1("|".join(product_skus).encode("utf-8")).hexdigest()[:10]
+        selected_from_dropdown = st.selectbox(
+            "수정할 상품 선택",
+            product_select_options,
+            index=product_index,
+            format_func=lambda sku: product_labels.get(sku, "상품을 선택하세요") if sku else "상품을 선택하세요",
+            key=f"{product_select_key}_{product_options_signature}_{selected_sku or 'none'}",
+        )
+        selected_from_dropdown = clean_cell(selected_from_dropdown)
+        if selected_from_dropdown and selected_from_dropdown != selected_sku:
+            selected_sku = selected_from_dropdown
+            st.session_state[selected_sku_key] = selected_sku
+        elif not selected_from_dropdown and selected_sku:
+            selected_sku = ""
+            st.session_state.pop(selected_sku_key, None)
+    else:
+        st.selectbox(
+            "수정할 상품 선택",
+            ["검색 결과 없음"],
+            index=0,
+            disabled=True,
+            key=f"{product_select_key}_empty",
+        )
+
     total_pages = max(ceil(len(filtered_df) / int(page_size or 50)), 1)
     current_page = min(max(int(st.session_state.get(page_key, 1) or 1), 1), total_pages)
     st.session_state[page_key] = current_page
@@ -6402,34 +6522,7 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
         return bool(st.session_state.get(result_key))
 
     table_df = page_df[[column for column in editor_visible_columns if column in page_df.columns]]
-    table_selection = st.dataframe(
-        table_df,
-        hide_index=True,
-        use_container_width=True,
-        height=360,
-        key=f"{panel_key}_selection_table",
-        on_select="rerun",
-        selection_mode="single-row",
-        column_config={
-            "SKU": st.column_config.TextColumn("SKU", width="small"),
-            "바코드": st.column_config.TextColumn("바코드", width="small"),
-            "상품명": st.column_config.TextColumn("상품명", width="large"),
-            "카테고리": st.column_config.TextColumn("카테고리", width="small"),
-            "보관위치": st.column_config.TextColumn("보관위치", width="small"),
-            "업체명": st.column_config.TextColumn("업체명", width="small"),
-            "현재고": st.column_config.NumberColumn("현재고", min_value=0, step=1, width="small"),
-            "비고": st.column_config.TextColumn("비고", width="medium"),
-        },
-    )
-    selected_rows = selected_dataframe_rows(table_selection)
-    if selected_rows:
-        selected_sku = clean_cell(page_df.iloc[selected_rows[0]].get("SKU"))
-        st.session_state[selected_sku_key] = selected_sku
-    else:
-        selected_sku = clean_cell(st.session_state.get(selected_sku_key))
-        if selected_sku not in set(filtered_df.get("SKU", pd.Series(dtype=str)).astype(str)):
-            selected_sku = clean_cell(page_df.iloc[0].get("SKU"))
-            st.session_state[selected_sku_key] = selected_sku
+    selected_sku = render_stock_registration_selectable_table(panel_key, table_df, selected_sku)
 
     nav_cols = st.columns([1.0, 1.4, 1.0], gap="small")
     with nav_cols[0]:
@@ -6444,12 +6537,12 @@ def render_stock_registration_panel(source_type: str, work_date: date, rows: lis
             st.rerun()
 
     selected_rows = full_df[full_df["SKU"] == selected_sku] if selected_sku else pd.DataFrame()
-    st.markdown("#### 선택 상품 정보 수정")
     if selected_rows.empty:
-        st.info("상단 표에서 수정할 상품 행을 선택하세요.")
+        st.info("검색 후 드롭다운에서 상품을 고르거나 상단 표에서 수정할 상품 행을 선택하세요.")
         render_stock_upload_apply_result(st.session_state.get(result_key))
         return bool(st.session_state.get(result_key))
 
+    st.markdown("#### 선택 상품 정보 수정")
     selected_row = selected_rows.iloc[0]
     base_stock = to_int(selected_row.get("_base_stock"))
     base_memo = clean_cell(selected_row.get("_base_memo"))
