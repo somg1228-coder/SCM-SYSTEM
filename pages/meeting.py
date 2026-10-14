@@ -306,7 +306,7 @@ def render_production_section(report_id: int) -> pd.DataFrame:
     st.markdown(render_table_html(PRODUCTION_COLUMNS, preview_df, "production"), unsafe_allow_html=True)
 
     with st.expander("생산요청 리스트 편집", expanded=True):
-        st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 선택 삭제는 화면에서만 제외되며, Supabase 반영은 변경사항 저장을 눌렀을 때만 실행됩니다.")
+        st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 변경사항 저장을 눌렀을 때 Supabase에 반영됩니다.")
         editor_df = add_delete_marker_column(prepare_production_editor_df(edit_buffer), marker_source=edit_buffer)
         editor_key = f"meeting_production_editor_v7_{report_id}"
         with st.form(key=f"meeting_production_editor_form_{report_id}", clear_on_submit=False):
@@ -322,10 +322,10 @@ def render_production_section(report_id: int) -> pd.DataFrame:
                 "meeting_production",
                 save_label="변경사항 저장",
                 add_label=None,
-                selected_delete_label="선택 삭제",
+                selected_delete_label=None,
                 selected_delete_count=None,
-                delete_label="생산요청 전체 삭제",
-                delete_flag="meeting_delete_production_requested",
+                delete_label=None,
+                delete_flag=None,
             )
             editor_action = edited.attrs.get("editor_row_action") if edited.attrs.get("editor_row_action") != "none" else editor_action
     production_source = current_draft
@@ -386,7 +386,7 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
     st.markdown(render_table_html(EVENT_SUMMARY_COLUMNS, preview_df, "events"), unsafe_allow_html=True)
 
     with st.expander("행사 일정 편집", expanded=True):
-        st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 선택 삭제는 화면에서만 제외되며, Supabase 반영은 변경사항 저장을 눌렀을 때만 실행됩니다.")
+        st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 변경사항 저장을 눌렀을 때 Supabase에 반영됩니다.")
         pending_rows = get_pending_event_rows(report_id, calendar_month)
         if pending_rows:
             pending_df = pd.DataFrame(pending_rows, columns=EVENT_COLUMNS)
@@ -409,10 +409,10 @@ def render_events_section(report_id: int, meeting_date: date) -> tuple[pd.DataFr
                 "meeting_events",
                 save_label="변경사항 저장",
                 add_label=None,
-                selected_delete_label="선택 삭제",
+                selected_delete_label=None,
                 selected_delete_count=None,
-                delete_label="행사일정 전체 삭제",
-                delete_flag="meeting_delete_events_requested",
+                delete_label=None,
+                delete_flag=None,
             )
             editor_action = edited.attrs.get("editor_row_action") if edited.attrs.get("editor_row_action") != "none" else editor_action
     events_source = current_draft
@@ -483,17 +483,21 @@ def render_visible_spreadsheet_editor(
     select_options: dict[str, list[str]] | None = None,
     multiline_columns: set[str] | None = None,
     blank_rows: int = 3,
+    show_delete_column: bool = False,
 ) -> pd.DataFrame:
     with perf_span("meeting.spreadsheet_prepare", editor=key_prefix):
         number_columns = number_columns or set()
         date_columns = date_columns or set()
         select_options = select_options or {}
         multiline_columns = multiline_columns or set()
-        source = df.copy() if df is not None else pd.DataFrame(columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
-        for column in [EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns]:
+        source = df.copy() if df is not None else pd.DataFrame(columns=[ROW_ID_COLUMN, *columns])
+        if not show_delete_column:
+            source = strip_delete_marker_column(source)
+        source_columns = [EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns] if show_delete_column else [ROW_ID_COLUMN, *columns]
+        for column in source_columns:
             if column not in source.columns:
                 source[column] = False if column == EDIT_DELETE_COLUMN else ""
-        source = source[[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns]].reset_index(drop=True)
+        source = source[source_columns].reset_index(drop=True)
 
         rows = source.to_dict("records")
         row_count_key = editor_row_count_key(key_prefix)
@@ -514,29 +518,35 @@ def render_visible_spreadsheet_editor(
             row_action = "add_row"
 
         for _ in range(max(0, current_row_count - len(rows))):
-            rows.append({EDIT_DELETE_COLUMN: False, ROW_ID_COLUMN: "", **{column: 0 if column in number_columns else "" for column in columns}})
+            blank_row = {ROW_ID_COLUMN: "", **{column: 0 if column in number_columns else "" for column in columns}}
+            if show_delete_column:
+                blank_row[EDIT_DELETE_COLUMN] = False
+            rows.append(blank_row)
 
-        header_weights = spreadsheet_column_weights(columns)
+        header_weights = spreadsheet_column_weights(columns, include_delete=show_delete_column)
         header_cols = st.columns(header_weights, gap="small")
-        header_cols[0].markdown(sheet_header_html("삭제"), unsafe_allow_html=True)
-        for index, column in enumerate(columns, start=1):
+        header_offset = 1 if show_delete_column else 0
+        if show_delete_column:
+            header_cols[0].markdown(sheet_header_html("삭제"), unsafe_allow_html=True)
+        for index, column in enumerate(columns, start=header_offset):
             header_cols[index].markdown(sheet_header_html(column), unsafe_allow_html=True)
 
         edited_rows = []
         for row_index, row in enumerate(rows):
             row_cols = st.columns(header_weights, gap="small")
-            delete_key = f"{key_prefix}_delete_{row_index}"
             edited_row = {
                 ROW_ID_COLUMN: normalize_row_id(row.get(ROW_ID_COLUMN, "")),
-                EDIT_DELETE_COLUMN: row_cols[0].checkbox(
+            }
+            if show_delete_column:
+                delete_key = f"{key_prefix}_delete_{row_index}"
+                edited_row[EDIT_DELETE_COLUMN] = row_cols[0].checkbox(
                     "삭제",
                     value=is_delete_checked(row.get(EDIT_DELETE_COLUMN)),
                     key=delete_key,
                     label_visibility="collapsed",
-                ),
-            }
-            edited_row[EDIT_DELETE_COLUMN] = bool(st.session_state.get(delete_key, edited_row[EDIT_DELETE_COLUMN]))
-            for column_index, column in enumerate(columns, start=1):
+                )
+                edited_row[EDIT_DELETE_COLUMN] = bool(st.session_state.get(delete_key, edited_row[EDIT_DELETE_COLUMN]))
+            for column_index, column in enumerate(columns, start=header_offset):
                 value = row.get(column, "")
                 cell_key = f"{key_prefix}_{row_index}_{column_index}_{safe_widget_key(column)}"
                 if column in number_columns:
@@ -584,7 +594,8 @@ def render_visible_spreadsheet_editor(
                         )
                     edited_row[column] = normalize_cell_value(st.session_state.get(cell_key, widget_value))
             edited_rows.append(edited_row)
-    edited_df = pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns])
+    output_columns = [EDIT_DELETE_COLUMN, ROW_ID_COLUMN, *columns] if show_delete_column else [ROW_ID_COLUMN, *columns]
+    edited_df = pd.DataFrame(edited_rows, columns=output_columns)
     edited_df.attrs["editor_row_action"] = row_action
     return edited_df
 
@@ -630,7 +641,7 @@ def apply_editor_row_action(edited: pd.DataFrame, action: str, key_prefix: str, 
     if removable_index is not None:
         rows.pop(removable_index)
     else:
-        st.warning("내용이 있는 행은 - 버튼으로 삭제하지 않습니다. 삭제 체크 후 선택 삭제를 눌러주세요.")
+        st.warning("내용이 있는 행은 - 버튼으로 삭제하지 않습니다. 내용을 비운 뒤 줄여주세요.")
     st.session_state[editor_row_count_key(key_prefix)] = max(len(rows), 3)
     return pd.DataFrame(rows, columns=[ROW_ID_COLUMN, *columns])
 
@@ -649,8 +660,8 @@ def is_blank_editor_row(row: dict, columns: list[str]) -> bool:
     return True
 
 
-def spreadsheet_column_weights(columns: list[str]) -> list[float]:
-    weights = [0.42]
+def spreadsheet_column_weights(columns: list[str], include_delete: bool = False) -> list[float]:
+    weights = [0.42] if include_delete else []
     for column in columns:
         if column in {"상품명", "진행내용", "행사품목", "상세내용", "비고"}:
             weights.append(1.45)
@@ -862,8 +873,8 @@ def render_editor_actions(
     add_label: str | None,
     selected_delete_label: str | None,
     selected_delete_count: int | None,
-    delete_label: str,
-    delete_flag: str,
+    delete_label: str | None,
+    delete_flag: str | None,
     secondary_save_label: str | None = None,
 ) -> str:
     action = "none"
@@ -871,15 +882,17 @@ def render_editor_actions(
         action_columns = st.columns([0.9, 0.72, 0.9, 0.9, 2.4], gap="small")
         save_col = action_columns[0]
         add_col = action_columns[1]
-        selected_delete_col = action_columns[2]
-        delete_col = action_columns[3]
+        selected_delete_col = action_columns[2] if selected_delete_label else None
+        delete_col = action_columns[3] if delete_label else None
     else:
-        action_columns = st.columns([0.9, 0.9, 0.9, 3.12], gap="small")
+        action_columns = st.columns([0.9, 4.92], gap="small") if not selected_delete_label and not delete_label else st.columns([0.9, 0.9, 0.9, 3.12], gap="small")
         save_col = action_columns[0]
         add_col = None
-        selected_delete_col = action_columns[1]
-        delete_col = action_columns[2]
-    full_delete_confirm = st.checkbox("전체 삭제 확인", key=f"{key_prefix}_full_delete_confirm")
+        selected_delete_col = action_columns[1] if selected_delete_label else None
+        delete_col = action_columns[2] if delete_label else None
+    full_delete_confirm = False
+    if delete_label:
+        full_delete_confirm = st.checkbox("전체 삭제 확인", key=f"{key_prefix}_full_delete_confirm")
     with save_col:
         if st.form_submit_button(save_label, type="primary", use_container_width=True):
             st.session_state.meeting_save_requested = True
@@ -895,13 +908,14 @@ def render_editor_actions(
                     action = "selected_delete"
                 else:
                     st.warning("삭제 체크된 행이 없습니다.")
-    with delete_col:
-        if st.form_submit_button(delete_label, use_container_width=True):
-            if full_delete_confirm:
-                st.session_state[delete_flag] = True
-                action = "full_delete"
-            else:
-                st.warning("전체 삭제는 '전체 삭제 확인'을 체크한 뒤 실행하세요.")
+    if delete_col is not None and delete_label:
+        with delete_col:
+            if st.form_submit_button(delete_label, use_container_width=True):
+                if full_delete_confirm and delete_flag:
+                    st.session_state[delete_flag] = True
+                    action = "full_delete"
+                else:
+                    st.warning("전체 삭제는 '전체 삭제 확인'을 체크한 뒤 실행하세요.")
     return action
 
 
@@ -1229,7 +1243,7 @@ def render_action_section(report_id: int) -> pd.DataFrame:
     st.markdown(render_table_html(ACTION_COLUMNS, preview_df, "actions"), unsafe_allow_html=True)
 
     with st.expander("진행사항 편집", expanded=True):
-        st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 선택 삭제는 화면에서만 제외되며, Supabase 반영은 변경사항 저장을 눌렀을 때만 실행됩니다.")
+        st.caption("셀을 직접 수정하고 행을 추가할 수 있습니다. 변경사항 저장을 눌렀을 때 Supabase에 반영됩니다.")
         editor_df = add_delete_marker_column(prepare_action_editor_df(edit_buffer), marker_source=edit_buffer)
         editor_key = f"meeting_action_editor_v10_{report_id}"
         with st.form(key=f"meeting_action_editor_form_{report_id}", clear_on_submit=False):
@@ -1245,10 +1259,10 @@ def render_action_section(report_id: int) -> pd.DataFrame:
                 "meeting_actions",
                 save_label="변경사항 저장",
                 add_label=None,
-                selected_delete_label="선택 삭제",
+                selected_delete_label=None,
                 selected_delete_count=None,
-                delete_label="진행사항 전체 삭제",
-                delete_flag="meeting_delete_actions_requested",
+                delete_label=None,
+                delete_flag=None,
             )
             editor_action = edited.attrs.get("editor_row_action") if edited.attrs.get("editor_row_action") != "none" else editor_action
     action_source = current_draft

@@ -175,15 +175,15 @@ def render_highlights(week_id: int) -> pd.DataFrame:
         with perf_span("schedule.highlights_data_editor"):
             editor_key = f"schedule_highlights_editor_{week_id}"
             edited = render_schedule_visible_editor(
-                add_schedule_delete_column(normalize_highlights_df(st.session_state[buffer_key])),
+                normalize_highlights_df(st.session_state[buffer_key]),
                 HIGHLIGHT_COLUMNS,
                 editor_key,
                 checkbox_columns={"완료"},
                 compact=True,
             )
-        action = render_schedule_editor_actions("schedule_highlights", save_label="핵심 반영", delete_label="선택 삭제")
+        action = render_schedule_editor_actions("schedule_highlights", save_label="핵심 반영")
         action = edited.attrs.get("editor_row_action") if edited.attrs.get("editor_row_action") != "none" else action
-        if action in {"row_plus", "row_minus", "add_row", "selected_delete", "save"}:
+        if action in {"row_plus", "row_minus", "add_row", "save"}:
             edited_source = apply_schedule_editor_action(edited, action, editor_key, HIGHLIGHT_COLUMNS)
             st.session_state[buffer_key] = normalize_highlights_df(edited_source)
             if action != "save":
@@ -213,7 +213,7 @@ def render_week_table(week_id: int) -> pd.DataFrame:
                     SLOT_COLUMNS,
                     editor_key,
                 )
-            action = render_schedule_editor_actions("schedule_slots", save_label="일정 저장", delete_label="선택 삭제")
+            action = render_schedule_editor_actions("schedule_slots", save_label="일정 저장")
             action = edited.attrs.get("editor_row_action") if edited.attrs.get("editor_row_action") != "none" else action
             if action in {"row_plus", "row_minus", "add_row", "selected_delete", "save"}:
                 edited_source = apply_schedule_editor_action(edited, action, editor_key, SLOT_COLUMNS)
@@ -275,13 +275,13 @@ def render_schedule_visible_editor(
     blank_rows: int = 3,
 ) -> pd.DataFrame:
     checkbox_columns = checkbox_columns or set()
-    source = df.copy() if df is not None else pd.DataFrame(columns=[EDIT_DELETE_COLUMN, *columns])
-    for column in [EDIT_DELETE_COLUMN, *columns]:
+    source = strip_schedule_delete_column(df).copy() if df is not None else pd.DataFrame(columns=columns)
+    for column in columns:
         if column not in source.columns:
-            source[column] = False if column in {EDIT_DELETE_COLUMN, *checkbox_columns} else ""
-    source = source[[EDIT_DELETE_COLUMN, *columns]].reset_index(drop=True)
+            source[column] = False if column in checkbox_columns else ""
+    source = source[columns].reset_index(drop=True)
     if columns == SLOT_COLUMNS and not compact:
-        return render_schedule_slot_editor(source, columns, key_prefix, blank_rows)
+        return render_schedule_slot_editor(add_schedule_delete_column(source), columns, key_prefix, blank_rows)
     rows = source.to_dict("records")
     row_count_key = schedule_editor_row_count_key(key_prefix)
     current_row_count = max(blank_rows, len(rows), int(st.session_state.get(row_count_key, 0) or 0))
@@ -299,26 +299,18 @@ def render_schedule_visible_editor(
         row_action = "add_row"
 
     for _ in range(max(0, current_row_count - len(rows))):
-        rows.append({EDIT_DELETE_COLUMN: False, **{column: False if column in checkbox_columns else "" for column in columns}})
+        rows.append({column: False if column in checkbox_columns else "" for column in columns})
 
     header_weights = schedule_editor_column_weights(columns)
     header_cols = st.columns(header_weights, gap="small")
-    header_cols[0].markdown(schedule_sheet_header_html("삭제"), unsafe_allow_html=True)
-    for index, column in enumerate(columns, start=1):
+    for index, column in enumerate(columns):
         header_cols[index].markdown(schedule_sheet_header_html(column), unsafe_allow_html=True)
 
     edited_rows = []
     for row_index, row in enumerate(rows):
         row_cols = st.columns(header_weights, gap="small")
-        edited_row = {
-            EDIT_DELETE_COLUMN: row_cols[0].checkbox(
-                "삭제",
-                value=is_checked(row.get(EDIT_DELETE_COLUMN)),
-                key=f"{key_prefix}_delete_{row_index}",
-                label_visibility="collapsed",
-            )
-        }
-        for column_index, column in enumerate(columns, start=1):
+        edited_row = {}
+        for column_index, column in enumerate(columns):
             value = row.get(column, "")
             cell_key = f"{key_prefix}_{row_index}_{column_index}_{safe_widget_key(column)}"
             if column in checkbox_columns:
@@ -338,7 +330,7 @@ def render_schedule_visible_editor(
                     label_visibility="collapsed",
                 )
         edited_rows.append(edited_row)
-    edited_df = pd.DataFrame(edited_rows, columns=[EDIT_DELETE_COLUMN, *columns])
+    edited_df = pd.DataFrame(edited_rows, columns=columns)
     edited_df.attrs["editor_row_action"] = row_action
     return edited_df
 
@@ -398,19 +390,17 @@ def render_schedule_slot_editor(df: pd.DataFrame, columns: list[str], key_prefix
     return edited_df
 
 
-def render_schedule_editor_actions(key_prefix: str, save_label: str, delete_label: str) -> str:
+def render_schedule_editor_actions(key_prefix: str, save_label: str) -> str:
     action = "none"
     if key_prefix == "schedule_slots":
         action_cols = st.columns([1.0, 5.0], gap="small")
         if action_cols[0].form_submit_button(save_label, type="primary", use_container_width=True):
             action = "save"
         return action
-    action_weights = [1.05, 1.05, 6.9] if key_prefix == "schedule_highlights" else [0.9, 0.9, 4.0]
+    action_weights = [1.05, 7.95] if key_prefix == "schedule_highlights" else [0.9, 4.9]
     action_cols = st.columns(action_weights, gap="small")
     if action_cols[0].form_submit_button(save_label, type="primary", use_container_width=True):
         action = "save"
-    if action_cols[1].form_submit_button(delete_label, use_container_width=True):
-        action = "selected_delete"
     return action
 
 
@@ -440,7 +430,7 @@ def apply_schedule_editor_action(edited: pd.DataFrame, action: str, key_prefix: 
         if removable_index is not None:
             rows.pop(removable_index)
         else:
-            st.warning("내용이 있는 행은 - 버튼으로 삭제하지 않습니다. 삭제 체크 후 선택 삭제를 눌러주세요.")
+            st.warning("내용이 있는 행은 - 버튼으로 삭제하지 않습니다. 내용을 비운 뒤 줄여주세요.")
         st.session_state[schedule_editor_row_count_key(key_prefix)] = max(len(rows), 3)
         return pd.DataFrame(rows, columns=columns)
     if action == "add_row":
@@ -468,7 +458,7 @@ def schedule_editor_row_count_key(key_prefix: str) -> str:
 
 def schedule_editor_column_weights(columns: list[str]) -> list[float]:
     if columns == HIGHLIGHT_COLUMNS:
-        return [0.36, 0.36, 8.0]
+        return [0.42, 8.0]
     return [0.42, 0.88, 1.3, 1.3, 1.3, 1.3, 1.3]
 
 
@@ -508,8 +498,7 @@ def render_history() -> None:
     if not rows:
         st.info("최근 한 달간 저장된 히스토리가 없습니다.")
         return
-    df = pd.DataFrame(rows)
-    st.dataframe(df, hide_index=True, use_container_width=True)
+    render_history_table_html(pd.DataFrame(rows))
 
 
 def get_or_create_week(week_start: date) -> dict:
@@ -877,6 +866,31 @@ def history_excel_bytes(rows: list[dict]) -> bytes:
     return output.getvalue()
 
 
+def render_history_table_html(df: pd.DataFrame) -> None:
+    if df is None or df.empty:
+        st.info("최근 한 달간 저장된 히스토리가 없습니다.")
+        return
+    header = "".join(f"<th>{html_escape(column)}</th>" for column in df.columns)
+    body_rows = []
+    for _, row in df.iterrows():
+        cells = []
+        for column in df.columns:
+            value = html_escape(row.get(column, "")).replace("\n", "<br>")
+            cells.append(f"<td>{value}</td>")
+        body_rows.append(f"<tr>{''.join(cells)}</tr>")
+    st.markdown(
+        f"""
+        <div class="schedule-history-wrap">
+            <table>
+                <thead><tr>{header}</tr></thead>
+                <tbody>{''.join(body_rows)}</tbody>
+            </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def normalize_highlights_df(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame(columns=HIGHLIGHT_COLUMNS)
@@ -1126,6 +1140,44 @@ def inject_schedule_css() -> None:
             border-radius: 6px 6px 0 0;
             margin-top: 1.25rem;
             padding: 0.34rem 0.55rem;
+        }
+        .schedule-history-wrap {
+            border: 1px solid #D8D2C8;
+            border-radius: 0 0 8px 8px;
+            margin-top: -0.25rem;
+            max-height: 340px;
+            overflow: auto;
+            width: 100%;
+        }
+        .schedule-history-wrap table {
+            border-collapse: collapse;
+            color: #334155;
+            font-size: 0.82rem;
+            min-width: 1120px;
+            width: 100%;
+        }
+        .schedule-history-wrap th,
+        .schedule-history-wrap td {
+            border-bottom: 1px solid #E5E7EB;
+            padding: 0.58rem 0.65rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        .schedule-history-wrap th {
+            background: #F8FAFC;
+            color: #475569;
+            font-weight: 900;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .schedule-history-wrap td {
+            background: #FFFDF9;
+            line-height: 1.45;
+            white-space: normal;
+        }
+        .schedule-history-wrap td:nth-child(4) {
+            min-width: 460px;
         }
         .weekly-table-wrap {
             border: 1px solid #E2E8F0;
