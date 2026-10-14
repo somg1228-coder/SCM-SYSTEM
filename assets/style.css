@@ -15981,3 +15981,53 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 [data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[data-testid="stBaseButton-primary"] {
     border-left-color: #52697F !important;
 }
+
+/* Sidebar full-height fill and subtle section labels. */
+[data-testid="stSidebar"] {
+    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
+    background-image: none !important;
+    min-height: 100vh !important;
+    position: relative !important;
+}
+
+[data-testid="stSidebar"]::before {
+    background: #FFFFFF !important;
+    content: "" !important;
+    inset: 0 !important;
+    min-height: 100vh !important;
+    pointer-events: none !important;
+    position: absolute !important;
+    z-index: -1 !important;
+}
+
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"],
+[data-testid="stSidebar"] .block-container {
+    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
+    background-image: none !important;
+    min-height: 100vh !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button {
+    background: #F8FAFC !important;
+    background-color: #F8FAFC !important;
+    border: 1px solid #E5E7EB !important;
+    border-left: 4px solid #52697F !important;
+    box-shadow: none !important;
+    color: #102033 !important;
+    font-weight: 900 !important;
+    -webkit-text-fill-color: #102033 !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button:hover,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button:hover {
+    background: #F8FAFC !important;
+    background-color: #F8FAFC !important;
+    border-color: #E5E7EB !important;
+    border-left-color: #52697F !important;
+}
