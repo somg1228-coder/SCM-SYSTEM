@@ -15909,6 +15909,13 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 [data-testid="stSidebar"][aria-expanded="false"] > div,
 [data-testid="stSidebar"][aria-hidden="true"] > div,
 [data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"],
+[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stSidebar"] [data-testid="stElementContainer"],
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+[data-testid="stSidebar"] nav,
+[data-testid="stSidebar"] section,
 [data-testid="stSidebar"] .block-container {
     background: #FFFFFF !important;
     background-color: #FFFFFF !important;
@@ -15917,6 +15924,15 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 
 [data-testid="stSidebar"] > div,
 [data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
 [data-testid="stSidebar"] .block-container {
     min-height: 100vh !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand,
+[data-testid="stSidebar"] .sidebar-divider,
+[data-testid="stSidebar"] .sidebar-meta {
+    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
+    background-image: none !important;
 }
