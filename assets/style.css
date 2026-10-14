@@ -15936,3 +15936,48 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
     background-color: #FFFFFF !important;
     background-image: none !important;
 }
+
+/* Remove remaining card surfaces inside the sidebar; keep one continuous rail color. */
+[data-testid="stSidebar"] .sidebar-brand,
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button,
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button,
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button[kind="primary"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[kind="primary"],
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button[data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[data-testid="stBaseButton-primary"] {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    border-bottom-color: transparent !important;
+    border-right-color: transparent !important;
+    border-top-color: transparent !important;
+    box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] .sidebar-brand {
+    border-color: transparent !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button {
+    border-color: transparent !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_group_"] button:hover,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button:hover,
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button:hover,
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button:hover {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button[kind="primary"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[kind="primary"],
+[data-testid="stSidebar"] div[class*="sidebar_nav_"] button[data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] div[class*="st-key-sidebar_nav_"] button[data-testid="stBaseButton-primary"] {
+    border-left-color: #52697F !important;
+}
