@@ -15900,3 +15900,23 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button {
     overflow: visible !important;
 }
+
+/* Keep the entire sidebar on one flat light surface. */
+[data-testid="stSidebar"],
+[data-testid="stSidebar"][aria-expanded="false"],
+[data-testid="stSidebar"][aria-hidden="true"],
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"][aria-expanded="false"] > div,
+[data-testid="stSidebar"][aria-hidden="true"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] .block-container {
+    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
+    background-image: none !important;
+}
+
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] .block-container {
+    min-height: 100vh !important;
+}
