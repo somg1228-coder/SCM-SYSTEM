@@ -15917,8 +15917,8 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 [data-testid="stSidebar"] nav,
 [data-testid="stSidebar"] section,
 [data-testid="stSidebar"] .block-container {
-    background: #FFFFFF !important;
-    background-color: #FFFFFF !important;
+    background: var(--beige-bg, #F7F5F2) !important;
+    background-color: var(--beige-bg, #F7F5F2) !important;
     background-image: none !important;
 }
 
@@ -15932,8 +15932,8 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 [data-testid="stSidebar"] .sidebar-brand,
 [data-testid="stSidebar"] .sidebar-divider,
 [data-testid="stSidebar"] .sidebar-meta {
-    background: #FFFFFF !important;
-    background-color: #FFFFFF !important;
+    background: var(--beige-bg, #F7F5F2) !important;
+    background-color: var(--beige-bg, #F7F5F2) !important;
     background-image: none !important;
 }
 
@@ -15984,15 +15984,18 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 
 /* Sidebar full-height fill and subtle section labels. */
 [data-testid="stSidebar"] {
-    background: #FFFFFF !important;
-    background-color: #FFFFFF !important;
+    align-self: stretch !important;
+    background: var(--beige-bg, #F7F5F2) !important;
+    background-color: var(--beige-bg, #F7F5F2) !important;
     background-image: none !important;
+    height: auto !important;
+    max-height: none !important;
     min-height: 100vh !important;
     position: relative !important;
 }
 
 [data-testid="stSidebar"]::before {
-    background: #FFFFFF !important;
+    background: var(--beige-bg, #F7F5F2) !important;
     content: "" !important;
     inset: 0 !important;
     min-height: 100vh !important;
@@ -16006,8 +16009,8 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"],
 [data-testid="stSidebar"] .block-container {
-    background: #FFFFFF !important;
-    background-color: #FFFFFF !important;
+    background: var(--beige-bg, #F7F5F2) !important;
+    background-color: var(--beige-bg, #F7F5F2) !important;
     background-image: none !important;
     min-height: 100vh !important;
 }
