@@ -16017,8 +16017,8 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 
 [data-testid="stSidebar"] div[class*="sidebar_group_"] button,
 [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button {
-    background: #F8FAFC !important;
-    background-color: #F8FAFC !important;
+    background: #EEEAE4 !important;
+    background-color: #EEEAE4 !important;
     border: 1px solid #E5E7EB !important;
     border-left: 4px solid #52697F !important;
     box-shadow: none !important;
@@ -16029,8 +16029,8 @@ div[class*="st-key-meeting_action_editor_"] .glideDataEditor canvas {
 
 [data-testid="stSidebar"] div[class*="sidebar_group_"] button:hover,
 [data-testid="stSidebar"] div[class*="st-key-sidebar_group_"] button:hover {
-    background: #F8FAFC !important;
-    background-color: #F8FAFC !important;
+    background: #E6E0D7 !important;
+    background-color: #E6E0D7 !important;
     border-color: #E5E7EB !important;
     border-left-color: #52697F !important;
 }
